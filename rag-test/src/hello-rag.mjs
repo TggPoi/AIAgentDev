@@ -21,7 +21,7 @@ const embeddings = new OpenAIEmbeddings({
 });
 
 const documents = [
-  new Document({
+  new Document({ //pageContent 是真正的文档内容，metadata 是一些元数据，可以用来描述文档的属性
     pageContent: `光光是一个活泼开朗的小男孩，他有一双明亮的大眼睛，总是带着灿烂的笑容。光光最喜欢的事情就是和朋友们一起玩耍，他特别擅长踢足球，每次在球场上奔跑时，就像一道阳光一样充满活力。`,
     metadata: { 
       chapter: 1, 
@@ -103,25 +103,31 @@ for (const question of questions) {
   console.log(`问题: ${question}`);
   console.log("=".repeat(80));
   
-  // 使用 retriever 获取文档，retriever.invoke开始把文档向量化
+  // 使用 retriever 获取文档，把“问题”向量化，再去和“已经向量化并存入向量库的文档”做相似度检索。
   const retrievedDocs = await retriever.invoke(question);
   
   // 使用 similaritySearchWithScore 获取相似度评分
   const scoredResults = await vectorStore.similaritySearchWithScore(question, 3);
   
-  // 打印用到的文档和相似度评分
+  // 打印用到的文档和相似度评分，这里打印的内容是用来辅助理解的，retrievedDocs中的内容是已经将用户提问和文档比较完成了，并且已经去取出了相似度最高的 3 个文档了。
   console.log("\n【检索到的文档及相似度评分】");
+
+  //这里是双层forEach循环，外层是对检索到的文档进行遍历，内层是对评分结果进行查找，找到对应文档的评分，然后计算相似度并打印出来。
   retrievedDocs.forEach((doc, i) => {
-    // 找到对应的评分
-    const scoredResult = scoredResults.find(([scoredDoc]) => 
-      scoredDoc.pageContent === doc.pageContent
-    );
-    const score = scoredResult ? scoredResult[1] : null;
-    const similarity = score !== null ? (1 - score).toFixed(4) : "N/A";
-    
-    console.log(`\n[文档 ${i + 1}] 相似度: ${similarity}`);
-    console.log(`内容: ${doc.pageContent}`);
-    console.log(`元数据: 章节=${doc.metadata.chapter}, 角色=${doc.metadata.character}, 类型=${doc.metadata.type}, 心情=${doc.metadata.mood}`);
+        // 找到对应的评分
+        const scoredResult = scoredResults.find(([scoredDoc]) => 
+          scoredDoc.pageContent === doc.pageContent
+        );
+
+        //scoredResults每一项是：[文档对象, 分数]，scoredResult[1]取出分数，如果找不到对应的评分，就返回 null
+        const score = scoredResult ? scoredResult[1] : null;
+
+        //把分数转换成一个“更直觉的相似度显示值”。这只是为了在终端里更直观地展示“越大越相似”的效果
+        const similarity = score !== null ? (1 - score).toFixed(4) : "N/A";
+        
+        console.log(`\n[文档 ${i + 1}] 相似度: ${similarity}`);
+        console.log(`内容: ${doc.pageContent}`);
+        console.log(`元数据: 章节=${doc.metadata.chapter}, 角色=${doc.metadata.character}, 类型=${doc.metadata.type}, 心情=${doc.metadata.mood}`);
   });
   
   // 构建 prompt
@@ -143,6 +149,7 @@ ${context}
 
   
   // 直接使用 model.invoke
+  console.log("\n【提问：" + prompt + "】");
   console.log("\n【AI 回答】");
   const response = await model.invoke(prompt);
   console.log(response.content);
