@@ -20,6 +20,12 @@ const embeddings = new OpenAIEmbeddings({
   },
 });
 
+/*
+metadata 不是文档正文，也通常不会直接参与嵌入模型生成向量。
+它的主要作用是：
+
+给文档附加结构化信息，方便检索后的筛选、展示、追踪来源和后续逻辑处理。
+*/
 const documents = [
   new Document({ //pageContent 是真正的文档内容，metadata 是一些元数据，可以用来描述文档的属性
     pageContent: `光光是一个活泼开朗的小男孩，他有一双明亮的大眼睛，总是带着灿烂的笑容。光光最喜欢的事情就是和朋友们一起玩耍，他特别擅长踢足球，每次在球场上奔跑时，就像一道阳光一样充满活力。`,
