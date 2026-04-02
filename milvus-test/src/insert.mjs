@@ -51,9 +51,9 @@ async function main() {
     await client.createIndex({
       collection_name: COLLECTION_NAME,
       field_name: 'vector',
-      index_type: IndexType.IVF_FLAT,
+      index_type: IndexType.IVF_FLAT, //IVF 可以先理解成“倒排文件式的向量分组索引思想” 核心直觉是“先粗分组，再细搜索”，FLAT 是一种最简单的索引类型，直接在每个分组内进行暴力搜索
       metric_type: MetricType.COSINE, //metric_type 指定用余弦相似度作为距离度量
-      params: { nlist: 1024 }
+      params: { nlist: 1024 } //向量粗分组时分成多少个列表 / 桶 / 聚类单元
     });
     console.log('Index created');
 
@@ -103,9 +103,17 @@ async function main() {
     ];
 
     console.log('Generating embeddings...');
+
+    /** 这里的 diaryData 是一个数组，
+     * 每个元素都是一个对象，包含了日记的内容、日期、心情、标签等字段，以及一个 vector 字段，
+     * 这个 vector 字段是通过 getEmbedding 函数生成的向量表示。 
+     * 
+     * 这里就是通过map函数对 diaryContents 数组中的每个日记对象进行处理，生成一个新的对象，其中包含了原有的字段（通过 ...diary 复制过来）以及一个新的 vector 字段，
+     * 这个 vector 字段是通过调用 getEmbedding 函数生成的。由于 getEmbedding 是一个异步函数，所以我们使用 Promise.all 来等待所有的向量生成完成后再继续执行插入操作。
+     * */
     const diaryData = await Promise.all(
       diaryContents.map(async (diary) => ({
-        ...diary,
+        ...diary, //其他字段直接复制过来
         vector: await getEmbedding(diary.content)
       }))
     );

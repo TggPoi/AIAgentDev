@@ -32,6 +32,7 @@ async function main() {
     // 更新数据（Milvus 通过 upsert 实现更新）
     console.log('Updating diary entry...');
     const updateId = 'diary_001';
+    
     const updatedContent = {
       id: updateId,
       content: '今天下了一整天的雨，心情很糟糕。工作上遇到了很多困难，感觉压力很大。一个人在家，感觉特别孤独。',
