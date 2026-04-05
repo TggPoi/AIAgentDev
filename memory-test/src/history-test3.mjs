@@ -29,7 +29,9 @@ async function fileHistoryDemo() {
     sessionId: sessionId,
   });
   
+  //获取在test2中保存的历史消息记录文件，并展示出来
   const restoredMessages = await restoredHistory.getMessages();
+
   console.log(`从文件恢复了 ${restoredMessages.length} 条历史消息：`);
   restoredMessages.forEach((msg, index) => {
     const type = msg.type;
@@ -42,10 +44,13 @@ async function fileHistoryDemo() {
   const userMessage3 = new HumanMessage(
     "需要哪些食材？"
   );
+
   await restoredHistory.addMessage(userMessage3);
   
   const messages3 = [systemMessage, ...(await restoredHistory.getMessages())];
   const response3 = await model.invoke(messages3);
+
+    //第4次保存消息记录
   await restoredHistory.addMessage(response3);
   
   console.log(`用户: ${userMessage3.content}`);

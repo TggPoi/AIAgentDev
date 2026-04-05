@@ -50,7 +50,7 @@ async function summarizationMemoryDemo() {
     
     // 分离要保留的消息和要总结的消息
     const recentMessages = allMessages.slice(-keepRecent);
-    const messagesToSummarize = allMessages.slice(0, -keepRecent);
+    const messagesToSummarize = allMessages.slice(0, -keepRecent);//保留从第一条消息开始，到倒数第keepRecent条消息之前的所有消息进行总结
     
     console.log("\n💡 历史消息过多，开始总结...");
     console.log(`📝 将被总结的消息数量: ${messagesToSummarize.length}`);
@@ -61,6 +61,7 @@ async function summarizationMemoryDemo() {
     
     // 清空历史消息，只保留最近的消息
     await history.clear();
+
     for (const msg of recentMessages) {
       await history.addMessage(msg);
     }
@@ -68,11 +69,13 @@ async function summarizationMemoryDemo() {
     console.log(`\n保留消息数量: ${recentMessages.length}`);
     console.log("保留的消息:", recentMessages.map(m => `${m.constructor.name}: ${m.content}`).join('\n  '));
     console.log(`\n总结内容（不包含保留的消息）: ${summary}`);
+
   } else {
     console.log("\n消息数量未超过阈值，无需总结");
   }
 }
 
+//开始处理需要总结和保留的消息，并展示总结结果和保留的消息
 summarizationMemoryDemo().catch(console.error);
 
 // 总结历史对话的函数
@@ -80,6 +83,7 @@ async function summarizeHistory(messages) {
   if (messages.length === 0) return "";
   
   //给 HumanMessage、AIMessage 等加上不同的前缀来格式化对话内容，方便模型理解和总结
+  //不会修改原始messages中的内容，只是进行格式化处理，生成一个新的 字符串 用于构建总结的提示词
   const conversationText = getBufferString(messages, {
     humanPrefix: "用户",
     aiPrefix: "助手",

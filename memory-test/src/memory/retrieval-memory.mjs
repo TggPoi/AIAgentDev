@@ -58,6 +58,7 @@ async function retrieveRelevantConversations(query, k = 2) {
     });
 
     return searchResult.results;
+    
   } catch (error) {
     console.error('检索对话时出错:', error.message);
     return [];
@@ -90,6 +91,7 @@ async function retrievalMemoryDemo() {
     { input: "我的职业是什么？" },
   ];
 
+  // 模拟多轮对话，每轮对话先检索相关历史，再生成回答，最后保存当前对话到历史和向量数据库 i代表对话轮次
   for (let i = 0; i < conversations.length; i++) {
     const { input } = conversations[i];
     const userMessage = new HumanMessage(input);
@@ -114,10 +116,12 @@ async function retrievalMemoryDemo() {
       relevantHistory = retrievedConversations
         .map((conv, idx) => {
           return `[历史对话 ${idx + 1}]
-轮次: ${conv.round}
-${conv.content}`;
+                  轮次: ${conv.round}
+                  ${conv.content}`;
         })
         .join('\n\n━━━━━\n\n');
+
+
     } else {
       console.log('未找到相关历史对话');
     }

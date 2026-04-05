@@ -69,14 +69,18 @@ async function summarizationMemoryDemo() {
       const msgTokens = enc.encode(content).length;
       
       if (recentTokens + msgTokens <= keepRecentTokens) {
+        //inserts new elements at the start of an array, and returns the new length of the array，因为是从后往前遍历的，所以要用 unshift 将消息添加到 recentMessages 的开头，保持消息的原始顺序
         recentMessages.unshift(msg);
+
         recentTokens += msgTokens;
       } else {
         break;
       }
     }
     
+    //处理需要总结，弃用的消息
     const messagesToSummarize = allMessages.slice(0, allMessages.length - recentMessages.length);
+    //计算需要总结的消息的 token 数量，方便后续展示总结前后的 token 数量对比
     const summarizeTokens = countTokens(messagesToSummarize, enc);
     
     console.log("\n💡 Token 数量超过阈值，开始总结...");
@@ -93,13 +97,18 @@ async function summarizationMemoryDemo() {
     }
     
     console.log(`\n保留消息数量: ${recentMessages.length}`);
+
     console.log("保留的消息:", recentMessages.map(m => {
       const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
       const tokens = enc.encode(content).length;
       return `${m.constructor.name} (${tokens} tokens): ${m.content}`;
+
     }).join('\n  '));
+
     console.log(`\n总结内容（不包含保留的消息）: ${summary}`);
+
   } else {
+    
     console.log(`\nToken 数量 (${totalTokens}) 未超过阈值 (${maxTokens})，无需总结`);
   }
 }

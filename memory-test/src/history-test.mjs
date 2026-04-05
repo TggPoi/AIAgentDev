@@ -29,6 +29,14 @@ async function inMemoryDemo() {
   );
   await history.addMessage(userMessage1);
   
+  /**
+   * getMessages() 是一个异步方法，不是立刻直接返回：[message1, message2, message3] 而是先返回一个：Promise<消息数组>，如果不写await，拿到的只是Promise，不是数组本身
+   * 展开运算符 ... 要求右边是一个可迭代对象，例如：数组 字符串 其他 iterable
+   * 
+   * getMessages() 要设计成异步，因为ChatMessageHistory 不一定只是内存实现，例如InMemoryChatMessageHistory，FileSystemChatMessageHistory，RedisChatMessageHistory，MongoChatMessageHistory 等等，
+   * 不同的实现可能需要异步读取数据（例如读取文件或者数据库时），所以统一设计成异步方法，调用时需要 await 来获取实际的消息数组
+   */
+
   const messages1 = [systemMessage, ...(await history.getMessages())];
   const response1 = await model.invoke(messages1);
   await history.addMessage(response1);

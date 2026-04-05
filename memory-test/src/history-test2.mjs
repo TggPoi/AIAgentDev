@@ -24,6 +24,8 @@ async function fileHistoryDemo() {
   );
 
   console.log("[第一轮对话]");
+
+  //FileSystemChatMessageHistory 主要用于demo实现
   const history = new FileSystemChatMessageHistory({
     filePath: filePath,
     sessionId: sessionId,
@@ -32,6 +34,8 @@ async function fileHistoryDemo() {
   const userMessage1 = new HumanMessage(
     "红烧肉怎么做"
   );
+
+   //第一次保存消息记录
   await history.addMessage(userMessage1);
   
   const messages1 = [systemMessage, ...(await history.getMessages())];
@@ -46,10 +50,14 @@ async function fileHistoryDemo() {
   const userMessage2 = new HumanMessage(
     "好吃吗？"
   );
+
+  //第二次保存消息记录
   await history.addMessage(userMessage2);
   
   const messages2 = [systemMessage, ...(await history.getMessages())];
   const response2 = await model.invoke(messages2);
+
+   //第3次保存消息记录
   await history.addMessage(response2);
   
   console.log(`用户: ${userMessage2.content}`);

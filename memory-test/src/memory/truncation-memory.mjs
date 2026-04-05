@@ -25,6 +25,7 @@ async function messageCountTruncation() {
     if (msg.type === 'human') {
       await history.addMessage(new HumanMessage(msg.content));
     } else {
+      //AIMessage表示AI自己返回给用户的消息，这里为了模拟手动添加消息到历史记录，所以直接创建了AIMessage实例并添加到历史中
       await history.addMessage(new AIMessage(msg.content));
     }
   }
@@ -37,6 +38,8 @@ async function messageCountTruncation() {
   const trimmedMessages = allMessages.slice(-maxMessages);
 
   console.log(`保留消息数量: ${trimmedMessages.length}`);
+
+  //m.constructor.name 获取消息类型（HumanMessage 或 AIMessage），content 是消息内容
   console.log("保留的消息:", trimmedMessages.map(m => `${m.constructor.name}: ${m.content}`).join('\n  '));
 }
 
@@ -84,7 +87,7 @@ async function tokenCountTruncation() {
   //trimMessages： Trim messages to be below a token count.
   const trimmedMessages = await trimMessages(allMessages, {
     maxTokens: maxTokens,
-    tokenCounter: async (msgs) => countTokens(msgs, enc),
+    tokenCounter: async (msgs) => countTokens(msgs, enc),//源码中的 TrimMessagesFields 提供了很多可选的option，例如：tokenCounter（自定义 token 计数函数） strategy（截断策略，默认是 "last" 保留最近的消息）等等
     strategy: "last", // 保留最近的消息
   });
   
