@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>SSE Demo</title>
+</head>
+<body>
+  <h1>SSE Demo</h1>
+  <div id="output"></div>
+
+  <script>
+    const output = document.getElementById('output');
+    const eventSource = new EventSource('http://localhost:3000/events');
+
+    eventSource.onmessage = (event) => {
+      const div = document.createElement('div');
+      div.textContent = `收到: ${event.data}`;
+      output.appendChild(div);
+
+      if (event.data === '[DONE]') {
+        eventSource.close();
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error('SSE error:', err);
+      eventSource.close();
+    };
+  </script>
+</body>
+</html>
+
