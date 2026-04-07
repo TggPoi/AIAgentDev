@@ -2,6 +2,12 @@ import 'dotenv/config';
 import { ChatOpenAI } from '@langchain/openai';
 import { JsonOutputParser } from '@langchain/core/output_parsers';
 
+/**
+ * 使用 JsonOutputParser 来解析模型输出的 JSON 格式内容，适用于模型回答中包含 Markdown 代码块等格式的情况
+ * 
+ * JsonOutputParser 不会注入提示词，但是能够处理包含markdown语法的json字符串，例如模型回答中包含 ```json ... ``` 这种格式，直接 JSON.parse 会失败，而 JsonOutputParser 可以正确解析出其中的 JSON 内容
+ */
+
 // 初始化模型
 const model = new ChatOpenAI({
     modelName: process.env.MODEL_NAME,

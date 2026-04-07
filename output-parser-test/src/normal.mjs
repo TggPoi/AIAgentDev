@@ -1,6 +1,10 @@
 import 'dotenv/config';
 import { ChatOpenAI } from '@langchain/openai';
 
+/**
+ * 提示词标记要求JSON格式，没有使用任何格式化类
+ */
+
 // 初始化模型
 const model = new ChatOpenAI({
     modelName: process.env.MODEL_NAME,

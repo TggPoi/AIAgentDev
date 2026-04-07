@@ -1,6 +1,10 @@
 import 'dotenv/config';
 import { ChatOpenAI } from '@langchain/openai';
 
+/**
+ * 流式输出测试，提示词没有任何格式化要求，直接输出文本内容
+ */
+
 const model = new ChatOpenAI({
     modelName: process.env.MODEL_NAME,
     apiKey: process.env.OPENAI_API_KEY,

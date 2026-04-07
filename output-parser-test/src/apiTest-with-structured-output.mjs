@@ -2,6 +2,10 @@ import 'dotenv/config';
 import { ChatOpenAI } from '@langchain/openai';
 import { z } from 'zod';
 
+/**
+ * 使用withStructuredOutput 根据模型能力，底层自动选择 tool call 或 output parser 路线。
+ */
+
 const model = new ChatOpenAI({
     modelName: process.env.MODEL_NAME,
     apiKey: process.env.OPENAI_API_KEY,
@@ -20,10 +24,10 @@ const scientistSchema = z.object({
 });
 
 // 使用 withStructuredOutput 方法 qwen3.5-plus模型不支持json mode，返回的json格式都是undefined，最好换个模型
-const structuredModel = model.withStructuredOutput(scientistSchema);
+const structuredModel = model.withStructuredOutput(scientistSchema,{method:'functionCalling'});
 
 // 调用模型
-const result = await structuredModel.invoke("请介绍一下爱因斯坦，并严格以 JSON 格式输出结果。");
+const result = await structuredModel.invoke("请介绍一下爱因斯坦");
 
 console.log("结构化结果:", JSON.stringify(result, null, 2));
 console.log(`\n姓名: ${result.name}`);
