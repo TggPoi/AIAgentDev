@@ -16,9 +16,9 @@ const model = new ChatOpenAI({
     //modelKwargs：Holds any additional parameters that are valid to pass to openai.createCompletion that are not explicitly specified on this class.
     modelKwargs: {
         enable_thinking: false,// 关闭模型思考过程中的中间步骤输出，直接返回最终结果
-        response_format: {// 直接告诉模型返回 JSON 对象格式，适用于支持 response_format 的模型，例如 qwen3.5-plus，但是Prompt必须包含json，否则会报错 400 BadRequestError: 400 <400> InternalError.Algo.InvalidParameter: 'messages' must contain the word 'json' in some form, to use 'response_format' of type 'json_object'.
-            type: "json_object"
-        }
+        // response_format: {// 直接告诉模型返回 JSON 对象格式，适用于支持 response_format 的模型，例如 qwen3.5-plus，但是Prompt必须包含json，否则会报错 400 BadRequestError: 400 <400> InternalError.Algo.InvalidParameter: 'messages' must contain the word 'json' in some form, to use 'response_format' of type 'json_object'.
+        //     type: "json_object"
+        // }
     }
 });
 
@@ -30,11 +30,11 @@ const scientistSchema = z.object({
     fields: z.array(z.string()).describe("研究领域列表"),
 });
 
-// 使用 withStructuredOutput 方法 qwen3.5-plus模型不支持json mode，返回的json格式都是undefined，最好换个模型
+// 使用 withStructuredOutput 方法 qwen3.5-plus模型不支持json mode，返回的json格式都是undefined，最好换个模型，或者手动调用 method:'functionCalling'
 const structuredModel = model.withStructuredOutput(scientistSchema,{method:'functionCalling'});
 
 // 调用模型
-const result = await model.invoke("请介绍一下爱因斯坦，并严格以 JSON 格式输出结果。");
+const result = await structuredModel.invoke("请介绍一下爱因斯坦，并严格以 JSON 格式输出结果。");
 
 console.log("结构化结果:", result);
 // console.log("结构化结果:", JSON.stringify(result, null, 2));
@@ -43,7 +43,8 @@ console.log("结构化结果:", result);
 // console.log(`国籍: ${result.nationality}`);
 // console.log(`研究领域: ${result.fields.join(', ')}`);
 
-/**
+/** response_format 方式的输出结果
+ * 
 PS D:\AI_Agent_Project\output-parser-test> node .\src\apiTest-with-structured-output-copy.mjs
 结构化结果: AIMessage {
   "id": "chatcmpl-a8cf6d27-38a0-9f8b-acad-4514dd14098e",
@@ -72,4 +73,102 @@ PS D:\AI_Agent_Project\output-parser-test> node .\src\apiTest-with-structured-ou
     "output_token_details": {}
   }
 }
+ */
+
+/** 注释response_format,withStructuredOutput(scientistSchema,{method:'functionCalling'})的测试结果
+ * 
+ * PS D:\AI_Agent_Project\output-parser-test> node .\src\apiTest-with-structured-output-copy.mjs
+结构化结果: {
+  name: '阿尔伯特·爱因斯坦',
+  birth_year: 1879,
+  nationality: '德国',
+  fields: [ '理论物理', '相对论', '量子力学' ]
+}
+ */
+
+
+/**
+ * withStructuredOutput(scientistSchema,{method:'jsonMode'}); 的测试结果，qwen3.5-plus模型不支持json mode，返回的json格式都是undefined，最好换个模型，或者手动调用 method:'functionCalling'
+ * 
+ * PS D:\AI_Agent_Project\output-parser-test> node .\src\apiTest-with-structured-output-copy.mjs
+file:///D:/AI_Agent_Project/output-parser-test/node_modules/.pnpm/@langchain+core@1.1.39_openai@6.33.0_zod@4.3.6_/node_modules/@langchain/core/dist/output_parsers/structured.js:76
+                        throw new OutputParserException(`Failed to parse. Text: "${text}". Error: ${e}`, text);
+                              ^
+
+OutputParserException [Error]: Failed to parse. Text: "{
+  "name": "阿尔伯特·爱因斯坦",
+  "birth_date": "1879-03-14",
+  "death_date": "1955-04-18",
+  "nationality": "德国/瑞士/美国",
+  "profession": "理论物理学家",
+  "major_contributions": [
+    "狭义相对论",
+    "广义相对论",
+    "光电效应解释",
+    "质能方程 (E=mc²)"
+  ],
+  "awards": [
+    {
+      "name": "诺贝尔物理学奖",
+      "year": 1921,
+      "reason": "对理论物理学的贡献，特别是发现了光电效应定律"
+    }
+  ],
+  "brief_biography": "阿尔伯特·爱因斯坦是 20 世纪最伟大的科学家之一，出生于德国乌尔姆。他提出的相对论彻底改变了人类对时间、空间、质量和引力的理解。除了相对论，他在量子力学领域也有重要贡献，尤其是通过解 
+释光电效应证明了光的粒子性。晚年致力于统一场论研究，并积极倡导和平主义与社会正义。"
+}". Error: [
+  {
+    "expected": "number",
+    "code": "invalid_type",
+    "path": [
+      "birth_year"
+    ],
+    "message": "Invalid input: expected number, received undefined"
+  },
+  {
+    "expected": "array",
+    "code": "invalid_type",
+    "path": [
+      "fields"
+    ],
+    "message": "Invalid input: expected array, received undefined"
+  }
+]
+
+Troubleshooting URL: https://docs.langchain.com/oss/javascript/langchain/errors/OUTPUT_PARSING_FAILURE/
+
+    at StructuredOutputParser.parse (file:///D:/AI_Agent_Project/output-parser-test/node_modules/.pnpm/@langchain+core@1.1.39_openai@6.33.0_zod@4.3.6_/node_modules/@langchain/core/dist/output_parsers/structured.js:76:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async StructuredOutputParser._callWithConfig (file:///D:/AI_Agent_Project/output-parser-test/node_modules/.pnpm/@langchain+core@1.1.39_openai@6.33.0_zod@4.3.6_/node_modules/@langchain/core/dist/runnables/base.js:162:13)
+    at async RunnableSequence.invoke (file:///D:/AI_Agent_Project/output-parser-test/node_modules/.pnpm/@langchain+core@1.1.39_openai@6.33.0_zod@4.3.6_/node_modules/@langchain/core/dist/runnables/base.js:933:18)
+    at async file:///D:/AI_Agent_Project/output-parser-test/src/apiTest-with-structured-output-copy.mjs:37:16 {
+  llmOutput: '{\n' +
+    '  "name": "阿尔伯特·爱因斯坦",\n' +
+    '  "birth_date": "1879-03-14",\n' +
+    '  "death_date": "1955-04-18",\n' +
+    '  "nationality": "德国/瑞士/美国",\n' +
+    '  "profession": "理论物理学家",\n' +
+    '  "major_contributions": [\n' +
+    '    "狭义相对论",\n' +
+    '    "广义相对论",\n' +
+    '    "光电效应解释",\n' +
+    '    "质能方程 (E=mc²)"\n' +
+    '  ],\n' +
+    '  "awards": [\n' +
+    '    {\n' +
+    '      "name": "诺贝尔物理学奖",\n' +
+    '      "year": 1921,\n' +
+    '      "reason": "对理论物理学的贡献，特别是发现了光电效应定律"\n' +
+    '    }\n' +
+    '  ],\n' +
+    '  "brief_biography": "阿尔伯特·爱因斯坦是 20 世纪最伟大的科学家之一，出生于德国乌尔姆。他提出的相对论彻底改变了人类对时间、空间、质量和引力的理解。除了相对论，他在量子力学领域也有重要贡献，尤其是通
+过解释光电效应证明了光的粒子性。晚年致力于统一场论研究，并积极倡导和平主义与社会正义。"\n' +
+    '}',
+  observation: undefined,
+  sendToLLM: false,
+  lc_error_code: 'OUTPUT_PARSING_FAILURE'
+}
+
+Node.js v24.14.0
+Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 76
  */
