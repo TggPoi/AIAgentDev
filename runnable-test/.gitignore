@@ -1,0 +1,10 @@
+node_modules/
+dist/
+build/
+.env
+.env.*
+.pnpm-store/
+coverage/
+.next/
+.vscode/
+.DS_Store
