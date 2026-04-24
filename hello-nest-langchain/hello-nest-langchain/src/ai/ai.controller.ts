@@ -22,6 +22,8 @@ async chat(@Query('query') query: string) {
   chatStream(@Query('query') query: string): Observable<{ data: string }> {
     //直接把streamChain返回的 AsyncGenerator 转成 Observable 流，然后用 map 操作符把每个 chunk 转成 { data: chunk } 的形式，
     // 这样前端就能以 sse 的方式接收流式数据了，因此streamChain中不需要写return了，直接yield每个chunk就行，yield的值会被 from 转成 Observable 流的每个数据项
+
+    //Observable：A representation of any set of values over any amount of time. This is the most basic building block of RxJS.
     return from(this.aiService.streamChain(query)).pipe(
       map((chunk) => ({ data: chunk }))
     );
