@@ -86,6 +86,25 @@ export class JobAgentService {
               name: toolName,
               content: JSON.stringify(result),
             }),
+            /**
+             * 注意：这里将 time_now 的结果转换为字符串形式，以确保它能正确地作为消息内容被处理和显示。
+             * 
+             * time_now 工具的结果通常是一个包含当前时间信息的对象，例如：
+             *  {
+                  iso: '2026-...',
+                  timestamp: 177...
+                }
+
+              * 通过 JSON.stringify，我们将这个对象转换为一个字符串，这样它就可以作为消息内容被正确地处理和显示在对话中。
+                content: result 直接使用对象可能会导致 LangChain 内部在处理消息内容时出现问题，
+                会出现报错找不到 message.content.flatMap
+
+                这个错误大概率来自 LangChain 内部把 messages 转换成 OpenAI-compatible 请求格式时，
+                发现某条 message 的 content 类型不符合预期，于是在内部处理时调用了：message.content.flatMap(...)
+
+                但此时 message.content 不是数组，所以报：
+                message.content.flatMap is not a function
+             */
           );
         } else {
           this.logger.warn(`未知工具调用: ${toolName}`);
