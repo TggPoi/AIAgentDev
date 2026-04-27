@@ -26,7 +26,7 @@ import { MailerService } from 'node_modules/@nestjs-modules/mailer/dist/mailer.s
       },
       inject: [ConfigService],
     },
-    {
+    { // tool 里调用 service 的方式
       provide: 'QUERY_USER_TOOL',
       useFactory: (userService: UserService) => {
           const queryUserArgsSchema = z.object({
@@ -61,6 +61,7 @@ import { MailerService } from 'node_modules/@nestjs-modules/mailer/dist/mailer.s
     {
       provide: 'SEND_MAIL_TOOL',
       useFactory: (mailerService: MailerService, configService: ConfigService) => {
+
           const sendMailArgsSchema = z.object({
             to: z
               .email()
@@ -103,6 +104,7 @@ import { MailerService } from 'node_modules/@nestjs-modules/mailer/dist/mailer.s
       {
         provide: 'WEB_SEARCH_TOOL',
         useFactory: (configService: ConfigService) => {
+          
             const webSearchArgsSchema = z.object({
               query: z
                 .string()
