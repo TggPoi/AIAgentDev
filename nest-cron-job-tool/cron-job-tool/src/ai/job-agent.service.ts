@@ -14,6 +14,7 @@ export class JobAgentService {
   private readonly logger = new Logger(JobAgentService.name);
   private readonly modelWithTools: Runnable<BaseMessage[], AIMessage>;
 
+  //注册jobAgent能够调用的工具，相当于子Agent循环
   constructor(
     @Inject('CHAT_MODEL') model: ChatOpenAI,
     @Inject('SEND_MAIL_TOOL') private readonly sendMailTool: any,
