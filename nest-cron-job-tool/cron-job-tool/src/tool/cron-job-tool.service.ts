@@ -7,6 +7,7 @@ import { JobService } from '../job/job.service';
 export class CronJobToolService {
   readonly tool;
 
+  //加个 ! 告诉 TypeScript 编译器，断言这个属性会之后被赋值，就不会再报错了，但是如果运行中出现这个属性没有被赋值的情况，就会抛出一个运行时错误。
   @Inject(JobService)
   private readonly jobService: JobService;
 
