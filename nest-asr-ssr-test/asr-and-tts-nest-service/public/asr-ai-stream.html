@@ -297,6 +297,7 @@
         }
       }
 
+      // 【创建对话UI】在聊天界面添加一条消息，包含角色、文本内容和元信息（如时间戳），适用于在用户提问或 AI 回复时动态创建消息元素并显示在聊天界面上，同时确保界面滚动到最新消息的位置
       function appendMessage(role, text, metaText) {
         hideEmptyTip();
         const row = document.createElement("div");
@@ -321,63 +322,88 @@
         return { row, bubble, content, meta };
       }
 
+      // 关闭当前的 AI 流式连接（如果有），用于开始新的提问或清理资源
       function closeActiveStream() {
+
         if (activeStream) {
           activeStream.close();
           activeStream = null;
         }
       }
 
+      // 关闭 TTS WebSocket 连接，并重置相关状态和播放器，适用于对话结束或发生错误时清理资源
       function closeTtsWs() {
+
         if (ttsWs) {
           ttsWs.close();
           ttsWs = null;
         }
+
         ttsSessionId = null;
         resetTtsPlayer();
       }
 
+      /// 重置 TTS 播放器，清除所有待处理的音频缓冲区和相关状态，并释放对象 URL 资源，确保播放器处于初始状态准备接收新的 TTS 流
       function resetTtsPlayer() {
+
         ttsPendingBuffers = [];
         ttsStreamFinal = false;
         ttsSourceBuffer = null;
         ttsMediaSource = null;
+
         if (ttsObjectUrl) {
           URL.revokeObjectURL(ttsObjectUrl);
           ttsObjectUrl = null;
         }
+
         ttsAudioEl.pause();
         ttsAudioEl.removeAttribute("src");
         ttsAudioEl.load();
       }
 
+      // 初始化 TTS 流式播放，创建 MediaSource 和 SourceBuffer，并设置播放器源为 MediaSource 对象 URL，准备接收和播放后续的 TTS 音频数据
       function prepareStreamingAudio() {
+        // 每次新的 TTS 流开始前重置播放器状态，确保之前的播放资源被正确清理，避免不同 TTS 流之间的资源冲突和播放问题
         resetTtsPlayer();
+
         if (!window.MediaSource || !MediaSource.isTypeSupported("audio/mpeg")) {
           return;
         }
 
         ttsMediaSource = new MediaSource();
         ttsObjectUrl = URL.createObjectURL(ttsMediaSource);
+        // 将 audio 元素的 src 设置为 MediaSource 对象的 URL，使其准备好接收通过 MediaSource 传入的音频数据进行播放
         ttsAudioEl.src = ttsObjectUrl;
 
         ttsMediaSource.addEventListener("sourceopen", () => {
+
           if (!ttsMediaSource) return;
+
           ttsSourceBuffer = ttsMediaSource.addSourceBuffer("audio/mpeg");
           ttsSourceBuffer.mode = "sequence";
+
+          // 监听 SourceBuffer 的 updateend 事件，在每次缓冲区更新完成后调用 flushTtsBufferQueue 函数，确保新的音频数据能够及时添加到 SourceBuffer 中进行连续播放
           ttsSourceBuffer.addEventListener("updateend", flushTtsBufferQueue);
           flushTtsBufferQueue();
         });
       }
 
+      // 处理 TTS 音频缓冲区队列，依次将接收到的音频数据添加到 SourceBuffer 中进行播放，并在流结束时正确关闭 MediaSource，确保 TTS 音频能够连续流式播放
       function flushTtsBufferQueue() {
+
         if (!ttsSourceBuffer || !ttsMediaSource) return;
+
+        // 如果 SourceBuffer 正在更新，说明正在处理之前添加的缓冲区，此时需要等待更新完成后再继续添加新的缓冲区，避免同时修改 SourceBuffer 导致的错误
         if (ttsSourceBuffer.updating) return;
 
         if (ttsPendingBuffers.length > 0) {
+
           const next = ttsPendingBuffers.shift();
+
+          // 将下一个待处理的音频缓冲区添加到 SourceBuffer 中，触发浏览器的音频播放机制，如果浏览器限制了自动播放则捕获异常并静默处理，确保用户体验不受影响
           if (next) {
             ttsSourceBuffer.appendBuffer(next);
+
             ttsAudioEl.play().catch(() => {
               // 静默处理自动播放限制
               console.warn("无法自动播放 TTS 音频，可能被浏览器限制了");
@@ -395,12 +421,14 @@
         }
       }
 
+
       function setRecordingUI(recording) {
         isRecording = recording;
         recordBtn.textContent = recording ? "停止录音" : "语音输入";
         recordBtn.classList.toggle("btn-primary", recording);
       }
 
+      // 上传录音 Blob 到服务器进行 ASR 识别，返回识别结果文本，适用于录音结束后将音频数据发送到后端进行语音识别处理
       async function uploadAndRecognize(blob) {
         const formData = new FormData();
         formData.append("audio", blob, "record.ogg");
@@ -409,6 +437,7 @@
           method: "POST",
           body: formData,
         });
+
         if (!response.ok) {
           const text = await response.text();
           throw new Error(text || "ASR 请求失败");
@@ -417,17 +446,24 @@
         return data.text || "";
       }
 
+      // 确保与 TTS WebSocket 的连接已建立并获取 sessionId，适用于在开始新的对话或提问前准备好 TTS 连接，以便后续的 AI 回复能够通过该连接进行语音合成和播放
       function ensureTtsConnection() {
+
         return new Promise((resolve) => {
+          // 如果已经有可用的 TTS WebSocket 连接和 sessionId，直接 resolve，避免重复创建连接，提高效率
           if (ttsWs && ttsWs.readyState === WebSocket.OPEN && ttsSessionId) {
             resolve();
             return;
           }
 
+          //选择协议，根据当前页面的协议（http 或 https）选择合适的 WebSocket 协议（ws 或 wss），确保在安全环境下使用加密的 WebSocket 连接，适用于在不同部署环境下自动适配正确的 WebSocket 协议以保证连接的安全性和兼容性
           const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+
           const wsUrl = `${protocol}://${window.location.host}/speech/tts/ws`;
           const ws = new WebSocket(wsUrl);
+          // 设置 WebSocket 的 binaryType 为 "arraybuffer"，以便接收二进制音频数据进行 TTS 播放，适用于后续通过该连接接收来自服务器的音频数据流并正确处理为 ArrayBuffer 格式以供播放器使用
           ws.binaryType = "arraybuffer";
+
           ttsWs = ws;
 
           ws.onopen = () => {
@@ -443,12 +479,15 @@
                   resolve();
                 } else if (msg.type === "tts_started") {
                   prepareStreamingAudio();
+
                 } else if (msg.type === "tts_final" || msg.type === "tts_closed") {
                   ttsStreamFinal = true;
                   flushTtsBufferQueue();
+
                 } else if (msg.type === "tts_error") {
                   ttsStreamFinal = true;
                   flushTtsBufferQueue();
+
                 }
               } catch {
                 // ignore
@@ -470,6 +509,7 @@
         });
       }
 
+      // 使用 EventSource 连接后端的 AI 流式接口，实时接收 AI 回复的文本内容并更新界面，适用于在用户提问后通过服务器发送事件流的方式获取 AI 的回答，并动态显示在聊天界面上
       function streamAiReply(query) {
         return new Promise((resolve) => {
           closeActiveStream();
@@ -505,6 +545,7 @@
         });
       }
 
+      // 处理用户提问的核心函数，负责验证输入、更新界面状态、调用 AI 流式接口获取回复，并处理 TTS 连接，适用于用户通过文本输入或语音输入提出问题后，进行一系列的准备工作和调用后端接口来获取 AI 的回答，并在界面上进行相应的更新和状态管理
       async function askWithQuery(query, source) {
         const trimmed = query.trim();
         if (!trimmed) {
@@ -513,13 +554,17 @@
         }
 
         appendMessage("user", trimmed, source + " " + nowTime());
+
         promptInput.value = "";
         sendBtn.disabled = true;
         setStatus("AI 正在流式回答...", true);
 
         try {
+
           await ensureTtsConnection();
+
           await streamAiReply(trimmed);
+
           setStatus("对话完成");
         } catch (error) {
           appendMessage(
@@ -539,12 +584,16 @@
 
       promptInput.addEventListener("keydown", async (event) => {
         if (event.key === "Enter" && !event.shiftKey) {
+          // 阻止默认的换行行为，适用于用户按下回车键时希望直接发送提问而不是在输入框中换行
           event.preventDefault();
           await askWithQuery(promptInput.value, "文字提问");
         }
       });
 
+      //绑定按钮的点击事件，处理录音的开始和停止逻辑，以及录音数据的上传和识别，适用于用户通过点击语音输入按钮来控制录音的流程，
+      //并在录音完成后将音频数据发送到后端进行 ASR 识别，然后获取 AI 的回复
       recordBtn.addEventListener("click", async () => {
+
         if (isRecording) {
           if (mediaRecorder) {
             mediaRecorder.stop();
@@ -555,10 +604,14 @@
 
         try {
           closeActiveStream();
+
           // 语音通道与文字通道解耦，不关闭 TTS WS，方便连续对话复用 session
           activeRecordStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
           chunks = [];
           const preferredMimeType = "audio/ogg;codecs=opus";
+
+          // 优先使用支持的编码格式创建 MediaRecorder，确保录音数据兼容后端 ASR 识别接口的要求，适用于在不同浏览器环境下选择最佳的录音格式以获得更好的兼容性和识别效果
           mediaRecorder = MediaRecorder.isTypeSupported(preferredMimeType)
             ? new MediaRecorder(activeRecordStream, { mimeType: preferredMimeType })
             : new MediaRecorder(activeRecordStream);
@@ -571,14 +624,19 @@
 
           mediaRecorder.onstop = async () => {
             try {
+              // 将录音数据合并成一个 Blob 对象，并检查是否有有效的录音数据，适用于在用户完成录音后准备好音频数据进行上传和识别，如果录音数据为空则提示用户重新录制
               const blob = new Blob(chunks, {
                 type: mediaRecorder.mimeType || "audio/webm",
               });
+
               if (!blob.size) {
                 throw new Error("录音数据为空，请至少录制 1 秒再上传");
               }
 
+              // 录音结束后上传并识别，然后调用 AI 流式接口获取回复
               setStatus("语音识别中...");
+
+              //****此时已经获取到由腾讯云返回的ASR识别结果文本****
               const recognized = (await uploadAndRecognize(blob)).trim();
               promptInput.value = recognized;
 
@@ -587,8 +645,11 @@
                 return;
               }
 
+              // 识别成功后直接调用提问函数，获取 AI 回复并处理 TTS 播放
               await askWithQuery(recognized, "语音提问");
+
             } catch (error) {
+
               appendMessage(
                 "assistant",
                 "语音处理失败：" + (error.message || String(error)),

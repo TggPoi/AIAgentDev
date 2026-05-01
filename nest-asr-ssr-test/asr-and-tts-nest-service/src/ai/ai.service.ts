@@ -21,8 +21,10 @@ export class AiService {
   async *streamChain(query: string, ttsSessionId?: string): AsyncGenerator<string> {
     try {
       const stream = await this.chain.stream({ query });
+
       for await (const chunk of stream) {
         if (ttsSessionId) {
+          // 在接收到 AI 生成的每个文本块时，发送一个 'chunk' 事件到 TTS 转发服务，包含会话 ID 和文本块内容，以便转发服务将这些文本块逐步发送给腾讯云 TTS 服务进行语音合成
           const event: AiTtsStreamEvent = {
             type: 'chunk',
             sessionId: ttsSessionId,
@@ -32,7 +34,9 @@ export class AiService {
         }
         yield chunk;
       }
+
       if (ttsSessionId) {
+        // 在 AI 流式处理完成后，发送一个 'end' 事件到 TTS 转发服务，通知它当前的 TTS 流式会话已经结束，可以进行清理和资源释放等后续处理
         const endEvent: AiTtsStreamEvent = { type: 'end', sessionId: ttsSessionId };
         this.eventEmitter.emit(AI_TTS_STREAM_EVENT, endEvent);
       }

@@ -16,7 +16,7 @@ export class SpeechController {
   @UseInterceptors(FileInterceptor('audio'))
   async recognize(
     @UploadedFile()
-    file?: {
+    file?: {//file可选，对象中必须包含buffer、originalname、mimetype、size四个属性
       buffer: Buffer;
       originalname: string;
       mimetype: string;
@@ -30,6 +30,7 @@ export class SpeechController {
     }
 
     const text = await this.speechService.recognizeBySentence(file);
+    
     return { text };
   }
 }

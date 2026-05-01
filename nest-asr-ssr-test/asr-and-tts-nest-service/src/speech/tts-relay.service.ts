@@ -36,13 +36,17 @@ export class TtsRelayService implements OnModuleDestroy {
     }
   }
 
+  // 注册新的 TTS 客户端连接，生成或使用提供的会话 ID，创建会话对象并存储在会话管理中，同时向客户端发送包含会话 ID 的 JSON 消息确认连接成功，并记录日志说明新客户端已连接
   registerClient(clientWs: WebSocket, wantedSessionId?: string): string {
+
     const sessionId = wantedSessionId?.trim() || randomUUID();
     const existing = this.sessions.get(sessionId);
+
     if (existing) {
       this.closeSession(sessionId, 'client reconnected');
     }
 
+    // 创建新的会话对象，包含会话 ID、客户端 WebSocket 连接、连接状态和待发送的文本块队列，并将其存储在会话管理中以便后续处理 TTS 流式数据的转发和连接管理
     this.sessions.set(sessionId, {
       sessionId,
       clientWs,
@@ -50,6 +54,7 @@ export class TtsRelayService implements OnModuleDestroy {
       pendingChunks: [],
       closed: false,
     });
+
     this.sendClientJson(clientWs, { type: 'session', sessionId });
     this.logger.log(`TTS client connected: ${sessionId}`);
     return sessionId;
@@ -59,12 +64,14 @@ export class TtsRelayService implements OnModuleDestroy {
     this.closeSession(sessionId, 'client disconnected');
   }
 
+  //监听 AI_TTS_STREAM_EVENT 事件，根据事件类型处理 TTS 流式数据的转发和错误处理逻辑，确保将 AI 生成的 TTS 文本块正确地发送到腾讯云 TTS 服务，并将服务返回的音频数据流转发给前端客户端进行播放，同时处理连接状态和错误情况，维护会话的正常运行
   @OnEvent(AI_TTS_STREAM_EVENT)
   handleAiStreamEvent(event: AiTtsStreamEvent): void {
     const session = this.sessions.get(event.sessionId);
     if (!session) return;
 
     switch (event.type) {
+      // 当接收到 TTS 流开始事件时，确保与腾讯云 TTS 的 WebSocket 连接已建立，如果尚未建立则创建连接，并向客户端发送包含会话 ID 和查询内容的 JSON 消息，通知客户端 TTS 流已开始
       case 'start': {
         this.ensureTencentConnection(session);
         this.sendClientJson(session.clientWs, {
@@ -74,16 +81,26 @@ export class TtsRelayService implements OnModuleDestroy {
         });
         break;
       }
+
+      // 当接收到 TTS 流文本块事件时，首先检查文本块内容是否有效，如果无效则忽略该事件；如果有效则检查与腾讯云 TTS 的连接状态，
+      //如果连接尚未准备好则将文本块保存在会话的 pendingChunks 队列中，等待连接建立后再发送；如果连接已准备好则直接将文本块发送到腾讯云 TTS WebSocket 进行语音合成
       case 'chunk': {
         const chunk = event.chunk?.trim();
+
         if (!chunk) return;
+
+
         if (!session.ready || !session.tencentWs || session.tencentWs.readyState !== WebSocket.OPEN) {
           session.pendingChunks.push(chunk);
           return;
         }
+
         this.sendTencentChunk(session, chunk);
+
         break;
       }
+
+      // 当接收到 TTS 流结束事件时，首先调用 flushPendingChunks 方法确保所有待发送的文本块都已发送到腾讯云 TTS，然后如果与腾讯云 TTS 的连接仍然处于 OPEN 状态则发送一个包含会话 ID 和完成动作的 JSON 消息通知腾讯云 TTS 流已完成，最后等待腾讯云 TTS 发送完所有音频数据后由客户端触发连接关闭
       case 'end': {
         this.flushPendingChunks(session);
         if (session.tencentWs && session.tencentWs.readyState === WebSocket.OPEN) {
@@ -107,6 +124,7 @@ export class TtsRelayService implements OnModuleDestroy {
     }
   }
 
+  // 确保与腾讯云 TTS 的 WebSocket 连接已建立，如果尚未建立则创建连接，并设置相应的事件处理逻辑来转发数据和处理错误
   private ensureTencentConnection(session: ClientSession): void {
     if (session.tencentWs && session.tencentWs.readyState <= WebSocket.OPEN) {
       return;
@@ -178,6 +196,7 @@ export class TtsRelayService implements OnModuleDestroy {
     });
   }
 
+  // 将所有待发送的 TTS 文本块发送到腾讯云 TTS WebSocket，如果连接尚未准备好则将文本块保存在会话的 pendingChunks 队列中，等待连接建立后再发送
   private flushPendingChunks(session: ClientSession): void {
     if (!session.ready || !session.tencentWs || session.tencentWs.readyState !== WebSocket.OPEN) {
       return;
@@ -189,7 +208,9 @@ export class TtsRelayService implements OnModuleDestroy {
     }
   }
 
+  // 发送单个文本块到腾讯云 TTS WebSocket，如果连接尚未准备好则将文本块保存在会话的 pendingChunks 队列中，等待连接建立后再发送
   private sendTencentChunk(session: ClientSession, text: string): void {
+    
     if (!session.tencentWs || session.tencentWs.readyState !== WebSocket.OPEN) {
       session.pendingChunks.push(text);
       return;
@@ -205,6 +226,7 @@ export class TtsRelayService implements OnModuleDestroy {
     );
   }
 
+  // 关闭指定会话的连接，首先标记会话为已关闭状态，然后依次关闭与腾讯云 TTS 的 WebSocket 连接和客户端的 WebSocket 连接，并从会话管理中删除该会话，最后记录日志说明会话已关闭及原因
   private closeSession(sessionId: string, reason: string): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
@@ -221,11 +243,13 @@ export class TtsRelayService implements OnModuleDestroy {
     this.logger.log(`TTS session closed: ${sessionId}, reason: ${reason}`);
   }
 
+  // 向客户端 WebSocket 连接发送 JSON 格式的消息，首先检查连接是否处于 OPEN 状态，如果是则将消息对象转换为 JSON 字符串并通过 WebSocket 发送给客户端
   private sendClientJson(clientWs: WebSocket, payload: Record<string, unknown>): void {
     if (clientWs.readyState !== WebSocket.OPEN) return;
     clientWs.send(JSON.stringify(payload));
   }
 
+  // 构建腾讯云 TTS WebSocket 的连接 URL，使用当前时间戳和 TTS 请求参数生成签名字符串，并将签名和参数一起构建成完整的 WebSocket URL，供客户端连接腾讯云 TTS 服务时使用
   private buildTencentTtsWsUrl(sessionId: string): string {
     const now = Math.floor(Date.now() / 1000);
     const params: Record<string, string | number> = {
