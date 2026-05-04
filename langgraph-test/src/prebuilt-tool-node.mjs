@@ -38,7 +38,12 @@ const llm = new ChatOpenAI({
 
 async function agent(state) {
   const response = await llm.invoke(state.messages);
+
+  //这里使用的是MessagesAnnotation，所以状态中有一个 messages 属性，它是一个消息列表。每次调用模型后，我们把模型的回复作为新的消息添加到这个列表中，并返回更新后的状态。这样模型就可以在后续的交互中看到之前的对话历史。
+  //所以下面返回的这个messages是直接按照MessagesAnnotation的定义，将{ messages: response }拼接到之前的状态中，供下一轮模型调用时使用。
   return { messages: response };
+
+  //返回多条消息的情况，messages: [message1, message2] 让 MessagesAnnotation 自己处理合并。
 }
 
 // 创建一个工具节点，并将工具列表传入。工具节点会根据条件判断是否需要调用工具函数。
@@ -48,8 +53,10 @@ const graph = new StateGraph(MessagesAnnotation)
   .addNode("agent", agent)
   .addNode("tools", toolNode)
   .addEdge(START, "agent")
-  //使用封装好的toolsCondition函数来判断是否需要调用工具节点，如果用户的输入中包含了需要查询库存的 SKU 信息，就会触发工具节点的调用。
+  //agent 执行完后，如果模型要调用工具，就去 tools；否则进入end节点结束。
+  //toolsCondition默认值就是返回"tools",或者END
   .addConditionalEdges("agent", toolsCondition, ["tools", END])
+  //让工具执行完后回到模型节点，继续处理工具的结果，构成Agent loop的效果。直到addConditionalEdges节点判断不需要再调用工具了，才进入END节点结束。
   .addEdge("tools", "agent")
   .compile();
 
