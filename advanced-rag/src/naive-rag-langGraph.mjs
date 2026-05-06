@@ -38,6 +38,7 @@ async function retrieveRelevantContent(question, k = TOP_K) {
     try {
         const docsWithScores = await vectorStore.similaritySearchWithScore(question, k);
 
+        // 将检索结果转换为包含相似度分数和文档内容的对象数组
         return docsWithScores.map(([doc, score]) => ({
             score,
             content: doc.pageContent,
@@ -46,6 +47,7 @@ async function retrieveRelevantContent(question, k = TOP_K) {
             chapter_num: doc.metadata?.chapter_num ?? "未知",
             index: doc.metadata?.index ?? "未知",
         }));
+
     } catch (error) {
         console.error("检索内容时出错:", error.message);
         return [];
@@ -55,6 +57,7 @@ async function retrieveRelevantContent(question, k = TOP_K) {
 // 检索milvus节点，基于用户问题检索相关内容
 const retrieveNode = async (state) => {
     const documents = await retrieveRelevantContent(state.question, state.k);
+
     return {
         question: state.question,
         k: state.k,
@@ -64,6 +67,7 @@ const retrieveNode = async (state) => {
 
 // 生成回答的节点，基于检索到的内容和用户问题进行回答
 const generateNode = async (state) => {
+    // 构建上下文，将检索到的内容格式化为字符串，供模型生成回答时使用的上下文
     const context = state.documents
         .map(
             (item, i) =>
@@ -91,6 +95,7 @@ const generateNode = async (state) => {
                     AI 助手的回答:`;
 
     process.stdout.write("\n【AI 回答（流式）】\n");
+
     let generation = "";
     const stream = await model.stream(prompt);
 
@@ -131,6 +136,7 @@ async function main() {
     console.log(mermaid);
 
     console.log("连接到 Milvus...");
+
     vectorStore = await Milvus.fromExistingCollection(embeddings, {
         collectionName: COLLECTION_NAME,
         url: "localhost:19530",
@@ -165,7 +171,7 @@ async function main() {
 
     const result = await graph.invoke({
         question,
-        k: Number.isFinite(kArg) ? kArg : TOP_K,//isFinite
+        k: Number.isFinite(kArg) ? kArg : TOP_K,//isFinite 检查 kArg 是否是一个“有限数”，如果是，则使用 kArg 作为 k 的值；如果不是（例如 kArg 是 undefined、null、NaN 或一个非数值类型），则使用默认的 TOP_K 值。
         documents: [],
         generation: "",
     });
@@ -177,6 +183,7 @@ async function main() {
         console.log("\n【AI 回答】");
         console.log("抱歉，我没有找到相关的《天龙八部》内容。");
         return;
+        
     } else {
         result.documents.forEach((item, i) => {
             console.log(`\n[片段 ${i + 1}] 相似度: ${item.score.toFixed(4)}`);
