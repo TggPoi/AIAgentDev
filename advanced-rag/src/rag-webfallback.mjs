@@ -293,12 +293,17 @@ const graph = new StateGraph(GraphState)
     direct_answer: "direct_answer",
     local_retrieve: "local_retrieve",
   })
+
+  //这一段构成循环，evaluate_local判断后，如果需要联网搜索，回到web_search
   .addEdge("local_retrieve", "evaluate_local")
   .addConditionalEdges("evaluate_local", afterEvaluateLocal, {
     generate: "generate",
     web_search: "web_search",
   })
+  //web_search执行完成，回到evaluate_local重新评估
   .addEdge("web_search", "evaluate_local")
+
+
   .addEdge("direct_answer", END)
   .addEdge("generate", END)
   .compile();
