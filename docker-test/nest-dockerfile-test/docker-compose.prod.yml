@@ -1,0 +1,26 @@
+services:
+  mysql-prod:
+    image: mysql:latest
+    container_name: mysql-prod
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: book
+    ports:
+      - "3307:3306"
+    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/mysql-prod:/var/lib/mysql
+    restart: always
+
+  nest-app:
+    container_name: nest-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - mysql-prod
+    restart: always

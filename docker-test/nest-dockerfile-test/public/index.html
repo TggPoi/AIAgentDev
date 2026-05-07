@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>书籍管理</title>
+    <style>
+      :root {
+        font-family:
+          Inter,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #f7f8fa;
+        color: #222;
+      }
+      .container {
+        max-width: 980px;
+        margin: 32px auto;
+        padding: 0 16px;
+      }
+      h1 {
+        margin-bottom: 16px;
+      }
+      .panel {
+        background: #fff;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+        margin-bottom: 16px;
+      }
+      form {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      label {
+        font-size: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .full {
+        grid-column: 1 / -1;
+      }
+      input,
+      textarea {
+        border: 1px solid #d0d4dc;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 14px;
+      }
+      textarea {
+        min-height: 70px;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+      }
+      button {
+        border: 0;
+        border-radius: 8px;
+        padding: 9px 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .primary {
+        background: #2563eb;
+        color: #fff;
+      }
+      .muted {
+        background: #e5e7eb;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        border-bottom: 1px solid #eceff3;
+        text-align: left;
+        padding: 10px 8px;
+        font-size: 14px;
+        vertical-align: top;
+      }
+      .danger {
+        background: #ef4444;
+        color: #fff;
+      }
+      #status {
+        min-height: 20px;
+        font-size: 14px;
+      }
+      @media (max-width: 700px) {
+        form {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>书籍管理</h1>
+
+      <div class="panel">
+        <form id="book-form">
+          <input id="book-id" type="hidden" />
+
+          <label>
+            书名
+            <input id="title" required />
+          </label>
+
+          <label>
+            作者
+            <input id="author" required />
+          </label>
+
+          <label class="full">
+            简介
+            <textarea id="description" required></textarea>
+          </label>
+
+          <label>
+            价格
+            <input id="price" type="number" min="0" step="0.01" required />
+          </label>
+
+          <label>
+            库存
+            <input id="stock" type="number" min="0" required />
+          </label>
+
+          <label class="full">
+            出版日期
+            <input id="publishedAt" type="date" required />
+          </label>
+
+          <div class="actions full">
+            <button type="submit" class="primary">保存</button>
+            <button type="button" class="muted" id="reset-btn">清空</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div id="status"></div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>书名</th>
+              <th>作者</th>
+              <th>价格</th>
+              <th>库存</th>
+              <th>出版日期</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="book-rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      const form = document.getElementById('book-form');
+      const rows = document.getElementById('book-rows');
+      const statusNode = document.getElementById('status');
+      const resetBtn = document.getElementById('reset-btn');
+
+      const inputs = {
+        id: document.getElementById('book-id'),
+        title: document.getElementById('title'),
+        author: document.getElementById('author'),
+        description: document.getElementById('description'),
+        price: document.getElementById('price'),
+        stock: document.getElementById('stock'),
+        publishedAt: document.getElementById('publishedAt'),
+      };
+
+      const setStatus = (text, isError = false) => {
+        statusNode.textContent = text;
+        statusNode.style.color = isError ? '#b91c1c' : '#2563eb';
+      };
+
+      const resetForm = () => {
+        form.reset();
+        inputs.id.value = '';
+      };
+
+      const mapFormData = () => ({
+        title: inputs.title.value.trim(),
+        author: inputs.author.value.trim(),
+        description: inputs.description.value.trim(),
+        price: Number(inputs.price.value),
+        stock: Number(inputs.stock.value),
+        publishedAt: inputs.publishedAt.value,
+      });
+
+      const createActionButton = (label, className, onClick) => {
+        const button = document.createElement('button');
+        button.textContent = label;
+        button.className = className;
+        button.type = 'button';
+        button.addEventListener('click', onClick);
+        return button;
+      };
+
+      const editBook = (book) => {
+        inputs.id.value = book.id;
+        inputs.title.value = book.title;
+        inputs.author.value = book.author;
+        inputs.description.value = book.description;
+        inputs.price.value = book.price;
+        inputs.stock.value = book.stock;
+        inputs.publishedAt.value = new Date(book.publishedAt)
+          .toISOString()
+          .split('T')[0];
+      };
+
+      const deleteBook = async (id) => {
+        if (!confirm(`确认删除书籍 #${id} 吗？`)) return;
+        try {
+          const response = await fetch(`/book/${id}`, { method: 'DELETE' });
+          if (!response.ok) throw new Error('删除失败');
+          setStatus(`已删除书籍 #${id}`);
+          await loadBooks();
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      };
+
+      const renderRows = (books) => {
+        rows.innerHTML = '';
+        if (!books.length) {
+          rows.innerHTML = '<tr><td colspan="7">暂无数据</td></tr>';
+          return;
+        }
+
+        for (const book of books) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${book.id}</td>
+            <td>${book.title}</td>
+            <td>${book.author}</td>
+            <td>${book.price}</td>
+            <td>${book.stock}</td>
+            <td>${new Date(book.publishedAt).toLocaleDateString()}</td>
+            <td></td>
+          `;
+
+          const actionCell = tr.lastElementChild;
+          actionCell.appendChild(
+            createActionButton('编辑', 'muted', () => editBook(book)),
+          );
+          actionCell.appendChild(
+            createActionButton('删除', 'danger', () => deleteBook(book.id)),
+          );
+          rows.appendChild(tr);
+        }
+      };
+
+      const loadBooks = async () => {
+        try {
+          const response = await fetch('/book');
+          if (!response.ok) throw new Error('加载书籍失败');
+          const books = await response.json();
+          renderRows(books);
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      };
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const id = inputs.id.value.trim();
+        const payload = mapFormData();
+
+        const method = id ? 'PATCH' : 'POST';
+        const url = id ? `/book/${id}` : '/book';
+
+        try {
+          const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            throw new Error(id ? '更新失败' : '创建失败');
+          }
+
+          setStatus(id ? `已更新书籍 #${id}` : '已创建书籍');
+          resetForm();
+          await loadBooks();
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      });
+
+      resetBtn.addEventListener('click', resetForm);
+
+      loadBooks();
+    </script>
+  </body>
+</html>
