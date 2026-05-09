@@ -17,6 +17,18 @@ import {
 
 const INDEX = "life_notes";
 
+/**
+| 字段                  | 由谁写入              | 给谁使用              | 含义                     |
+| ------------------- | ----------------- | ----------------- | ---------------------- |
+| `query`             | 初始输入              | 所有节点              | 用户原始问题                 |
+| `queryAugmentation` | `query_augment`   | ES / Milvus 召回    | LLM 改写出的 3 条检索问句       |
+| `esHits`            | `es_recall`       | `merge`           | ES 关键词检索结果             |
+| `milvusHits`        | `milvus_recall`   | `merge`           | Milvus 向量检索结果          |
+| `merged`            | `merge`           | `rerank`          | ES + Milvus 合并去重后的候选文档 |
+| `topDocuments`      | `rerank`          | `generate_answer` | rerank 后保留的高质量文档       |
+| `answer`            | `generate_answer` | 最终输出              | 大模型最终回答                |
+
+ */
 const HybridRetrievalState = Annotation.Root({
   query: Annotation(),
   queryAugmentation: Annotation(),
@@ -27,18 +39,42 @@ const HybridRetrievalState = Annotation.Root({
   answer: Annotation(),
 });
 
+/**
+ * ES 返回的是原始 hit：
+
+{
+  _id: "...",
+  _source: {
+    note_title: "...",
+    note_body: "...",
+    tags: ...
+  }
+}
+
+但 LangChain RAG 后续更习惯处理：Document
+
+所以这个函数的作用是：把 ES hit 转成 LangChain Document
+ * 
+ * @param {*} hit 
+ * @returns 
+ */
 function docFromEsHit(hit) {
   const s = hit._source ?? {};
+
   const text = [s.note_title ?? s.title, s.note_body ?? s.content]
     .filter(Boolean)
     .join("\n");
+
   return new Document({
     pageContent: text,
     metadata: { id: hit._id, source: "es", ...s },
   });
 }
 
-/** ES 与 Milvus 结果拼接后仅按 metadata.id 去重，保留首次出现（通常 ES 在前） */
+/** 
+ * ES 与 Milvus 结果拼接后仅按 metadata.id 去重，保留首次出现（通常 ES 在前） 
+ * 多个改写 query 可能搜到同一篇文档。
+ */
 function merge(esDocs, milvusDocs) {
   const combined = [...(esDocs ?? []), ...(milvusDocs ?? [])].filter(
     (d) => d?.pageContent,
@@ -88,6 +124,13 @@ function printQueryRewrite(original, augmentation) {
   }
 }
 
+/**
+ * 把 LLM 返回的 message.content 统一转成 string
+ * 因为 LangChain 的 msg.content 不一定永远是纯字符串，也可能是数组结构。
+ * 
+ * @param {*} content 
+ * @returns 
+ */
 function stringifyMessageContent(content) {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return String(content ?? "");
@@ -98,6 +141,29 @@ function stringifyMessageContent(content) {
     .join("");
 }
 
+/**
+ * 把 topDocuments 转成 prompt 里的上下文字符串
+ * 
+ * 例如：
+[1] id=life_04 source=es
+路由器偶尔断流排查笔记
+先重启光猫再重启路由；信道改成自动或固定 36...
+
+---
+
+[2] id=life_10 source=milvus
+出差酒店网速玄学
+...
+
+这样 LLM 能看到：
+片段编号
+文档 id
+来源
+正文内容
+ * 
+ * @param {*} docs 
+ * @returns 
+ */
 function formatDocsAsContext(docs) {
   return (docs ?? [])
     .map((d, i) => {
@@ -138,17 +204,33 @@ const NO_CONTEXT_PROMPT = ChatPromptTemplate.fromMessages([
 ]);
 
 export function compileHybridRetrievalGraph(esClient, milvus, reranker, chatModel) {
+  //各自检索15条数据
   const ES_K = 15;
   const MILVUS_K = 15;
 
   return new StateGraph(HybridRetrievalState)
+    //让 LLM 把原始问题改写成 3 条不同角度的检索问句
     .addNode("query_augment", async (state) => ({
       queryAugmentation: await augmentQuery(chatModel, state.query ?? ""),
     }))
+    //原始 query+LLM 改写的 3 条 query，对每一条 query 都执行一次 ES 搜索
     .addNode("es_recall", async (state) => {
+    
       const qs = retrievalQueryStrings(state.query, state.queryAugmentation);
+      
       const n = Math.max(1, qs.length);
+      /**
+       * 把“总召回数量预算”平均分给多条检索 query,但是保底每条改写 query 至少有 2 次召回机会。
+       * 
+       * 现在不是只用 1 条 query 检索，
+        而是用「原始 query + LLM 改写出的 3 条 query」一起检索。
+
+        所以需要控制每一条 query 分别召回多少条结果，
+        避免总召回数量无限膨胀。
+       */
       const kEach = Math.max(2, Math.ceil(ES_K / n));
+
+      //这些 ES 搜索是并发执行的
       const batches = await Promise.all(
         qs.map((q) =>
           esClient.search({
@@ -170,25 +252,32 @@ export function compileHybridRetrievalGraph(esClient, milvus, reranker, chatMode
       );
       return { esHits: dedupeDocsById(flat) };
     })
+
+    //对每条 query 都执行一次 Milvus 向量检索
     .addNode("milvus_recall", async (state) => {
       const qs = retrievalQueryStrings(state.query, state.queryAugmentation);
+      
       const n = Math.max(1, qs.length);
       const kEach = Math.max(2, Math.ceil(MILVUS_K / n));
+
       const batches = await Promise.all(
         qs.map((q) => milvus.similaritySearch(q, kEach)),
       );
       const flat = batches.flat();
       return { milvusHits: dedupeDocsById(flat) };
     })
+
     .addNode("merge", async (state) => ({
       merged: merge(state.esHits, state.milvusHits),
     }))
+
     .addNode("rerank", async (state) => {
       const merged = state.merged ?? [];
       if (!merged.length) return { topDocuments: [] };
       const topDocuments = await reranker.compressDocuments(merged, state.query);
       return { topDocuments };
     })
+
     .addNode("generate_answer", async (state) => {
       const query = state.query ?? "";
       const docs = state.topDocuments ?? [];
@@ -205,9 +294,19 @@ export function compileHybridRetrievalGraph(esClient, milvus, reranker, chatMode
       return { answer: stringifyMessageContent(msg.content).trim() };
     })
     .addEdge(START, "query_augment")
+    /**
+     * LangGraph 的并行分支 + 汇合写法
+     * 
+     * query_augment 完成后
+    同时进入 es_recall 和 milvus_recall
+
+    等 es_recall 和 milvus_recall 都完成后
+    再进入 merge
+     */
     .addEdge("query_augment", "es_recall")
     .addEdge("query_augment", "milvus_recall")
     .addEdge(["es_recall", "milvus_recall"], "merge")
+    
     .addEdge("merge", "rerank")
     .addEdge("rerank", "generate_answer")
     .addEdge("generate_answer", END)

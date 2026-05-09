@@ -68,10 +68,28 @@ async function seedData() {
     }
   ];
 
-  //flatMap Calls a defined callback function on each element of an array. Then, flattens the result into a new array. This is identical to a map followed by flat with depth 1.
-  //对数组的每个元素调用已定义的回调函数，随后将返回结果展平为一个新数组。该方法等同于 ** 先执行映射（map）、再执行深度为 1 （只嵌套一层）的展平（flat）** 操作
+
+  //如果使用map会生成嵌套数组，不满足Bulk API 要求
+  /**
+   * const badResult = docs.map(doc => [
+    { index: { _index: INDEX_NAME } }, 
+    doc
+    ]);
+
+    // 结果是嵌套数组（不符合 Bulk API 要求！）：
+    [
+    [ { index: { _index: 'notes' } }, { note_title: '杭州西湖半日游', ... } ],
+    [ { index: { _index: 'notes' } }, { note_title: '城市骑行计划', ... } ],
+    ...
+    ]
+
+    const operations = docs.flatMap(doc => [
+    { index: { _index: INDEX_NAME } }, // 操作指令行
+    doc                               // 文档数据行
+    ]);
+   */
   const operations = docs.flatMap((doc) => [{ index: { _index: INDEX_NAME } }, doc]);
-  //bulk 批量添加
+  //bulk 批量添加 refresh: true 写入后立即刷新索引（使数据立刻可搜索）
   await client.bulk({ refresh: true, operations });
   console.log(`✅ 初始化数据完成，共 ${docs.length} 条`);
 }

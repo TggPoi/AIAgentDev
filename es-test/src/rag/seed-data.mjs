@@ -19,6 +19,7 @@ const DOC_TEXT = 'doc_text';
 const EMBEDDING = 'embedding';
 
 //模拟文档，部分适合关键词检索，部分适合语义检索
+//id用于确保milvus，es中的数据使用的是相同的id，用于后续去重
 const ROWS = [
   {
     id: 'life_01',
@@ -167,7 +168,9 @@ async function seedElasticsearch(indexName, rows) {
     console.log('✓ 索引创建成功');
 
     const now = new Date().toISOString();
+
     console.log(`写入 ${rows.length} 条文档...`);
+
     await client.bulk({
       refresh: true,
       operations: rows.flatMap((row) => {
