@@ -174,6 +174,7 @@ async function seedElasticsearch(indexName, rows) {
     await client.bulk({
       refresh: true,
       operations: rows.flatMap((row) => {
+        //指定id操作，确保es和milvus中的数据id一致，方便后续对比验证，这里把要插入的row数据结构为 id 和 rest 剩余字段，id作为指定值直接作为index操作插入，rest中的字段作为document对象插入
         const { id, ...rest } = row;
         return [
           { index: { _index: indexName, _id: id } },
