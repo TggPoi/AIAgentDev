@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+volumes/
+.env
+.env.*
+.pnpm-store/
+coverage/
+.next/
+.vscode/
+.DS_Store
