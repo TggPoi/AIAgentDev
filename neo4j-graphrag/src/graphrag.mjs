@@ -29,10 +29,14 @@ const state = {
   messages: {
     value: (left, right) =>
       left.concat(Array.isArray(right) ? right : [right]),
+
     default: () => [],
   },
+  // 生成的 Cypher 语句
   cypher: null,
+  // 图查询结果的上下文
   context: null,
+  // 生成的答案
   answer: null,
 }
 
@@ -70,6 +74,7 @@ async function generateCypher(state) {
       用户问题：${userQuery(state)}
     `
     const res = await llm.invoke([new HumanMessage(prompt)])
+
     return { cypher: res.content }
   }
 
@@ -79,7 +84,9 @@ async function generateCypher(state) {
 async function executeGraphQuery(state) {
   try {
     const res = await graph.query(state.cypher)
+
     return { context: JSON.stringify(res) }
+
   } catch (e) {
     return { context: '未查询到相关知识' }
   }
@@ -116,6 +123,7 @@ const workflow = new StateGraph({ channels: state })
 
 const app = workflow.compile()
 
+//绘制当前图节点的Mermaid图
 async function printWorkflowMermaid() {
   const drawable = await app.getGraphAsync()
   const mermaid = drawable.drawMermaid({ withStyles: true })
@@ -128,6 +136,7 @@ async function printWorkflowMermaid() {
 // 运行 GraphRAG
 // ----------------------
 async function runGraphRAG(question) {
+
   const res = await app.invoke({
     messages: [new HumanMessage(question)],
   })
@@ -143,12 +152,14 @@ async function runGraphRAG(question) {
 // ======================
 // 测试
 // ======================
-;(async () => {
+(async () => {
   await printWorkflowMermaid()
+  //并发执行三个问题
   await Promise.all([
     runGraphRAG('我们这款珍珠奶茶有哪些配料？'),
     runGraphRAG('台式奶茶的饮品都有哪些配料？'),
     runGraphRAG('珍珠奶茶适合哪些人群饮用？'),
+
   ])
 })().catch(console.error)
 
