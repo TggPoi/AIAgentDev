@@ -120,8 +120,11 @@ const EvaluateSchema = z.object({
 
 //评估当前本地检索结果是否足够回答问题，不足则给出缺失信息点和适合的联网搜索查询（如果模型觉得需要联网搜索的话）
 const evaluateNode = async (state) => {
+
   const hasWeb = Boolean(state.webContext && String(state.webContext).trim());
+
   console.log(hasWeb ? "---EVALUATE_CONTEXT_WITH_WEB---" : "---EVALUATE_LOCAL_CONTEXT---");
+
   const evaluator = llm.withStructuredOutput(EvaluateSchema);
   const out = await evaluator.invoke(`你是信息充分性评估器。判断当前上下文是否足以回答用户问题。
 
@@ -140,6 +143,7 @@ ${hasWeb ? "" : "- web_query: 若不够，给出一个适合联网搜索的中�
 `);
 
   console.log(`${hasWeb ? "二次评估" : "评估"}: enough=${out.enough} (${out.reason})`);
+
   if (!out.enough && out.missing?.length) {
     out.missing.forEach((m, i) => console.log(`  缺失${i + 1}: ${m}`));
   }
@@ -268,9 +272,11 @@ function afterRoute(state) {
 }
 
 function afterEvaluateLocal(state) {
+  //如果已经进行过网络检索，可以认为信息足够直接生成回答
   if (state.webContext && String(state.webContext).trim()) {
     return "generate";
   }
+
   const parsed = (() => {
     try {
       return JSON.parse(state.evaluation || "{}");
@@ -278,6 +284,7 @@ function afterEvaluateLocal(state) {
       return {};
     }
   })();
+  
   return parsed.enough === true ? "generate" : "web_search";
 }
 
@@ -285,10 +292,14 @@ const graph = new StateGraph(GraphState)
   .addNode("route_question", routeQuestionNode)
   .addNode("direct_answer", directAnswerNode)
   .addNode("local_retrieve", retrieveLocalNode)
+
   .addNode("evaluate_local", evaluateNode)
   .addNode("web_search", webSearchNode)
+
   .addNode("generate", generateNode)
+
   .addEdge(START, "route_question")
+
   .addConditionalEdges("route_question", afterRoute, {
     direct_answer: "direct_answer",
     local_retrieve: "local_retrieve",
@@ -296,6 +307,7 @@ const graph = new StateGraph(GraphState)
 
   //这一段构成循环，evaluate_local判断后，如果需要联网搜索，回到web_search
   .addEdge("local_retrieve", "evaluate_local")
+
   .addConditionalEdges("evaluate_local", afterEvaluateLocal, {
     generate: "generate",
     web_search: "web_search",

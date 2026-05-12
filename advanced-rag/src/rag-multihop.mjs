@@ -30,6 +30,8 @@ const embeddings = new OpenAIEmbeddings({
  * complex：先拆解子问题序列，再按序检索
  */
 const GraphState = Annotation.Root({
+  //下面每个字段都使用Annotation，表示这个字段的更新规则是 默认替换（新值覆盖旧值）。
+
   //原始输入类
   question: Annotation,
   k: Annotation,
@@ -112,6 +114,7 @@ const NextStepSchema = z.object({
 
 //根据用户问题的复杂度来规划路由，如果是简单问题就直接回答，如果是复杂问题就拆解成子问题序列进行检索
 const routeQuestionNode = async (state) => {
+
   console.log("---ROUTE_QUESTION---");
   const router = llm.withStructuredOutput(RouteSchema);
   const route = await router.invoke(`
@@ -125,6 +128,7 @@ const routeQuestionNode = async (state) => {
 `);
 
   console.log(`路由策略: ${route.strategy} (${route.reason})`);
+
   return {
     strategy: route.strategy,
     routeReason: route.reason,
@@ -201,6 +205,7 @@ const retrieveNode = async (state) => {
   const idx = state.nextSubIdx ?? 0;
 
   const q = subs[idx]?.trim();
+
   if (!q) {
     throw new Error(`retrieve: 子问题下标 ${idx} 无有效文本（共 ${subs.length} 条）`);
   }
@@ -209,7 +214,8 @@ const retrieveNode = async (state) => {
 
   console.log(`---RETRIEVE (第 ${round} 轮，子问题 ${idx + 1}/${subs.length})---`);
   console.log(`查询: ${q}`);
-  //拆分子问题的格式
+
+  //es检索子问题的相关内容
   const newDocs = await retrieveRelevantContent(q, state.k);
 
   //因为会检索多轮，所以做了一下 id 的去重，把之前State中保存的旧文档和新检索出来的结果进行查重，覆盖
@@ -221,6 +227,7 @@ const retrieveNode = async (state) => {
 
     console.log(`本轮命中 ${newDocs.length} 条，累计去重后 ${merged.length} 条`);
 
+    //打印预览的文本到控制台，方便观察
     newDocs.forEach((item, i) => {
       const preview =
         item.content.length > 120 ? `${item.content.substring(0, 120)}...` : item.content;
@@ -283,6 +290,7 @@ ${docStr}
 - 若已检索轮数已达到或超过最大检索轮数，必须 nextAction=generate。`;
 
   const model = llm.withStructuredOutput(NextStepSchema);
+  
   const { nextAction, reason } = await model.invoke(prompt);
 
   let finalNext = nextAction;
@@ -318,13 +326,16 @@ const directAnswerNode = async (state) => {
 
 问题：${state.question}
 `);
+
   for await (const chunk of stream) {
     const text = typeof chunk.content === "string" ? chunk.content : "";
     if (!text) continue;
     generation += text;
     process.stdout.write(text);
   }
+
   process.stdout.write("\n");
+
   return { generation };
 };
 
@@ -372,18 +383,23 @@ const graph = new StateGraph(GraphState)
   .addNode("retrieve", retrieveNode)
   .addNode("plan_next_step", planNextStepNode)
   .addNode("generate", generateNode)
+
   .addEdge(START, "route_question")
+
   .addConditionalEdges("route_question", afterRoute, {
     direct_answer: "direct_answer",
     decompose_question: "decompose_question",
   })
+
   .addEdge("decompose_question", "retrieve")
   //这里形成循环，retrieve检索完成后，又进入plan_next_step
   .addEdge("retrieve", "plan_next_step")
+
   .addConditionalEdges("plan_next_step", afterPlan, {
     retrieve: "retrieve",
     generate: "generate",
   })
+
   .addEdge("direct_answer", END)
   .addEdge("generate", END)
   .compile();
