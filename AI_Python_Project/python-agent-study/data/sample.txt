@@ -1,0 +1,7 @@
+RAG means Retrieval Augmented Generation.
+
+Milvus is used for vector search.
+
+ElasticSearch is used for keyword search.
+
+Rerank is used to reorder retrieved documents.
