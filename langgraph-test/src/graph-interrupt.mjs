@@ -9,6 +9,8 @@ import {
   interrupt,
 } from "@langchain/langgraph";
 
+import "dotenv/config" //导入这个后，运行的状态才会被langsmith收集到
+
 const StateAnnotation = Annotation.Root({
   actionSummary: Annotation({
     reducer: (_prev, next) => next,

@@ -1,4 +1,5 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
+import "dotenv/config" //导入这个后，运行的状态才会被langsmith收集到
 
 // 定义一个状态注解（StateAnnotation），它包含一个文本属性（text）。这个注解的 reducer 函数简单地返回下一个状态的文本，而默认值是一个空字符串。
 //Annotation 用于创建 State，指定默认值（default）和合并逻辑（reducer）
