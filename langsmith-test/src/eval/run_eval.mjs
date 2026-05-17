@@ -52,3 +52,13 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+/**
+ * PS D:\AI_Agent_Project\langsmith-test> node .\src\eval\run_eval.mjs     
+Starting evaluation of experiment: rag-openevals-qwen-plus-87dab82b
+View results at https://smith.langchain.com/o/1838ade1-fedf-406d-9a89-2adc2a97d752/datasets/f44411f7-c57c-4bb4-8f8f-616e4639d491/compare?selectedSessions=561936a2-eec0-4c4a-af14-dcbad34d06f4
+✅ 评测完成
+实验名: rag-openevals-qwen-plus-87dab82b
+指标: rag_groundedness | rag_helpfulness | rag_retrieval_relevance
+报告: https://smith.langchain.com/o/default/projects/p/langsmith-test
+ */
