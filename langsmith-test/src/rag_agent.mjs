@@ -72,6 +72,7 @@ const workflow = new StateGraph(GraphState)
 
 export const ragApp = workflow.compile();
 
+//
 export async function ask(question) {
   const result = await ragApp.invoke({ question });
   return {

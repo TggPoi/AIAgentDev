@@ -21,8 +21,16 @@ async function runRagAgent(inputs) {
   };
 }
 
+/**
+await evaluate(...)
+    只是拿到评测运行对象 / 实验对象 / 异步结果流
+
+for await...of result
+    才是逐条消费评测结果，等待所有样例实际跑完
+ */
 async function main() {
     // 评测 runRagAgent，使用 ragEvaluators 中的评测指标，评测数据集为 rag-eval-v1
+    //result = 一个评测运行结果对象，可以被异步迭代
   const result = await evaluate(runRagAgent, {
     data: DATASET_NAME,
     evaluators: ragEvaluators,
@@ -31,7 +39,7 @@ async function main() {
     maxConcurrency: 2,
   });
 
-  // 等待全部样例跑完
+  // 把 result 这个异步结果流里面的样例 完整消费完。
   for await (const _row of result) {
     /* drain */
   }

@@ -19,6 +19,9 @@ const judge = new ChatOpenAI({
 
 /**
  * 下面3个是已经封装好的Prompt模版，需要传入模版中需要的参数，让judge模型根据Prompt进行评测
+ * 
+ * @param params.continuous If true, score will be a float between 0 and 1.
+ *                         If false, score will be boolean. Defaults to false.
  */
 // RAG_GROUNDEDNESS_PROMPT —— 忠实度：答案是否被检索上下文支撑，有无幻觉
 const ragGroundednessJudge = createLLMAsJudge({
