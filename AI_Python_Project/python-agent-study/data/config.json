@@ -1,0 +1,5 @@
+{
+  "app_name": "python-agent-study",
+  "retrieval_mode": "hybrid",
+  "top_k": 5
+}
