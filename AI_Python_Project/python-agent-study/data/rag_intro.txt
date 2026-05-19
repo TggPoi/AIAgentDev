@@ -1,0 +1,13 @@
+RAG means Retrieval Augmented Generation.
+
+A RAG system usually contains document loading, text splitting, embedding, vector storage, retrieval, context construction, and LLM generation.
+
+Milvus is often used for vector similarity search.
+
+ElasticSearch is often used for keyword search, entity search, and exact matching.
+
+Hybrid retrieval combines vector search and keyword search.
+
+Rerank models can reorder retrieved documents according to the relevance between the query and each document.
+
+LangGraph can be used to build stateful AI Agent workflows.

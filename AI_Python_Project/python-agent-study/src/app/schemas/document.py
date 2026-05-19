@@ -1,12 +1,13 @@
-from typing import Literal, TypedDict
+from typing import TypedDict
 
-# 这个文件只负责定义数据结构。
+#定义document对象的数据结构
 
-RetrievalSource = Literal["milvus", "elasticsearch", "mock"]
+class DocumentMetadata(TypedDict):
+    source: str
+    chunk_index: int
 
-
-class RetrievedDoc(TypedDict):
+# 表示一个文本 chunk
+class Document(TypedDict):
     id: str
     content: str
-    score: float
-    source: RetrievalSource
+    metadata: DocumentMetadata

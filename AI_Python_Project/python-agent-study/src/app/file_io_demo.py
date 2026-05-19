@@ -11,7 +11,7 @@ def main() -> None:
         return
 
     print("=== loaded lines ===")
-    # 生成类似 (0, seq[0]), (1, seq[1]), (2, seq[2]), ...的结构
+    # 生成一个可迭代的对象，迭代时每个元素都是一个 (索引, 元素) 的元组，例如 (0, lines[0])、(1, lines[1])……
     for index, line in enumerate(lines):
         print(f"{index}: {line}")
 
