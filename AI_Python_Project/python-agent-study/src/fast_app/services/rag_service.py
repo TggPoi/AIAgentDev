@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import AsyncGenerator
 
 from fast_app.schemas.rag_schema import (
     RetrievedDocument,
@@ -146,3 +147,27 @@ async def get_document(doc_id: str) -> RetrievedDocument:
         raise DocumentNotFoundError(f"文档不存在: {doc_id}")
 
     return doc
+
+
+async def stream_search(req: SearchRequest) -> AsyncGenerator[str, None]:
+    response = await search(req)
+
+    context_parts: list[str] = []
+
+    for doc in response.documents:
+        context_parts.append(
+            f"[{doc.source}] {doc.content}"
+        )
+
+    context = "\n".join(context_parts)
+
+    answer = (
+        f"根据检索结果回答问题：{req.query}\n"
+        f"检索模式：{req.mode}\n"
+        f"上下文：\n{context}\n"
+        f"结论：混合检索可以结合向量召回和关键词召回，提高结果稳定性。"
+    )
+
+    for char in answer:
+        await asyncio.sleep(0.03)
+        yield char
