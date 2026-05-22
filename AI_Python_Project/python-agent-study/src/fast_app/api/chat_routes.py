@@ -8,5 +8,5 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @router.post("", response_model=ChatResponse)
-def chat_endpoint(req: ChatRequest) -> ChatResponse:
-    return chat(req)
+async def chat_endpoint(req: ChatRequest) -> ChatResponse:
+    return await chat(req)
