@@ -3,6 +3,8 @@ from fast_app.schemas.rag_schema import (
     SearchRequest,
     SearchResponse,
 )
+from fast_app.services.exceptions import NoSearchResultError
+from fast_app.services.exceptions import DocumentNotFoundError
 
 
 def search(req: SearchRequest) -> SearchResponse:
@@ -32,8 +34,38 @@ def search(req: SearchRequest) -> SearchResponse:
         if doc.score >= req.min_score
     ]
 
+    if len(filtered_docs) == 0:
+        raise NoSearchResultError(
+            f"没有找到满足 min_score={req.min_score} 的文档"
+        )
+
     return SearchResponse(
         query=req.query,
         mode=req.mode,
         documents=filtered_docs[: req.top_k],
     )
+
+
+
+def get_document(doc_id: str) -> RetrievedDocument:
+    mock_docs = {
+        "doc_001": RetrievedDocument(
+            id="doc_001",
+            content="Milvus vector result",
+            score=0.91,
+            source="milvus",
+        ),
+        "doc_002": RetrievedDocument(
+            id="doc_002",
+            content="ElasticSearch keyword result",
+            score=0.88,
+            source="elasticsearch",
+        ),
+    }
+
+    doc = mock_docs.get(doc_id)
+
+    if doc is None:
+        raise DocumentNotFoundError(f"文档不存在: {doc_id}")
+
+    return doc
