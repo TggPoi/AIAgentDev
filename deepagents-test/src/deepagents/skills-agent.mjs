@@ -61,6 +61,21 @@ const prompt = [
 
 console.log("用户:", prompt);
 
+//格式化模型回复内容，把不同格式的 chunk.content 统一转换成字符串。
+/**
+可能是：
+
+"文本"
+
+也可能是：
+
+```js
+[
+  { text: "文本" }
+]
+```
+
+ */
 function chunkText(chunk) {
   if (!chunk?.content) return "";
 
@@ -74,6 +89,16 @@ function chunkText(chunk) {
   return "";
 }
 
+/**
+输出格式类似：
+{
+  event: "on_chat_model_stream",
+  name: "...",
+  data: {
+    chunk: ...
+  }
+}
+ */
 const stream = await agent.streamEvents(
   { messages: [new HumanMessage(prompt)] },
   { recursionLimit: 100 }
@@ -82,16 +107,23 @@ const stream = await agent.streamEvents(
 let skillsMetadata;
 console.log("\n--- 流式输出 ---\n");
 
+//和使用ver sdk相同的思路，不同协议打印不同格式
 try {
   for await (const event of stream) {
+
+    //有些模型在流式输出 tool call 参数时，也可能通过模型 stream 事件传出一些结构化 chunk。不同 provider 表现可能不同。
+    //所以需要chunkText统一提取文本内容，才能正确打印。
     if (event.event === "on_chat_model_stream") {
       const text = chunkText(event.data?.chunk);
       if (text) process.stdout.write(text);
     }
+
     if (event.event === "on_tool_start") {
       const name = event.name?.split("/").pop() ?? event.name;
       process.stdout.write(`\n\n→ ${name}\n\n`);
     }
+
+    //`on_chain_end` 会出现很多次， Agent 内部很多 runnable / chain 都可能结束，但我们只关心最外层的那个 chain 结束时携带的 skillsMetadata 输出。
     if (event.event === "on_chain_end" && event.data?.output?.skillsMetadata) {
       skillsMetadata = event.data.output.skillsMetadata;
     }
@@ -103,6 +135,7 @@ try {
 
 console.log("\n");
 console.log("skills:", skillsMetadata?.map((s) => s.name));
+
 if (existsSync(output)) {
   console.log("图表:", output);
   console.log("打开: https://excalidraw.com → Open → 选择该文件");

@@ -8,19 +8,21 @@ import { createFilesystemMiddleware, FilesystemBackend } from "deepagents";
 
 // path.join函数的两个参数分别是当前文件的目录和一个子目录 "workspace"，最终得到的路径就是当前文件所在目录下的 "workspace" 文件夹路径
 const workspaceDir = path.join(
+  //import.meta.url是当前模块的URL，fileURLToPath将其转换为文件路径，path.dirname获取该路径的目录部分
+  //fileURLToPath 注释中提供了使用案例
   path.dirname(fileURLToPath(import.meta.url)),
   "workspace"
 );
 
-/** 先匹配先生效；未命中任何规则则默认允许 */
+/** 先匹配 先生效；未命中任何规则则默认允许 */
 const permissions = [
   { operations: ["read"], paths: ["/secret.txt"], mode: "deny" },
   { operations: ["write"], paths: ["/todo.md"], mode: "allow" },
-  //路径下的所有文件都禁止写入
+  //路径下的所有文件都禁止写入，但是上面的规则允许写入 /todo.md，所以最终结果是只能写入 /todo.md，其他文件都不能写入，体现了先匹配优先的原则
   { operations: ["write"], paths: ["/**"], mode: "deny" },
 ];
 
-
+//初始化文件内容
 fs.rmSync(workspaceDir, { recursive: true, force: true });
 fs.mkdirSync(workspaceDir);
 fs.writeFileSync(path.join(workspaceDir, "secret.txt"), "机密：不得读取", "utf8");
@@ -40,7 +42,20 @@ const agent = createAgent({
   middleware: [
     createFilesystemMiddleware({
         //backend支持多种实现，这里使用内存文件系统，适合测试和临时数据；也可以使用本地文件系统（如Node的fs模块）或云存储（如S3）
-        //vritualMode为true时，文件系统的修改不会反映到实际磁盘，适合测试和安全隔离；为false时，直接操作磁盘文件
+        //vritualMode为true时，让 Agent 看到的是虚拟路径，而不是直接暴露真实系统路径
+        /**
+         * 例如真实路径可能是：
+            D:/AI_Agent_Project/deepagents-test/src/deepagents/workspace
+
+            但 Agent 看到的是：
+            /
+            这就是虚拟化的意义。
+
+            Agent 不需要知道你真实电脑路径，只需要使用：
+            /todo.md
+            /secret.txt
+            这更安全，也更容易控制。
+         */
       backend: new FilesystemBackend({ rootDir: workspaceDir, virtualMode: true }),
       permissions,
     }),
@@ -64,11 +79,14 @@ async function run(label, prompt) {
   console.log("回复:", messages.at(-1)?.content);
 }
 
+//测试写入deny权限的文件
 async function expectDenied(label, prompt) {
   console.log(`\n=== ${label}（预期拒绝）===\n`, prompt, "\n");
   try {
     await agent.invoke({ messages: [new HumanMessage(prompt)] }, { recursionLimit: 5 });
+
     console.log("未触发拒绝（异常）");
+    
   } catch (e) {
     const msg = e.cause?.message ?? e.message;
     console.log("✗", msg);

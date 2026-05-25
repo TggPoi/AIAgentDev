@@ -12,6 +12,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspaceDir = path.join(__dirname, "workspace-memory");
+
 const projectMemoryPath = "/AGENTS.md";
 const preferencesMemoryPath = "/memory/preferences.md";
 
@@ -37,8 +38,10 @@ const agent = createAgent({
     `- ${preferencesMemoryPath}：用户个人偏好（语言、包管理器、回答风格等）`,
     "不要混写：项目事实不要写入 preferences，个人偏好不要写入 AGENTS.md。",
   ].join("\n"),
+
   middleware: [
     createFilesystemMiddleware({ backend }),
+
     createMemoryMiddleware({
       backend,
       sources: [projectMemoryPath, preferencesMemoryPath],
@@ -57,16 +60,20 @@ let messages = [];
 
 for (const prompt of prompts) {
   console.log("\n用户:", prompt);
+
   ({ messages } = await agent.invoke(
     { messages: [...messages, new HumanMessage(prompt)] },
     { recursionLimit: 30 }
   ));
+
   console.log("回复:", messages.at(-1)?.content);
 }
 
 for (const p of [projectMemoryPath, preferencesMemoryPath]) {
+  //读取目前的文件内容
   const file = path.join(workspaceDir, p.replace(/^\//, ""));
   console.log(`\n--- ${p} ---\n`, fs.readFileSync(file, "utf8"));
+
 }
 
 /**
