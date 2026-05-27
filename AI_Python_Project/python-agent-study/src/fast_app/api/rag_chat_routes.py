@@ -1,26 +1,29 @@
 from collections.abc import AsyncGenerator
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from fast_app.dependencies.rag_dependencies import get_rag_pipeline
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
-from fast_app.services.rag_pipeline_service import run_rag, run_rag_stream
+from fast_app.services.rag_pipeline_service import RagPipeline
 
-# 声明 HTTP 路由
-# 接收 RagChatRequest
-# 调用 service
-# 把业务异常转换成 HTTPException 或 SSE error event
-# 把 token 包装成 SSE 格式
-# 返回 StreamingResponse
 
 router = APIRouter(prefix="/rag", tags=["rag-chat"])
 
+# pipeline: RagPipeline = Depends(get_rag_pipeline)
 
+# 这个接口函数需要一个 RagPipeline。
+# 这个 RagPipeline 不由我在函数内部手动创建。
+# 请 FastAPI 在调用接口函数之前，先执行 get_rag_pipeline()。
+# 然后把返回值传给 pipeline 参数
 @router.post("/chat", response_model=RagChatResponse)
-async def rag_chat_endpoint(req: RagChatRequest) -> RagChatResponse:
+async def rag_chat_endpoint(
+    req: RagChatRequest,
+    pipeline: RagPipeline = Depends(get_rag_pipeline),
+) -> RagChatResponse:
     try:
-        return await run_rag(req)
+        return await pipeline.run(req)
 
     except NoSearchResultError as e:
         raise HTTPException(
@@ -43,11 +46,10 @@ async def rag_chat_endpoint(req: RagChatRequest) -> RagChatResponse:
 
 async def rag_chat_sse_event_generator(
     req: RagChatRequest,
+    pipeline: RagPipeline,
 ) -> AsyncGenerator[str, None]:
-    # service 层产生业务 token
-    # api 层负责 SSE 协议格式
     try:
-        async for token in run_rag_stream(req):
+        async for token in pipeline.stream(req):
             yield f"data: {token}\n\n"
 
         yield "event: done\ndata: [DONE]\n\n"
@@ -66,8 +68,11 @@ async def rag_chat_sse_event_generator(
 
 
 @router.post("/chat/stream")
-async def rag_chat_stream_endpoint(req: RagChatRequest) -> StreamingResponse:
+async def rag_chat_stream_endpoint(
+    req: RagChatRequest,
+    pipeline: RagPipeline = Depends(get_rag_pipeline),
+) -> StreamingResponse:
     return StreamingResponse(
-        rag_chat_sse_event_generator(req),
+        rag_chat_sse_event_generator(req, pipeline),
         media_type="text/event-stream",
     )

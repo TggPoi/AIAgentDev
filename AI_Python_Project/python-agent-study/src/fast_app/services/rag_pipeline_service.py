@@ -247,3 +247,20 @@ async def run_rag_stream(req: RagChatRequest) -> AsyncGenerator[str, None]:
 
     async for token in stream_answer_node(req.query, context):
         yield token
+
+
+# Router 以后不直接依赖 run_rag / run_rag_stream。
+# Router 只依赖 RagPipeline。
+# RagPipeline 内部暂时复用原有函数。
+# 后续再逐步把真实 Retriever、LLMClient、Settings 注入进 RagPipeline。
+class RagPipeline:
+    
+    async def run(self, req: RagChatRequest) -> RagChatResponse:
+        return await run_rag(req)
+
+    async def stream(
+        self,
+        req: RagChatRequest,
+    ) -> AsyncGenerator[str, None]:
+        async for token in run_rag_stream(req):
+            yield token
