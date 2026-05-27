@@ -1,6 +1,6 @@
 from collections.abc import AsyncGenerator
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from fast_app.dependencies.rag_dependencies import get_rag_pipeline
@@ -8,6 +8,9 @@ from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
 from fast_app.services.rag_pipeline_service import RagPipeline
 
+from fast_app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/rag", tags=["rag-chat"])
 
@@ -22,26 +25,7 @@ async def rag_chat_endpoint(
     req: RagChatRequest,
     pipeline: RagPipeline = Depends(get_rag_pipeline),
 ) -> RagChatResponse:
-    try:
-        return await pipeline.run(req)
-
-    except NoSearchResultError as e:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "code": "NO_SEARCH_RESULT",
-                "message": str(e),
-            },
-        ) from e
-
-    except ExternalServiceError as e:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "code": "EXTERNAL_SERVICE_ERROR",
-                "message": str(e),
-            },
-        ) from e
+    return await pipeline.run(req)
 
 
 async def rag_chat_sse_event_generator(
@@ -64,6 +48,13 @@ async def rag_chat_sse_event_generator(
         yield (
             "event: error\n"
             f"data: EXTERNAL_SERVICE_ERROR: {str(e)}\n\n"
+        )
+
+    except Exception:
+        logger.exception("RAG SSE 流式输出发生未知异常")
+        yield (
+            "event: error\n"
+            "data: INTERNAL_SERVER_ERROR: 服务器内部错误\n\n"
         )
 
 

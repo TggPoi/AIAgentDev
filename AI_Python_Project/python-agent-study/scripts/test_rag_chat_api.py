@@ -16,6 +16,16 @@ def build_payload(args: argparse.Namespace) -> dict[str, object]:
     }
 
 
+def build_no_result_payload(args: argparse.Namespace) -> dict[str, object]:
+    """构造一个会触发 NoSearchResultError 的请求体。"""
+    return {
+        "query": args.query,
+        "mode": args.mode,
+        "top_k": args.top_k,
+        "min_score": 1.0,
+    }
+
+
 def print_response_json(resp: requests.Response) -> None:
     """打印 JSON 响应；如果不是 JSON，则打印原始文本。"""
     try:
@@ -38,6 +48,32 @@ def test_normal_chat(base_url: str, payload: dict[str, object]) -> None:
     print("response:")
     print_response_json(resp)
     resp.raise_for_status()
+
+
+def test_normal_chat_error(base_url: str, payload: dict[str, object]) -> None:
+    """测试非流式接口被全局异常处理器转换后的 JSON 错误响应。"""
+    url = f"{base_url}/rag/chat"
+
+    print("\n========== POST /rag/chat error ==========")
+    print("request:")
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+    resp = requests.post(url, json=payload, timeout=30)
+
+    print(f"\nstatus: {resp.status_code}")
+    print("response:")
+    print_response_json(resp)
+
+    if resp.status_code != 404:
+        raise AssertionError(f"expected 404, got {resp.status_code}")
+
+    try:
+        body = resp.json()
+    except ValueError as e:
+        raise AssertionError("expected JSON error response") from e
+
+    if body.get("code") != "NO_SEARCH_RESULT":
+        raise AssertionError(f"expected code NO_SEARCH_RESULT, got {body.get('code')}")
 
 
 def iter_sse_lines(resp: requests.Response) -> Iterator[str]:
@@ -84,6 +120,44 @@ def test_stream_chat(base_url: str, payload: dict[str, object]) -> None:
             print(data if data else "\n", end="", flush=True)
 
 
+def test_stream_chat_error(base_url: str, payload: dict[str, object]) -> None:
+    """测试流式接口在异常时返回 SSE error event。"""
+    url = f"{base_url}/rag/chat/stream"
+
+    print("\n========== POST /rag/chat/stream error ==========")
+    print("stream output:")
+
+    with requests.post(url, json=payload, stream=True, timeout=60) as resp:
+        print(f"status: {resp.status_code}\n")
+        resp.raise_for_status()
+
+        current_event = "message"
+        saw_error_event = False
+
+        for line in iter_sse_lines(resp):
+            print(line)
+
+            if line.startswith("event:"):
+                current_event = line.removeprefix("event:").strip()
+                continue
+
+            if not line.startswith("data:"):
+                continue
+
+            data = line.removeprefix("data:")
+            if data.startswith(" "):
+                data = data[1:]
+
+            if current_event == "error":
+                saw_error_event = True
+                if "NO_SEARCH_RESULT" not in data:
+                    raise AssertionError(f"expected NO_SEARCH_RESULT error, got {data}")
+                break
+
+        if not saw_error_event:
+            raise AssertionError("expected SSE error event")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Test local FastAPI RAG chat endpoints.",
@@ -121,6 +195,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="只测试流式接口",
     )
+    parser.add_argument(
+        "--skip-errors",
+        action="store_true",
+        help="跳过异常场景测试",
+    )
     return parser.parse_args()
 
 
@@ -128,12 +207,20 @@ def main() -> int:
     args = parse_args()
     base_url = args.base_url.rstrip("/")
     payload = build_payload(args)
+    error_payload = build_no_result_payload(args)
 
     try:
         if not args.stream_only:
             test_normal_chat(base_url, payload)
 
         test_stream_chat(base_url, payload)
+
+        if not args.skip_errors:
+            if not args.stream_only:
+                test_normal_chat_error(base_url, error_payload)
+
+            test_stream_chat_error(base_url, error_payload)
+
         return 0
 
     except requests.ConnectionError:
@@ -148,47 +235,10 @@ def main() -> int:
         print(f"\nHTTP 请求失败: {e}", file=sys.stderr)
         return 1
 
+    except AssertionError as e:
+        print(f"\n测试断言失败: {e}", file=sys.stderr)
+        return 1
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-# (.venv) PS D:\AI_Agent_Project\AI_Python_Project\python-agent-study> python scripts/test_rag_chat_api.py                                                                                  
-# ========== POST /rag/chat ==========   
-# request:
-# {
-#   "query": "什么是混合检索？",
-#   "mode": "hybrid",
-#   "top_k": 5,
-#   "min_score": 0.0
-# }
-
-# status: 200
-# response:
-# {
-#   "query": "什么是混合检索？",
-#   "answer": "根据检索到的上下文，回答问题：什么是混合检索？\n核心结论：混合检索会同时利用向量检索和关键词检索，再通过合并、去重、排序等步骤得到更可靠的上下文。\n\n参考上下文：\n[0] source=milvus, score=0.91\nMilvus 向量召回结果：什么是混合检索？ 通常需要向量相似度搜索。\n\n[1] source=elasticsearch, score=0.88\nElasticSearch 关键词召回结果：什么是混合检索？ 可以通过 BM25 匹配关键词。\n\n[2] source=milvus, score=0.86\n混合检索会结合语义召回和关键词召回。",
-#   "sources": [
-#     "doc_milvus_001",
-#     "doc_es_001",
-#     "doc_shared_001"
-#   ]
-# }
-
-# ========== POST /rag/chat/stream ==========
-# stream output:
-# status: 200
-
-# 根据检索到的上下文，回答问题：什么是混合检索？
-# 混合检索的核心是：同时使用向量检索和关键词检索，然后合并、去重、排序，得到更稳定的结果。
-
-# 上下文摘要：[0] source=milvus, score=0.91
-# Milvus 向量召回结果：什么是混合检索？ 通常需要向量相似度搜索。
-
-# [1] source=elasticsearch, score=0.88
-# ElasticSearch 关键词召回结果：什么是混合检索？ 可以通过 BM25 匹配关键词。
-
-# [2] source=milvus, score=0.86
-# 混合检索会结合语义召回和关键词召回。
-
-# [done] [DONE]

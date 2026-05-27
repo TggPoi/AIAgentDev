@@ -13,6 +13,8 @@ from fast_app.api.error_demo_routes import router as error_demo_router
 from fast_app.core.config import get_settings
 from fast_app.core.logging import get_logger, setup_logging
 
+from fast_app.core.exception_handlers import register_exception_handlers
+
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -46,6 +48,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+register_exception_handlers(app)
 
 app.include_router(health_router)
 app.include_router(chat_router)
