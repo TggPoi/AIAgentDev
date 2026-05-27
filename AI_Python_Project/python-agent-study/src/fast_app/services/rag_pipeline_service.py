@@ -218,7 +218,7 @@ async def run_rag(req: RagChatRequest) -> RagChatResponse:
     return RagChatResponse(
         query=state["query"],
         answer=state["answer"] or "",
-        sources=[doc.id for doc in state["docs"]],
+        sources=[doc.id for doc in state["docs"]], #source只返回id列表
     )
 
 
