@@ -33,6 +33,19 @@ class Settings(BaseSettings):
 
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
+    cors_allow_origins: str = Field(
+    default="http://localhost:5173,http://127.0.0.1:5173",
+    alias="CORS_ALLOW_ORIGINS",
+    )
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.cors_allow_origins.split(",")
+            if origin.strip()
+        ]
+
 # @lru_cache 第一次调用 get_settings() 时创建 Settings。后续再次调用，直接返回第一次创建好的对象。
 # Settings 在应用运行期间通常是稳定的。没有必要每个请求都重新读取 .env。
 @lru_cache
