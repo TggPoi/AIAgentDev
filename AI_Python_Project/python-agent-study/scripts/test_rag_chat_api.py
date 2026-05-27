@@ -153,8 +153,8 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-# (.venv) PS D:\AI_Agent_Project\AI_Python_Project\python-agent-study> python scripts/test_rag_chat_api.py
-# ========== POST /rag/chat ==========
+# (.venv) PS D:\AI_Agent_Project\AI_Python_Project\python-agent-study> python scripts/test_rag_chat_api.py                                                                                  
+# ========== POST /rag/chat ==========   
 # request:
 # {
 #   "query": "什么是混合检索？",

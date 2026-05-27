@@ -31,6 +31,8 @@ class Settings(BaseSettings):
         alias="ELASTICSEARCH_URL",
     )
 
+    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+
 # @lru_cache 第一次调用 get_settings() 时创建 Settings。后续再次调用，直接返回第一次创建好的对象。
 # Settings 在应用运行期间通常是稳定的。没有必要每个请求都重新读取 .env。
 @lru_cache
