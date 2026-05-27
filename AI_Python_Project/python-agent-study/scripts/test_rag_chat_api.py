@@ -151,3 +151,44 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+# (.venv) PS D:\AI_Agent_Project\AI_Python_Project\python-agent-study> python scripts/test_rag_chat_api.py
+# ========== POST /rag/chat ==========
+# request:
+# {
+#   "query": "什么是混合检索？",
+#   "mode": "hybrid",
+#   "top_k": 5,
+#   "min_score": 0.0
+# }
+
+# status: 200
+# response:
+# {
+#   "query": "什么是混合检索？",
+#   "answer": "根据检索到的上下文，回答问题：什么是混合检索？\n核心结论：混合检索会同时利用向量检索和关键词检索，再通过合并、去重、排序等步骤得到更可靠的上下文。\n\n参考上下文：\n[0] source=milvus, score=0.91\nMilvus 向量召回结果：什么是混合检索？ 通常需要向量相似度搜索。\n\n[1] source=elasticsearch, score=0.88\nElasticSearch 关键词召回结果：什么是混合检索？ 可以通过 BM25 匹配关键词。\n\n[2] source=milvus, score=0.86\n混合检索会结合语义召回和关键词召回。",
+#   "sources": [
+#     "doc_milvus_001",
+#     "doc_es_001",
+#     "doc_shared_001"
+#   ]
+# }
+
+# ========== POST /rag/chat/stream ==========
+# stream output:
+# status: 200
+
+# 根据检索到的上下文，回答问题：什么是混合检索？
+# 混合检索的核心是：同时使用向量检索和关键词检索，然后合并、去重、排序，得到更稳定的结果。
+
+# 上下文摘要：[0] source=milvus, score=0.91
+# Milvus 向量召回结果：什么是混合检索？ 通常需要向量相似度搜索。
+
+# [1] source=elasticsearch, score=0.88
+# ElasticSearch 关键词召回结果：什么是混合检索？ 可以通过 BM25 匹配关键词。
+
+# [2] source=milvus, score=0.86
+# 混合检索会结合语义召回和关键词召回。
+
+# [done] [DONE]
