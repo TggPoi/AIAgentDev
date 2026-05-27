@@ -6,6 +6,8 @@ from fast_app.graph.rag_state import RagState
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
 
+from fast_app.core.config import Settings
+
 # 并发召回
 # 过滤文档
 # 合并去重
@@ -254,7 +256,11 @@ async def run_rag_stream(req: RagChatRequest) -> AsyncGenerator[str, None]:
 # RagPipeline 内部暂时复用原有函数。
 # 后续再逐步把真实 Retriever、LLMClient、Settings 注入进 RagPipeline。
 class RagPipeline:
-    
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        print(f"当前应用环境: {settings.app_env}")
+        print(f"当前 LLM 模型: {settings.llm_model_name}")
+
     async def run(self, req: RagChatRequest) -> RagChatResponse:
         return await run_rag(req)
 
