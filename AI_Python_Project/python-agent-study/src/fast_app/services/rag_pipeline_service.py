@@ -1,13 +1,15 @@
 import asyncio
 from collections.abc import AsyncGenerator
 
+from fast_app.components.llms.base import BaseLLMClient
+from fast_app.components.retrievers.base import BaseRetriever
+
+from fast_app.core.config import Settings
+from fast_app.core.logging import get_logger
 from fast_app.domain.rag_models import RagContext, RetrievedDoc
 from fast_app.graph.rag_state import RagState
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
-
-from fast_app.core.config import Settings
-from fast_app.core.logging import get_logger
 
 # `__name__` 是当前模块名。
 # 在这个文件中，`__name__` 大概率是：
@@ -309,22 +311,321 @@ async def run_rag_stream(req: RagChatRequest) -> AsyncGenerator[str, None]:
 
 
 
-# Router 以后不直接依赖 run_rag / run_rag_stream。
-# Router 只依赖 RagPipeline。
-# RagPipeline 内部暂时复用原有函数。
-# 后续再逐步把真实 Retriever、LLMClient、Settings 注入进 RagPipeline。
 class RagPipeline:
-    def __init__(self, settings: Settings):
+    """RAG 业务编排类。
+
+    这个类负责把一次 RAG 请求拆成几个稳定步骤：
+    1. 根据请求模式选择向量检索、关键词检索或混合检索。
+    2. 按 `min_score` 过滤低相关性文档。
+    3. 在混合检索模式下合并多路召回结果并按文档 id 去重。
+    4. 把召回文档构造成 LLM 上下文。
+    5. 调用 LLM client 生成普通回答或流式 token。
+
+    参数示例：
+        pipeline = RagPipeline(
+            settings=settings,
+            vector_retriever=MockVectorRetriever(),
+            keyword_retriever=MockKeywordRetriever(),
+            llm_client=MockLLMClient(),
+        )
+
+    请求示例：
+        req = RagChatRequest(
+            query="什么是混合检索？",
+            mode="hybrid",
+            top_k=5,
+            min_score=0.0,
+        )
+    """
+
+    def __init__(
+        self,
+        settings: Settings,
+        vector_retriever: BaseRetriever,
+        keyword_retriever: BaseRetriever,
+        llm_client: BaseLLMClient,
+    ):
+        """初始化 RAG Pipeline 依赖。
+
+        参数：
+            settings:
+                应用配置对象，例如 `app_env`、`rag_default_top_k`、
+                `llm_model_name` 等配置都从这里读取。
+                示例：`settings = get_settings()`
+
+            vector_retriever:
+                向量检索器，必须继承 `BaseRetriever` 并实现
+                `async retrieve(query: str) -> list[RetrievedDoc]`。
+                示例：`MockVectorRetriever()`
+
+            keyword_retriever:
+                关键词检索器，必须继承 `BaseRetriever` 并实现
+                `async retrieve(query: str) -> list[RetrievedDoc]`。
+                示例：`MockKeywordRetriever()`
+
+            llm_client:
+                LLM 客户端，必须继承 `BaseLLMClient` 并实现
+                `generate` 和 `stream` 两个方法。
+                示例：`MockLLMClient()`
+        """
         self.settings = settings
-        print(f"当前应用环境: {settings.app_env}")
-        print(f"当前 LLM 模型: {settings.llm_model_name}")
+        self.vector_retriever = vector_retriever
+        self.keyword_retriever = keyword_retriever
+        self.llm_client = llm_client
 
     async def run(self, req: RagChatRequest) -> RagChatResponse:
-        return await run_rag(req)
+        """执行一次完整的非流式 RAG 请求。
+
+        功能：
+            先召回文档，再构造上下文，最后调用 LLM 一次性生成完整回答。
+            这个方法适合普通 HTTP JSON 接口，例如 `/rag/chat`。
+
+        参数：
+            req:
+                RAG 聊天请求对象。
+                示例：
+                    RagChatRequest(
+                        query="RAG 的流程是什么？",
+                        mode="hybrid",
+                        top_k=3,
+                        min_score=0.8,
+                    )
+
+        返回：
+            RagChatResponse:
+                包含原始问题、完整回答和来源文档 id 列表。
+                示例：
+                    RagChatResponse(
+                        query="RAG 的流程是什么？",
+                        answer="根据检索到的上下文...",
+                        sources=["doc_milvus_001", "doc_es_001"],
+                    )
+
+        可能抛出的异常：
+            NoSearchResultError:
+                检索成功但没有文档满足 `min_score`。
+
+            ExternalServiceError:
+                混合检索时所有召回源都失败。
+        """
+        logger.info(
+            "开始执行 RAG Pipeline: query=%s, mode=%s, top_k=%s, min_score=%s",
+            req.query,
+            req.mode,
+            req.top_k,
+            req.min_score,
+        )
+
+        state: RagState = {
+            "query": req.query,
+            "docs": [],
+            "context": None,
+            "answer": None,
+        }
+
+        docs = await self.retrieve(req)
+        state["docs"] = docs
+
+        logger.info("RAG 召回完成: docs_count=%s", len(docs))
+
+        context = build_context_node(docs)
+        state["context"] = context
+
+        logger.info("RAG 上下文构造完成: context_docs_count=%s", len(context.docs))
+
+        answer = await self.llm_client.generate(
+            query=state["query"],
+            context=context,
+        )
+        state["answer"] = answer
+
+        logger.info("RAG 回答生成完成: answer_length=%s", len(answer))
+
+        return RagChatResponse(
+            query=state["query"],
+            answer=state["answer"] or "",
+            sources=[doc.id for doc in state["docs"]],
+        )
 
     async def stream(
         self,
         req: RagChatRequest,
     ) -> AsyncGenerator[str, None]:
-        async for token in run_rag_stream(req):
+        """执行完整 RAG 请求，并以异步生成器形式流式返回 token。
+
+        功能：
+            先完成检索和上下文构造，然后调用 LLM client 的 `stream` 方法。
+            每次 `yield` 一个 token，API 层再把 token 包装成 SSE 格式。
+            这个方法适合 `/rag/chat/stream` 这类流式接口。
+
+        参数：
+            req:
+                RAG 聊天请求对象。
+                示例：
+                    RagChatRequest(
+                        query="什么是向量检索？",
+                        mode="vector",
+                        top_k=5,
+                        min_score=0.0,
+                    )
+
+        返回：
+            AsyncGenerator[str, None]:
+                异步 token 流。
+                使用示例：
+                    async for token in pipeline.stream(req):
+                        print(token, end="")
+
+        可能抛出的异常：
+            NoSearchResultError:
+                没有满足条件的召回文档。
+
+            ExternalServiceError:
+                混合检索时所有召回源都失败。
+        """
+        logger.info(
+            "开始执行 RAG Stream Pipeline: query=%s, mode=%s, top_k=%s, min_score=%s",
+            req.query,
+            req.mode,
+            req.top_k,
+            req.min_score,
+        )
+
+        docs = await self.retrieve(req)
+
+        logger.info("RAG Stream 召回完成: docs_count=%s", len(docs))
+
+        context = build_context_node(docs)
+
+        logger.info("RAG Stream 上下文构造完成: context_docs_count=%s", len(context.docs))
+
+        token_count = 0
+
+        async for token in self.llm_client.stream(req.query, context):
+            token_count += 1
             yield token
+
+        logger.info("RAG Stream 输出完成: token_count=%s", token_count)
+
+
+    async def retrieve(self, req: RagChatRequest) -> list[RetrievedDoc]:
+        """根据请求模式召回文档并完成过滤、合并、去重。
+
+        功能：
+            - `mode="vector"`：只调用 `vector_retriever`。
+            - `mode="keyword"`：只调用 `keyword_retriever`。
+            - `mode="hybrid"`：并发调用向量检索器和关键词检索器，
+              再按文档 id 去重，并按分数从高到低排序。
+
+        参数：
+            req:
+                RAG 聊天请求对象。
+                常用字段：
+                    `query`：用户问题，例如 `"什么是混合检索？"`。
+                    `mode`：检索模式，例如 `"vector"`、`"keyword"`、`"hybrid"`。
+                    `top_k`：最多返回多少篇文档，例如 `5`。
+                    `min_score`：最低相关性分数，例如 `0.7`。
+
+        返回：
+            list[RetrievedDoc]:
+                过滤和排序后的召回文档列表。
+                示例：
+                    [
+                        RetrievedDoc(
+                            id="doc_milvus_001",
+                            content="Milvus 向量召回结果...",
+                            score=0.91,
+                            source="milvus",
+                        )
+                    ]
+
+        可能抛出的异常：
+            NoSearchResultError:
+                召回源有返回，但过滤后为空。
+
+            ExternalServiceError:
+                混合检索时所有召回源都抛出异常。
+        """
+        if req.mode == "vector":
+            logger.info("开始向量检索: query=%s", req.query)
+
+            docs = await self.vector_retriever.retrieve(req.query)
+            filtered_docs = filter_docs_by_score(docs, req.min_score)
+
+            logger.info(
+                "向量检索完成: raw_count=%s, filtered_count=%s",
+                len(docs),
+                len(filtered_docs),
+            )
+
+            if len(filtered_docs) == 0:
+                logger.warning("向量检索无结果: min_score=%s", req.min_score)
+                raise NoSearchResultError(
+                    f"没有找到满足 min_score={req.min_score} 的向量检索结果"
+                )
+
+            return filtered_docs[: req.top_k]
+
+        if req.mode == "keyword":
+            logger.info("开始关键词检索: query=%s", req.query)
+
+            docs = await self.keyword_retriever.retrieve(req.query)
+            filtered_docs = filter_docs_by_score(docs, req.min_score)
+
+            logger.info(
+                "关键词检索完成: raw_count=%s, filtered_count=%s",
+                len(docs),
+                len(filtered_docs),
+            )
+
+            if len(filtered_docs) == 0:
+                logger.warning("关键词检索无结果: min_score=%s", req.min_score)
+                raise NoSearchResultError(
+                    f"没有找到满足 min_score={req.min_score} 的关键词检索结果"
+                )
+
+            return filtered_docs[: req.top_k]
+
+        logger.info("开始混合检索: query=%s", req.query)
+
+        results = await asyncio.gather(
+            self.vector_retriever.retrieve(req.query),
+            self.keyword_retriever.retrieve(req.query),
+            return_exceptions=True,
+        )
+
+        successful_doc_lists: list[list[RetrievedDoc]] = []
+
+        for result in results:
+            if isinstance(result, Exception):
+                logger.warning("召回源失败: %s", result)
+                continue
+
+            filtered_docs = filter_docs_by_score(
+                docs=result,
+                min_score=req.min_score,
+            )
+            successful_doc_lists.append(filtered_docs)
+
+        if len(successful_doc_lists) == 0:
+            logger.error("混合检索失败: 所有召回源都失败")
+            raise ExternalServiceError("所有召回源都失败")
+
+        merged_docs = merge_docs_by_id(
+            doc_lists=successful_doc_lists,
+            top_k=req.top_k,
+        )
+
+        logger.info(
+            "混合检索合并完成: source_count=%s, merged_count=%s",
+            len(successful_doc_lists),
+            len(merged_docs),
+        )
+
+        if len(merged_docs) == 0:
+            logger.warning("混合检索无结果: min_score=%s", req.min_score)
+            raise NoSearchResultError(
+                f"没有找到满足 min_score={req.min_score} 的混合检索结果"
+            )
+
+        return merged_docs
