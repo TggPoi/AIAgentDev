@@ -32,8 +32,25 @@ logger = get_logger(__name__)
 # 抛出业务异常
 
 
+# ---------------------------------------------------------------------------
+# Deprecated legacy functions
+# 下面这些函数是早期过程式 RAG 实现，当前已经封装到 components 目录：
+# - `milvus_retrieve` -> `MockVectorRetriever.retrieve`
+# - `es_retrieve` -> `MockKeywordRetriever.retrieve`
+# - `generate_answer_node` -> `MockLLMClient.generate`
+# - `stream_answer_node` -> `MockLLMClient.stream`
+# - `run_rag` -> `RagPipeline.run`
+# - `run_rag_stream` -> `RagPipeline.stream`
+#
+# 保留这些函数用于学习 async、召回、上下文构造和流式输出。
+# 新代码不要继续依赖本区域的旧入口函数。
+# ---------------------------------------------------------------------------
 async def milvus_retrieve(query: str) -> list[RetrievedDoc]:
-    """模拟从 Milvus 按语义相似度召回文档。"""
+    """Deprecated: 旧版 Milvus 模拟召回，请使用 `MockVectorRetriever.retrieve`。
+
+    参数示例：
+        query="什么是混合检索？"
+    """
     # 模拟 Milvus 网络 IO
     await asyncio.sleep(1)
 
@@ -54,7 +71,11 @@ async def milvus_retrieve(query: str) -> list[RetrievedDoc]:
 
 
 async def es_retrieve(query: str) -> list[RetrievedDoc]:
-    """模拟从 ElasticSearch 按关键词召回文档。"""
+    """Deprecated: 旧版 ElasticSearch 模拟召回，请使用 `MockKeywordRetriever.retrieve`。
+
+    参数示例：
+        query="什么是混合检索？"
+    """
     # 模拟 ElasticSearch 网络 IO
     await asyncio.sleep(1)
 
@@ -223,7 +244,12 @@ async def generate_answer_node(
     query: str,
     context: RagContext,
 ) -> str:
-    """模拟调用 LLM，根据问题和上下文生成最终回答。"""
+    """Deprecated: 旧版 LLM 回答生成，请使用 `MockLLMClient.generate`。
+
+    参数示例：
+        query="什么是混合检索？"
+        context=RagContext(text="...", docs=[...])
+    """
     # 模拟 LLM 调用
     await asyncio.sleep(1)
 
@@ -236,7 +262,16 @@ async def generate_answer_node(
 
 
 async def run_rag(req: RagChatRequest) -> RagChatResponse:
-    """执行一次完整的非流式 RAG 流程。"""
+    """Deprecated: 旧版非流式 RAG 入口，请使用 `RagPipeline.run`。
+
+    参数示例：
+        req=RagChatRequest(
+            query="什么是混合检索？",
+            mode="hybrid",
+            top_k=5,
+            min_score=0.0,
+        )
+    """
     # 这里用 RagState 模拟后续接入 LangGraph 时的图状态。
     state: RagState = {
         "query": req.query,
@@ -268,7 +303,12 @@ async def stream_answer_node(
     query: str,
     context: RagContext,
 ) -> AsyncGenerator[str, None]:
-    """模拟 LLM 流式输出，把完整回答拆成字符逐个返回。"""
+    """Deprecated: 旧版 LLM 流式输出，请使用 `MockLLMClient.stream`。
+
+    参数示例：
+        query="什么是混合检索？"
+        context=RagContext(text="...", docs=[...])
+    """
     answer = (
         f"根据检索到的上下文，回答问题：{query}\n"
         f"混合检索的核心是：同时使用向量检索和关键词检索，"
@@ -283,7 +323,16 @@ async def stream_answer_node(
 
 
 async def run_rag_stream(req: RagChatRequest) -> AsyncGenerator[str, None]:
-    """执行完整 RAG 流程，并以异步生成器形式流式返回回答。"""
+    """Deprecated: 旧版流式 RAG 入口，请使用 `RagPipeline.stream`。
+
+    参数示例：
+        req=RagChatRequest(
+            query="什么是混合检索？",
+            mode="hybrid",
+            top_k=5,
+            min_score=0.0,
+        )
+    """
     logger.info(
         "开始执行 RAG Stream Pipeline: query=%s, mode=%s, top_k=%s, min_score=%s",
         req.query,

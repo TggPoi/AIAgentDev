@@ -28,6 +28,7 @@ async def rag_chat_endpoint(
     return await pipeline.run(req)
 
 
+#token处理，放在API层面，保持pipeline的纯粹性
 async def rag_chat_sse_event_generator(
     req: RagChatRequest,
     pipeline: RagPipeline,
