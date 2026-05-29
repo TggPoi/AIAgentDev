@@ -12,3 +12,7 @@ class NoSearchResultError(AppServiceError):
 
 class ExternalServiceError(AppServiceError):
     """外部服务调用失败。"""
+
+
+class LLMCallError(ExternalServiceError):
+    """大模型调用异常。"""

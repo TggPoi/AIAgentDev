@@ -2,9 +2,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from fast_app.core.logging import get_logger
+
 from fast_app.services.exceptions import (
     AppServiceError,
     ExternalServiceError,
+    LLMCallError,
     NoSearchResultError,
 )
 
@@ -70,6 +72,27 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "message": str(exc),
             },
         )
+
+
+    @app.exception_handler(LLMCallError)
+    async def handle_llm_call_error(
+        request: Request,
+        exc: LLMCallError,
+    ) -> JSONResponse:
+        logger.error(
+            "大模型调用异常: path=%s, message=%s",
+            request.url.path,
+            str(exc),
+        )
+
+        return JSONResponse(
+            status_code=503,
+            content={
+                "code": "LLM_CALL_ERROR",
+                "message": str(exc),
+            },
+        )
+
 
     @app.exception_handler(Exception)
     async def handle_unexpected_error(
