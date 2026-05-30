@@ -33,7 +33,7 @@ const FILE_TOOLS = new Set([
   "read_file",
   "ls",
   "glob",
-  "grep",
+  "grep",//glob和grep的区别：glob 用于基于模式匹配查找文件路径，grep 用于基于内容搜索文件；两者在终端展示时都优先显示目标路径信息，因此都包含在 FILE_TOOLS 中。
 ]);
 
 // EVAL_TOOL：代码解释器工具名称。
@@ -54,10 +54,10 @@ function printBanner() {
 // readQuery：优先读取命令行参数；没有参数时通过终端交互读取调研问题。
 // 调用位置：main()。
 async function readQuery() {
+
   // fromArgs：将命令行参数合并后得到的调研问题。
   const fromArgs = process.argv.slice(2).join(" ").trim();
   if (fromArgs) return fromArgs;
-
   // rl：终端交互接口，负责提问并读取用户输入。
   const rl = readline.createInterface({ input, output });
   try {
@@ -294,6 +294,7 @@ async function main() {
 
   // query：本次执行使用的用户调研问题。
   const query = await readQuery();
+
   if (!query) {
     console.error("请提供调研主题");
     process.exit(1);

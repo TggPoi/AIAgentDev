@@ -28,7 +28,17 @@ export const DEFAULT_TEST_QUERY =
 
 const DEBUG_RUNS_ROOT = "/debug_workspace/runs";
 const DEBUG_SKILLS_ROOT = "/skills-debug/";
-const PHASE_RECURSION_LIMIT = 20;
+export const DEFAULT_PHASE_RECURSION_LIMIT = 64;
+
+function readPositiveIntegerEnv(name, fallback) {
+  const parsed = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const PHASE_RECURSION_LIMIT = readPositiveIntegerEnv(
+  "DEBUG_PHASE_RECURSION_LIMIT",
+  DEFAULT_PHASE_RECURSION_LIMIT,
+);
 
 const DEBUG_PERMISSIONS = [
   { operations: ["read", "write"], paths: ["/debug_workspace/**"] },
@@ -230,14 +240,28 @@ function assertVirtualFile(virtualPath, phaseName) {
 
 async function invokePhase(agent, phaseName, prompt, onStage) {
   onStage(`开始阶段：${phaseName}`);
-  const result = await agent.invoke(
-    { messages: [new HumanMessage(prompt)] },
-    {
-      recursionLimit: PHASE_RECURSION_LIMIT,
-      runName: `debug_pipeline:${phaseName}`,
-      tags: ["debug-pipeline", phaseName],
-    },
-  );
+  let result;
+  try {
+    result = await agent.invoke(
+      { messages: [new HumanMessage(prompt)] },
+      {
+        recursionLimit: PHASE_RECURSION_LIMIT,
+        runName: `debug_pipeline:${phaseName}`,
+        tags: ["debug-pipeline", phaseName],
+      },
+    );
+  } catch (error) {
+    if (error?.lc_error_code === "GRAPH_RECURSION_LIMIT") {
+      throw new Error(
+        `${phaseName} 阶段达到 LangGraph 步数上限 ${PHASE_RECURSION_LIMIT}。`
+          + "该上限统计模型节点、工具节点和中间件节点，不等于模型调用次数。"
+          + "请先检查是否存在重复工具调用；确认流程合理后，可通过 "
+          + "DEBUG_PHASE_RECURSION_LIMIT 调整。",
+        { cause: error },
+      );
+    }
+    throw error;
+  }
   onStage(`完成阶段：${phaseName}；${getLastMessageText(result)}`);
 }
 

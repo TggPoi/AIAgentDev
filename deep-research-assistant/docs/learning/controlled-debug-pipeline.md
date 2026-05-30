@@ -38,6 +38,13 @@ node src/debug/controlled-cli.mjs
 node src/debug/controlled-cli.mjs "调研 npm workspaces 是否适合管理一个包含三个包的小型仓库，输出一页建议"
 ```
 
+如需临时调整单个阶段允许执行的 LangGraph 步数：
+
+```powershell
+$env:DEBUG_PHASE_RECURSION_LIMIT = "80"
+node src/debug/controlled-cli.mjs
+```
+
 运行离线验证：
 
 ```powershell
@@ -102,7 +109,7 @@ Object.defineProperty(chatModel, "profile", {
 
 ## 5. 固定阶段：保证 Editor 不会被跳过
 
-核心函数是 [`buildControlledPipeline()`](../../src/debug/controlled-pipeline.mjs#L244)。
+核心函数是 [`buildControlledPipeline()`](../../src/debug/controlled-pipeline.mjs#L268)。
 
 图结构：
 
@@ -129,10 +136,10 @@ START
 
 | 节点 | 源码 | 作用 |
 | --- | --- | --- |
-| `researchNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L252) | 调研并生成 `findings`。 |
-| `draftNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L268) | 根据问题和材料写草稿。 |
-| `reviewNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L285) | 强制 Editor 写入 review 文件。 |
-| `finalizeNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L305) | 检查 Editor gate，再生成终稿。 |
+| `researchNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L276) | 调研并生成 `findings`。 |
+| `draftNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L292) | 根据问题和材料写草稿。 |
+| `reviewNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L309) | 强制 Editor 写入 review 文件。 |
+| `finalizeNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L329) | 检查 Editor gate，再生成终稿。 |
 
 ### Editor gate
 
@@ -176,9 +183,9 @@ if (completedCalls >= maxCalls) {
 
 ## 7. 每个阶段的调用预算
 
-阶段 Agent 在 [`createPhaseAgents()`](../../src/debug/controlled-pipeline.mjs#L150) 中创建。
+阶段 Agent 在 [`createPhaseAgents()`](../../src/debug/controlled-pipeline.mjs#L160) 中创建。
 
-每个阶段都使用 [`createPhaseMiddleware()`](../../src/debug/controlled-pipeline.mjs#L127) 添加：
+每个阶段都使用 [`createPhaseMiddleware()`](../../src/debug/controlled-pipeline.mjs#L137) 添加：
 
 1. 文件系统中间件；
 2. 新技能目录；
@@ -193,6 +200,45 @@ maxToolCalls: 7
 ```
 
 目的不是精确预测 token，而是防止异常循环制造超长 trace。
+
+### LangGraph 步数与模型调用次数不是一回事
+
+阶段 Agent 还设置了 `recursionLimit`，当前默认值为 `64`：
+
+- [`DEFAULT_PHASE_RECURSION_LIMIT`](../../src/debug/controlled-pipeline.mjs#L31)
+- [`invokePhase()`](../../src/debug/controlled-pipeline.mjs#L241)
+
+`recursionLimit` 统计 LangGraph 子图执行步数。一次完整操作通常包含：
+
+```text
+模型节点
+  -> 中间件节点
+  -> 工具节点
+  -> 中间件节点
+  -> 再次进入模型节点
+```
+
+因此，`recursionLimit: 20` 并不表示允许调用模型二十次。调研阶段需要读取技能、读取问题、搜索一至两次并写入文件，`20` 个图步数可能不足。
+
+模型调用和工具调用仍分别受到 `maxModelCalls: 8` 与 `maxToolCalls: 7` 限制。提高图步数预算不会移除成本保护。
+
+如需临时调整，可以设置：
+
+```powershell
+$env:DEBUG_PHASE_RECURSION_LIMIT = "80"
+```
+
+### `GRAPH_RECURSION_LIMIT` 报错说明
+
+如果报错类似：
+
+```text
+GraphRecursionError: Recursion limit of 20 reached without hitting a stop condition
+```
+
+含义是：阶段 Agent 尚未走到结束节点，LangGraph 图步数预算已经耗尽。它不一定表示模型发生死循环，也可能只是预算过紧。
+
+调试版现在默认使用 `64`，并在 [`invokePhase()`](../../src/debug/controlled-pipeline.mjs#L241) 中补充阶段级错误信息。若提高到 `64` 后仍报错，应检查 LangSmith trace 中是否存在重复读取文件、重复搜索或重复写入。
 
 ## 8. 独立工作区
 
@@ -213,8 +259,8 @@ debug_workspace/
 
 路径创建逻辑：
 
-- [`createRunPaths()`](../../src/debug/controlled-pipeline.mjs#L68)
-- [`prepareControlledRun()`](../../src/debug/controlled-pipeline.mjs#L83)
+- [`createRunPaths()`](../../src/debug/controlled-pipeline.mjs#L78)
+- [`prepareControlledRun()`](../../src/debug/controlled-pipeline.mjs#L93)
 
 这解决了旧 `/workspace/sources` 中历史 `findings_*.md` 持续累积的问题。
 
@@ -222,7 +268,7 @@ debug_workspace/
 
 ## 9. 文件访问边界
 
-调试版文件权限定义在 [`DEBUG_PERMISSIONS`](../../src/debug/controlled-pipeline.mjs#L33)：
+调试版文件权限定义在 [`DEBUG_PERMISSIONS`](../../src/debug/controlled-pipeline.mjs#L43)：
 
 ```js
 [
@@ -285,8 +331,9 @@ Editor 已执行: true
 
 核心验证函数：
 
-- [`testPipelineOrderAndEditorGate()`](../../src/debug/controlled-pipeline-smoke-test.mjs#L23)
-- [`testCompactSearchFormatting()`](../../src/debug/controlled-pipeline-smoke-test.mjs#L62)
+- [`testPipelineOrderAndEditorGate()`](../../src/debug/controlled-pipeline-smoke-test.mjs#L25)
+- [`testRecursionErrorContext()`](../../src/debug/controlled-pipeline-smoke-test.mjs#L77)
+- [`testCompactSearchFormatting()`](../../src/debug/controlled-pipeline-smoke-test.mjs#L107)
 
 ## 13. 适用范围
 
