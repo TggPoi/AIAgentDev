@@ -237,7 +237,7 @@ skills: [skillsRoot]
 
 但默认学习问题很小。如果允许 `research Deep Agent -> task -> 子 Agent` 继续扩展，trace 会重新变长。
 
-所以 [`createPhaseDeepAgent()`](../../src/debug/hybrid-deep-pipeline.mjs#L232) 增加了工具级硬限制：
+所以 `createPhaseDeepAgent()` 中的 [`toolCallLimitMiddleware({ toolName: "task", ... })`](../../src/debug/hybrid-deep-pipeline.mjs#L232) 增加了工具级硬限制：
 
 ```js
 toolCallLimitMiddleware({
@@ -287,7 +287,7 @@ toolCallLimitMiddleware(...)
 toolCallLimitMiddleware({ toolName: "task", ... })
 ```
 
-对应代码位于 [`createPhaseDeepAgent()`](../../src/debug/hybrid-deep-pipeline.mjs#L224)。
+对应代码位于 `createPhaseDeepAgent()` 中的 [`modelCallLimitMiddleware()`](../../src/debug/hybrid-deep-pipeline.mjs#L224) 和 [`toolCallLimitMiddleware()`](../../src/debug/hybrid-deep-pipeline.mjs#L228)。
 
 当前预算：
 

@@ -247,7 +247,7 @@ run limit exceeded (6/5 calls)
 
 当前实现将每个嵌套调研子 Agent 的整体工具预算设置为 `8`，模型调用预算设置为 `7`。联网搜索仍然由独立的 `compact_web_search({ maxCalls: 1 })` 限制为一次。
 
-预算常量位于 [`hybrid-deep-pipeline.mjs`](../../src/debug/hybrid-deep-pipeline.mjs#L53)。
+预算常量分别是 [`NESTED_RESEARCH_SUBAGENT_MAX_MODEL_CALLS`](../../src/debug/hybrid-deep-pipeline.mjs#L53) 和 [`NESTED_RESEARCH_SUBAGENT_MAX_TOOL_CALLS`](../../src/debug/hybrid-deep-pipeline.mjs#L54)。
 
 ## 12. `InvalidUpdateError: threadModelCallCount` 排查
 
@@ -344,7 +344,7 @@ node src/debug/nested-hybrid-deep-cli.mjs
 | 子 Agent 模型调用不足 | [`NESTED_RESEARCH_SUBAGENT_MAX_MODEL_CALLS`](../../src/debug/hybrid-deep-pipeline.mjs#L53) | `7` | 每次增加 `1`，并检查是否存在空转。 |
 | 子 Agent 全部工具调用不足 | [`NESTED_RESEARCH_SUBAGENT_MAX_TOOL_CALLS`](../../src/debug/hybrid-deep-pipeline.mjs#L54) | `8` | 每次增加 `1`，区分读取、todo、搜索和写入。 |
 | 子 Agent 搜索资料不足 | [`createCompactWebSearch({ maxCalls: 1 })`](../../src/debug/hybrid-deep-pipeline.mjs#L280) | 每个子 Agent `1` 次 | 与全部工具预算分开调整，通常不要超过 `2`。 |
-| 协调员无法完成合并 | [`maxModelCalls` 和 `maxToolCalls`](../../src/debug/hybrid-deep-pipeline.mjs#L370) | `8` 和 `10` | 先检查是否重复读取文件，再小幅提高。 |
+| 协调员无法完成合并 | [`maxModelCalls`](../../src/debug/hybrid-deep-pipeline.mjs#L370) 和 [`maxToolCalls`](../../src/debug/hybrid-deep-pipeline.mjs#L371) | `8` 和 `10` | 先检查是否重复读取文件，再小幅提高。 |
 | 阶段图步数不足 | `HYBRID_PHASE_RECURSION_LIMIT` | `96` | 出现 `GRAPH_RECURSION_LIMIT` 时检查 trace 后调整。 |
 | 增加子 Agent 数量 | [`createNestedResearchSubagents()`](../../src/debug/hybrid-deep-pipeline.mjs#L316) | `2` | 同步修改名称列表、Prompt、guard、输出路径和文件 gate。 |
 
