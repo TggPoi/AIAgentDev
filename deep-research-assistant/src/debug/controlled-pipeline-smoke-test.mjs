@@ -12,8 +12,21 @@ import {
   formatCompactPages,
 } from "./compact-search.mjs";
 
+/**
+ * 创建一个会把固定内容写入指定路径的模拟阶段 Agent。
+ * @param {string} outputPath 模拟 Agent 需要写入的虚拟路径。
+ * @param {string} content 写入文件的固定文本。
+ * @param {object[]} phaseConfigs 用于收集每次 invoke() 配置的数组。
+ * @returns {{invoke: Function}} 可替代真实 Agent 的最小对象。
+ */
 function createFakeAgent(outputPath, content, phaseConfigs = []) {
   return {
+    /**
+     * 记录调用配置、写入固定文件并返回模拟完成消息。
+     * @param {unknown} _input 未使用的 Agent 输入。
+     * @param {object} config 当前阶段调用配置。
+     * @returns {Promise<{messages: Array<{content: string}>}>} 模拟 Agent 状态。
+     */
     async invoke(_input, config) {
       phaseConfigs.push(config);
       fs.writeFileSync(resolveVirtualPath(outputPath), content, "utf8");
@@ -22,6 +35,10 @@ function createFakeAgent(outputPath, content, phaseConfigs = []) {
   };
 }
 
+/**
+ * 验证外层图严格执行四个阶段、Editor gate 生效，并向阶段传入统一递归上限。
+ * @returns {Promise<void>} 所有断言通过并清理临时运行目录后结束。
+ */
 async function testPipelineOrderAndEditorGate() {
   const initialState = prepareControlledRun("smoke test", {
     runId: `smoke-${Date.now()}`,
@@ -74,6 +91,10 @@ async function testPipelineOrderAndEditorGate() {
   fs.rmSync(runDir, { recursive: true, force: true });
 }
 
+/**
+ * 验证阶段内部递归上限错误会被转换为包含阶段名称和调参提示的错误。
+ * @returns {Promise<void>} 捕获预期错误并清理临时运行目录后结束。
+ */
 async function testRecursionErrorContext() {
   const initialState = prepareControlledRun("recursion error test", {
     runId: `recursion-error-${Date.now()}`,
@@ -104,6 +125,10 @@ async function testRecursionErrorContext() {
   });
 }
 
+/**
+ * 验证搜索结果数量限制和摘要截断格式。
+ * @returns {void}
+ */
 function testCompactSearchFormatting() {
   assert.equal(clampSearchCount(undefined), 3);
   assert.equal(clampSearchCount(99), 3);

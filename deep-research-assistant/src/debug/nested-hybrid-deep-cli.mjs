@@ -11,11 +11,20 @@ import {
 
 loadEnv({ path: path.join(projectDir, ".env") });
 
+/**
+ * 读取命令行中的用户问题；未传参数时使用混合流水线默认问题。
+ * @returns {string} 将作为嵌套流水线输入的完整问题文本。
+ */
 function readQuery() {
   const fromArgs = process.argv.slice(2).join(" ").trim();
   return fromArgs || DEFAULT_HYBRID_TEST_QUERY;
 }
 
+/**
+ * 创建并执行允许 research 阶段并行委派子 Agent 的混合流水线。
+ * 输入来自命令行参数和 .env 环境变量；输出为控制台日志以及子 Agent 和终稿文件路径。
+ * @returns {Promise<void>} 流水线执行和日志输出完成后结束。
+ */
 async function main() {
   const query = readQuery();
   const initialState = prepareHybridRun(query);

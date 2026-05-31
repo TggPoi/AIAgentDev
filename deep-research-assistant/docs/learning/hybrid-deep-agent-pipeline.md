@@ -28,7 +28,7 @@
 | 实现 | 源码 | 用途 |
 | --- | --- | --- |
 | 原版 | [`agent.mjs`](../../src/agent.mjs#L207) | 观察单个 Deep Agent 的自主规划能力。 |
-| 基础受控版 | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L352) | 用最少中间件排查流程问题。 |
+| 基础受控版 | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L447) | 用最少中间件排查流程问题。 |
 
 ## 2. 运行方式
 
@@ -104,7 +104,7 @@ node src/debug/hybrid-deep-pipeline-smoke-test.mjs
 
 ## 4. 外层图：硬性规定流程
 
-图结构定义在 [`buildHybridDeepPipeline()`](../../src/debug/hybrid-deep-pipeline.mjs#L472)：
+图结构定义在 [`buildHybridDeepPipeline()`](../../src/debug/hybrid-deep-pipeline.mjs#L601)：
 
 ```js
 return new StateGraph(HybridPipelineState)
@@ -132,9 +132,9 @@ Editor 节点完成后，才会将状态写为：
 editorCompleted: true
 ```
 
-对应代码位于 [`reviewNode()`](../../src/debug/hybrid-deep-pipeline.mjs#L525)。
+对应代码位于 [`reviewNode()`](../../src/debug/hybrid-deep-pipeline.mjs#L669)。
 
-定稿前，[`finalizeNode()`](../../src/debug/hybrid-deep-pipeline.mjs#L545) 会执行两次检查：
+定稿前，[`finalizeNode()`](../../src/debug/hybrid-deep-pipeline.mjs#L695) 会执行两次检查：
 
 ```js
 if (!state.editorCompleted) {
@@ -153,7 +153,7 @@ assertVirtualFile(state.reviewPath, "finalize");
 
 混合版没有在三个阶段中直接调用基础 `createAgent()`。
 
-它通过 [`createPhaseDeepAgent()`](../../src/debug/hybrid-deep-pipeline.mjs#L200) 统一创建阶段 Agent：
+它通过 [`createPhaseDeepAgent()`](../../src/debug/hybrid-deep-pipeline.mjs#L259) 统一创建阶段 Agent：
 
 ```js
 return createDeepAgent({
@@ -201,6 +201,16 @@ const HYBRID_MEMORY_PATH = "/hybrid-memory/AGENTS.md";
 memory: [HYBRID_MEMORY_PATH]
 ```
 
+**createDeepAgent() 会自动创建 MemoryMiddleware。它分两步工作。**
+
+**1. 每次 agent.invoke() 开始时读取文件**
+beforeAgent() 会读取 AGENTS.md，并将内容保存到当前 Agent state 的 memoryContents 中。
+
+如果 state 中已经存在 memoryContents，则不会重复读取文件。
+
+**2. 每次调用模型时注入 SystemMessage**
+wrapModelCall() 会把已加载的 memory 内容追加到 SystemMessage 中，然后再调用模型。
+
 `createDeepAgent()` 会自动挂载 `createMemoryMiddleware()`，读取文件并加入系统提示词。
 
 这与基础受控版不同。基础受控版如果需要 memory，必须手动调用 `createMemoryMiddleware()`。
@@ -237,7 +247,7 @@ skills: [skillsRoot]
 
 但默认学习问题很小。如果允许 `research Deep Agent -> task -> 子 Agent` 继续扩展，trace 会重新变长。
 
-所以 `createPhaseDeepAgent()` 中的 [`toolCallLimitMiddleware({ toolName: "task", ... })`](../../src/debug/hybrid-deep-pipeline.mjs#L232) 增加了工具级硬限制：
+所以 `createPhaseDeepAgent()` 中的 [`toolCallLimitMiddleware({ toolName: "task", ... })`](../../src/debug/hybrid-deep-pipeline.mjs#L291) 增加了工具级硬限制：
 
 ```js
 toolCallLimitMiddleware({
@@ -275,7 +285,7 @@ maxTaskCalls = 0
 | `/hybrid-memory/**` | 只读 | 加载 memory。 |
 | 其他路径 | 拒绝 | 避免调试 Agent 浏览或修改工程其他内容。 |
 
-权限定义位于 [`HYBRID_PERMISSIONS`](../../src/debug/hybrid-deep-pipeline.mjs#L76)。
+权限定义位于 [`HYBRID_PERMISSIONS`](../../src/debug/hybrid-deep-pipeline.mjs#L82)。
 
 ## 11. 调用预算：限制单个阶段成本
 
@@ -287,7 +297,7 @@ toolCallLimitMiddleware(...)
 toolCallLimitMiddleware({ toolName: "task", ... })
 ```
 
-对应代码位于 `createPhaseDeepAgent()` 中的 [`modelCallLimitMiddleware()`](../../src/debug/hybrid-deep-pipeline.mjs#L224) 和 [`toolCallLimitMiddleware()`](../../src/debug/hybrid-deep-pipeline.mjs#L228)。
+对应代码位于 `createPhaseDeepAgent()` 中的 [`modelCallLimitMiddleware()`](../../src/debug/hybrid-deep-pipeline.mjs#L283) 和 [`toolCallLimitMiddleware()`](../../src/debug/hybrid-deep-pipeline.mjs#L287)。
 
 当前预算：
 
@@ -301,7 +311,7 @@ toolCallLimitMiddleware({ toolName: "task", ... })
 此外，阶段内部 LangGraph 步数默认上限为 `96`：
 
 - [`DEFAULT_HYBRID_PHASE_RECURSION_LIMIT`](../../src/debug/hybrid-deep-pipeline.mjs#L48)
-- [`invokePhase()`](../../src/debug/hybrid-deep-pipeline.mjs#L445)
+- [`invokePhase()`](../../src/debug/hybrid-deep-pipeline.mjs#L565)
 
 混合版的步数上限比基础受控版更高，因为 `createDeepAgent()` 默认挂载了更多中间件。图步数不等于模型调用次数。
 
@@ -344,9 +354,9 @@ toolCallLimitMiddleware({ toolName: "task", ... })
 | 更换测试问题 | CLI 参数 | 优先使用一页以内、可拆成两个独立主题的问题。 |
 | 更换模型 | 环境变量 `HYBRID_PIPELINE_MODEL` | 比较不同模型的工具遵循能力和 token 消耗。 |
 | 增加阶段图步数 | 环境变量 `HYBRID_PHASE_RECURSION_LIMIT` | 只在确认没有重复调用后提高。 |
-| 增加阶段模型预算 | [`createHybridDeepPhaseAgents()`](../../src/debug/hybrid-deep-pipeline.mjs#L349) | 模型提前停止或无法完成写入时，小幅增加。 |
-| 增加阶段工具预算 | [`createHybridDeepPhaseAgents()`](../../src/debug/hybrid-deep-pipeline.mjs#L349) | 出现 `ToolCallLimitExceededError` 时先检查 trace，再小幅增加。 |
-| 调整搜索次数 | [`createCompactWebSearch()`](../../src/debug/compact-search.mjs#L43) | 与全部工具预算分开调整。 |
+| 增加阶段模型预算 | [`createHybridDeepPhaseAgents()`](../../src/debug/hybrid-deep-pipeline.mjs#L448) | 模型提前停止或无法完成写入时，小幅增加。 |
+| 增加阶段工具预算 | [`createHybridDeepPhaseAgents()`](../../src/debug/hybrid-deep-pipeline.mjs#L448) | 出现 `ToolCallLimitExceededError` 时先检查 trace，再小幅增加。 |
+| 调整搜索次数 | [`createCompactWebSearch()`](../../src/debug/compact-search.mjs#L68) | 与全部工具预算分开调整。 |
 | 调整搜索结果长度 | [`compact-search.mjs`](../../src/debug/compact-search.mjs#L6) | trace 太长时优先降低结果数量和摘要长度。 |
 | 调整子 Agent 数量 | 嵌套模式的 `subagents`、Prompt、guard 和文件路径 | 必须同步修改，不能只提高 `maxTaskCalls`。 |
 | 调整 skill | [`skills-hybrid`](../../skills-hybrid/research/compact-research/SKILL.md#L1) | 适合测试 Prompt 与 skill 的职责边界。 |
@@ -379,7 +389,7 @@ hybrid_workspace/
         report_node_test.md
 ```
 
-路径由 [`createHybridRunPaths()`](../../src/debug/hybrid-deep-pipeline.mjs#L114) 创建。
+路径由 [`createHybridRunPaths()`](../../src/debug/hybrid-deep-pipeline.mjs#L135) 创建。
 
 独立目录可以避免历史材料干扰当前运行，也便于将 LangSmith trace 与本地文件对应起来。
 
@@ -395,18 +405,18 @@ node src/debug/hybrid-deep-pipeline-smoke-test.mjs
 
 | 测试 | 源码 | 目的 |
 | --- | --- | --- |
-| 固定阶段顺序 | [`testPipelineOrderAndEditorGate()`](../../src/debug/hybrid-deep-pipeline-smoke-test.mjs#L30) | 验证阶段顺序和最终报告文件。 |
-| Editor 文件缺失 | [`testMissingEditorOutputStopsPipeline()`](../../src/debug/hybrid-deep-pipeline-smoke-test.mjs#L91) | 验证 Editor 未写 review 时流水线失败。 |
-| Deep Agent 工厂 | [`testDeepAgentFactory()`](../../src/debug/hybrid-deep-pipeline-smoke-test.mjs#L176) | 验证三个 `createDeepAgent()` 实例可以构造。 |
-| 嵌套状态隔离 | [`testNestedResearchLocalStateIsolation()`](../../src/debug/hybrid-deep-pipeline-smoke-test.mjs#L203) | 验证并行子 Agent 不会向父 Agent 回传局部计数状态。 |
-| 学习资源 | [`testLearningFilesExist()`](../../src/debug/hybrid-deep-pipeline-smoke-test.mjs#L234) | 验证 memory 和 skill 文件存在。 |
+| 固定阶段顺序 | [`testPipelineOrderAndEditorGate()`](../../src/debug/hybrid-deep-pipeline-smoke-test.mjs#L47) | 验证阶段顺序和最终报告文件。 |
+| Editor 文件缺失 | [`testMissingEditorOutputStopsPipeline()`](../../src/debug/hybrid-deep-pipeline-smoke-test.mjs#L112) | 验证 Editor 未写 review 时流水线失败。 |
+| Deep Agent 工厂 | [`testDeepAgentFactory()`](../../src/debug/hybrid-deep-pipeline-smoke-test.mjs#L205) | 验证三个 `createDeepAgent()` 实例可以构造。 |
+| 嵌套状态隔离 | [`testNestedResearchLocalStateIsolation()`](../../src/debug/hybrid-deep-pipeline-smoke-test.mjs#L236) | 验证并行子 Agent 不会向父 Agent 回传局部计数状态。 |
+| 学习资源 | [`testLearningFilesExist()`](../../src/debug/hybrid-deep-pipeline-smoke-test.mjs#L271) | 验证 memory 和 skill 文件存在。 |
 
 ## 14. 推荐阅读顺序
 
-1. 阅读外层固定图：[`buildHybridDeepPipeline()`](../../src/debug/hybrid-deep-pipeline.mjs#L472)
-2. 阅读 Editor gate：[`finalizeNode()`](../../src/debug/hybrid-deep-pipeline.mjs#L545)
-3. 阅读阶段 Deep Agent 工厂：[`createPhaseDeepAgent()`](../../src/debug/hybrid-deep-pipeline.mjs#L200)
-4. 阅读三个阶段配置：[`createHybridDeepPhaseAgents()`](../../src/debug/hybrid-deep-pipeline.mjs#L349)
+1. 阅读外层固定图：[`buildHybridDeepPipeline()`](../../src/debug/hybrid-deep-pipeline.mjs#L601)
+2. 阅读 Editor gate：[`finalizeNode()`](../../src/debug/hybrid-deep-pipeline.mjs#L695)
+3. 阅读阶段 Deep Agent 工厂：[`createPhaseDeepAgent()`](../../src/debug/hybrid-deep-pipeline.mjs#L259)
+4. 阅读三个阶段配置：[`createHybridDeepPhaseAgents()`](../../src/debug/hybrid-deep-pipeline.mjs#L448)
 5. 阅读 memory：[`AGENTS.md`](../../hybrid-memory/AGENTS.md#L1)
 6. 阅读三个独立 skill：[`skills-hybrid`](../../skills-hybrid/research/compact-research/SKILL.md#L1)
 7. 运行离线 smoke test：[`hybrid-deep-pipeline-smoke-test.mjs`](../../src/debug/hybrid-deep-pipeline-smoke-test.mjs#L1)

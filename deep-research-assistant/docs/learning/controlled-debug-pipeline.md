@@ -109,7 +109,7 @@ Object.defineProperty(chatModel, "profile", {
 
 ## 5. 固定阶段：保证 Editor 不会被跳过
 
-核心函数是 [`buildControlledPipeline()`](../../src/debug/controlled-pipeline.mjs#L268)。
+核心函数是 [`buildControlledPipeline()`](../../src/debug/controlled-pipeline.mjs#L342)。
 
 图结构：
 
@@ -136,10 +136,10 @@ START
 
 | 节点 | 源码 | 作用 |
 | --- | --- | --- |
-| `researchNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L276) | 调研并生成 `findings`。 |
-| `draftNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L292) | 根据问题和材料写草稿。 |
-| `reviewNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L309) | 强制 Editor 写入 review 文件。 |
-| `finalizeNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L329) | 检查 Editor gate，再生成终稿。 |
+| `researchNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L355) | 调研并生成 `findings`。 |
+| `draftNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L376) | 根据问题和材料写草稿。 |
+| `reviewNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L398) | 强制 Editor 写入 review 文件。 |
+| `finalizeNode` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L424) | 检查 Editor gate，再生成终稿。 |
 
 ### Editor gate
 
@@ -171,7 +171,7 @@ assertVirtualFile(state.reviewPath, "finalize");
 | 单次结果数量 | `3` | [`DEFAULT_MAX_RESULTS`](../../src/debug/compact-search.mjs#L7) |
 | 单条摘要长度 | `280` 字符 | [`DEFAULT_MAX_SUMMARY_CHARS`](../../src/debug/compact-search.mjs#L8) |
 
-工具在 [`createCompactWebSearch()`](../../src/debug/compact-search.mjs#L43) 内部维护调用计数：
+工具在 [`createCompactWebSearch()`](../../src/debug/compact-search.mjs#L68) 内部维护调用计数：
 
 ```js
 if (completedCalls >= maxCalls) {
@@ -183,9 +183,9 @@ if (completedCalls >= maxCalls) {
 
 ## 7. 每个阶段的调用预算
 
-阶段 Agent 在 [`createPhaseAgents()`](../../src/debug/controlled-pipeline.mjs#L160) 中创建。
+阶段 Agent 在 [`createPhaseAgents()`](../../src/debug/controlled-pipeline.mjs#L206) 中创建。
 
-每个阶段都使用 [`createPhaseMiddleware()`](../../src/debug/controlled-pipeline.mjs#L137) 添加：
+每个阶段都使用 [`createPhaseMiddleware()`](../../src/debug/controlled-pipeline.mjs#L178) 添加：
 
 1. 文件系统中间件；
 2. 新技能目录；
@@ -206,7 +206,7 @@ maxToolCalls: 7
 阶段 Agent 还设置了 `recursionLimit`，当前默认值为 `64`：
 
 - [`DEFAULT_PHASE_RECURSION_LIMIT`](../../src/debug/controlled-pipeline.mjs#L31)
-- [`invokePhase()`](../../src/debug/controlled-pipeline.mjs#L241)
+- [`invokePhase()`](../../src/debug/controlled-pipeline.mjs#L308)
 
 `recursionLimit` 统计 LangGraph 子图执行步数。一次完整操作通常包含：
 
@@ -228,6 +228,77 @@ maxToolCalls: 7
 $env:DEBUG_PHASE_RECURSION_LIMIT = "80"
 ```
 
+
+
+### 容易误解的内容：
+
+~~~h
+//工程中的recursionLimit被设置为64，这是指代码447行创建的StateGraph能够执行的最大步数是64步吗？
+//
+//如果某些节点创建了子agent，子agent调用工具的次数也会被一起统计吗？
+~~~
+
+不是。当前工程中的 `recursionLimit: 64` 不直接限制第 447 行创建的外层 `StateGraph`。
+
+它是在 [controlled-pipeline.mjs](D:/AI_Agent_Project/deep-research-assistant/src/debug/controlled-pipeline.mjs:314) 的 `invokePhase()` 中传给阶段 Agent 的：
+
+```js
+result = await agent.invoke(
+  { messages: [new HumanMessage(prompt)] },
+  {
+    recursionLimit: PHASE_RECURSION_LIMIT,
+    runName: `debug_pipeline:${phaseName}`,
+    tags: ["debug-pipeline", phaseName],
+  },
+);
+```
+
+**当前代码中的层级**
+外层 `StateGraph` 固定执行：
+
+```text
+research -> draft -> editor_review -> finalize -> END
+```
+
+每个节点内部都会通过 `invokePhase()` 调用一个阶段 Agent。`recursionLimit: 64` 限制的是当前阶段 Agent 内部 LangGraph 的执行步数，而不是外层流水线四个节点的总步数。
+
+例如 `research` 阶段可能执行：
+
+```text
+模型判断下一步
+-> 读取 skill 文件
+-> 模型继续判断
+-> 搜索网页
+-> 模型整理结果
+-> 写入 findings 文件
+-> 模型返回完成信息
+```
+
+这些模型节点、工具节点和中间件相关节点会共同消耗该阶段的 `64` 步预算。
+
+**子 Agent 是否一起统计**
+需要区分子 Agent 的调用方式。
+
+| 情况                             | 是否消耗父 Agent 的 `recursionLimit`                         |
+| -------------------------------- | ------------------------------------------------------------ |
+| 父 Agent 将子 Agent 作为工具调用 | 父 Agent 会统计“调用子 Agent 工具”这一外层步骤，但不会逐步累计子 Agent 内部执行的每一步。 |
+| 子 Agent 内部调用模型或工具      | 由子 Agent 自己的 LangGraph 运行统计，需要为子 Agent 单独设置 `recursionLimit`。 |
+| 普通工具调用                     | 会消耗当前 Agent 图中的工具执行步骤。                        |
+| 外层流水线节点调用阶段 Agent     | 外层图只看到一次节点执行，不会将阶段 Agent 内部的每一步展开统计。 |
+
+可以将其理解为每层 Graph 都有自己的步数计数器。父图不会自动把嵌套 Graph 的内部步数全部合并进自己的计数器。
+
+此外，当前 `controlled-pipeline.mjs` 创建的是普通 `createAgent()`，并没有子 Agent。工程中的嵌套子 Agent 示例主要在 `src/debug/hybrid-deep-pipeline.mjs` 中。若要限制整个嵌套流程，通常要同时设置：
+
+- 外层流水线的 `recursionLimit`
+- 每个阶段 Agent 的 `recursionLimit`
+- 子 Agent 自己的 `recursionLimit`
+- `modelCallLimitMiddleware`
+- `toolCallLimitMiddleware`
+- 针对 `task` 工具的单独调用次数限制
+
+
+
 ### `GRAPH_RECURSION_LIMIT` 报错说明
 
 如果报错类似：
@@ -238,7 +309,78 @@ GraphRecursionError: Recursion limit of 20 reached without hitting a stop condit
 
 含义是：阶段 Agent 尚未走到结束节点，LangGraph 图步数预算已经耗尽。它不一定表示模型发生死循环，也可能只是预算过紧。
 
-调试版现在默认使用 `64`，并在 [`invokePhase()`](../../src/debug/controlled-pipeline.mjs#L241) 中补充阶段级错误信息。若提高到 `64` 后仍报错，应检查 LangSmith trace 中是否存在重复读取文件、重复搜索或重复写入。
+调试版现在默认使用 `64`，并在 [`invokePhase()`](../../src/debug/controlled-pipeline.mjs#L308) 中补充阶段级错误信息。若提高到 `64` 后仍报错，应检查 LangSmith trace 中是否存在重复读取文件、重复搜索或重复写入。
+
+
+
+## 7.1、agent.invoke 执行时可以补充的限制参数：
+
+`agent.invoke(input, config)` 的第二个参数类型是 LangChain 的 [`RunnableConfig`](https://reference.langchain.com/javascript/langchain-core/runnables/RunnableConfig)。
+
+当前代码使用了：
+
+```js
+{
+  recursionLimit: PHASE_RECURSION_LIMIT,
+  runName: `debug_pipeline:${phaseName}`,
+  tags: ["debug-pipeline", phaseName],
+}
+```
+
+企业开发中还常用以下字段。
+
+| 参数             | 用途                                                         |
+| ---------------- | ------------------------------------------------------------ |
+| `metadata`       | 添加业务上下文，用于日志和 LangSmith trace 查询，例如用户 ID、请求 ID、环境。 |
+| `timeout`        | 设置本次执行的超时时间，单位为毫秒。                         |
+| `signal`         | 传入 `AbortSignal`，用于主动取消请求。                       |
+| `callbacks`      | 注册运行时回调，记录模型调用、工具调用、错误等事件。         |
+| `configurable`   | 为 Graph 或 middleware 传入自定义运行时配置。                |
+| `maxConcurrency` | 限制并发数，主要影响 `batch()` 或并行节点。                  |
+| `runId`          | 指定运行 ID，便于跨系统关联日志。通常由框架自动生成，也可以主动设置。 |
+
+例如：
+
+```js
+const controller = new AbortController();
+
+const result = await agent.invoke(
+  { messages: [new HumanMessage(prompt)] },
+  {
+    recursionLimit: 64,
+    runName: `debug_pipeline:${phaseName}`,
+    tags: ["debug-pipeline", phaseName, "production"],
+    metadata: {
+      requestId: "req-20260531-001",
+      phase: phaseName,
+      environment: "production",
+    },
+    timeout: 60_000,
+    signal: controller.signal,
+    configurable: {
+      tenantId: "tenant-a",
+    },
+  },
+);
+```
+
+需要注意：
+
+- `metadata` 和 `tags` 会向子调用传播，适合可观测性建设。
+- `runName` 标识当前调用，不会自动成为所有子调用的名称。
+- `configurable` 只有在 Graph、Runnable 或 middleware 主动读取这些字段时才有作用。
+- `maxConcurrency` 不是工具调用总量限制。工具调用总量仍应使用 `toolCallLimitMiddleware()` 控制。
+- `temperature`、`model`、`apiKey` 等不是这里的 `RunnableConfig`。它们属于模型配置，应在 `new ChatOpenAI({...})` 时设置。
+
+**官方文档**
+- 完整字段列表：[RunnableConfig API Reference](https://reference.langchain.com/javascript/langchain-core/runnables/RunnableConfig)
+- 常用参数示例：[LangChain JS Models - Invocation with config](https://docs.langchain.com/oss/javascript/langchain/models#invocation-config)
+- `recursionLimit` 说明：[LangGraph Graph API - Impose a recursion limit](https://docs.langchain.com/oss/javascript/langgraph/use-graph-api#impose-a-recursion-limit)
+- 超限错误排查：[GRAPH_RECURSION_LIMIT](https://docs.langchain.com/oss/javascript/langgraph/GRAPH_RECURSION_LIMIT)
+
+当前工程安装的是 `@langchain/core ^1.1.48` 和 `@langchain/langgraph ^1.3.2`，以上官方参考页与当前代码使用的字段一致。
+
+
 
 ## 8. 独立工作区
 
@@ -259,8 +401,8 @@ debug_workspace/
 
 路径创建逻辑：
 
-- [`createRunPaths()`](../../src/debug/controlled-pipeline.mjs#L78)
-- [`prepareControlledRun()`](../../src/debug/controlled-pipeline.mjs#L93)
+- [`createRunPaths()`](../../src/debug/controlled-pipeline.mjs#L100)
+- [`prepareControlledRun()`](../../src/debug/controlled-pipeline.mjs#L122)
 
 这解决了旧 `/workspace/sources` 中历史 `findings_*.md` 持续累积的问题。
 
@@ -268,7 +410,7 @@ debug_workspace/
 
 ## 9. 文件访问边界
 
-调试版文件权限定义在 [`DEBUG_PERMISSIONS`](../../src/debug/controlled-pipeline.mjs#L43)：
+调试版文件权限定义在 [`DEBUG_PERMISSIONS`](../../src/debug/controlled-pipeline.mjs#L49)：
 
 ```js
 [
@@ -297,7 +439,7 @@ debug_workspace/
 
 ## 11. CLI 执行过程
 
-[`controlled-cli.mjs`](../../src/debug/controlled-cli.mjs#L19) 执行以下步骤：
+[`controlled-cli.mjs`](../../src/debug/controlled-cli.mjs#L28) 执行以下步骤：
 
 ```text
 读取命令行问题或默认问题
@@ -331,9 +473,9 @@ Editor 已执行: true
 
 核心验证函数：
 
-- [`testPipelineOrderAndEditorGate()`](../../src/debug/controlled-pipeline-smoke-test.mjs#L25)
-- [`testRecursionErrorContext()`](../../src/debug/controlled-pipeline-smoke-test.mjs#L77)
-- [`testCompactSearchFormatting()`](../../src/debug/controlled-pipeline-smoke-test.mjs#L107)
+- [`testPipelineOrderAndEditorGate()`](../../src/debug/controlled-pipeline-smoke-test.mjs#L42)
+- [`testRecursionErrorContext()`](../../src/debug/controlled-pipeline-smoke-test.mjs#L98)
+- [`testCompactSearchFormatting()`](../../src/debug/controlled-pipeline-smoke-test.mjs#L132)
 
 ## 13. 适用范围
 

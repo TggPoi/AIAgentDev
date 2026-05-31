@@ -7,7 +7,7 @@
 | 方案 | 入口 | 定位 |
 | --- | --- | --- |
 | 原版 Deep Agent | [`agent.mjs`](../../src/agent.mjs#L207) | 功能完整的自主调研 Agent。 |
-| 受控调试版 | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L365) | 用固定流程缩短 trace，便于学习和排查问题。 |
+| 受控调试版 | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L465) | 用固定流程缩短 trace，便于学习和排查问题。 |
 
 两套方案并不是简单的“新版本替换旧版本”。它们解决的问题不同：
 
@@ -40,7 +40,7 @@
 
 受控调试版确实需要手动选择并挂载中间件，但不需要重新编写 skill 加载器。
 
-调试版已经复用了 `deepagents` 提供的 [`createSkillsMiddleware()`](../../src/debug/controlled-pipeline.mjs#L145)：
+调试版已经复用了 `deepagents` 提供的 [`createSkillsMiddleware()`](../../src/debug/controlled-pipeline.mjs#L186)：
 
 ```js
 createSkillsMiddleware({
@@ -92,7 +92,7 @@ return createDeepAgent({
 
 ### 3.2 调试版：外层固定图，阶段内部使用基础 Agent
 
-调试版使用 [`StateGraph`](../../src/debug/controlled-pipeline.mjs#L352) 固定执行顺序：
+调试版使用 [`StateGraph`](../../src/debug/controlled-pipeline.mjs#L447) 固定执行顺序：
 
 ```text
 START
@@ -107,9 +107,9 @@ START
 
 | 阶段 | Agent | 定义位置 |
 | --- | --- | --- |
-| 调研 | `debug_researcher` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L168) |
-| 起草和定稿 | `debug_writer` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L186) |
-| 审阅 | `debug_editor` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L204) |
+| 调研 | `debug_researcher` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L214) |
+| 起草和定稿 | `debug_writer` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L232) |
+| 审阅 | `debug_editor` | [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L250) |
 
 `finalizeNode()` 还会执行 Editor gate：
 
@@ -119,7 +119,7 @@ if (!state.editorCompleted) {
 }
 ```
 
-对应代码位于 [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L329)。
+对应代码位于 [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L424)。
 
 ## 4. `createDeepAgent()` 自动提供了什么
 
@@ -161,7 +161,7 @@ skills: ["/skills/"],
 
 ## 5. 调试版手动挂载了什么
 
-调试版在 [`createPhaseMiddleware()`](../../src/debug/controlled-pipeline.mjs#L137) 中显式选择能力：
+调试版在 [`createPhaseMiddleware()`](../../src/debug/controlled-pipeline.mjs#L178) 中显式选择能力：
 
 ```js
 return [
@@ -193,7 +193,7 @@ const DEBUG_PERMISSIONS = [
 ];
 ```
 
-对应代码位于 [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L43)。
+对应代码位于 [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L49)。
 
 ## 6. skill 机制如何比较
 
@@ -227,7 +227,7 @@ skills: ["/skills/"]
 /skills-debug/compact-research/SKILL.md
 ```
 
-对应代码位于 [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L172)。
+对应代码位于 [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L218)。
 
 优势：
 
@@ -318,9 +318,9 @@ createMemoryMiddleware({
 .addEdge("finalize", END)
 ```
 
-对应代码位于 [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L352)。
+对应代码位于 [`controlled-pipeline.mjs`](../../src/debug/controlled-pipeline.mjs#L447)。
 
-每个节点完成后还会检查预期文件是否存在：[源码](../../src/debug/controlled-pipeline.mjs#L231)。
+每个节点完成后还会检查预期文件是否存在：[源码](../../src/debug/controlled-pipeline.mjs#L289)。
 
 优势：
 
@@ -359,7 +359,7 @@ createMemoryMiddleware({
 - 搜索次数上限；
 - 独立运行目录。
 
-模型调用和工具调用限制位于 [`createPhaseMiddleware()`](../../src/debug/controlled-pipeline.mjs#L137)。
+模型调用和工具调用限制位于 [`createPhaseMiddleware()`](../../src/debug/controlled-pipeline.mjs#L178)。
 
 这使得 trace 更短，也更容易判断问题发生在哪一个阶段。
 
@@ -435,9 +435,9 @@ createMemoryMiddleware({
 
 1. [`agent.mjs` 中的 `createDeepAgent()` 配置](../../src/agent.mjs#L207)
 2. [`deepagents` 默认中间件组装逻辑](../../node_modules/deepagents/dist/index.js#L8149)
-3. [`controlled-pipeline.mjs` 中的阶段中间件](../../src/debug/controlled-pipeline.mjs#L137)
-4. [`controlled-pipeline.mjs` 中的三个基础 Agent](../../src/debug/controlled-pipeline.mjs#L168)
-5. [`controlled-pipeline.mjs` 中的 Editor gate](../../src/debug/controlled-pipeline.mjs#L329)
-6. [`controlled-pipeline.mjs` 中的固定图结构](../../src/debug/controlled-pipeline.mjs#L352)
-7. [`hybrid-deep-pipeline.mjs` 中的阶段 Deep Agent 工厂](../../src/debug/hybrid-deep-pipeline.mjs#L200)
-8. [`hybrid-deep-pipeline.mjs` 中的混合图结构](../../src/debug/hybrid-deep-pipeline.mjs#L568)
+3. [`controlled-pipeline.mjs` 中的阶段中间件](../../src/debug/controlled-pipeline.mjs#L178)
+4. [`controlled-pipeline.mjs` 中的三个基础 Agent](../../src/debug/controlled-pipeline.mjs#L214)
+5. [`controlled-pipeline.mjs` 中的 Editor gate](../../src/debug/controlled-pipeline.mjs#L424)
+6. [`controlled-pipeline.mjs` 中的固定图结构](../../src/debug/controlled-pipeline.mjs#L447)
+7. [`hybrid-deep-pipeline.mjs` 中的阶段 Deep Agent 工厂](../../src/debug/hybrid-deep-pipeline.mjs#L259)
+8. [`hybrid-deep-pipeline.mjs` 中的混合图结构](../../src/debug/hybrid-deep-pipeline.mjs#L718)

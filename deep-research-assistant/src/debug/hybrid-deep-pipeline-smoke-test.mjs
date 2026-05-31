@@ -17,8 +17,21 @@ import {
   sanitizeNestedResearchTaskResult,
 } from "./hybrid-deep-pipeline.mjs";
 
+/**
+ * 创建一个会把固定内容写入指定路径的模拟阶段 Agent。
+ * @param {string} outputPath 模拟 Agent 需要写入的虚拟路径。
+ * @param {string} content 写入文件的固定文本。
+ * @param {object[]} phaseConfigs 用于收集每次 invoke() 配置的数组。
+ * @returns {{invoke: Function}} 可替代真实 Agent 的最小对象。
+ */
 function createFakeAgent(outputPath, content, phaseConfigs = []) {
   return {
+    /**
+     * 记录调用配置、写入固定文件并返回模拟完成消息。
+     * @param {unknown} _input 未使用的 Agent 输入。
+     * @param {object} config 当前阶段调用配置。
+     * @returns {Promise<{messages: Array<{content: string}>}>} 模拟 Agent 状态。
+     */
     async invoke(_input, config) {
       phaseConfigs.push(config);
       fs.writeFileSync(resolveHybridVirtualPath(outputPath), content, "utf8");
@@ -27,6 +40,10 @@ function createFakeAgent(outputPath, content, phaseConfigs = []) {
   };
 }
 
+/**
+ * 验证混合外层图严格执行四个阶段、Editor gate 生效，并传入统一递归上限。
+ * @returns {Promise<void>} 所有断言通过并清理临时运行目录后结束。
+ */
 async function testPipelineOrderAndEditorGate() {
   const initialState = prepareHybridRun("hybrid smoke test", {
     runId: `hybrid-smoke-${Date.now()}`,
@@ -88,6 +105,10 @@ async function testPipelineOrderAndEditorGate() {
   });
 }
 
+/**
+ * 验证 Editor 没有写出 review 文件时，流水线会在进入 finalize 前失败。
+ * @returns {Promise<void>} 捕获预期错误并清理临时运行目录后结束。
+ */
 async function testMissingEditorOutputStopsPipeline() {
   const initialState = prepareHybridRun("missing editor output", {
     runId: `hybrid-missing-editor-${Date.now()}`,
@@ -116,6 +137,10 @@ async function testMissingEditorOutputStopsPipeline() {
   });
 }
 
+/**
+ * 验证嵌套模式传给 research 协调员的 Prompt 包含两个子 Agent 和独立输出路径。
+ * @returns {Promise<void>} 所有断言通过并清理临时运行目录后结束。
+ */
 async function testNestedResearchPrompt() {
   const initialState = prepareHybridRun("nested research prompt", {
     runId: `hybrid-nested-prompt-${Date.now()}`,
@@ -173,6 +198,10 @@ async function testNestedResearchPrompt() {
   });
 }
 
+/**
+ * 验证普通版和嵌套版 Deep Agent 工厂均可构造，并检查嵌套预算常量。
+ * @returns {void}
+ */
 function testDeepAgentFactory() {
   const previousApiKey = process.env.OPENAI_API_KEY;
   process.env.OPENAI_API_KEY = previousApiKey || "smoke-test-key";
@@ -200,6 +229,10 @@ function testDeepAgentFactory() {
   }
 }
 
+/**
+ * 验证嵌套子 Agent 局部状态会被过滤，而共享文件和消息更新仍会保留。
+ * @returns {void}
+ */
 function testNestedResearchLocalStateIsolation() {
   const state = {
     files: { "/shared.md": { content: ["shared"] } },
@@ -231,6 +264,10 @@ function testNestedResearchLocalStateIsolation() {
   ]);
 }
 
+/**
+ * 验证混合流水线依赖的 memory 和 skill 文件都存在。
+ * @returns {void}
+ */
 function testLearningFilesExist() {
   for (const relativePath of [
     "hybrid-memory/AGENTS.md",
