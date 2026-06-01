@@ -1,0 +1,45 @@
+services:
+  # PostgreSQL with pgvector (AI 向量数据库)
+  postgres:
+      image: pgvector/pgvector:pg16
+      container_name: pg_vector_db
+      restart: always
+      environment:
+        POSTGRES_USER: user
+        POSTGRES_PASSWORD: 123456
+        POSTGRES_DB: hello_pg
+      ports:
+        - "5432:5432"
+      volumes:
+        - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/postgres:/var/lib/postgresql/data
+        - ./init-scripts:/docker-entrypoint-initdb.d
+      healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U user -d hello_pg"]
+        interval: 5s
+        timeout: 5s
+        retries: 5
+
+  # PostgreSQL GUI (pgAdmin)
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4:latest
+    user: root #在 Windows 下使用本地绑定挂载时，可以让 pgAdmin 容器以 root 用户运行，使其能够在本地挂载目录中创建 sessions 等文件夹。否则会出现 容器内该文件夹属于 root 用户，而 pgAdmin 使用 pgadmin 用户运行，因此无法创建 sessions 文件夹。
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/pgadmin:/var/lib/pgadmin
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/login"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    ports:
+      - "8088:80"
+    depends_on:
+      - postgres
+
+networks:
+  default:
+    name: common-network
+    external: true #common-network 已经由另一个 Compose 项目 es-test 创建。当前工程仍然可以接入该网络，因此这只是警告，不是 8088 失败的原因。如果确实要复用该网络，应明确声明 external: true，否则会创建一个新的网络，导致 pgadmin 无法连接到 postgres。
