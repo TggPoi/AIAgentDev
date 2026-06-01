@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     llm_model_name: str = Field(default="qwen-plus", alias="LLM_MODEL_NAME")
     llm_provider: str = Field(default="mock", alias="LLM_PROVIDER")
 
+    rag_pipeline_provider: str = Field(default="classic", alias="RAG_PIPELINE_PROVIDER")
+
     @property
     def cors_origins(self) -> list[str]:
         return [

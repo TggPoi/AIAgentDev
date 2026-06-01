@@ -8,6 +8,7 @@ from fast_app.components.retrievers.mock_keyword_retriever import MockKeywordRet
 from fast_app.components.retrievers.mock_vector_retriever import MockVectorRetriever
 from fast_app.core.config import Settings, get_settings
 from fast_app.services.exceptions import AppServiceError
+from fast_app.services.langgraph_rag_pipeline_service import LangGraphRagPipeline
 from fast_app.services.rag_pipeline_service import RagPipeline
 
 
@@ -20,7 +21,7 @@ def get_keyword_retriever() -> BaseRetriever:
 
 
 def get_llm_client(
-    settings: Settings = Depends(get_settings), #这里使用Depends 确保 get_llm_client是一个独立、可复用的依赖函数，而不是直接把Setting作为参数
+    settings: Settings = Depends(get_settings),
 ) -> BaseLLMClient:
     provider = settings.llm_provider.lower().strip()
 
@@ -33,15 +34,31 @@ def get_llm_client(
     raise AppServiceError(f"不支持的 LLM_PROVIDER: {settings.llm_provider}")
 
 
+# 这里先不写返回类型，因为RagPipeline LangGraphRagPipeline这两个类目前没有共同的显式基类。
 def get_rag_pipeline(
     settings: Settings = Depends(get_settings),
     vector_retriever: BaseRetriever = Depends(get_vector_retriever),
     keyword_retriever: BaseRetriever = Depends(get_keyword_retriever),
     llm_client: BaseLLMClient = Depends(get_llm_client),
-) -> RagPipeline:
-    return RagPipeline(
-        settings=settings,
-        vector_retriever=vector_retriever,
-        keyword_retriever=keyword_retriever,
-        llm_client=llm_client,
+):
+    provider = settings.rag_pipeline_provider.lower().strip()
+
+    if provider == "classic":
+        return RagPipeline(
+            settings=settings,
+            vector_retriever=vector_retriever,
+            keyword_retriever=keyword_retriever,
+            llm_client=llm_client,
+        )
+
+    if provider == "langgraph":
+        return LangGraphRagPipeline(
+            settings=settings,
+            vector_retriever=vector_retriever,
+            keyword_retriever=keyword_retriever,
+            llm_client=llm_client,
+        )
+
+    raise AppServiceError(
+        f"不支持的 RAG_PIPELINE_PROVIDER: {settings.rag_pipeline_provider}"
     )
