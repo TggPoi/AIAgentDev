@@ -126,3 +126,87 @@ run()
   .finally(() => pool.end());
 
 export { users, conversations, messages };
+
+
+// PS D:\AI_Agent_Project\pgsql-test> node .\src\index.mjs
+// === 用户 CRUD ===
+// 创建用户: { id: 4, name: '张三', created_at: 2026-06-02T04:32:19.542Z }
+// 查询用户: { id: 4, name: '张三', created_at: 2026-06-02T04:32:19.542Z }
+// 更新用户: { id: 4, name: '李四', created_at: 2026-06-02T04:32:19.542Z }
+
+// === 会话 CRUD ===
+// 创建会话: {
+//   id: 3,
+//   user_id: 4,
+//   title: '第一次对话',
+//   created_at: 2026-06-02T04:32:19.564Z
+// }
+// 用户的会话列表: [
+//   {
+//     id: 3,
+//     user_id: 4,
+//     title: '第一次对话',
+//     created_at: 2026-06-02T04:32:19.564Z
+//   }
+// ]
+// 更新会话: {
+//   id: 3,
+//   user_id: 4,
+//   title: '更新后的标题',
+//   created_at: 2026-06-02T04:32:19.564Z
+// }
+
+// === 消息 CRUD ===
+// 创建用户消息: {
+//   id: 3,
+//   conversation_id: 3,
+//   role: 'user',
+//   content: '你好，请介绍一下 PostgreSQL',
+//   embedding: null,
+//   created_at: 2026-06-02T04:32:19.582Z
+// }
+// 创建 AI 消息: {
+//   id: 4,
+//   conversation_id: 3,
+//   role: 'assistant',
+//   content: 'PostgreSQL 是一个功能强大的开源关系型数据库。',
+//   embedding: null,
+//   created_at: 2026-06-02T04:32:19.593Z
+// }
+// 会话消息列表: [
+//   {
+//     id: 3,
+//     conversation_id: 3,
+//     role: 'user',
+//     content: '你好，请介绍一下 PostgreSQL',
+//     created_at: 2026-06-02T04:32:19.582Z
+//   },
+//   {
+//     id: 4,
+//     conversation_id: 3,
+//     role: 'assistant',
+//     content: 'PostgreSQL 是一个功能强大的开源关系型数据库。',
+//     created_at: 2026-06-02T04:32:19.593Z
+//   }
+// ]
+// 更新消息: {
+//   id: 3,
+//   conversation_id: 3,
+//   role: 'user',
+//   content: '你好，请介绍一下 pgvector',
+//   embedding: null,
+//   created_at: 2026-06-02T04:32:19.582Z
+// }
+
+// === 语义检索 ===
+// 已写入 4 条带 embedding 的消息
+
+// 搜索: "向量相似度怎么查"
+//   1. [user] 怎么做相似度搜索？ (similarity: 0.7986)
+//   2. [assistant] 可以使用 pgvector 的 cosine 距离运算符 <=>，配合 hnsw 索引加速向量检索。 (similarity: 0.6657)
+//   3. [assistant] PostgreSQL 支持整数、文本、JSON、数组，以及 pgvector 扩展提供的向量类型。 (similarity: 0.4967)
+
+// 搜索: "关系型数据库有哪些类型"
+//   1. [user] PostgreSQL 支持哪些数据类型？ (similarity: 0.5835)
+//   2. [assistant] PostgreSQL 支持整数、文本、JSON、数组，以及 pgvector 扩展提供的向量类型。 (similarity: 0.5036)
+//   3. [assistant] 可以使用 pgvector 的 cosine 距离运算符 <=>，配合 hnsw 索引加速向量检索。 (similarity: 0.3335)

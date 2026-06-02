@@ -29,6 +29,52 @@ PostgreSQL 服务
 | 行 row | 一条具体记录 | 某一个用户 |
 | SQL | 操作数据库的语言 | `SELECT * FROM users;` |
 
+### 1.1 数据库不是一个普通文件
+
+初学时容易把 PostgreSQL 理解为一个类似 Excel 的文件。这个理解不准确。
+
+PostgreSQL 是一个持续运行的服务进程。应用程序需要通过网络连接到它，再发送 SQL。PostgreSQL 收到 SQL 后，负责读取或修改磁盘中的数据文件，并把结果返回给客户端。
+
+```text
+Node.js、psql 或 pgAdmin
+  ↓ 发送 SQL
+PostgreSQL 服务
+  ↓ 读取或修改
+volumes/postgres 中的数据文件
+```
+
+当前工程中，这三个客户端的作用不同：
+
+| 客户端 | 作用 | 是否保存数据 |
+| --- | --- | --- |
+| `psql` | 命令行工具，适合学习 SQL 和排查问题 | 否 |
+| pgAdmin | 浏览器中的图形化数据库管理工具 | 否 |
+| Node.js 程序 | 应用代码，通过 `pg` 驱动执行 SQL | 否 |
+| PostgreSQL | 真正管理数据的数据库服务 | 是 |
+
+关闭 pgAdmin 或退出 `psql` 不会删除数据库数据，因为数据由 PostgreSQL 保存。
+
+### 1.2 服务、数据库、schema 和表的层级
+
+这几个概念属于不同层级：
+
+```text
+一个 PostgreSQL 服务
+  ├── 数据库 A
+  │     ├── schema public
+  │     │     ├── 表 users
+  │     │     └── 表 messages
+  │     └── schema audit
+  └── 数据库 B
+```
+
+- 一个 PostgreSQL 服务可以管理多个数据库。
+- 一个数据库可以包含多个 schema。
+- 一个 schema 可以包含多张表。
+- 一张表包含多行数据，每行按照相同的列结构保存属性。
+
+当前工程只使用一个数据库 `hello_pg` 和默认 schema `public`，但理解完整层级很重要。以后遇到多个业务系统或同名表时，schema 可以帮助你隔离命名空间。
+
 ## 2. Docker 在工程中做了什么
 
 [`docker-compose.yml`](../docker-compose.yml) 描述了两个容器：
@@ -184,6 +230,25 @@ SELECT current_schema();
 
 SQL 语句通常以分号 `;` 结束。
 
+### 3.1 连接参数为什么必须完整
+
+连接数据库至少需要回答四个问题：
+
+| 问题 | 当前工程答案 |
+| --- | --- |
+| 数据库服务在哪里运行？ | `localhost` 或容器网络中的 `postgres` |
+| 监听哪个端口？ | `5432` |
+| 以哪个用户身份登录？ | `user` |
+| 要进入哪个数据库？ | `hello_pg` |
+
+这也是连接字符串的组成部分：
+
+```text
+postgresql://user:123456@localhost:5432/hello_pg
+```
+
+如果端口、用户名或数据库名写错，客户端可能能够找到 PostgreSQL 服务，但仍然无法成功登录或进入目标数据库。
+
 ## 4. 常用 psql 元命令
 
 以反斜杠开头的命令是 `psql` 命令，不是 SQL。
@@ -228,6 +293,13 @@ SELECT * FROM users;
 - `id`、`name`、`created_at` 是列。
 - `1 | 张三 | ...` 是一行数据。
 
+可以将表理解为“有规则的数据集合”，但不要把它简单等同于二维表格文件。数据库除了保存值，还会执行：
+
+- 类型检查，例如 `id` 必须是整数。
+- 约束检查，例如 `name` 不能是 `NULL`。
+- 索引维护，例如主键索引。
+- 并发控制，例如多个请求同时修改数据时保持一致性。
+
 只查询指定列：
 
 ```sql
@@ -261,6 +333,38 @@ id = 2, name = 张三
 
 `SERIAL` 会让 PostgreSQL 自动生成递增整数。插入用户时，可以不手动填写 `id`。
 
+### 6.1 为什么不能只用 name 标识用户
+
+用户名可能重复，也可能被修改：
+
+```text
+id = 1, name = 张三
+id = 2, name = 张三
+```
+
+如果会话表只保存用户名，就无法可靠判断会话属于哪个“张三”。因此数据库使用稳定且唯一的 `id` 建立关联。
+
+### 6.2 PRIMARY KEY 同时保证什么
+
+`PRIMARY KEY` 同时表达两个规则：
+
+1. 值不能为 `NULL`。
+2. 值不能重复。
+
+PostgreSQL 还会为主键自动创建唯一 B-tree 索引，使数据库能够更快地按主键定位一行数据。
+
+### 6.3 SERIAL 的作用
+
+`SERIAL` 不是“随机 ID”。它会借助序列 sequence 生成递增整数。
+
+```sql
+INSERT INTO users (name)
+VALUES ('张三')
+RETURNING id;
+```
+
+插入时没有提供 `id`，PostgreSQL 会自动取出下一个序列值。序列出现间隔是正常现象，例如事务回滚后，已经取出的序列值通常不会重新使用。业务代码不应该依赖 ID 必须连续。
+
 ## 7. schema 是什么
 
 如果 SQL 中只写：
@@ -276,6 +380,37 @@ SELECT * FROM public.users;
 ```
 
 `public` 是默认 schema。小型学习工程可以先使用默认 schema。
+
+### 7.1 schema 解决什么问题
+
+假设未来需要同时保存业务用户和审计用户，可以使用不同 schema：
+
+```text
+public.users
+audit.users
+```
+
+虽然两张表都叫 `users`，但完整名称不同。
+
+当前 SQL：
+
+```sql
+SELECT * FROM users;
+```
+
+省略了 schema。PostgreSQL 会根据 `search_path` 查找表。学习阶段默认会找到：
+
+```sql
+SELECT * FROM public.users;
+```
+
+遇到“表明明存在但查询不到”的问题时，应检查当前数据库、当前 schema 和 `search_path`，而不是只检查表名。
+
+```sql
+SELECT current_database();
+SELECT current_schema();
+SHOW search_path;
+```
 
 ## 本章练习
 

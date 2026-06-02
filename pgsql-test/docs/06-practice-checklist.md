@@ -81,6 +81,88 @@ ROLLBACK;
 - [ ] 我知道修改和删除前需要检查 `WHERE`。
 - [ ] 我知道 `ROLLBACK` 会撤销尚未提交的操作。
 
+追加观察实验：
+
+```sql
+BEGIN;
+
+INSERT INTO users (name)
+VALUES ('默认值练习')
+RETURNING id, name, created_at;
+
+ROLLBACK;
+```
+
+观察：
+
+- [ ] 我没有手动填写 `id`，但数据库自动生成了主键。
+- [ ] 我没有手动填写 `created_at`，但数据库使用了默认时间。
+
+空值判断实验：
+
+```sql
+SELECT *
+FROM conversations
+WHERE title IS NULL;
+```
+
+说明：判断 `NULL` 应使用 `IS NULL`，不要写 `title = NULL`。
+
+排序实验：
+
+```sql
+BEGIN;
+
+INSERT INTO users (name)
+VALUES
+  ('排序练习-B'),
+  ('排序练习-A'),
+  ('排序练习-A');
+
+SELECT id, name, created_at
+FROM users
+WHERE name LIKE '排序练习-%'
+ORDER BY name ASC, id DESC;
+
+ROLLBACK;
+```
+
+观察：
+
+- [ ] 我知道不写 `ORDER BY` 时，数据库不保证结果顺序。
+- [ ] 我能解释 `name ASC` 为什么让 `排序练习-A` 排在 `排序练习-B` 前面。
+- [ ] 我能解释两个名称相同的用户为什么继续按照 `id DESC` 排序。
+- [ ] 我知道省略排序方向时默认使用 `ASC`。
+
+`NULL` 排序实验：
+
+```sql
+SELECT id, title
+FROM conversations
+ORDER BY title ASC NULLS LAST, id ASC;
+```
+
+观察：
+
+- [ ] 我知道 `NULLS LAST` 会将标题为空的会话放在最后。
+- [ ] 我知道 `ORDER BY title ASC, id ASC` 中的 `id` 提供稳定的第二排序条件。
+
+分页排序实验：
+
+```sql
+SELECT id, name, created_at
+FROM users
+ORDER BY created_at DESC, id DESC
+LIMIT 3
+OFFSET 0;
+```
+
+观察：
+
+- [ ] 我知道 `LIMIT 3` 表示最多返回三行。
+- [ ] 我知道分页时为什么不能省略 `ORDER BY`。
+- [ ] 我知道第一排序字段可能重复时，应该追加主键作为排序条件。
+
 ## 阶段 3：完成三张表关联练习
 
 目标：理解主键、外键和一对多关系。
@@ -149,12 +231,95 @@ WHERE conversation_id = <会话ID>;
 ROLLBACK;
 ```
 
+### 对比 INNER JOIN 与 LEFT JOIN
+
+重新开始一组不会永久保留的实验：
+
+```sql
+BEGIN;
+
+INSERT INTO users (name)
+VALUES
+  ('有会话用户'),
+  ('无会话用户');
+
+INSERT INTO conversations (user_id, title)
+SELECT id, 'JOIN 对比练习'
+FROM users
+WHERE name = '有会话用户';
+```
+
+执行 `INNER JOIN`：
+
+```sql
+SELECT
+  u.name,
+  c.title
+FROM users AS u
+INNER JOIN conversations AS c
+  ON c.user_id = u.id
+WHERE u.name IN ('有会话用户', '无会话用户')
+ORDER BY u.name;
+```
+
+预期：
+
+```text
+只有“有会话用户”
+```
+
+执行 `LEFT JOIN`：
+
+```sql
+SELECT
+  u.name,
+  c.title
+FROM users AS u
+LEFT JOIN conversations AS c
+  ON c.user_id = u.id
+WHERE u.name IN ('有会话用户', '无会话用户')
+ORDER BY u.name;
+```
+
+预期：
+
+```text
+有会话用户 | JOIN 对比练习
+无会话用户 | NULL
+```
+
+统计每位用户的会话数量：
+
+```sql
+SELECT
+  u.name,
+  COUNT(c.id) AS conversation_count
+FROM users AS u
+LEFT JOIN conversations AS c
+  ON c.user_id = u.id
+WHERE u.name IN ('有会话用户', '无会话用户')
+GROUP BY u.id, u.name
+ORDER BY u.name;
+```
+
+结束实验：
+
+```sql
+ROLLBACK;
+```
+
 检查项：
 
 - [ ] 我能解释 `users.id = conversations.user_id`。
 - [ ] 我能解释 `conversations.id = messages.conversation_id`。
 - [ ] 我能写出两张表或三张表的 `JOIN`。
 - [ ] 我知道 `ON DELETE CASCADE` 的效果。
+- [ ] 我能解释为什么 `INNER JOIN` 不返回“无会话用户”。
+- [ ] 我能解释为什么 `LEFT JOIN` 为“无会话用户”补充了 `NULL`。
+- [ ] 我知道统计右表记录数量时为什么使用 `COUNT(c.id)`。
+- [ ] 我能解释 `GROUP BY u.id, u.name` 如何将 JOIN 结果按用户分组。
+- [ ] 我能区分 `WHERE` 过滤明细行和 `HAVING` 过滤分组结果。
+- [ ] 我能区分 `GROUP BY`、`ORDER BY` 和 `DISTINCT`。
 
 ## 阶段 4：完成向量检索练习
 
@@ -187,12 +352,29 @@ FROM vector_demo
 ORDER BY embedding <=> '[1,0,0]';
 ```
 
+预期排序：
+
+```text
+A 最相似
+B 次之
+C 最不相似
+```
+
+原因：
+
+- `A = [1,0,0]` 与查询向量完全相同。
+- `B = [0.9,0.1,0]` 与查询向量方向接近。
+- `C = [0,1,0]` 与查询向量方向垂直。
+
 检查项：
 
 - [ ] 我知道 `<=>` 返回余弦距离。
 - [ ] 我知道距离越小越相似。
 - [ ] 我知道为什么代码中使用 `1 - distance` 作为相似度。
 - [ ] 我知道嵌入模型和 pgvector 的职责不同。
+- [ ] 我知道 `vector(1024)` 要求模型输出维度严格匹配。
+- [ ] 我知道修改文本后可能需要重新生成 embedding。
+- [ ] 我知道 `<=>` 对应 `vector_cosine_ops`。
 
 ## 阶段 5：核对工程数据库结构
 
@@ -231,6 +413,8 @@ ORDER BY conrelid::regclass::text, conname;
 - [ ] 我能查看实际约束。
 - [ ] 我知道修改 `init-scripts/create_tables.sql` 后，已有数据库不会自动同步。
 - [ ] 我不会随意删除 `volumes/postgres`。
+- [ ] 我能解释为什么修改初始化脚本不会自动改变已有数据库。
+- [ ] 我知道另一个使用 `synchronize: true` 的 TypeORM 工程也可能修改共享数据库结构。
 
 ## 阶段 6：阅读 Node.js CRUD
 
@@ -264,6 +448,9 @@ ORDER BY conrelid::regclass::text, conname;
 - [ ] 我能找到普通消息写入 SQL。
 - [ ] 我能找到向量消息写入 SQL。
 - [ ] 我能找到语义检索 SQL。
+- [ ] 我能画出 `index.mjs → users.mjs → db.mjs → pool.query() → PostgreSQL` 调用链。
+- [ ] 我知道 `rows[0] ?? null` 表示查询不到时返回 `null`。
+- [ ] 我知道 `rowCount > 0` 为什么可以转换为删除成功与否。
 
 ## 阶段 7：运行 Node.js 演示
 
@@ -301,20 +488,56 @@ ORDER BY id DESC
 LIMIT 10;
 ```
 
+注意：每次执行 `node src/index.mjs` 都会新增演示数据。重复运行后看到 ID 增长和多组数据是正常现象。
+
 检查项：
 
 - [ ] 我能解释演示脚本写入了哪些数据。
 - [ ] 我能判断哪些消息带有 embedding。
 - [ ] 我能解释语义检索结果为什么按相似度排序。
+- [ ] 我知道一次性脚本结束时为什么调用 `pool.end()`。
+
+## 阶段 8：从示例工程扩展到 Agent 开发
+
+目标：不再局限于当前三张表，开始掌握 Agent 服务需要的 PostgreSQL 能力。
+
+先阅读：
+
+1. [07-Agent 开发所需的 PostgreSQL 知识地图](./07-agent-development-postgresql-roadmap.md)
+2. [08-高级查询、JSONB 与混合检索](./08-advanced-query-jsonb-and-hybrid-search.md)
+3. [09-并发、性能与生产运维](./09-concurrency-performance-and-operations.md)
+
+按顺序完成练习：
+
+1. 使用 `RIGHT JOIN` 重写一个已有 `LEFT JOIN`，验证结果相同。
+2. 使用 `FULL JOIN` 解释如何核对两份来源不同的数据。
+3. 使用 CTE 和窗口函数查询每个会话最近一条消息。
+4. 创建临时学习表，练习 `jsonb` 的 `->>`、`@>` 和 GIN 索引。
+5. 使用 `INSERT ... ON CONFLICT` 模拟幂等写入。
+6. 为 `messages.conversation_id` 创建普通索引，并使用 `EXPLAIN ANALYZE` 对比查询计划。
+7. 使用两个 `psql` 窗口练习 `FOR UPDATE SKIP LOCKED`。
+8. 使用 `pg_dump` 备份数据库，再恢复到新的练习数据库中验证。
+
+检查项：
+
+- [ ] 我能列出 Agent 数据库中除了消息以外还需要保存哪些实体。
+- [ ] 我能解释普通列与 `jsonb` 的边界。
+- [ ] 我能解释关键词检索和向量检索为什么需要组合。
+- [ ] 我能解释幂等键解决什么问题。
+- [ ] 我能解释事务为什么必须复用同一数据库连接。
+- [ ] 我能解释为什么外部模型调用不应该占用长事务。
+- [ ] 我能使用 `EXPLAIN ANALYZE` 开始验证索引效果。
+- [ ] 我知道初始化脚本不能替代 migration。
+- [ ] 我已经理解备份与恢复验证必须一起完成。
 
 ## 学完后的下一步
 
 完成以上内容后，可以继续学习：
 
-1. 使用迁移工具管理数据库结构变更。
-2. 为外键列添加普通索引，并使用 `EXPLAIN ANALYZE` 观察查询计划。
-3. 使用 NestJS + TypeORM 将表映射为实体。
-4. 设计分页查询。
-5. 学习备份、恢复和生产环境凭据管理。
+1. 根据 [07-Agent 开发所需的 PostgreSQL 知识地图](./07-agent-development-postgresql-roadmap.md) 选择一个 Agent 场景，设计 `agent_runs`、`tool_calls` 或知识库切片表。
+2. 使用 migration 管理新增表和索引，不再依赖重新初始化数据目录。
+3. 使用 NestJS + TypeORM 将表映射为实体，并观察 ORM 最终执行的 SQL。
+4. 为多租户、任务队列或知识库检索编写集成测试。
+5. 数据量增长后，再按实际瓶颈评估分区、RLS、读副本和专用队列。
 
 此时再阅读教程后半段的 TypeORM 内容，会更容易理解 ORM 隐藏了哪些 SQL。
