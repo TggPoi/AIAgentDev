@@ -86,6 +86,221 @@ embedding vector(1024)
 
 这表示每个向量必须包含 `1024` 个数字。嵌入模型输出维度必须与数据库字段维度一致。
 
+
+
+不是。`vector` 字段不只能在 `SELECT`、`ORDER BY` 中使用。
+
+`vector` 字段本质上是 PostgreSQL 里的一个列类型，来自 `pgvector` 扩展。它可以参与：
+
+- 建表
+- 插入
+- 更新
+- 查询返回
+- 条件过滤
+- 相似度计算
+- 排序
+- 索引
+
+当前工程里主要在 `SELECT` 和 `ORDER BY` 中看到，是因为当前实现重点是“语义检索”。
+
+## 2.1. 建表时使用
+
+当前工程：
+
+```sql
+embedding vector(1024)
+```
+
+含义：
+
+> `embedding` 这一列保存 1024 维向量。
+
+例如：
+
+```sql
+CREATE TABLE messages (
+  id SERIAL PRIMARY KEY,
+  content TEXT NOT NULL,
+  embedding vector(1024)
+);
+```
+
+## 2.2 插入时使用
+
+可以插入向量：
+
+```sql
+INSERT INTO messages (content, embedding)
+VALUES ('PostgreSQL 支持向量检索', '[0.1, 0.2, 0.3]'::vector);
+```
+
+你的工程中是 Node.js 传入数组字符串：
+
+```ts
+[JSON.stringify(vector)]
+```
+
+SQL 里再转成 vector：
+
+```sql
+$1::vector
+```
+
+## 2.3. 更新时使用
+
+可以更新向量：
+
+```sql
+UPDATE messages
+SET embedding = '[0.2, 0.4, 0.6]'::vector
+WHERE id = 1;
+```
+
+这在“消息内容变化后重新生成 embedding”时很常见。
+
+## 2.4. SELECT 中返回
+
+可以直接查出向量：
+
+```sql
+SELECT id, content, embedding
+FROM messages;
+```
+
+但实际接口通常不会把完整 embedding 返回给前端，因为向量很长，而且用户看不懂。
+
+所以当前工程语义搜索里只返回：
+
+```sql
+id, conversation_id, role, content, created_at, similarity
+```
+
+不返回 `embedding` 本身。
+
+## 2.5. WHERE 中过滤
+
+可以判断是否有向量：
+
+```sql
+WHERE embedding IS NOT NULL
+```
+
+当前工程就用了：
+
+```sql
+WHERE conversation_id = $2
+  AND embedding IS NOT NULL
+```
+
+也可以根据距离过滤：
+
+```sql
+WHERE embedding <=> $1::vector < 0.3
+```
+
+含义：
+
+> 只保留余弦距离小于 `0.3` 的记录。
+
+距离越小，越相似。
+
+## 2.6. ORDER BY 中排序
+
+这是最常见的向量检索写法：
+
+```sql
+ORDER BY embedding <=> $1::vector
+LIMIT 5
+```
+
+含义：
+
+> 按照 `embedding` 和查询向量之间的距离从小到大排序，取最相似的前 5 条。
+
+当前工程：
+
+```sql
+SELECT id, conversation_id, role, content, created_at,
+       1 - (embedding <=> $1::vector) AS similarity
+FROM messages
+WHERE conversation_id = $2 AND embedding IS NOT NULL
+ORDER BY embedding <=> $1::vector
+LIMIT $3;
+```
+
+这里同时用了：
+
+```sql
+embedding <=> $1::vector
+```
+
+两次：
+
+| 位置       | 作用                         |
+| ---------- | ---------------------------- |
+| `SELECT`   | 计算相似度并返回给调用者     |
+| `ORDER BY` | 按距离排序，让最相似的排前面 |
+
+## 2.7. 索引中使用
+
+可以给 vector 字段创建索引：
+
+```sql
+CREATE INDEX idx_messages_embedding
+ON messages USING hnsw (embedding vector_cosine_ops);
+```
+
+含义：
+
+> 为 `embedding` 创建 HNSW 向量索引，加速相似度搜索。
+
+注意：索引类型要和距离运算符匹配。
+
+当前使用：
+
+```sql
+embedding <=> 查询向量
+```
+
+这是余弦距离，所以索引用：
+
+```sql
+vector_cosine_ops
+```
+
+
+
+### 总结
+
+`vector` 字段可以用于：
+
+```sql
+CREATE TABLE
+INSERT
+UPDATE
+SELECT
+WHERE
+ORDER BY
+CREATE INDEX
+```
+
+不是只能在 `SELECT` 和 `ORDER BY` 中使用。
+
+当前工程主要这样用：
+
+```sql
+SELECT 1 - (embedding <=> $1::vector) AS similarity
+WHERE embedding IS NOT NULL
+ORDER BY embedding <=> $1::vector
+LIMIT $3
+```
+
+这是语义检索最核心的模式。
+
+
+
+
+
 ### 2.1 维度必须严格一致
 
 `vector(1024)` 中的 `1024` 表示每条向量包含 `1024` 个分量：

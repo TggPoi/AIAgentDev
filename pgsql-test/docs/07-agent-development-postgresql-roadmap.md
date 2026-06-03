@@ -1,10 +1,10 @@
-# 07. Agent 开发所需的 PostgreSQL 知识地图
+﻿# 07. Agent 开发所需的 PostgreSQL 知识地图
 
 当前工程是一个很好的起点，但它只覆盖了 Agent 数据库能力的一部分：
 
-- [`users`](../init-scripts/create_tables.sql#L5) 保存用户。
-- [`conversations`](../init-scripts/create_tables.sql#L12) 保存会话。
-- [`messages`](../init-scripts/create_tables.sql#L23) 保存消息和 embedding。
+- [`users`](../create_tables.sql#L5) 保存用户。
+- [`conversations`](../create_tables.sql#L12) 保存会话。
+- [`messages`](../create_tables.sql#L23) 保存消息和 embedding。
 - [`searchSimilarMessages()`](../src/messages.mjs#L92) 根据向量距离召回历史消息。
 
 真实 Agent 应用还会遇到运行状态、工具调用、知识库文档、切片、检索过滤、并发写入、结构迁移、权限隔离和故障恢复。学习 PostgreSQL 时，不要只把目标定为“能写 CRUD”，而要逐步建立一套能支撑 Agent 业务的数据库能力。
@@ -93,9 +93,9 @@ users 1 ──── N conversations 1 ──── N messages
 
 | 表 | 源码 |
 | --- | --- |
-| `users` | [`init-scripts/create_tables.sql` L5-L9](../init-scripts/create_tables.sql#L5) |
-| `conversations` | [`init-scripts/create_tables.sql` L12-L20](../init-scripts/create_tables.sql#L12) |
-| `messages` | [`init-scripts/create_tables.sql` L23-L33](../init-scripts/create_tables.sql#L23) |
+| `users` | [`init-scripts/create_tables.sql` L5-L9](../create_tables.sql#L5) |
+| `conversations` | [`init-scripts/create_tables.sql` L12-L20](../create_tables.sql#L12) |
+| `messages` | [`init-scripts/create_tables.sql` L23-L33](../create_tables.sql#L23) |
 
 扩展 Agent 项目时，可以继续识别新的实体：
 
@@ -151,9 +151,9 @@ CREATE TABLE tool_calls (
 
 适合保存消息、标题、错误信息和文档切片。当前工程使用：
 
-- [`users.name`](../init-scripts/create_tables.sql#L7)
-- [`conversations.title`](../init-scripts/create_tables.sql#L15)
-- [`messages.content`](../init-scripts/create_tables.sql#L27)
+- [`users.name`](../create_tables.sql#L7)
+- [`conversations.title`](../create_tables.sql#L15)
+- [`messages.content`](../create_tables.sql#L27)
 
 不要因为字符串“看起来可能不长”就过早限制长度。业务确实要求长度上限时，再使用约束明确限制。
 
@@ -165,7 +165,7 @@ CREATE TABLE tool_calls (
 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 ```
 
-源码见 [`init-scripts/create_tables.sql` L8](../init-scripts/create_tables.sql#L8)。
+源码见 [`init-scripts/create_tables.sql` L8](../create_tables.sql#L8)。
 
 Agent 应用经常需要回答：
 
@@ -229,7 +229,7 @@ payload JSONB
 embedding vector(1024)
 ```
 
-源码见 [`init-scripts/create_tables.sql` L28](../init-scripts/create_tables.sql#L28)。
+源码见 [`init-scripts/create_tables.sql` L28](../create_tables.sql#L28)。
 
 必须理解：
 
@@ -243,7 +243,7 @@ embedding vector(1024)
 当前工程同时在 JavaScript 和 PostgreSQL 中限制消息角色：
 
 - JavaScript 校验：[`src/messages.mjs` L5-L25](../src/messages.mjs#L5)
-- SQL 约束：[`init-scripts/create_tables.sql` L26](../init-scripts/create_tables.sql#L26)
+- SQL 约束：[`init-scripts/create_tables.sql` L26](../create_tables.sql#L26)
 
 两层校验职责不同：
 
@@ -258,13 +258,301 @@ Agent 系统可能有 API 服务、worker、离线脚本和 migration。只在�
 
 ### 6.1 租户字段
 
-如果一个系统服务多个用户或团队，核心业务表通常需要明确保存：
+“租户”是多租户系统中的概念。你可以先把它理解为：
+
+> 同一个应用系统里的一组数据归属单位。
+
+这个归属单位可能是：
+
+- 一个个人用户。
+- 一个团队。
+- 一个公司。
+- 一个工作区 workspace。
+- 一个组织 organization。
+
+例如一个 Agent 平台同时服务两家公司：
+
+```text
+tenant A：上海测试公司
+  ├── 用户 Alice
+  ├── 会话、消息、知识库、工具调用记录
+  └── API key、账单、运行日志
+
+tenant B：北京测试公司
+  ├── 用户 Bob
+  ├── 会话、消息、知识库、工具调用记录
+  └── API key、账单、运行日志
+```
+
+这两个租户使用同一套后端代码，甚至可能共享同一个 PostgreSQL 数据库，但它们的数据必须互相隔离。Alice 不能检索到 Bob 公司知识库里的文档，Bob 也不能看到 Alice 公司的 Agent 运行记录。
+
+#### 6.1.1 用户和租户不是同一个概念
+
+入门时很容易把“用户”和“租户”混在一起。它们不是一回事。
+
+| 概念 | 含义 | 例子 |
+| --- | --- | --- |
+| 用户 user | 具体登录系统的人或账号 | `alice@example.com` |
+| 租户 tenant | 数据归属的组织或空间 | `上海测试公司`、`AI 研发工作区` |
+
+一个租户可以有多个用户：
+
+```text
+tenant 1
+  ├── user 1
+  ├── user 2
+  └── user 3
+```
+
+一个用户也可能加入多个租户：
+
+```text
+user alice
+  ├── tenant A
+  └── tenant B
+```
+
+所以真实项目里经常会有类似关系：
+
+```sql
+CREATE TABLE tenants (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE tenant_members (
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'member')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (tenant_id, user_id)
+);
+```
+
+这表示：用户通过 `tenant_members` 加入某个租户，并拥有某个角色。
+
+#### 6.1.2 为什么业务表要保存 `tenant_id`
+
+如果一个系统服务多个用户、团队或公司，核心业务表通常需要明确保存：
 
 ```sql
 tenant_id UUID NOT NULL
 ```
 
-检索时必须将租户过滤放在查询中，向量检索也不能例外。只按相似度搜索而不限制租户，会造成数据越权。
+例如 Agent 知识库切片表可以设计成：
+
+```sql
+CREATE TABLE knowledge_chunks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  document_id UUID NOT NULL,
+  content TEXT NOT NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  embedding vector(1024),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+`tenant_id` 的作用是告诉数据库：
+
+```text
+这一行数据属于哪个租户
+```
+
+没有 `tenant_id`，你只能依赖应用代码在更高层判断数据归属。一旦某条 SQL 忘记限制范围，就可能读到别人的数据。
+
+#### 6.1.3 多租户常见三种数据库模型
+
+多租户隔离不只有一种做法。常见模型如下：
+
+| 模型 | 做法 | 优点 | 缺点 |
+| --- | --- | --- | --- |
+| 共享数据库、共享表 | 所有租户共用表，通过 `tenant_id` 区分 | 成本低，开发和运维简单 | 必须非常重视租户过滤和权限隔离 |
+| 共享数据库、独立 schema | 每个租户一个 schema | 隔离更清晰 | migration、连接和运维复杂度上升 |
+| 独立数据库 | 每个租户一个数据库 | 隔离最强，适合大客户 | 成本和运维复杂度最高 |
+
+学习和大多数早期 Agent 项目，通常先使用：
+
+```text
+共享数据库、共享表、每张核心表保存 tenant_id
+```
+
+这个模型最容易理解，也最容易在本地练习。
+
+#### 6.1.4 查询时必须带租户过滤
+
+只要表中有 `tenant_id`，查询业务数据时通常都应该带上：
+
+```sql
+WHERE tenant_id = $1
+```
+
+例如查询某个租户的最近会话：
+
+```sql
+SELECT id, title, created_at
+FROM conversations
+WHERE tenant_id = $1
+ORDER BY created_at DESC
+LIMIT 20;
+```
+
+知识库向量检索也不能例外。错误写法：
+
+```sql
+SELECT id, content
+FROM knowledge_chunks
+ORDER BY embedding <=> $1::vector
+LIMIT 5;
+```
+
+这条 SQL 只按相似度搜索，没有限制租户。结果可能把其他租户的知识库内容召回给当前用户。
+
+正确写法：
+
+```sql
+SELECT id, content
+FROM knowledge_chunks
+WHERE tenant_id = $2
+ORDER BY embedding <=> $1::vector
+LIMIT 5;
+```
+
+核心原则：
+
+```text
+先限制数据归属范围
+再做业务过滤、排序、全文检索或向量检索
+```
+
+#### 6.1.5 `tenant_id` 应该是普通列，不应该藏进 JSONB
+
+不要这样设计：
+
+```sql
+CREATE TABLE knowledge_chunks (
+  id UUID PRIMARY KEY,
+  content TEXT NOT NULL,
+  metadata JSONB NOT NULL
+);
+```
+
+然后把租户藏在：
+
+```json
+{
+  "tenant_id": "..."
+}
+```
+
+原因是 `tenant_id` 通常会参与：
+
+- 高频过滤。
+- 权限隔离。
+- 复合索引。
+- 外键关联。
+- 唯一约束。
+- RLS 策略。
+
+这些都更适合普通列：
+
+```sql
+tenant_id UUID NOT NULL REFERENCES tenants(id)
+```
+
+`jsonb` 更适合保存结构不固定的补充信息，例如工具参数、文档来源 metadata、模型响应中的可选字段。
+
+#### 6.1.6 租户字段常见索引
+
+如果常见查询是：
+
+```sql
+WHERE tenant_id = $1
+ORDER BY created_at DESC
+LIMIT 20
+```
+
+可以考虑复合索引：
+
+```sql
+CREATE INDEX idx_conversations_tenant_created
+  ON conversations (tenant_id, created_at DESC);
+```
+
+如果常见查询是：
+
+```sql
+WHERE tenant_id = $1
+  AND status = 'running'
+ORDER BY created_at DESC
+```
+
+可以考虑：
+
+```sql
+CREATE INDEX idx_agent_runs_tenant_status_created
+  ON agent_runs (tenant_id, status, created_at DESC);
+```
+
+索引顺序不是随便写的。一般把高频等值过滤字段放前面：
+
+```text
+tenant_id、status 这类等值过滤字段
+  ↓
+created_at 这类排序或范围字段
+```
+
+但最终仍然要用 `EXPLAIN ANALYZE` 看真实执行计划。
+
+#### 6.1.7 租户隔离和 RLS 的关系
+
+应用代码里写：
+
+```sql
+WHERE tenant_id = $1
+```
+
+属于应用层隔离。它简单、直观，但依赖每一条 SQL 都写对。
+
+Row-Level Security（RLS）属于数据库层防线。它可以在数据库内部限制：
+
+```text
+当前连接只能看到当前租户的数据
+```
+
+第 09 篇会单独介绍 RLS。入门阶段先记住：
+
+- `tenant_id` 是多租户隔离的基础字段。
+- 应用查询必须带 `tenant_id`。
+- 重要系统可以进一步使用 RLS 作为数据库层保护。
+- RLS 不能替代清晰的数据建模和测试。
+
+#### 6.1.8 Agent 项目中特别容易出错的地方
+
+Agent 检索链路经常会组合很多条件：
+
+```text
+租户过滤
+权限过滤
+文档标签过滤
+关键词检索
+向量相似度排序
+时间范围
+```
+
+其中最不能漏的是租户过滤。比如混合检索时，不应该先全库向量召回，再在应用内过滤租户。更稳妥的思路是让数据库查询本身就包含租户条件：
+
+```sql
+SELECT id, content
+FROM knowledge_chunks
+WHERE tenant_id = $2
+  AND metadata @> '{"source": "manual"}'::jsonb
+ORDER BY embedding <=> $1::vector
+LIMIT 10;
+```
+
+这样数据库返回的数据从一开始就被限制在当前租户范围内。
 
 ### 6.2 幂等键
 
@@ -294,7 +582,7 @@ embedded_at TIMESTAMPTZ
 
 当前工程的 SQL 注释与代码默认模型并不完全一致：
 
-- SQL 注释：[`init-scripts/create_tables.sql` L28](../init-scripts/create_tables.sql#L28)
+- SQL 注释：[`init-scripts/create_tables.sql` L28](../create_tables.sql#L28)
 - JavaScript 默认模型：[`src/messages.mjs` L12](../src/messages.mjs#L12)
 
 这正说明 embedding 配置不能只存在于代码注释里。

@@ -1,4 +1,4 @@
-# 09. 并发、性能与生产运维
+﻿# 09. 并发、性能与生产运维
 
 会写 CRUD 只能说明应用可以访问数据库。Agent 服务上线后，还要面对：
 
@@ -250,7 +250,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_embedding
     ON messages USING hnsw (embedding vector_cosine_ops);
 ```
 
-源码见 [`init-scripts/create_tables.sql` L36-L37](../init-scripts/create_tables.sql#L36)。
+源码见 [`init-scripts/create_tables.sql` L36-L37](../create_tables.sql#L36)。
 
 但 Agent 应用不只有向量检索。常见索引类型：
 
@@ -280,8 +280,8 @@ FOREIGN KEY (conversation_id) REFERENCES conversations(id)
 
 源码：
 
-- [`conversations.user_id`](../init-scripts/create_tables.sql#L17)
-- [`messages.conversation_id`](../init-scripts/create_tables.sql#L30)
+- [`conversations.user_id`](../create_tables.sql#L17)
+- [`messages.conversation_id`](../create_tables.sql#L30)
 
 主键会自动拥有唯一索引，但外键的引用列通常需要根据查询单独建索引：
 
@@ -374,8 +374,8 @@ embedding vector_cosine_ops
 
 对应源码：
 
-- [`vector(1024)`](../init-scripts/create_tables.sql#L28)
-- [`vector_cosine_ops`](../init-scripts/create_tables.sql#L37)
+- [`vector(1024)`](../create_tables.sql#L28)
+- [`vector_cosine_ops`](../create_tables.sql#L37)
 
 必须掌握：
 
@@ -533,6 +533,8 @@ GRANT USAGE, SELECT
 这是概念示例。不要把示例密码直接用于生产环境。
 
 ## 17. RLS：多租户隔离的数据库防线
+
+如果你还不理解“租户”和 `tenant_id`，先阅读 [07-知识地图中的租户字段](./07-agent-development-postgresql-roadmap.md#61-租户字段)。RLS 是建立在清晰租户建模之上的数据库层保护。
 
 如果多个租户共享同一张表，可以考虑 Row-Level Security：
 

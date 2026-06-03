@@ -135,7 +135,9 @@ ORDER BY l.latest_created_at DESC NULLS LAST;
 2. 外层把这个结果与 `conversations` 连接。
 3. 没有消息的会话仍然保留，所以使用 `LEFT JOIN`。
 
-CTE 的价值主要是提高表达能力。不要假设“写成 CTE 一定更快”；最终性能仍然要通过 `EXPLAIN ANALYZE` 验证。
+**CTE 的价值主要是提高表达能力。不要假设“写成 CTE 一定更快”；最终性能仍然要通过 `EXPLAIN ANALYZE` 验证。**
+
+
 
 ## 4. 窗口函数：统计时仍然保留明细行
 
@@ -171,6 +173,10 @@ FROM messages;
 | `PARTITION BY conversation_id` | 每个会话独立编号 |
 | `ORDER BY created_at DESC, id DESC` | 每个会话内从新到旧排序 |
 | `ROW_NUMBER()` | 为排序后的行生成 `1, 2, 3 ...` |
+
+
+
+
 
 取出每个会话最后一条消息：
 
@@ -336,9 +342,293 @@ CREATE INDEX idx_example_tool_calls_arguments
 
 不要看到 `jsonb` 就立刻创建索引。索引会占用磁盘，也会增加写入成本。先明确真实查询，再使用 `EXPLAIN ANALYZE` 验证。
 
-### 6.3 哪些字段不应该藏进 JSONB
+### 6.3 GIN 索引是什么
 
-假设每次都要按租户、状态和创建时间查询：
+GIN 是 Generalized Inverted Index，通常翻译为“通用倒排索引”。
+
+先不要被名字吓到。倒排索引的核心思想是：
+
+```text
+普通表：
+  第 1 行有哪些内容？
+  第 2 行有哪些内容？
+  第 3 行有哪些内容？
+
+倒排索引：
+  某个内容出现在哪些行？
+```
+
+普通 B-tree 索引更适合这种问题：
+
+```sql
+WHERE tool_name = 'search_weather'
+WHERE created_at > '2026-06-01'
+ORDER BY created_at DESC
+```
+
+因为 B-tree 按“整列值”排序，擅长等值、范围、排序。
+
+GIN 更适合这种问题：
+
+```sql
+WHERE arguments ? 'city'
+WHERE arguments @> '{"unit": "celsius"}'::jsonb
+```
+
+因为 `jsonb` 里面不是一个简单值，而是一堆 key、value、嵌套路径。GIN 会把这些可搜索元素拆出来，建立“元素 -> 行位置”的映射。
+
+### 6.4 用 `jsonb` 例子理解 GIN 的结构
+
+假设表里有三行：
+
+```text
+id | arguments
+---+---------------------------------------------------
+1  | {"city": "Shanghai", "unit": "celsius"}
+2  | {"city": "Beijing", "unit": "celsius"}
+3  | {"city": "New York", "unit": "fahrenheit"}
+```
+
+GIN 索引可以粗略理解成类似下面的结构：
+
+```text
+city                 -> [1, 2, 3]
+unit                 -> [1, 2, 3]
+city = Shanghai      -> [1]
+city = Beijing       -> [2]
+city = New York      -> [3]
+unit = celsius       -> [1, 2]
+unit = fahrenheit    -> [3]
+```
+
+真实 PostgreSQL 内部结构比这个复杂，但初学时先抓住这个模型：
+
+```text
+不是按整条 JSON 排序
+而是把 JSON 内部的 key/value 拆成索引项
+每个索引项指向包含它的行
+```
+
+当你执行：
+
+```sql
+SELECT *
+FROM example_tool_calls
+WHERE arguments @> '{"unit": "celsius"}'::jsonb;
+```
+
+数据库可以先在 GIN 索引里找：
+
+```text
+unit = celsius -> [1, 2]
+```
+
+然后再回到表里取出第 1、2 行。
+
+如果没有索引，数据库通常需要扫描很多行，把每一行的 `arguments` 都拿出来判断是否包含 `{"unit": "celsius"}`。
+
+### 6.5 GIN 为什么适合 `jsonb`
+
+`jsonb` 查询常见需求不是“整段 JSON 是否等于某个值”，而是：
+
+- 是否存在某个 key。
+- 是否包含某个 key/value。
+- 是否包含某个嵌套结构。
+- 数组中是否包含某个元素。
+
+如果你还不理解“租户”是什么，先阅读 [07-知识地图中的租户字段](./07-agent-development-postgresql-roadmap.md#61-租户字段)。
+
+例如：
+
+```sql
+-- 是否存在 city 这个 key
+SELECT *
+FROM example_tool_calls
+WHERE arguments ? 'city';
+```
+
+```sql
+-- 是否包含指定 key/value
+SELECT *
+FROM example_tool_calls
+WHERE arguments @> '{"unit": "celsius"}'::jsonb;
+```
+
+```sql
+-- 数组里是否包含某个工具标签
+SELECT *
+FROM example_tool_calls
+WHERE arguments @> '{"tags": ["weather"]}'::jsonb;
+```
+
+这些查询都很符合 GIN 的倒排思路：
+
+```text
+先找包含某个元素的行号集合
+再回表取完整行
+```
+
+### 6.6 GIN 查询不是直接返回最终结果
+
+理解这一点很重要：GIN 索引通常帮助数据库缩小候选范围，但数据库仍然可能需要回表复查。
+
+原因是：
+
+- JSONB 的包含关系可能涉及嵌套结构。
+- 索引项只保存适合检索的信息，不等于保存完整原始行。
+- 某些操作符可能先通过索引找到候选行，再由 PostgreSQL 对候选行做精确判断。
+
+可以用这个流程理解：
+
+```text
+SQL 条件：arguments @> '{"unit": "celsius"}'
+  ↓
+GIN 索引找到可能匹配的行号
+  ↓
+PostgreSQL 读取这些行
+  ↓
+再次检查 arguments 是否真的满足条件
+  ↓
+返回最终结果
+```
+
+所以 `EXPLAIN ANALYZE` 中你可能看到类似：
+
+```text
+Bitmap Index Scan
+Bitmap Heap Scan
+```
+
+大致含义是：
+
+| 执行节点 | 含义 |
+| --- | --- |
+| `Bitmap Index Scan` | 先通过索引找出匹配行的位置 |
+| `Bitmap Heap Scan` | 再根据这些位置回到表里读取行 |
+
+不需要一开始记住所有执行计划细节，但要知道：GIN 不一定让查询“一步完成”，它常常是先缩小范围。
+
+### 6.7 `jsonb_ops` 与 `jsonb_path_ops`
+
+创建 JSONB GIN 索引时，PostgreSQL 有不同的 operator class。可以先理解为“索引用什么规则拆解和支持查询”。
+
+默认写法：
+
+```sql
+CREATE INDEX idx_example_tool_calls_arguments
+  ON example_tool_calls
+  USING GIN (arguments);
+```
+
+等价于使用默认的 `jsonb_ops`。它支持的操作更全面，例如：
+
+- `?`：是否存在某个 key。
+- `?|`：是否存在这些 key 中任意一个。
+- `?&`：是否同时存在这些 key。
+- `@>`：是否包含某段 JSON。
+- `@?`、`@@`：JSON path 相关查询。
+
+如果你的主要查询几乎都是 `@>` 包含查询，也可以考虑：
+
+```sql
+CREATE INDEX idx_example_tool_calls_arguments_path
+  ON example_tool_calls
+  USING GIN (arguments jsonb_path_ops);
+```
+
+`jsonb_path_ops` 的特点：
+
+| 类型 | 特点 |
+| --- | --- |
+| `jsonb_ops` | 默认选择，支持操作符更多，索引通常更大 |
+| `jsonb_path_ops` | 更偏向 `@>` 包含查询，索引通常更小，但不支持 `?` 这类 key-exists 查询 |
+
+初学和大多数项目里，优先使用默认 `jsonb_ops`。当你已经确认业务高频查询主要是 `@>`，并且数据量变大、索引体积明显影响成本时，再评估 `jsonb_path_ops`。
+
+### 6.8 GIN 索引的代价
+
+GIN 索引不是免费的。它会带来几个成本：
+
+| 成本 | 说明 |
+| --- | --- |
+| 磁盘空间 | 一条 JSON 可能拆出很多索引项，索引可能比你想象的大 |
+| 写入变慢 | `INSERT`、`UPDATE` 时不仅要写表，还要维护 GIN 索引 |
+| 更新 JSONB 成本高 | PostgreSQL 更新一行时会写入新版本，频繁改大 JSON 会增加成本 |
+| 查询不一定用索引 | 小表、低选择性条件、统计信息不足时，优化器可能仍然选择顺序扫描 |
+
+“低选择性”是指一个条件能过滤掉的数据很少。例如大多数行都有：
+
+```json
+{"unit": "celsius"}
+```
+
+那么这个查询：
+
+```sql
+WHERE arguments @> '{"unit": "celsius"}'::jsonb
+```
+
+即使有 GIN 索引，数据库也可能认为：反正大部分行都要读，不如直接扫表。
+
+### 6.9 Agent 项目中怎么判断是否要建 GIN
+
+适合建 GIN 的情况：
+
+- `jsonb` 字段数据量明显增长，例如几十万行以上。
+- 高频接口经常按 metadata、tool arguments、tags 过滤。
+- 查询条件能过滤掉大量无关数据。
+- 已经用 `EXPLAIN ANALYZE` 看到顺序扫描成为瓶颈。
+
+不适合一开始就建 GIN 的情况：
+
+- 表里只有几百或几千行。
+- JSONB 只是用来保存响应快照，几乎不查询内部字段。
+- 你总是按 `tenant_id`、`created_at`、`status` 查询，这些应该建普通列索引。
+- JSONB 字段非常大，并且更新非常频繁。
+
+Agent 开发中常见设计是：
+
+```text
+高频过滤字段：普通列 + B-tree 索引
+低频、变化快、结构不固定的信息：jsonb
+确实需要按 jsonb 内部字段过滤：再加 GIN 索引
+```
+
+例如：
+
+```sql
+CREATE TABLE agent_tool_calls (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  tool_name TEXT NOT NULL,
+  status TEXT NOT NULL,
+  arguments JSONB NOT NULL,
+  result JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+更合理的索引组合可能是：
+
+```sql
+-- 高频普通过滤条件
+CREATE INDEX idx_agent_tool_calls_tenant_created
+  ON agent_tool_calls (tenant_id, created_at DESC);
+
+-- 高频工具名过滤
+CREATE INDEX idx_agent_tool_calls_tool_name
+  ON agent_tool_calls (tool_name);
+
+-- 只有当你确实经常查 arguments 内部字段时才加
+CREATE INDEX idx_agent_tool_calls_arguments_gin
+  ON agent_tool_calls
+  USING GIN (arguments);
+```
+
+### 6.10 哪些字段不应该藏进 JSONB
+
+假设每次都要按租户、状态和创建时间查询。租户基础概念见 [07-知识地图中的租户字段](./07-agent-development-postgresql-roadmap.md#61-租户字段)：
 
 ```sql
 WHERE tenant_id = $1
@@ -419,6 +709,8 @@ PostgreSQL 内置全文检索配置对英文词形处理更直接。中文通常
 关键词相关性：是否出现关键术语、错误码、名称
 语义相关性：embedding 距离是否接近
 ```
+
+其中 `tenant_id` 是多租户系统中的数据归属字段，基础概念见 [07-知识地图中的租户字段](./07-agent-development-postgresql-roadmap.md#61-租户字段)。
 
 结构化过滤应该尽量提前执行：
 

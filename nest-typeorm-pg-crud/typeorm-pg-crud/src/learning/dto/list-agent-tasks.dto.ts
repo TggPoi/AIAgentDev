@@ -1,24 +1,26 @@
 import { Type } from 'class-transformer';
 import {
+  IsISO8601,
   IsInt,
-  IsNotEmpty,
   IsOptional,
-  IsString,
+  IsUUID,
   Max,
-  MaxLength,
   Min,
 } from 'class-validator';
 
-export class SemanticSearchDto {
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(2000)
-  query: string;
-
+export class ListAgentTasksDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100)
   limit?: number;
+
+  @IsOptional()
+  @IsISO8601()
+  beforeCreatedAt?: string;
+
+  @IsOptional()
+  @IsUUID()
+  beforeId?: string;
 }

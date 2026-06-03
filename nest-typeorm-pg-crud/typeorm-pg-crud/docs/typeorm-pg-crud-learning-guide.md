@@ -10,6 +10,8 @@ D:\AI_Agent_Project\nest-typeorm-pg-crud\typeorm-pg-crud
 
 这不是一份 TypeORM API 百科。它会围绕当前工程解释必须掌握的知识，并补充从学习示例走向真实项目时不能忽略的内容。
 
+完成本指南后，继续按照 [docs 系统学习路线](./README.md) 学习新增的 `learning` 模块。扩展文档和代码会进一步覆盖 Repository CRUD、DTO 运行时校验、环境配置、游标分页、UPSERT、事务、乐观锁、`FOR UPDATE SKIP LOCKED` 和 migration。
+
 ## 1. 学习前提
 
 开始本工程前，应该先理解：
@@ -116,7 +118,8 @@ PostgreSQL + pgvector
 | --- | --- |
 | 创建 Nest 应用 | [`NestFactory.create()` L5](../src/main.ts#L5) |
 | 监听 `3005` 端口 | [`app.listen()` L6](../src/main.ts#L6) |
-| 配置 PostgreSQL 连接 | [`TypeOrmModule.forRoot()` L12-L22](../src/app.module.ts#L12) |
+| 配置 PostgreSQL 连接 | [`TypeOrmModule.forRootAsync()` L20-L27](../src/app.module.ts#L20) |
+| 数据库环境变量映射 | [`database.config.ts` L3-L11](../src/config/database.config.ts#L3) |
 | 注册业务模块 | [`ConversationsModule` L23](../src/app.module.ts#L23) |
 | 注册 Controller 和 Service | [`@Module()` L5-L8](../src/conversations/conversations.module.ts#L5) |
 | `User` 实体 | [`User` L10-L22](../src/conversations/entities/user.entity.ts#L10) |
@@ -208,7 +211,7 @@ export class ConversationsModule {}
 
 ```ts
 imports: [
-  TypeOrmModule.forRoot({ ... }),
+  TypeOrmModule.forRootAsync({ ... }),
   ConversationsModule,
 ]
 ```
@@ -276,12 +279,80 @@ Controller 的职责应该尽量薄：
 
 业务查询、事务和外部服务调用应该放在 Service 中。
 
-## 6. TypeOrmModule.forRoot：连接 PostgreSQL
 
-[`src/app.module.ts` L12-L22](../src/app.module.ts#L12) 注册 TypeORM：
+
+## 6. TypeOrmModule.forRootAsync：连接 PostgreSQL
+
+教程最初使用 `TypeOrmModule.forRoot({ ... })` 直接写入数据库配置。扩展代码已经改为 [`src/app.module.ts` L20-L27](../src/app.module.ts#L20)：
 
 ```ts
-TypeOrmModule.forRoot({
+TypeOrmModule.forRootAsync({
+  imports: [ConfigModule.forFeature(databaseConfig)],
+  inject: [databaseConfig.KEY],
+  useFactory: (config) => ({
+    ...config,
+    entities: [User, Conversation, Message, AgentTask, AgentRun],
+  }),
+})
+```
+
+**在当前文件里，你要分两层看：**
+
+```ts
+TypeOrmModule.forRootAsync({
+  imports: [ConfigModule.forFeature(databaseConfig)],
+  inject: [databaseConfig.KEY],
+  useFactory: (config: ConfigType<typeof databaseConfig>) => ({
+    ...config,
+    entities: [User, Conversation, Message, AgentTask, AgentRun],
+  }),
+})
+```
+
+## 1. `forRootAsync({ ... })` 外层需要什么？
+
+外层是 NestJS 的“异步配置写法”，常见配置是：
+
+| 配置项       | 当前代码                                  | 作用                                                |
+| ------------ | ----------------------------------------- | --------------------------------------------------- |
+| `imports`    | `ConfigModule.forFeature(databaseConfig)` | 先加载 `databaseConfig` 这组配置                    |
+| `inject`     | `[databaseConfig.KEY]`                    | 告诉 NestJS 把 `databaseConfig` 注入给 `useFactory` |
+| `useFactory` | `(config) => ({ ... })`                   | 返回真正给 TypeORM 使用的数据库配置                 |
+
+也就是说，外层不是数据库配置本身，而是告诉 NestJS：
+
+> 我要异步生成 TypeORM 配置，生成配置前先注入 `databaseConfig`。
+
+## 2. `useFactory` 返回值需要什么？
+
+`useFactory` 里面返回的对象，才是真正的 TypeORM 数据库连接配置：
+
+```ts
+{
+  ...config,
+  entities: [User, Conversation, Message, AgentTask, AgentRun],
+}
+```
+
+其中 `...config` 来自：
+
+```ts
+registerAs('database', () => ({
+  type: 'postgres' as const,
+  host: process.env.DATABASE_HOST ?? 'localhost',
+  port: Number.parseInt(process.env.DATABASE_PORT ?? '5432', 10),
+  username: process.env.DATABASE_USERNAME ?? 'user',
+  password: process.env.DATABASE_PASSWORD ?? '123456',
+  database: process.env.DATABASE_NAME ?? 'hello_pg',
+  synchronize: (process.env.DATABASE_SYNCHRONIZE ?? 'true') === 'true',
+  logging: (process.env.DATABASE_LOGGING ?? 'true') === 'true',
+}));
+```
+
+所以最终传给 TypeORM 的配置大概等价于：
+
+```ts
+{
   type: 'postgres',
   host: 'localhost',
   port: 5432,
@@ -290,23 +361,378 @@ TypeOrmModule.forRoot({
   database: 'hello_pg',
   synchronize: true,
   logging: true,
-  entities: [User, Conversation, Message],
+  entities: [User, Conversation, Message, AgentTask, AgentRun],
+}
+```
+
+## 3. 哪些是必须的？
+
+对当前 PostgreSQL 连接，核心必须有：
+
+```ts
+type: 'postgres'
+host: 'localhost'
+port: 5432
+username: 'user'
+password: '123456'
+database: 'hello_pg'
+entities: [...]
+```
+
+否则 TypeORM 不知道：
+
+- 用什么数据库驱动。
+- 连接哪个 PostgreSQL。
+- 用哪个账号密码。
+- 连接哪个 database。
+- 哪些 Entity 需要被 ORM 管理。
+
+## 4. 哪些是常用但不是绝对必填？
+
+```ts
+synchronize: true
+logging: true
+```
+
+含义：
+
+- `synchronize`：启动时根据 Entity 自动同步表结构。本地学习方便，生产环境不要开。
+- `logging`：打印 SQL，学习时很有用。
+
+生产环境通常改成：
+
+```ts
+synchronize: false
+logging: false
+```
+
+再用 migration 管理表结构。
+
+## 5. 怎么知道 `forRootAsync` 需要哪些配置？
+
+有三个判断来源。
+
+第一，看 TypeScript 类型提示。
+
+在 VS Code 里把鼠标放到：
+
+```ts
+TypeOrmModule.forRootAsync
+```
+
+通常会看到它需要：
+
+```ts
+TypeOrmModuleAsyncOptions
+```
+
+这个类型决定了外层可以写：
+
+```ts
+imports
+inject
+useFactory
+useClass
+useExisting
+```
+
+第二，看 `useFactory` 返回值类型。
+
+`useFactory` 返回的是 TypeORM 连接配置，接近：
+
+```ts
+TypeOrmModuleOptions
+```
+
+它内部包含 TypeORM 的 `DataSourceOptions`，也就是数据库连接需要的配置。
+
+第三，看当前代码实际拆分。
+
+当前项目把配置拆成了两部分：
+
+```ts
+// database.config.ts
+type, host, port, username, password, database, synchronize, logging
+```
+
+加上：
+
+```ts
+// app.module.ts
+entities
+```
+
+所以你读当前文件时可以这样判断：
+
+```text
+forRootAsync 外层：NestJS 如何拿到配置
+useFactory 返回值：TypeORM 如何连接数据库
+database.config.ts：数据库连接参数从哪里来
+entities：哪些表实体交给 TypeORM 管理
+```
+
+一句话总结：
+
+> `forRootAsync` 需要的不是一组固定“业务字段”，而是 NestJS 异步配置外壳 + TypeORM 数据库连接配置。当前项目中，数据库连接参数来自 `database.config.ts`，Entity 列表在 `app.module.ts` 中补上。
+
+
+
+配置值集中定义在 [`src/config/database.config.ts` L3-L11](../src/config/database.config.ts#L3)：
+
+```ts
+export default registerAs('database', () => ({
+  type: 'postgres' as const,
+  host: process.env.DATABASE_HOST ?? 'localhost',
+  port: Number.parseInt(process.env.DATABASE_PORT ?? '5432', 10),
+  username: process.env.DATABASE_USERNAME ?? 'user',
+  password: process.env.DATABASE_PASSWORD ?? '123456',
+  database: process.env.DATABASE_NAME ?? 'hello_pg',
+  synchronize: (process.env.DATABASE_SYNCHRONIZE ?? 'true') === 'true',
+  logging: (process.env.DATABASE_LOGGING ?? 'true') === 'true',
+}));
+```
+
+`registerAs` 是 `@nestjs/config` 提供的配置命名工具，用来把一组配置注册成一个“有名字的配置块”。
+
+在当前工程里类似这样：
+
+这里：
+
+```ts
+registerAs('database', () => ({ ... }))
+```
+
+含义是：
+
+- `'database'`：给这组配置起名，叫 `database`。
+- `() => ({ ... })`：返回真正的配置对象。
+- 这个配置对象会从 `process.env` 读取环境变量。
+- 如果环境变量不存在，就使用本地学习默认值。
+
+它的作用是让数据库配置集中管理，而不是直接写在 `app.module.ts` 里。
+
+在 `app.module.ts` 中一般这样使用：
+
+```ts
+ConfigModule.forFeature(databaseConfig)
+```
+
+然后注入：
+
+```ts
+inject: [databaseConfig.KEY]
+```
+
+再拿到配置：
+
+```ts
+useFactory: (config: ConfigType<typeof databaseConfig>) => ({
+  ...config,
+  entities: [User, Conversation, Message, AgentTask, AgentRun],
 })
 ```
 
+简单说：
+
+> `registerAs` 就是给一组配置起名字，并让 NestJS 可以按这个名字注入这组配置。
+
+当前这里注册的是数据库配置。
+
+
+
 逐项理解：
 
-| 配置 | 当前值 | 含义 |
+| 配置 | 本地默认值 | 含义 |
 | --- | --- | --- |
 | `type` | `'postgres'` | 使用 PostgreSQL 驱动 |
 | `host` | `'localhost'` | NestJS 在 Windows 主机运行，通过映射端口连接数据库 |
 | `port` | `5432` | PostgreSQL 端口 |
 | `username` | `'user'` | 数据库用户 |
-| `password` | `'123456'` | 数据库密码 |
+| `password` | `'123456'` | 仅用于本地学习的默认密码 |
 | `database` | `'hello_pg'` | 连接的数据库 |
-| `entities` | 三个实体类 | 告诉 TypeORM 需要管理哪些表 |
+| `entities` | 五个实体类 | 三个教程实体和两个 `learning` 实体 |
 | `logging` | `true` | 在终端输出 TypeORM 执行的 SQL |
-| `synchronize` | `true` | 启动时根据实体尝试同步表结构 |
+| `synchronize` | `true` | 本地默认开启；启动时根据实体尝试同步表结构 |
+
+
+
+## 5.1、TypeOrmModuleAsyncOptions 配置的查询使用
+
+`TypeOrmModuleAsyncOptions` 不需要一开始就背。你可以按“官方文档 + 本地类型定义 + 当前代码”三步查。
+
+### 1. 官方文档在哪里看？
+
+优先看 NestJS 官方文档：
+
+- NestJS Database Techniques  
+  https://docs.nestjs.com/techniques/database
+
+这个页面讲 `@nestjs/typeorm`、`TypeOrmModule.forRoot()`、`forRootAsync()`、`forFeature()` 等用法。
+
+再看配置模块：
+
+- NestJS Configuration  
+  https://docs.nestjs.com/techniques/configuration
+
+因为你当前代码里的：
+
+```ts
+ConfigModule.forRoot()
+ConfigModule.forFeature(databaseConfig)
+registerAs(...)
+```
+
+都属于配置模块内容。
+
+TypeORM 本身的数据库连接配置看这里：
+
+- TypeORM DataSource Options / Getting Started  
+  https://typeorm.io/docs/getting-started/
+
+### 2. `TypeOrmModuleAsyncOptions` 是什么？
+
+它是 `@nestjs/typeorm` 中定义的 TypeScript 类型，用来描述：
+
+```ts
+TypeOrmModule.forRootAsync({
+  ...
+})
+```
+
+这个对象里可以写哪些字段。
+
+你当前用的是这一种写法：
+
+```ts
+TypeOrmModule.forRootAsync({
+  imports: [ConfigModule.forFeature(databaseConfig)],
+  inject: [databaseConfig.KEY],
+  useFactory: (config: ConfigType<typeof databaseConfig>) => ({
+    ...config,
+    entities: [User, Conversation, Message, AgentTask, AgentRun],
+  }),
+})
+```
+
+这正是 `TypeOrmModuleAsyncOptions` 的常见用法。
+
+### 3. 它常见有哪些字段？
+
+常见字段如下：
+
+| 字段                | 作用                                                         |
+| ------------------- | ------------------------------------------------------------ |
+| `imports`           | 先导入某些模块，让当前配置可以使用这些**模块提供的 Provider** |
+| `inject`            | 指定要注入给 `useFactory` 的**依赖**                         |
+| `useFactory`        | 一个函数，返回真正的 TypeORM 配置                            |
+| `useClass`          | 使用某个类来创建 TypeORM 配置                                |
+| `useExisting`       | 复用已经存在的配置类                                         |
+| `name`              | 多数据库连接时给连接起名                                     |
+| `dataSourceFactory` | 自定义如何创建 TypeORM `DataSource`                          |
+
+你现在只需要先掌握三个：
+
+```ts
+imports
+inject
+useFactory
+```
+
+其他的等遇到多数据库、配置类、定制 DataSource 时再学。
+
+### 4. 当前代码怎么理解？
+
+```ts
+imports: [ConfigModule.forFeature(databaseConfig)]
+```
+
+意思是：
+
+> 当前 TypeORM 配置需要用到 `databaseConfig`，所以先导入它。
+
+```ts
+inject: [databaseConfig.KEY]
+```
+
+意思是：
+
+> 把名为 `database` 的配置对象注入进来。
+
+```ts
+useFactory: (config: ConfigType<typeof databaseConfig>) => ({
+  ...config,
+  entities: [User, Conversation, Message, AgentTask, AgentRun],
+})
+```
+
+意思是：
+
+> 拿到数据库配置后，返回 TypeORM 真正需要的连接配置。
+
+最终结果大概是：
+
+```ts
+{
+  type: 'postgres',
+  host: 'localhost',
+  port: 5432,
+  username: 'user',
+  password: '123456',
+  database: 'hello_pg',
+  synchronize: true,
+  logging: true,
+  entities: [User, Conversation, Message, AgentTask, AgentRun],
+}
+```
+
+### 5. 在本地源码里怎么查类型？
+
+如果你想看最准确的类型定义，可以在工程里搜索：
+
+```powershell
+rg "interface TypeOrmModuleAsyncOptions" node_modules/@nestjs/typeorm
+```
+
+或者在 VS Code 中：
+
+1. 按住 `Ctrl`
+2. 点击 `forRootAsync`
+3. 跳到类型定义
+4. 找 `TypeOrmModuleAsyncOptions`
+
+你会看到它大概长这样：
+
+```ts
+export interface TypeOrmModuleAsyncOptions {
+  imports?: any[];
+  inject?: any[];
+  useFactory?: (...args: any[]) => TypeOrmModuleOptions | Promise<TypeOrmModuleOptions>;
+  useClass?: Type<TypeOrmOptionsFactory>;
+  useExisting?: Type<TypeOrmOptionsFactory>;
+  name?: string;
+  dataSourceFactory?: TypeOrmDataSourceFactory;
+}
+```
+
+不同版本字段可能略有差异，所以本地 `node_modules` 里的类型定义是当前项目最准确的。
+
+### 6. 学习顺序建议
+
+你现在按这个顺序学就够了：
+
+1. `TypeOrmModule.forRoot()`：同步、直接写死配置。
+2. `ConfigModule` + `registerAs()`：把配置集中管理。
+3. `TypeOrmModule.forRootAsync()`：异步读取配置后再创建数据库连接。
+4. `TypeOrmModule.forFeature()`：在业务模块中注入 Repository。
+5. `@InjectRepository()`：在 Service 中拿到某个 Entity 的 Repository。
+
+一句话总结：
+
+> `TypeOrmModuleAsyncOptions` 就是 `forRootAsync()` 的参数类型。你现在不用背它，只要知道当前项目用的是 `imports + inject + useFactory` 这条主线即可。
+
+
+
+
 
 ### 6.1 为什么 logging: true 适合学习
 
@@ -335,10 +761,10 @@ relations: { conversations: true }
 
 ### 6.3 不要在真实项目中硬编码密码
 
-当前写法便于学习：
+本地默认值便于学习：
 
 ```ts
-password: '123456'
+password: process.env.DATABASE_PASSWORD ?? '123456'
 ```
 
 真实项目应使用环境变量和配置模块，例如：
@@ -346,12 +772,12 @@ password: '123456'
 ```dotenv
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
-DATABASE_USER=user
+DATABASE_USERNAME=user
 DATABASE_PASSWORD=123456
 DATABASE_NAME=hello_pg
 ```
 
-再通过 NestJS 的 `@nestjs/config` 和 `TypeOrmModule.forRootAsync()` 读取配置。
+当前工程已经通过 NestJS 的 `@nestjs/config` 和 `TypeOrmModule.forRootAsync()` 读取配置。参考 [`.env.example`](../.env.example)。
 
 ## 7. Entity：将表映射为 TypeScript 类
 
@@ -493,7 +919,9 @@ export class Message {
 - `embedding` 可以为空，因为不是每条消息都必须立即向量化。
 - 消息属于某一个会话。
 
-## 8. 一对多关系：拥有方和反向关系
+
+
+## 8.【重点】 一对多关系：拥有方和反向关系
 
 当前工程中：
 
@@ -529,7 +957,189 @@ user: User;
 - [`Conversation.messages` L31-L32](../src/conversations/entities/conversation.entity.ts#L31)
 - [`Message.conversation` L40-L44](../src/conversations/entities/message.entity.ts#L40)
 
-### 8.1 onDelete: 'CASCADE' 与 cascade: true 不同
+
+
+这三个装饰器是 TypeORM 用来描述“表关系”的。
+
+用当前工程关系举例：
+
+```text
+users 1 ──── N conversations
+conversations 1 ──── N messages
+```
+
+也就是：
+
+- 一个用户可以有多个会话。
+- 一个会话只属于一个用户。
+- 一个会话可以有多条消息。
+- 一条消息只属于一个会话。
+
+
+
+## 8.1. `@ManyToOne`
+
+`@ManyToOne` 表示：
+
+> 当前这张表的很多行，都属于另一张表的一行。
+
+例如 `Conversation`：
+
+```ts
+@ManyToOne(() => User, (user) => user.conversations, { onDelete: 'CASCADE' })
+@JoinColumn({ name: 'user_id' })
+user: User;
+```
+
+含义：
+
+```text
+多个 conversations 属于一个 user
+```
+
+数据库里真正保存外键的是 `conversations.user_id`。
+
+所以 `ManyToOne` 这一侧通常是“外键所在的一侧”。
+
+对应表结构：
+
+```sql
+conversations
+-------------
+id
+user_id  ← 外键，指向 users.id
+title
+created_at
+```
+
+
+
+## 8.2. `@OneToMany`
+
+`@OneToMany` 表示：
+
+> 当前这张表的一行，可以对应另一张表的很多行。
+
+例如 `User`：
+
+```ts
+@OneToMany(() => Conversation, (conversation) => conversation.user)
+conversations: Conversation[];
+```
+
+含义：
+
+```text
+一个 user 有多个 conversations
+```
+
+注意：
+
+**`@OneToMany` 这一侧通常不保存外键。**
+
+`users` 表里不会多出一个 `conversations` 字段。
+
+**它只是告诉 TypeORM：**
+
+> **如果我要从 User 对象访问会话列表，可以通过 `conversations` 这个属性拿到。**
+
+
+
+## 8.3. `@JoinColumn`
+
+`@JoinColumn` 用来说明：
+
+> **当前关系使用数据库中的哪一个外键列连接。**
+
+例如：
+
+```ts
+@JoinColumn({ name: 'user_id' })
+user: User;
+```
+
+意思是：
+
+```text
+Conversation.user 这个关系，使用 conversations 表里的 user_id 列连接 users.id
+```
+
+没有它，TypeORM 可能会按照默认命名规则猜列名，比如 `userId` 或 `user_id`。你显式写出来，关系更清楚，也能匹配现有数据库字段。
+
+
+
+## 4. 三者放在一起看
+
+### User 实体
+
+```ts
+@Entity('users')
+export class User {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @OneToMany(() => Conversation, (conversation) => conversation.user)
+  conversations: Conversation[];
+}
+```
+
+意思：
+
+```text
+一个 User 有多个 Conversation
+```
+
+但 `users` 表不保存外键。
+
+### Conversation 实体
+
+```ts
+@Entity('conversations')
+export class Conversation {
+  @Column({ name: 'user_id' })
+  userId: number;
+
+  @ManyToOne(() => User, (user) => user.conversations, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'user_id' })
+  user: User;
+}
+```
+
+意思：
+
+```text
+多个 Conversation 属于一个 User
+```
+
+并且使用：
+
+```text
+conversations.user_id
+```
+
+连接：
+
+```text
+users.id
+```
+
+## 5. 最重要的理解
+
+| 装饰器        | 含义                         | 是否保存外键       |
+| ------------- | ---------------------------- | ------------------ |
+| `@OneToMany`  | 一的一侧，可以访问多个子记录 | 否                 |
+| `@ManyToOne`  | 多的一侧，属于某个父记录     | 通常是             |
+| `@JoinColumn` | 指定当前关系使用哪个外键列   | 用在拥有外键的一侧 |
+
+一句话记忆：
+
+> 外键通常在 `@ManyToOne` 那一侧，`@OneToMany` 只是反向访问列表，`@JoinColumn` 指明外键列名。
+
+
+
+
+
+### 8.1 【重点】onDelete: 'CASCADE' 与 cascade: true 不同
 
 当前实体使用：
 
@@ -566,6 +1176,8 @@ TypeORM 关系还支持另一种配置：
 | --- | --- |
 | `onDelete: 'CASCADE'` | 删除数据库记录时的外键行为 |
 | `cascade: true` | ORM 保存关联对象时是否联动保存 |
+
+
 
 ## 9. EntityManager：操作多个实体
 
@@ -771,54 +1383,48 @@ URL 查询参数 queryLimit
 
 ## 12. DTO 与运行时校验
 
-当前 DTO：
+教程最初的 DTO 只有 TypeScript 字段声明。扩展代码已经为语义检索 DTO 添加运行时校验：
 
 ```ts
-export class SemanticSearchDto {
-  query: string;
-  limit?: number;
-}
-```
-
-对应源码：[`semantic-search.dto.ts` L2-L6](../src/conversations/dto/semantic-search.dto.ts#L2)。
-
-它为 TypeScript 提供类型提示，但不会自动验证运行时 HTTP 输入。
-
-需要区分：
-
-| 能力 | 当前 DTO 是否具备 |
-| --- | --- |
-| 编译时类型提示 | 是 |
-| 自动拒绝空字符串 | 否 |
-| 自动拒绝负数 `limit` | 否 |
-| 自动拒绝额外字段 | 否 |
-| 自动限制最大返回数量 | 否 |
-
-真实项目应该安装：
-
-```powershell
-pnpm.cmd install class-validator class-transformer
-```
-
-并改造 DTO：
-
-```ts
-import { IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 export class SemanticSearchDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(2000)
   query: string;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(50)
+  @Max(100)
   limit?: number;
 }
 ```
 
-在 [`src/main.ts` L4-L8](../src/main.ts#L4) 注册全局校验：
+对应源码：[`semantic-search.dto.ts` L1-L25](../src/conversations/dto/semantic-search.dto.ts#L1)。
+
+当前 DTO 具备：
+
+| 能力 | 当前 DTO 是否具备 |
+| --- | --- |
+| 编译时类型提示 | 是 |
+| 自动拒绝空字符串 | 是 |
+| 自动拒绝负数 `limit` | 是 |
+| 自动拒绝额外字段 | 是 |
+| 自动限制最大返回数量 | 是，最大值为 `100` |
+
+[`src/main.ts` L8-L14](../src/main.ts#L8) 已注册全局校验：
 
 ```ts
 import { ValidationPipe } from '@nestjs/common';
@@ -840,7 +1446,7 @@ app.useGlobalPipes(
 | `forbidNonWhitelisted: true` | 遇到额外字段时直接返回错误 |
 | `transform: true` | 尝试转换输入类型 |
 
-当前工程尚未安装这两个校验依赖，也尚未注册 `ValidationPipe`。这是学习示例走向真实接口时必须补足的内容。
+新增 `learning` 模块的 DTO 也采用相同规则。详见 [learning 模块代码导读：DTO 校验](./02-learning-module-code-guide.md#4-dto-校验)。
 
 ## 13. pgvector：为什么仍然需要原生 SQL
 
@@ -853,7 +1459,9 @@ embedding: number[] | null;
 
 对应源码：[`Message.embedding` L34-L35](../src/conversations/entities/message.entity.ts#L34)。
 
-但语义检索使用 pgvector 特有运算符：
+
+
+**但语义检索使用 pgvector 特有运算符：**
 
 ```sql
 embedding <=> $1::vector
@@ -919,6 +1527,8 @@ model: process.env.EMBEDDING_MODEL || 'text-embedding-v3'
 
 对应源码：[`getEmbeddings()` L116-L122](../src/conversations/conversations.service.ts#L116)。
 
+
+
 ### 13.3 延迟创建 embeddings 客户端
 
 当前 Service：
@@ -941,6 +1551,8 @@ if (!this.embeddings) {
 
 这种方式避免普通关联查询依赖嵌入模型配置。
 
+
+
 ## 14. 数据库结构管理：初始化脚本、同步和迁移
 
 当前学习环境同时出现三种数据库结构管理方式。
@@ -957,13 +1569,17 @@ pgsql-test/init-scripts/create_tables.sql
 
 ### 14.2 synchronize: true
 
-当前 NestJS 工程使用：
+当前 NestJS 工程在本地默认使用：
 
 ```ts
-synchronize: true
+synchronize: (process.env.DATABASE_SYNCHRONIZE ?? 'true') === 'true'
 ```
 
-应用启动时，TypeORM 根据实体尝试同步结构。
+应用启动时，TypeORM 根据实体尝试同步结构。生产环境应显式设置：
+
+```dotenv
+DATABASE_SYNCHRONIZE=false
+```
 
 ### 14.3 migration
 
@@ -1053,6 +1669,8 @@ CREATE INDEX IF NOT EXISTS idx_messages_embedding
 
 真实项目中，应将这类 SQL 写入 migration，而不是依赖开发人员手动执行。
 
+
+
 ## 16. 事务：多个写操作必须原子化
 
 当前接口主要执行读取操作。未来实现“创建会话并写入第一条消息”时，应该使用事务。
@@ -1088,7 +1706,7 @@ await this.em.transaction(async (transactionalEm) => {
 
 必须注意：
 
-> 事务回调中所有数据库操作都必须使用 `transactionalEm`，不要继续使用外部的 `this.em`。
+> **事务回调中所有数据库操作都必须使用 `transactionalEm`，不要继续使用外部的 `this.em`。**
 
 这样任意一步失败时，整个事务都会回滚。
 
@@ -1126,6 +1744,8 @@ VALUES
   (1, 'user', '什么是 TypeORM？'),
   (1, 'assistant', 'TypeORM 用于将 TypeScript 对象映射到数据库表。');
 ```
+
+
 
 ## 18. 调用接口
 
@@ -1186,7 +1806,7 @@ Invoke-RestMethod `
 
 ## 19. 当前工程已经实现了什么
 
-已经实现：
+教程 `conversations` 模块已经实现：
 
 - NestJS 服务启动。
 - PostgreSQL 连接。
@@ -1199,22 +1819,34 @@ Invoke-RestMethod `
 - `ParseIntPipe` 路径参数转换。
 - `NotFoundException` 错误响应。
 
+新增 `learning` 模块进一步实现：
+
+- 数据库配置环境变量化。
+- 全局 `ValidationPipe`。
+- DTO 运行时校验。
+- Repository CRUD。
+- QueryBuilder 游标分页。
+- 基于 `externalKey` 的 UPSERT。
+- 基于 `version` 的乐观锁更新。
+- 使用事务同时创建运行记录并更新任务状态。
+- 使用 `QueryRunner` 和 `FOR UPDATE SKIP LOCKED` 领取任务。
+- 学习表 migration。
+
+新增代码与配套文档入口见 [docs 系统学习路线](./README.md)。
+
 ## 20. 当前工程尚未实现什么
 
-尚未实现：
+教程原有的 `users`、`conversations`、`messages` 领域仍未实现：
 
 - 用户、会话和消息的完整 HTTP CRUD。
 - 写入消息时自动生成 embedding 的 HTTP 接口。
-- 请求体运行时校验。
-- 数据库配置环境变量化。
-- 正式 migration。
 - HNSW 索引 migration。
 - 角色数据库约束 migration。
 - 业务接口测试。
 - 独立测试数据库。
 - 嵌入模型调用的 mock。
 
-这并不代表教程实现错误。教程聚焦的是 TypeORM 关系映射和 pgvector 检索。你需要知道学习示例与生产代码之间还有哪些工作。
+新增 `learning` 模块提供了部分工程化示例，但仍然不是完整生产系统。它没有实现多租户隔离、任务锁超时恢复、最大重试次数、专用测试数据库和生产凭据管理。详细边界见 [运行练习与生产化边界](./03-practice-and-production-checklist.md#12-生产项目仍然需要补充什么)。
 
 ## 21. 测试必须掌握的边界
 
@@ -1303,16 +1935,15 @@ Hello World!
 
 ## 23. 建议的后续实践
 
-按以下顺序扩展当前工程：
+先按照 [docs 系统学习路线](./README.md) 运行新增 `learning` 模块。完成后，再按以下顺序继续扩展教程原有领域：
 
-1. 为 `SemanticSearchDto` 添加运行时校验。
-2. 使用环境变量替换数据库硬编码配置。
-3. 新增创建用户接口。
-4. 新增创建会话接口。
-5. 新增写入消息并生成 embedding 的接口。
-6. 将 `synchronize` 改为 `false`，建立 migration。
-7. 在 migration 中创建 HNSW 索引和数据库约束。
-8. 增加业务接口 e2e 测试。
+1. 新增创建用户接口。
+2. 新增创建会话接口。
+3. 新增写入消息并生成 embedding 的接口。
+4. 将 `DATABASE_SYNCHRONIZE` 设为 `false`。
+5. 在 migration 中创建 HNSW 索引和数据库约束。
+6. 增加业务接口 e2e 测试。
+7. 使用独立测试数据库和嵌入模型 mock。
 
 每完成一步，都使用 `psql` 查看数据库实际结构，并观察 TypeORM SQL 日志。
 
