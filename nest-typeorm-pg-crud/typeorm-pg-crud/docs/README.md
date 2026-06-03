@@ -1,4 +1,4 @@
-# NestJS + TypeORM + PostgreSQL 系统学习路线
+﻿# NestJS + TypeORM + PostgreSQL 系统学习路线
 
 当前工程来自教程后半部分。原始教程代码已经展示：
 
@@ -33,15 +33,15 @@
 | [`src/main.ts` L1-L18](../src/main.ts#L1) | 注册全局 `ValidationPipe` |
 | [`src/config/database.config.ts` L1-L12](../src/config/database.config.ts#L1) | 将数据库配置改为环境变量 |
 | [`src/app.module.ts` L16-L31](../src/app.module.ts#L16) | 使用 `ConfigModule` 和 `TypeOrmModule.forRootAsync()` |
-| [`src/learning/learning.module.ts` L1-L12](../src/learning/learning.module.ts#L1) | 使用 `TypeOrmModule.forFeature()` 注册 Repository |
-| [`src/learning/entities/agent-task.entity.ts` L20-L76](../src/learning/entities/agent-task.entity.ts#L20) | 学习 UUID、JSONB、枚举、索引和版本列 |
-| [`src/learning/entities/agent-run.entity.ts` L19-L56](../src/learning/entities/agent-run.entity.ts#L19) | 学习运行记录和多对一关系 |
-| [`src/learning/learning.controller.ts` L19-L75](../src/learning/learning.controller.ts#L19) | 学习 CRUD、分页、UPSERT、事务和领取任务路由 |
-| [`src/learning/learning.service.ts` L26-L49](../src/learning/learning.service.ts#L26) | 学习 Repository 创建和幂等 UPSERT |
-| [`src/learning/learning.service.ts` L52-L91](../src/learning/learning.service.ts#L52) | 学习 QueryBuilder 游标分页 |
-| [`src/learning/learning.service.ts` L108-L138](../src/learning/learning.service.ts#L108) | 学习乐观锁更新 |
-| [`src/learning/learning.service.ts` L149-L170](../src/learning/learning.service.ts#L149) | 学习事务回调 |
-| [`src/learning/learning.service.ts` L173-L210](../src/learning/learning.service.ts#L173) | 学习 `QueryRunner` 和 `FOR UPDATE SKIP LOCKED` |
+| [`src/learning/learning.module.ts` L1-L17](../src/learning/learning.module.ts#L1) | 使用 `TypeOrmModule.forFeature()` 注册 Repository |
+| [`src/learning/entities/agent-task.entity.ts` L22-L98](../src/learning/entities/agent-task.entity.ts#L22) | 学习 UUID、JSONB、枚举、索引和版本列 |
+| [`src/learning/entities/agent-run.entity.ts` L20-L67](../src/learning/entities/agent-run.entity.ts#L20) | 学习运行记录和多对一关系 |
+| [`src/learning/learning.controller.ts` L19-L95](../src/learning/learning.controller.ts#L19) | 学习 CRUD、分页、UPSERT、事务和领取任务路由 |
+| [`src/learning/learning.service.ts` L30-L66](../src/learning/learning.service.ts#L30) | 学习 Repository 创建和幂等 UPSERT |
+| [`src/learning/learning.service.ts` L69-L115](../src/learning/learning.service.ts#L69) | 学习 QueryBuilder 游标分页 |
+| [`src/learning/learning.service.ts` L133-L173](../src/learning/learning.service.ts#L133) | 学习乐观锁更新 |
+| [`src/learning/learning.service.ts` L190-L215](../src/learning/learning.service.ts#L190) | 学习事务回调 |
+| [`src/learning/learning.service.ts` L218-L267](../src/learning/learning.service.ts#L218) | 学习 `QueryRunner` 和 `FOR UPDATE SKIP LOCKED` |
 | [`src/migrations/1760000000000-CreateLearningAgentTables.ts` L1-L84](../src/migrations/1760000000000-CreateLearningAgentTables.ts#L1) | 学习 migration 的 `up()` 和 `down()` |
 
 ## 3. 原教程接口与新增学习接口

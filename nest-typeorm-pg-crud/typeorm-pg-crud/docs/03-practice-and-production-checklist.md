@@ -1,4 +1,4 @@
-# 03. 运行练习与生产化边界
+﻿# 03. 运行练习与生产化边界
 
 本章用于实际运行新增学习接口。练习表使用 `learning_agent_*` 前缀，与教程原有的 `users`、`conversations`、`messages` 分开。
 
@@ -76,7 +76,7 @@ Invoke-RestMethod `
 对应源码：
 
 - [`src/main.ts` L8-L14](../src/main.ts#L8)
-- [`src/learning/dto/create-agent-task.dto.ts` L10-L37](../src/learning/dto/create-agent-task.dto.ts#L10)
+- [`src/learning/dto/create-agent-task.dto.ts` L10-L42](../src/learning/dto/create-agent-task.dto.ts#L10)
 
 ## 3. 创建任务
 
@@ -250,7 +250,7 @@ Invoke-RestMethod -Uri "http://localhost:3005/learning/tasks/$taskId"
 - 返回任务的 `status` 为 `running`。
 - `runs` 数组包含新建的运行记录。
 
-对应源码：[`src/learning/learning.service.ts` L149-L170](../src/learning/learning.service.ts#L149)。
+对应源码：[`src/learning/learning.service.ts` L190-L215](../src/learning/learning.service.ts#L190)。
 
 ## 8. 任务领取与行锁
 

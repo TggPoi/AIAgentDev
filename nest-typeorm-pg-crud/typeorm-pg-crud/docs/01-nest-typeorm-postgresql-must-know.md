@@ -1,4 +1,4 @@
-# 01. NestJS 操作 PostgreSQL 必学知识
+﻿# 01. NestJS 操作 PostgreSQL 必学知识
 
 学习 NestJS 数据库开发时，不应该只记住装饰器写法。必须理解 HTTP 请求、应用对象、ORM 和 PostgreSQL 之间如何协作。
 
@@ -26,13 +26,13 @@ PostgreSQL
 
 | 知识点 | 必须理解的问题 | 对应源码 |
 | --- | --- | --- |
-| Module | 一个功能模块注册了哪些 Controller、Provider 和 Repository？ | [`learning.module.ts` L7-L11](../src/learning/learning.module.ts#L7) |
-| Controller | URL、HTTP 方法、路径参数、查询参数和 Body 如何映射到方法参数？ | [`learning.controller.ts` L19-L75](../src/learning/learning.controller.ts#L19) |
-| Provider | 为什么 Service 由 NestJS 容器创建，而不是手动 `new`？ | [`learning.service.ts` L17-L24](../src/learning/learning.service.ts#L17) |
-| 依赖注入 | Repository 和 DataSource 如何注入 Service？ | [`learning.service.ts` L18-L24](../src/learning/learning.service.ts#L18) |
-| DTO | TypeScript 类型为什么不能替代运行时输入校验？ | [`create-agent-task.dto.ts` L10-L37](../src/learning/dto/create-agent-task.dto.ts#L10) |
+| Module | 一个功能模块注册了哪些 Controller、Provider 和 Repository？ | [`learning.module.ts` L8-L17](../src/learning/learning.module.ts#L8) |
+| Controller | URL、HTTP 方法、路径参数、查询参数和 Body 如何映射到方法参数？ | [`learning.controller.ts` L19-L95](../src/learning/learning.controller.ts#L19) |
+| Provider | 为什么 Service 由 NestJS 容器创建，而不是手动 `new`？ | [`learning.service.ts` L17-L28](../src/learning/learning.service.ts#L17) |
+| 依赖注入 | Repository 和 DataSource 如何注入 Service？ | [`learning.service.ts` L18-L28](../src/learning/learning.service.ts#L18) |
+| DTO | TypeScript 类型为什么不能替代运行时输入校验？ | [`create-agent-task.dto.ts` L10-L42](../src/learning/dto/create-agent-task.dto.ts#L10) |
 | Pipe | 如何转换和拒绝非法参数？ | [`main.ts` L8-L14](../src/main.ts#L8) |
-| Exception | 如何将业务失败转换为 `400`、`404`、`409`？ | [`learning.service.ts` L58-L61](../src/learning/learning.service.ts#L58) |
+| Exception | 如何将业务失败转换为 `400`、`404`、`409`？ | [`learning.service.ts` L126-L170](../src/learning/learning.service.ts#L126) |
 | ConfigModule | 为什么不能将数据库密码硬编码在模块中？ | [`database.config.ts` L3-L11](../src/config/database.config.ts#L3) |
 
 ### 2.1 DTO 类型不等于运行时校验
@@ -98,14 +98,14 @@ TypeOrmModule.forRootAsync({
 
 | 知识点 | 作用 | 对应源码 |
 | --- | --- | --- |
-| Entity | 将表、列、索引和关系描述为 TypeScript 类 | [`agent-task.entity.ts` L20-L76](../src/learning/entities/agent-task.entity.ts#L20) |
-| Repository | 操作一种 Entity，依赖更明确，便于测试 | [`learning.service.ts` L18-L22](../src/learning/learning.service.ts#L18) |
-| EntityManager | 在事务中操作多种 Entity | [`learning.service.ts` L150-L168](../src/learning/learning.service.ts#L150) |
-| QueryBuilder | 构造动态查询、稳定分页和聚合 | [`learning.service.ts` L64-L87](../src/learning/learning.service.ts#L64) |
+| Entity | 将表、列、索引和关系描述为 TypeScript 类 | [`agent-task.entity.ts` L22-L98](../src/learning/entities/agent-task.entity.ts#L22) |
+| Repository | 操作一种 Entity，依赖更明确，便于测试 | [`learning.service.ts` L18-L27](../src/learning/learning.service.ts#L18) |
+| EntityManager | 在事务中操作多种 Entity | [`learning.service.ts` L190-L212](../src/learning/learning.service.ts#L190) |
+| QueryBuilder | 构造动态查询、稳定分页和聚合 | [`learning.service.ts` L81-L101](../src/learning/learning.service.ts#L81) |
 | DataSource | 持有数据库配置和连接池入口 | [`typeorm.datasource.ts` L10-L20](../src/database/typeorm.datasource.ts#L10) |
-| QueryRunner | 独占一条连接并手工控制事务 | [`learning.service.ts` L174-L209](../src/learning/learning.service.ts#L174) |
+| QueryRunner | 独占一条连接并手工控制事务 | [`learning.service.ts` L220-L267](../src/learning/learning.service.ts#L220) |
 | Migration | 版本化管理数据库结构变化 | [`1760000000000-CreateLearningAgentTables.ts` L8-L84](../src/migrations/1760000000000-CreateLearningAgentTables.ts#L8) |
-| 原生 SQL | 表达 PostgreSQL 扩展、锁和精确优化需求 | [`learning.service.ts` L180-L202](../src/learning/learning.service.ts#L180) |
+| 原生 SQL | 表达 PostgreSQL 扩展、锁和精确优化需求 | [`learning.service.ts` L231-L252](../src/learning/learning.service.ts#L231) |
 
 ### 3.1 Repository 与 EntityManager 如何选择
 
@@ -126,7 +126,7 @@ return this.dataSource.transaction(async (manager) => {
 });
 ```
 
-源码见 [`src/learning/learning.service.ts` L149-L170](../src/learning/learning.service.ts#L149)。
+源码见 [`src/learning/learning.service.ts` L190-L215](../src/learning/learning.service.ts#L190)。
 
 
 
@@ -142,7 +142,7 @@ return this.dataSource.transaction(async (manager) => {
 
 原教程 pgvector 查询见 [`conversations.service.ts` L89-L100](../src/conversations/conversations.service.ts#L89)。
 
-新增任务领取查询见 [`learning.service.ts` L180-L202](../src/learning/learning.service.ts#L180)。
+新增任务领取查询见 [`learning.service.ts` L231-L252](../src/learning/learning.service.ts#L231)。
 
 
 
@@ -165,7 +165,7 @@ return this.dataSource.transaction(async (manager) => {
 
 ### 4.1 为什么使用 JSONB
 
-[`AgentTask.metadata`](../src/learning/entities/agent-task.entity.ts#L36) 和 [`AgentRun.input`](../src/learning/entities/agent-run.entity.ts#L34) 使用 `jsonb`。
+[`AgentTask.metadata`](../src/learning/entities/agent-task.entity.ts#L48) 和 [`AgentRun.input`](../src/learning/entities/agent-run.entity.ts#L41) 使用 `jsonb`。
 
 适合放入 JSONB：
 
@@ -196,9 +196,9 @@ return this.dataSource.transaction(async (manager) => {
 conflictPaths: ['externalKey']
 ```
 
-源码见 [`src/learning/learning.service.ts` L36-L49](../src/learning/learning.service.ts#L36)。
+源码见 [`src/learning/learning.service.ts` L45-L66](../src/learning/learning.service.ts#L45)。
 
-数据库中的唯一约束见 [`agent-task.entity.ts` L28-L29](../src/learning/entities/agent-task.entity.ts#L28)。
+数据库中的唯一约束见 [`agent-task.entity.ts` L36-L38](../src/learning/entities/agent-task.entity.ts#L36)。
 
 两者共同保证重复请求更新同一任务，而不是创建两条重复记录。
 
@@ -228,7 +228,7 @@ FOR UPDATE SKIP LOCKED
 | `FOR UPDATE` | 锁定当前事务领取的任务行 |
 | `SKIP LOCKED` | 遇到其他 worker 已锁定的任务时跳过，不等待 |
 
-源码见 [`src/learning/learning.service.ts` L180-L202](../src/learning/learning.service.ts#L180)。
+源码见 [`src/learning/learning.service.ts` L231-L252](../src/learning/learning.service.ts#L231)。
 
 ## 5. 按需深入的知识
 

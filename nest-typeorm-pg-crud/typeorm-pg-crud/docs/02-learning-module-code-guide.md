@@ -1,4 +1,4 @@
-# 02. learning 模块代码导读
+﻿# 02. learning 模块代码导读
 
 本章逐步拆解新增的 `learning` 模块。该模块不是教程原代码的替代品，而是一组可以运行的数据库工程化练习。
 
@@ -37,7 +37,7 @@ learning_agent_tasks 1 ──── N learning_agent_runs
 
 ### 2.1 AgentTask
 
-源码：[`src/learning/entities/agent-task.entity.ts` L20-L76](../src/learning/entities/agent-task.entity.ts#L20)
+源码：[`src/learning/entities/agent-task.entity.ts` L22-L98](../src/learning/entities/agent-task.entity.ts#L22)
 
 | 字段 | 类型 | 用途 |
 | --- | --- | --- |
@@ -56,7 +56,7 @@ learning_agent_tasks 1 ──── N learning_agent_runs
 
 ### 2.2 AgentRun
 
-源码：[`src/learning/entities/agent-run.entity.ts` L19-L56](../src/learning/entities/agent-run.entity.ts#L19)
+源码：[`src/learning/entities/agent-run.entity.ts` L20-L67](../src/learning/entities/agent-run.entity.ts#L20)
 
 | 字段 | 类型 | 用途 |
 | --- | --- | --- |
@@ -80,7 +80,7 @@ task: AgentTask;
 
 ## 3. Module 与 Repository 注入
 
-源码：[`src/learning/learning.module.ts` L7-L11](../src/learning/learning.module.ts#L7)
+源码：[`src/learning/learning.module.ts` L8-L17](../src/learning/learning.module.ts#L8)
 
 ```ts
 @Module({
@@ -98,11 +98,11 @@ export class LearningModule {}
 private readonly tasks: Repository<AgentTask>
 ```
 
-源码见 [`src/learning/learning.service.ts` L18-L24](../src/learning/learning.service.ts#L18)。
+源码见 [`src/learning/learning.service.ts` L18-L28](../src/learning/learning.service.ts#L18)。
 
 ## 4. DTO 校验
 
-创建任务 DTO：[`create-agent-task.dto.ts` L10-L37](../src/learning/dto/create-agent-task.dto.ts#L10)
+创建任务 DTO：[`create-agent-task.dto.ts` L10-L42](../src/learning/dto/create-agent-task.dto.ts#L10)
 
 ```ts
 @IsString()
@@ -113,7 +113,7 @@ externalKey: string;
 
 请求体进入 Controller 之前，全局 `ValidationPipe` 会执行这些规则。
 
-列表 DTO：[`list-agent-tasks.dto.ts` L11-L29](../src/learning/dto/list-agent-tasks.dto.ts#L11)
+列表 DTO：[`list-agent-tasks.dto.ts` L11-L34](../src/learning/dto/list-agent-tasks.dto.ts#L11)
 
 ```ts
 @Type(() => Number)
@@ -127,7 +127,7 @@ HTTP 查询参数默认是字符串。`@Type(() => Number)` 将 `"20"` 转换为
 
 ## 5. 基础 CRUD
 
-Controller 路由：[`learning.controller.ts` L23-L64](../src/learning/learning.controller.ts#L23)
+Controller 路由：[`learning.controller.ts` L27-L84](../src/learning/learning.controller.ts#L27)
 
 | HTTP | 路由 | Service 方法 |
 | --- | --- | --- |
@@ -148,7 +148,7 @@ const task = this.tasks.create({
 return this.tasks.save(task);
 ```
 
-源码见 [`src/learning/learning.service.ts` L26-L34](../src/learning/learning.service.ts#L26)。
+源码见 [`src/learning/learning.service.ts` L30-L40](../src/learning/learning.service.ts#L30)。
 
 理解区别：
 
@@ -224,7 +224,7 @@ id | external_key    | title
 externalKey: string;
 ```
 
-源码见 [`AgentTask.externalKey` L28-L29](../src/learning/entities/agent-task.entity.ts#L28)：
+源码见 [`AgentTask.externalKey` L36-L38](../src/learning/entities/agent-task.entity.ts#L36)：
 
 ```ts
 @Column({ type: 'text', name: 'external_key', unique: true })
@@ -271,7 +271,7 @@ DO UPDATE SET title = EXCLUDED.title;
 POST /learning/tasks/upsert
 ```
 
-Controller 入口见 [`learning.controller.ts` L28-L31](../src/learning/learning.controller.ts#L28)：
+Controller 入口见 [`learning.controller.ts` L34-L39](../src/learning/learning.controller.ts#L34)：
 
 ```ts
 @Post('upsert')
@@ -280,7 +280,7 @@ upsert(@Body() dto: CreateAgentTaskDto) {
 }
 ```
 
-Service 源码见 [`learning.service.ts` L36-L49](../src/learning/learning.service.ts#L36)。先看去掉类型断言后的核心逻辑：
+Service 源码见 [`learning.service.ts` L45-L66](../src/learning/learning.service.ts#L45)。先看去掉类型断言后的核心逻辑：
 
 ```ts
 await this.tasks.upsert(
@@ -431,7 +431,7 @@ GET /learning/tasks?limit=20&beforeCreatedAt=...&beforeId=...
 
 ### 7.4 为什么排序要用 createdAt + id
 
-源码见 [`learning.service.ts` L64-L67](../src/learning/learning.service.ts#L64)：
+源码见 [`learning.service.ts` L81-L86](../src/learning/learning.service.ts#L81)：
 
 ```ts
 const query = this.tasks
@@ -468,7 +468,7 @@ ORDER BY created_at DESC, id DESC
 
 ### 7.5 下一页条件怎么读
 
-源码见 [`learning.service.ts` L69-L78](../src/learning/learning.service.ts#L69)：
+源码见 [`learning.service.ts` L88-L98](../src/learning/learning.service.ts#L88)：
 
 ```ts
 query.andWhere(
@@ -506,7 +506,7 @@ WHERE created_at < 上一页最后一条的 created_at
 
 ### 7.6 为什么两个游标参数必须同时提供
 
-源码见 [`learning.service.ts` L53-L61](../src/learning/learning.service.ts#L53)：
+源码见 [`learning.service.ts` L72-L79](../src/learning/learning.service.ts#L72)：
 
 ```ts
 const hasCreatedAt = dto.beforeCreatedAt !== undefined;
@@ -542,7 +542,7 @@ if (hasCreatedAt !== hasId) {
 const items = await query.getMany();
 ```
 
-源码见 [`learning.service.ts` L81](../src/learning/learning.service.ts#L81)。
+源码见 [`learning.service.ts` L101](../src/learning/learning.service.ts#L101)。
 
 ## 8. 乐观锁更新
 
@@ -599,7 +599,7 @@ Entity 中有版本列：
 version: number;
 ```
 
-源码见 [`agent-task.entity.ts` L64-L65](../src/learning/entities/agent-task.entity.ts#L64)。
+源码见 [`agent-task.entity.ts` L81-L84](../src/learning/entities/agent-task.entity.ts#L81)。
 
 客户端更新时必须带上自己看到的版本：
 
@@ -610,11 +610,11 @@ version: number;
 }
 ```
 
-DTO 见 [`update-agent-task.dto.ts` L14-L39](../src/learning/dto/update-agent-task.dto.ts#L14)。
+DTO 见 [`update-agent-task.dto.ts` L14-L49](../src/learning/dto/update-agent-task.dto.ts#L14)。
 
 ### 8.3 当前代码如何检查版本
 
-源码见 [`learning.service.ts` L108-L138](../src/learning/learning.service.ts#L108)：
+源码见 [`learning.service.ts` L133-L173](../src/learning/learning.service.ts#L133)：
 
 ```ts
 const result = await this.tasks.update(
@@ -774,7 +774,7 @@ ROLLBACK
 
 ### 9.3 TypeORM 事务写法
 
-源码见 [`learning.service.ts` L149-L170](../src/learning/learning.service.ts#L149)：
+源码见 [`learning.service.ts` L190-L215](../src/learning/learning.service.ts#L190)：
 
 ```ts
 return this.dataSource.transaction(async (manager) => {
@@ -901,7 +901,7 @@ worker B 也读到 task-1
 
 > 手动拿到一条数据库连接，并手动控制这条连接上的事务。
 
-源码见 [`learning.service.ts` L173-L179](../src/learning/learning.service.ts#L173)：
+源码见 [`learning.service.ts` L220-L225](../src/learning/learning.service.ts#L220)：
 
 ```ts
 const queryRunner = this.dataSource.createQueryRunner();
@@ -920,7 +920,7 @@ await queryRunner.startTransaction();
 
 ### 10.4 核心 SQL 怎么读
 
-源码见 [`learning.service.ts` L180-L202](../src/learning/learning.service.ts#L180)：
+源码见 [`learning.service.ts` L231-L252](../src/learning/learning.service.ts#L231)：
 
 ```sql
 WITH next_task AS (
@@ -1025,7 +1025,7 @@ worker B 领取 task-2
 
 ### 10.6 为什么必须 commit、rollback、release
 
-源码见 [`learning.service.ts` L204-L210](../src/learning/learning.service.ts#L204)：
+源码见 [`learning.service.ts` L257-L266](../src/learning/learning.service.ts#L257)：
 
 ```ts
 await queryRunner.commitTransaction();
@@ -1085,7 +1085,7 @@ failed: 1
 
 ### 11.2 QueryBuilder 写法
 
-源码见 [`learning.service.ts` L213-L220](../src/learning/learning.service.ts#L213)：
+源码见 [`learning.service.ts` L270-L279](../src/learning/learning.service.ts#L270)：
 
 ```ts
 return this.tasks
