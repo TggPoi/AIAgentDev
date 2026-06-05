@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     milvus_host: str = Field(default="127.0.0.1", alias="MILVUS_HOST")
     milvus_port: int = Field(default=19530, alias="MILVUS_PORT")
 
+    # 配置milvus collection和字段信息，方便后续使用
+    milvus_collection_name: str = Field(
+        default="python_agent_demo_chunks",
+        alias="MILVUS_COLLECTION_NAME",
+    )
+    milvus_vector_field: str = Field(default="embedding", alias="MILVUS_VECTOR_FIELD")
+    milvus_id_field: str = Field(default="id", alias="MILVUS_ID_FIELD")
+    milvus_content_field: str = Field(default="content", alias="MILVUS_CONTENT_FIELD")
+
     elasticsearch_url: str = Field(
         default="http://127.0.0.1:9200",
         alias="ELASTICSEARCH_URL",
