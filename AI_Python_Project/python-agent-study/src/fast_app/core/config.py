@@ -48,6 +48,14 @@ class Settings(BaseSettings):
 
     rag_pipeline_provider: str = Field(default="classic", alias="RAG_PIPELINE_PROVIDER")
 
+    #嵌入模型配置
+    embedding_provider: str = Field(default="qwen", alias="EMBEDDING_PROVIDER")
+    embedding_model_name: str = Field(
+        default="text-embedding-v4",
+        alias="EMBEDDING_MODEL_NAME",
+    )
+    embedding_dim: int = Field(default=1024, alias="EMBEDDING_DIM")
+
     @property
     def cors_origins(self) -> list[str]:
         return [
