@@ -1,0 +1,24 @@
+{
+  "name": "redis-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "redis:examples": "node src/redis-learning-examples.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@langchain/core": "^1.1.48",
+    "@langchain/langgraph": "^1.3.4",
+    "@langchain/openai": "^1.4.7",
+    "deepagents": "^1.10.2",
+    "dotenv": "^17.4.2",
+    "ioredis": "^5.11.0",
+    "langchain": "^1.4.4",
+    "zod": "^4.4.3"
+  }
+}

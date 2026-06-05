@@ -1,0 +1,4 @@
+node_modules/
+volumes/
+.env
+Redis：实现 Agent 短期记忆存储的最佳方案.md
