@@ -1,0 +1,76 @@
+from typing import Any
+
+from elasticsearch import AsyncElasticsearch
+
+from fast_app.components.retrievers.base import BaseRetriever
+from fast_app.core.config import Settings
+from fast_app.core.logging import get_logger
+from fast_app.domain.rag_models import RetrievedDoc
+from fast_app.services.exceptions import ExternalServiceError
+
+
+logger = get_logger(__name__)
+
+
+class ElasticsearchKeywordRetriever(BaseRetriever):
+    def __init__(self, settings: Settings):
+        self.settings = settings
+
+        self.client = AsyncElasticsearch(
+            hosts=[settings.elasticsearch_url],
+        )
+
+    async def retrieve(self, query: str) -> list[RetrievedDoc]:
+        try:
+            logger.info("开始 ElasticSearch 关键词检索: query=%s", query)
+
+            response = await self.client.search(
+                index=self.settings.elasticsearch_index_name,
+                query={
+                    "match": {
+                        "content": {
+                            "query": query,
+                        }
+                    }
+                },
+                size=self.settings.rag_default_top_k,
+            )
+
+            docs = self._convert_hits_to_docs(response)
+
+            logger.info("ElasticSearch 关键词检索完成: docs_count=%s", len(docs))
+
+            return docs
+
+        except Exception as exc:
+            logger.exception("ElasticSearch 关键词检索失败")
+            raise ExternalServiceError(f"ElasticSearch 关键词检索失败: {exc}") from exc
+
+    async def close(self) -> None:
+        await self.client.close()
+
+    def _convert_hits_to_docs(self, response: dict[str, Any]) -> list[RetrievedDoc]:
+        hits = response.get("hits", {}).get("hits", [])
+
+        docs: list[RetrievedDoc] = []
+
+        for hit in hits:
+            source = hit.get("_source", {})
+
+            doc_id = source.get("id")
+            content = source.get("content")
+
+            if not doc_id or not content:
+                logger.warning("ElasticSearch hit 缺少 id 或 content: hit=%s", hit)
+                continue
+
+            docs.append(
+                RetrievedDoc(
+                    id=str(doc_id),
+                    content=str(content),
+                    score=float(hit.get("_score", 0.0)),
+                    source="elasticsearch",
+                )
+            )
+
+        return docs

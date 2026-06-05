@@ -33,10 +33,19 @@ class Settings(BaseSettings):
     milvus_id_field: str = Field(default="id", alias="MILVUS_ID_FIELD")
     milvus_content_field: str = Field(default="content", alias="MILVUS_CONTENT_FIELD")
 
+
+    # 配置elasticsearch相关参数
     elasticsearch_url: str = Field(
-        default="http://127.0.0.1:9200",
-        alias="ELASTICSEARCH_URL",
+    default="http://127.0.0.1:9200",
+    alias="ELASTICSEARCH_URL",
     )
+    elasticsearch_index_name: str = Field(
+        default="python_agent_demo_chunks",
+        alias="ELASTICSEARCH_INDEX_NAME",
+    )
+    elasticsearch_username: str = Field(default="", alias="ELASTICSEARCH_USERNAME")
+    elasticsearch_password: str = Field(default="", alias="ELASTICSEARCH_PASSWORD")
+
 
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
@@ -64,6 +73,16 @@ class Settings(BaseSettings):
         alias="EMBEDDING_MODEL_NAME",
     )
     embedding_dim: int = Field(default=1024, alias="EMBEDDING_DIM")
+
+    # 检索提供者配置，支持mock（使用mock数据进行测试）或者实际的检索服务提供者（如milvus、elasticsearch等）
+    vector_retriever_provider: str = Field(
+        default="mock",
+        alias="VECTOR_RETRIEVER_PROVIDER",
+    )
+    keyword_retriever_provider: str = Field(
+        default="mock",
+        alias="KEYWORD_RETRIEVER_PROVIDER",
+    )
 
     @property
     def cors_origins(self) -> list[str]:
