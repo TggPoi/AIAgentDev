@@ -1,0 +1,28 @@
+{
+  "name": "mem0-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "mem0:offline": "node src/mem0-learning-offline-demo.mjs",
+    "mem0:basic": "node src/mem0-test.mjs",
+    "mem0:scoped": "node src/mem0-scoped-memory-test.mjs",
+    "mem0:local-api": "node src/mem0-local-api-demo.mjs",
+    "agent": "node src/mem0-redis-mem0-agent.mjs",
+    "check": "node --check src/mem0-learning-offline-demo.mjs && node --check src/mem0-test.mjs && node --check src/mem0-scoped-memory-test.mjs && node --check src/mem0-local-api-demo.mjs && node --check src/mem0-redis-mem0-agent.mjs",
+    "test": "pnpm check"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@langchain/core": "^1.1.48",
+    "@langchain/openai": "^1.4.7",
+    "dotenv": "^17.4.2",
+    "ioredis": "^5.11.1",
+    "langchain": "^1.4.4",
+    "mem0ai": "^3.0.6",
+    "zod": "^4.4.3"
+  }
+}

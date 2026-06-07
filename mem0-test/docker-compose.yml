@@ -1,0 +1,36 @@
+services:
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: agent_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/redis:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis 官方 Web GUI（类似 pgAdmin）
+  redisinsight:
+    image: redis/redisinsight:2.50
+    container_name: redis_insight
+    restart: always
+    ports:
+      - "5540:5540"
+    user: root #在 Windows 下使用本地绑定挂载时，可以让 redisinsight 容器以 root 用户运行，使其能够在本地挂载目录中创建 sessions 等文件夹。避免出现权限不足被拦截
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/redisinsight:/data
+    environment:
+      - RI_HOST=0.0.0.0
+    depends_on:
+      - redis
+
+networks:
+  default:
+    name: common-network
+    external: true #common-network 已经由另一个 Compose 项目 es-test 创建。当前工程仍然可以接入该网络，因此这只是警告，不是 8088 失败的原因。如果确实要复用该网络，应明确声明 external: true，否则会创建一个新的网络，导致 pgadmin 无法连接到 postgres。
