@@ -4,11 +4,11 @@
 
 学习 Mem0 之前，先把 Agent 记忆拆成几层：
 
-- 消息历史：最近几轮 `user/assistant/system/tool` 消息，通常直接放进模型上下文。它解决“刚刚说了什么”的问题。
-- 摘要记忆：当消息太多时，把旧消息压缩成摘要，减少 token。它解决“上下文太长”的问题。
-- 长期记忆：跨会话仍然有价值的事实，比如用户身份、长期偏好、过敏、工作背景。它解决“下次还能认得用户”的问题。
-- 会话记忆：只对当前任务有效的事实，比如“这次先写 Q1 总结”。它解决“当前任务上下文”的问题。
-- Agent 角色记忆：和某个 Agent 绑定的工作方式或角色设定，比如“学习导师要解释为什么”。它解决“同一个 Agent 应保持什么行为”的问题。
+- **消息历史：**最近几轮 `user/assistant/system/tool` 消息，通常直接放进模型上下文。它解决“刚刚说了什么”的问题。
+- **摘要记忆：**当消息太多时，把旧消息压缩成摘要，减少 token。它解决“上下文太长”的问题。
+- **长期记忆：**跨会话仍然有价值的事实，比如用户身份、长期偏好、过敏、工作背景。它解决“下次还能认得用户”的问题。
+- **会话记忆：**只对当前任务有效的事实，比如“这次先写 Q1 总结”。它解决“当前任务上下文”的问题。
+- **Agent 角色记忆：**和某个 Agent 绑定的工作方式或角色设定，比如“学习导师要解释为什么”。它解决“同一个 Agent 应保持什么行为”的问题。
 
 当前工程正好覆盖这些层级：Redis 保存短期消息，Mem0 保存长期和会话级事实，LangChain Agent 在调用模型前把检索到的记忆注入为 `SystemMessage`。核心代码入口在 [src/mem0-redis-mem0-agent.mjs](../src/mem0-redis-mem0-agent.mjs#L364)。
 
@@ -128,3 +128,70 @@ Mem0 检索结果本身不会自动改变模型。应用必须把检索到的 me
 如果只是当前进程内几分钟的缓存，用 Redis 或内存更简单。
 
 如果必须精确匹配 key，比如“session:123 的最近 20 条消息”，Redis 更合适。
+
+
+
+## queryHints函数：
+
+`queryHints` 在 [src/mem0-learning-offline-demo.mjs](d:/AI_Agent_Project/mem0-test/src/mem0-learning-offline-demo.mjs:34)，作用是：把用户查询扩展成一组“可能命中的关键词”，供后面的 `scoreMemory()` 做离线匹配。
+
+它不是 Mem0 真实语义检索算法，只是教学脚本里的简化模拟。因为中文没有天然空格，如果直接按空格分词，像“用户住在哪里”很难匹配到 memory 里的“住在杭州”。所以这里手动补了一些提示词。
+
+执行流程：
+
+```js
+function queryHints(query) {
+  const normalized = normalizeText(query);
+  const hints = [normalized];
+
+  if (normalized.includes("住")) hints.push("住在", "杭州", "北京");
+  if (normalized.includes("喜欢")) hints.push("喜欢", "骑行", "摄影", "跑步");
+  if (normalized.includes("会话") || normalized.includes("这次")) hints.push("这次", "会话", "q1", "总结", "复盘");
+  if (normalized.includes("agent") || normalized.includes("风格")) hints.push("agent", "学习导师", "解释为什么");
+
+  return [...new Set(hints.filter(Boolean))];
+}
+```
+
+举个例子：
+
+```js
+queryHints("用户住在哪里，喜欢什么")
+```
+
+大致会返回：
+
+```js
+[
+  "用户住在哪里 喜欢什么",
+  "住在",
+  "杭州",
+  "北京",
+  "喜欢",
+  "骑行",
+  "摄影",
+  "跑步"
+]
+```
+
+后面的 `scoreMemory()` 会拿这些 hint 去 memory 文本里做 `includes()` 匹配。比如 memory 是：
+
+```js
+"我叫小明，住在杭州，长期喜欢骑行和摄影。"
+```
+
+那么 `"住在"`、`"杭州"`、`"喜欢"`、`"骑行"`、`"摄影"` 都能命中，于是这条 memory 得分就会大于 0，被 `search()` 返回。
+
+最后这一行：
+
+```js
+return [...new Set(hints.filter(Boolean))];
+```
+
+含义是：
+
+- `filter(Boolean)`：去掉空字符串、`null`、`undefined` 这类无效值。
+- `new Set(...)`：去重，避免重复关键词影响评分。
+- `[...set]`：把 Set 再转回数组。
+
+核心理解：`queryHints` 是为了让离线 demo 更容易展示“语义检索的大致效果”，不是生产级中文分词，也不是 Mem0 的真实实现。真实 Mem0 会做更复杂的抽取、向量化、相关性排序和过滤。

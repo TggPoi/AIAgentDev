@@ -302,12 +302,12 @@ class Mem0MemoryStore {
       { role: "user", content: userText },
       { role: "assistant", content: assistantText },
     ];
-
+    //先进行消息分类处理，由classifier大模型判断 当前消息是否值得写入数据库
     const { write_user, write_session, reason } = await this.classifier.invoke([
       new SystemMessage(CLASSIFIER_PROMPT),
       new HumanMessage(`用户：${userText}\n助手：${assistantText}`),
     ]);
-
+    //根据classifier大模型的处理结果，执行数据库写入操作，并且把写入的内容和理由返回
     const written = [];
     if (write_user) {
       await this.client.add(turn, { userId: this.userId });
@@ -380,7 +380,7 @@ async function invokeWithMemory(agent, redisStore, mem0Store, sessionId, userTex
     { messages: invokeMessages },
     { recursionLimit: 30 },
   );
-
+  //过滤之前注入的System message
   const redisMessages = messagesForRedis(result.messages);
   const dropped = result.messages.length - redisMessages.length;
   await redisStore.saveMessages(sessionId, redisMessages);
@@ -390,7 +390,7 @@ async function invokeWithMemory(agent, redisStore, mem0Store, sessionId, userTex
       (dropped ? `（过滤 ${dropped} 条 SystemMessage）` : "") +
       ` (TTL ${ttl}s)`,
   );
-
+  //把最新一次的对话进行分类处理，取出AI最新一次的回答内容
   const assistantText = String(result.messages.at(-1)?.content ?? "");
   const { written, reason } = await mem0Store.classifyAndPersist(userText, assistantText);
   console.log(`  ↳ 分类: ${reason}`);
@@ -398,7 +398,7 @@ async function invokeWithMemory(agent, redisStore, mem0Store, sessionId, userTex
 
   return { messages: result.messages, redisMessages, assistantText };
 }
-
+//创建Agent，redis，mem0的客户端实例 Start-----------------------
 if (!process.env.MEM0_API_KEY || !process.env.OPENAI_API_KEY) {
   console.error("需要 MEM0_API_KEY 与 OPENAI_API_KEY");
   process.exit(1);
@@ -458,7 +458,7 @@ const agent = createAgent({
     }),
   ],
 });
-
+//创建Agent，redis，mem0的客户端实例 End-----------------------
 console.log(`用户 ${USER_ID} | 会话 ${SESSION_ID}`);
 console.log("输入 exit / quit / :q 退出；:clear 清空 Redis；:clear-mem0 清空 Mem0\n");
 
