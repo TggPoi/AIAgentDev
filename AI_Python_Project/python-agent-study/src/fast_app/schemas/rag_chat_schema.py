@@ -50,7 +50,16 @@ class RagChatRequest(BaseModel):
         return normalized
 
 
+class RagSource(BaseModel):
+    id: str = Field(description="命中的 chunk id")
+    source: str = Field(description="检索来源，例如 milvus / elasticsearch")
+    score: float = Field(description="当前排序分数，可能是向量分数、BM25 分数或 RRF 分数")
+    content_preview: str = Field(description="命中文档内容预览")
+
+
 class RagChatResponse(BaseModel):
     query: str
     answer: str
-    sources: list[str] = Field(default_factory=list)
+    sources: list[RagSource]
+
+

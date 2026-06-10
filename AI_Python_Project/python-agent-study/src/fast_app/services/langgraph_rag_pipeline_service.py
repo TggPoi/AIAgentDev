@@ -9,6 +9,8 @@ from fast_app.graph.rag_graph_builder import build_rag_graph
 from fast_app.graph.rag_graph_state import GraphRagState
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
 
+from fast_app.services.rag_pipeline_service import docs_to_sources
+
 from fast_app.graph.rag_graph_nodes import (
     create_build_context_node,
     create_retrieve_node,
@@ -93,7 +95,7 @@ class LangGraphRagPipeline:
         return RagChatResponse(
             query=final_state["query"],
             answer=answer,
-            sources=[doc.id for doc in docs],
+            sources=docs_to_sources(docs),
         )
     
 

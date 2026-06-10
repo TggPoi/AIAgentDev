@@ -8,10 +8,11 @@ from fast_app.core.config import Settings
 from fast_app.core.logging import get_logger
 from fast_app.domain.rag_models import RagContext, RetrievedDoc, RagMode
 from fast_app.graph.rag_state import RagState
-from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
+from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse, RagSource
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
 from fast_app.services.retrieval_fusion import reciprocal_rank_fusion
 from fast_app.services.rag_context_builder import build_rag_context
+
 
 # `__name__` 是当前模块名。
 # 在这个文件中，`__name__` 大概率是：
@@ -24,6 +25,8 @@ from fast_app.services.rag_context_builder import build_rag_context
 # ```
 # 这能帮助你判断日志来自哪个模块。
 logger = get_logger(__name__)
+
+DEFAULT_SOURCE_PREVIEW_CHARS = 120
 
 # 并发召回
 # 过滤文档
@@ -386,6 +389,29 @@ async def run_rag_stream(req: RagChatRequest) -> AsyncGenerator[str, None]:
     # 后续如果真的需要排查 token 级别问题（每个 token 都打一条日志），可以临时用 `DEBUG` 日志。
     logger.info("RAG Stream 输出完成: token_count=%s", token_count)
 
+# 文档内容长度截断
+def build_content_preview(
+    content: str,
+    max_chars: int = DEFAULT_SOURCE_PREVIEW_CHARS,
+) -> str:
+    normalized = " ".join(content.split())
+
+    if len(normalized) <= max_chars:
+        return normalized
+
+    return normalized[:max_chars].rstrip() + "..."
+
+# 文档内容重新封装
+def docs_to_sources(docs: list[RetrievedDoc]) -> list[RagSource]:
+    return [
+        RagSource(
+            id=doc.id,
+            source=doc.source,
+            score=doc.score,
+            content_preview=build_content_preview(doc.content),
+        )
+        for doc in docs
+    ]
 
 
 class RagPipeline:
@@ -397,22 +423,6 @@ class RagPipeline:
     3. 在混合检索模式下合并多路召回结果并按文档 id 去重。
     4. 把召回文档构造成 LLM 上下文。
     5. 调用 LLM client 生成普通回答或流式 token。
-
-    参数示例：
-        pipeline = RagPipeline(
-            settings=settings,
-            vector_retriever=MockVectorRetriever(),
-            keyword_retriever=MockKeywordRetriever(),
-            llm_client=MockLLMClient(),
-        )
-
-    请求示例：
-        req = RagChatRequest(
-            query="什么是混合检索？",
-            mode="hybrid",
-            top_k=5,
-            min_score=0.0,
-        )
     """
 
     def __init__(
@@ -521,7 +531,7 @@ class RagPipeline:
         return RagChatResponse(
             query=state["query"],
             answer=state["answer"] or "",
-            sources=[doc.id for doc in state["docs"]],
+            sources=docs_to_sources(docs),
         )
 
     async def stream(
@@ -534,24 +544,6 @@ class RagPipeline:
             先完成检索和上下文构造，然后调用 LLM client 的 `stream` 方法。
             每次 `yield` 一个 token，API 层再把 token 包装成 SSE 格式。
             这个方法适合 `/rag/chat/stream` 这类流式接口。
-
-        参数：
-            req:
-                RAG 聊天请求对象。
-                示例：
-                    RagChatRequest(
-                        query="什么是向量检索？",
-                        mode="vector",
-                        top_k=5,
-                        min_score=0.0,
-                    )
-
-        返回：
-            AsyncGenerator[str, None]:
-                异步 token 流。
-                使用示例：
-                    async for token in pipeline.stream(req):
-                        print(token, end="")
 
         可能抛出的异常：
             NoSearchResultError:
@@ -593,28 +585,6 @@ class RagPipeline:
             - `mode="keyword"`：只调用 `keyword_retriever`。
             - `mode="hybrid"`：并发调用向量检索器和关键词检索器，
               再按文档 id 去重，并按分数从高到低排序。
-
-        参数：
-            req:
-                RAG 聊天请求对象。
-                常用字段：
-                    `query`：用户问题，例如 `"什么是混合检索？"`。
-                    `mode`：检索模式，例如 `"vector"`、`"keyword"`、`"hybrid"`。
-                    `top_k`：最多返回多少篇文档，例如 `5`。
-                    `min_score`：最低相关性分数，例如 `0.7`。
-
-        返回：
-            list[RetrievedDoc]:
-                过滤和排序后的召回文档列表。
-                示例：
-                    [
-                        RetrievedDoc(
-                            id="doc_milvus_001",
-                            content="Milvus 向量召回结果...",
-                            score=0.91,
-                            source="milvus",
-                        )
-                    ]
 
         可能抛出的异常：
             NoSearchResultError:
