@@ -10,8 +10,8 @@ from fast_app.services.exceptions import ExternalServiceError, NoSearchResultErr
 from fast_app.services.rag_pipeline_service import (
     build_context_node as build_rag_context,
     filter_docs_by_score,
-    merge_docs_by_id,
 )
+from fast_app.services.retrieval_fusion import reciprocal_rank_fusion
 
 
 logger = get_logger(__name__)
@@ -97,7 +97,13 @@ def create_retrieve_node(
         if len(successful_doc_lists) == 0:
             raise ExternalServiceError("所有召回源都失败")
 
-        merged_docs = merge_docs_by_id(
+        # merged_docs = merge_docs_by_id(
+        #     doc_lists=successful_doc_lists,
+        #     top_k=top_k,
+        # )
+
+        # 使用RRF的方案
+        merged_docs = reciprocal_rank_fusion(
             doc_lists=successful_doc_lists,
             top_k=top_k,
         )

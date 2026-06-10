@@ -10,6 +10,7 @@ from fast_app.domain.rag_models import RagContext, RetrievedDoc
 from fast_app.graph.rag_state import RagState
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
+from fast_app.services.retrieval_fusion import reciprocal_rank_fusion
 
 # `__name__` 是当前模块名。
 # 在这个文件中，`__name__` 大概率是：
@@ -660,7 +661,14 @@ class RagPipeline:
             logger.error("混合检索失败: 所有召回源都失败")
             raise ExternalServiceError("所有召回源都失败")
 
-        merged_docs = merge_docs_by_id(
+        # 旧版本，直接通过id去重合并
+        # merged_docs = merge_docs_by_id(
+        #     doc_lists=successful_doc_lists,
+        #     top_k=req.top_k,
+        # )
+
+        # 新版本，使用RRF方案
+        merged_docs = reciprocal_rank_fusion(
             doc_lists=successful_doc_lists,
             top_k=req.top_k,
         )
