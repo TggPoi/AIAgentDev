@@ -11,6 +11,7 @@ from fast_app.graph.rag_state import RagState
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
 from fast_app.services.retrieval_fusion import reciprocal_rank_fusion
+from fast_app.services.rag_context_builder import build_rag_context
 
 # `__name__` 是当前模块名。
 # 在这个文件中，`__name__` 大概率是：
@@ -310,7 +311,7 @@ async def run_rag(req: RagChatRequest) -> RagChatResponse:
     docs = await retrieve_node(req)
     state["docs"] = docs
 
-    context = build_context_node(docs)
+    context = build_rag_context(req.query, docs)
     state["context"] = context
 
     answer = await generate_answer_node(
@@ -372,7 +373,7 @@ async def run_rag_stream(req: RagChatRequest) -> AsyncGenerator[str, None]:
 
     logger.info("RAG Stream 召回完成: docs_count=%s", len(docs))
 
-    context = build_context_node(docs)
+    context = build_rag_context(req.query, docs)
 
     logger.info("RAG Stream 上下文构造完成: context_docs_count=%s", len(context.docs))
 
@@ -504,7 +505,7 @@ class RagPipeline:
 
         logger.info("RAG 召回完成: docs_count=%s", len(docs))
 
-        context = build_context_node(docs)
+        context = build_rag_context(req.query, docs)
         state["context"] = context
 
         logger.info("RAG 上下文构造完成: context_docs_count=%s", len(context.docs))
@@ -571,7 +572,7 @@ class RagPipeline:
 
         logger.info("RAG Stream 召回完成: docs_count=%s", len(docs))
 
-        context = build_context_node(docs)
+        context = build_rag_context(req.query, docs)
 
         logger.info("RAG Stream 上下文构造完成: context_docs_count=%s", len(context.docs))
 

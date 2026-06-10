@@ -8,7 +8,7 @@ from fast_app.domain.rag_models import RagContext, RetrievedDoc
 from fast_app.graph.rag_graph_state import GraphRagState
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
 from fast_app.services.rag_pipeline_service import (
-    build_context_node as build_rag_context,
+    build_rag_context,
     filter_docs_by_mode,
     filter_docs_by_score,
 )
@@ -134,7 +134,7 @@ def create_build_context_node() -> Callable[[GraphRagState], dict[str, RagContex
 
         logger.info("LangGraph 开始构造上下文: docs_count=%s", len(docs))
 
-        context = build_rag_context(docs)
+        context = build_rag_context(state["query"], docs)
 
         logger.info(
             "LangGraph 上下文构造完成: context_docs_count=%s",

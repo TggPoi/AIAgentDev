@@ -16,5 +16,6 @@ class RetrievedDoc:
 
 @dataclass
 class RagContext:
-    text: str
+    query: str
     docs: list[RetrievedDoc]
+    context_text: str
