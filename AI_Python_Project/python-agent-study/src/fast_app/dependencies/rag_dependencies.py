@@ -18,6 +18,10 @@ from fast_app.components.retrievers.elasticsearch_keyword_retriever import (
 )
 from fast_app.components.retrievers.milvus_vector_retriever import MilvusVectorRetriever
 
+from fast_app.components.rerankers.base import BaseReranker
+from fast_app.components.rerankers.dashscope_reranker import DashScopeReranker
+from fast_app.components.rerankers.mock_reranker import MockReranker
+
 
 
 def get_llm_client(
@@ -86,6 +90,25 @@ def get_keyword_retriever(
     )
 
 
+def get_reranker(
+    settings: Settings = Depends(get_settings),
+) -> BaseReranker:
+    provider = settings.reranker_provider.lower().strip()
+
+    if provider == "none":
+        return MockReranker()
+
+    if provider == "mock":
+        return MockReranker()
+
+    if provider == "dashscope":
+        return DashScopeReranker(settings=settings)
+
+    raise AppServiceError(
+        f"不支持的 RERANKER_PROVIDER: {settings.reranker_provider}"
+    )
+
+
 
 # 这里先不写返回类型，因为RagPipeline LangGraphRagPipeline这两个类目前没有共同的显式基类。
 def get_rag_pipeline(
@@ -93,6 +116,7 @@ def get_rag_pipeline(
     vector_retriever: BaseRetriever = Depends(get_vector_retriever),
     keyword_retriever: BaseRetriever = Depends(get_keyword_retriever),
     llm_client: BaseLLMClient = Depends(get_llm_client),
+    reranker: BaseReranker = Depends(get_reranker),
 ):
     provider = settings.rag_pipeline_provider.lower().strip()
 
@@ -102,6 +126,7 @@ def get_rag_pipeline(
             vector_retriever=vector_retriever,
             keyword_retriever=keyword_retriever,
             llm_client=llm_client,
+            reranker=reranker,
         )
 
     if provider == "langgraph":
@@ -110,8 +135,11 @@ def get_rag_pipeline(
             vector_retriever=vector_retriever,
             keyword_retriever=keyword_retriever,
             llm_client=llm_client,
+            reranker=reranker,
         )
 
     raise AppServiceError(
         f"不支持的 RAG_PIPELINE_PROVIDER: {settings.rag_pipeline_provider}"
     )
+
+

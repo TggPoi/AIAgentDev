@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     )
     embedding_dim: int = Field(default=1024, alias="EMBEDDING_DIM")
 
+    # rerank模型配置
+    reranker_provider: str = Field(default="none", alias="RERANKER_PROVIDER")
+    rerank_model_name: str = Field(default="qwen3-rerank", alias="RERANK_MODEL_NAME")
+    rerank_top_k: int = Field(default=5, alias="RERANK_TOP_K")
+
     # 检索提供者配置，支持mock（使用mock数据进行测试）或者实际的检索服务提供者（如milvus、elasticsearch等）
     vector_retriever_provider: str = Field(
         default="mock",

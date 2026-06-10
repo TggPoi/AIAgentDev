@@ -12,6 +12,7 @@ from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse, Ra
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
 from fast_app.services.retrieval_fusion import reciprocal_rank_fusion
 from fast_app.services.rag_context_builder import build_rag_context
+from fast_app.components.rerankers.base import BaseReranker
 
 
 # `__name__` 是当前模块名。
@@ -431,34 +432,15 @@ class RagPipeline:
         vector_retriever: BaseRetriever,
         keyword_retriever: BaseRetriever,
         llm_client: BaseLLMClient,
+        reranker: BaseReranker,
     ):
         """初始化 RAG Pipeline 依赖。
-
-        参数：
-            settings:
-                应用配置对象，例如 `app_env`、`rag_default_top_k`、
-                `llm_model_name` 等配置都从这里读取。
-                示例：`settings = get_settings()`
-
-            vector_retriever:
-                向量检索器，必须继承 `BaseRetriever` 并实现
-                `async retrieve(query: str) -> list[RetrievedDoc]`。
-                示例：`MockVectorRetriever()`
-
-            keyword_retriever:
-                关键词检索器，必须继承 `BaseRetriever` 并实现
-                `async retrieve(query: str) -> list[RetrievedDoc]`。
-                示例：`MockKeywordRetriever()`
-
-            llm_client:
-                LLM 客户端，必须继承 `BaseLLMClient` 并实现
-                `generate` 和 `stream` 两个方法。
-                示例：`MockLLMClient()`
         """
         self.settings = settings
         self.vector_retriever = vector_retriever
         self.keyword_retriever = keyword_retriever
         self.llm_client = llm_client
+        self.reranker = reranker
 
     async def run(self, req: RagChatRequest) -> RagChatResponse:
         """执行一次完整的非流式 RAG 请求。
@@ -466,28 +448,7 @@ class RagPipeline:
         功能：
             先召回文档，再构造上下文，最后调用 LLM 一次性生成完整回答。
             这个方法适合普通 HTTP JSON 接口，例如 `/rag/chat`。
-
-        参数：
-            req:
-                RAG 聊天请求对象。
-                示例：
-                    RagChatRequest(
-                        query="RAG 的流程是什么？",
-                        mode="hybrid",
-                        top_k=3,
-                        min_score=0.8,
-                    )
-
-        返回：
-            RagChatResponse:
-                包含原始问题、完整回答和来源文档 id 列表。
-                示例：
-                    RagChatResponse(
-                        query="RAG 的流程是什么？",
-                        answer="根据检索到的上下文...",
-                        sources=["doc_milvus_001", "doc_es_001"],
-                    )
-
+                   
         可能抛出的异常：
             NoSearchResultError:
                 检索成功但没有文档满足 `min_score`。
@@ -511,6 +472,13 @@ class RagPipeline:
         }
 
         docs = await self.retrieve(req)
+
+        docs = await self.reranker.rerank(
+            query=req.query,
+            docs=docs,
+            top_k=min(self.settings.rerank_top_k, len(docs)),
+        )
+
         state["docs"] = docs
 
         logger.info("RAG 召回完成: docs_count=%s", len(docs))
