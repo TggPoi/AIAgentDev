@@ -6,7 +6,7 @@ from fast_app.components.retrievers.base import BaseRetriever
 
 from fast_app.core.config import Settings
 from fast_app.core.logging import get_logger
-from fast_app.domain.rag_models import RagContext, RetrievedDoc
+from fast_app.domain.rag_models import RagContext, RetrievedDoc, RagMode
 from fast_app.graph.rag_state import RagState
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
@@ -107,6 +107,30 @@ def filter_docs_by_score(
     ]
 
 
+# 不同检索mode对分数采用不同的处理，keyword hybrid 模式暂时不使用min_score过滤 文档8-2
+def filter_docs_by_mode(
+    docs: list[RetrievedDoc],
+    mode: RagMode,
+    min_score: float,
+) -> list[RetrievedDoc]:
+    if min_score <= 0:
+        return docs
+
+    if mode == "vector":
+        return filter_docs_by_score(
+            docs=docs,
+            min_score=min_score,
+        )
+
+    if mode == "keyword":
+        return docs
+
+    if mode == "hybrid":
+        return docs
+
+    return docs
+
+
 def merge_docs_by_id(
     doc_lists: list[list[RetrievedDoc]],
     top_k: int,
@@ -160,7 +184,7 @@ async def retrieve_node(req: RagChatRequest) -> list[RetrievedDoc]:
         logger.info("开始关键词检索: query=%s", req.query)
 
         docs = await es_retrieve(req.query)
-        filtered_docs = filter_docs_by_score(docs, req.min_score)
+        filtered_docs = filter_docs_by_mode(docs, req.mode, req.min_score)
 
         logger.info(
             "关键词检索完成: raw_count=%s, filtered_count=%s",
@@ -176,6 +200,7 @@ async def retrieve_node(req: RagChatRequest) -> list[RetrievedDoc]:
 
         return filtered_docs[: req.top_k]
 
+    #上面两个单独的检索模式被跳过，混合检索开始
     logger.info("开始混合检索: query=%s", req.query)
 
     results = await asyncio.gather(
@@ -192,8 +217,9 @@ async def retrieve_node(req: RagChatRequest) -> list[RetrievedDoc]:
             continue
 
         # 单个召回源成功时也要先做分数过滤，再进入合并流程。
-        filtered_docs = filter_docs_by_score(
+        filtered_docs = filter_docs_by_mode(
             docs=result,
+            mode=req.mode,
             min_score=req.min_score,
         )
         successful_doc_lists.append(filtered_docs)
@@ -620,7 +646,7 @@ class RagPipeline:
             logger.info("开始关键词检索: query=%s", req.query)
 
             docs = await self.keyword_retriever.retrieve(req.query)
-            filtered_docs = filter_docs_by_score(docs, req.min_score)
+            filtered_docs = filter_docs_by_mode(docs, req.mode, req.min_score)
 
             logger.info(
                 "关键词检索完成: raw_count=%s, filtered_count=%s",
@@ -636,6 +662,7 @@ class RagPipeline:
 
             return filtered_docs[: req.top_k]
 
+        # 开始混合检索模式
         logger.info("开始混合检索: query=%s", req.query)
 
         results = await asyncio.gather(
@@ -651,8 +678,9 @@ class RagPipeline:
                 logger.warning("召回源失败: %s", result)
                 continue
 
-            filtered_docs = filter_docs_by_score(
+            filtered_docs = filter_docs_by_mode(
                 docs=result,
+                mode=req.mode,
                 min_score=req.min_score,
             )
             successful_doc_lists.append(filtered_docs)

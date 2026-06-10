@@ -9,6 +9,7 @@ from fast_app.graph.rag_graph_state import GraphRagState
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
 from fast_app.services.rag_pipeline_service import (
     build_context_node as build_rag_context,
+    filter_docs_by_mode,
     filter_docs_by_score,
 )
 from fast_app.services.retrieval_fusion import reciprocal_rank_fusion
@@ -58,7 +59,7 @@ def create_retrieve_node(
             logger.info("LangGraph 开始关键词检索: query=%s", query)
 
             docs = await keyword_retriever.retrieve(query)
-            filtered_docs = filter_docs_by_score(docs, min_score)
+            filtered_docs = filter_docs_by_mode(docs, mode, min_score)
 
             logger.info(
                 "LangGraph 关键词检索完成: raw_count=%s, filtered_count=%s",
@@ -73,6 +74,7 @@ def create_retrieve_node(
 
             return {"docs": filtered_docs[:top_k]}
 
+        # 开始混合检索
         logger.info("LangGraph 开始混合检索: query=%s", query)
 
         results = await asyncio.gather(
@@ -88,8 +90,9 @@ def create_retrieve_node(
                 logger.warning("LangGraph 召回源失败: %s", result)
                 continue
 
-            filtered_docs = filter_docs_by_score(
+            filtered_docs = filter_docs_by_mode(
                 docs=result,
+                mode=mode,
                 min_score=min_score,
             )
             successful_doc_lists.append(filtered_docs)
