@@ -86,23 +86,37 @@ class DashScopeReranker(BaseReranker):
     ) -> list[RetrievedDoc]:
         results = data.get("output", {}).get("results", [])
 
+        logger.info("Rerank result =%s", data)
+
         reranked_docs: list[RetrievedDoc] = []
 
         for item in results[:top_k]:
+            # 这里的 `index` 表示：这个结果对应你请求时传入的 documents 数组里的第几个文档。
             index = item.get("index")
             relevance_score = item.get("relevance_score")
 
             if index is None or relevance_score is None:
                 logger.warning("Rerank result 缺少 index 或 relevance_score: item=%s", item)
                 continue
-
+            # 将原始文档顺序的index 和原始文档对象匹配
             original_doc = docs[int(index)]
+
+            rerank_score = float(relevance_score)
 
             reranked_docs.append(
                 replace(
                     original_doc,
-                    score=float(relevance_score),
+                    score=rerank_score,
+                    scores=replace(
+                        original_doc.scores,
+                        rerank_score=rerank_score,
+                    ),
                 )
             )
 
         return reranked_docs
+    
+
+# rerank响应日志
+# 2026-06-11 18:22:53,265 | INFO | httpx | HTTP Request: POST https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank "HTTP/1.1 200 OK"
+# 2026-06-11 18:22:53,265 | INFO | fast_app.components.rerankers.dashscope_reranker | Rerank result ={'output': {'results': [{'index': 0, 'relevance_score': 0.985890866059624}, {'index': 2, 'relevance_score': 0.4768717704752586}, {'index': 4, 'relevance_score': 0.4755436492386353}, {'index': 3, 'relevance_score': 0.45392317343721855}, {'index': 1, 'relevance_score': 0.40762123741699546}]}, 'usage': {'total_tokens': 366}, 'request_id': '04501a19-3628-963a-a16f-b3689fd5fc78'}

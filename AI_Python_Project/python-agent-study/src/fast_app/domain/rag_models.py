@@ -1,10 +1,18 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any, Literal
 
-from typing import Literal
-
-# `RetrievedDoc` 和 `RagContext` 是内部业务对象
 
 RagMode = Literal["vector", "keyword", "hybrid"]
+
+#内部业务对象
+
+@dataclass
+class ScoreBreakdown:
+    vector_score: float | None = None
+    keyword_score: float | None = None
+    rrf_score: float | None = None
+    rerank_score: float | None = None
+
 
 @dataclass
 class RetrievedDoc:
@@ -12,6 +20,10 @@ class RetrievedDoc:
     content: str
     score: float
     source: str
+    title: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    retrieval_sources: list[str] = field(default_factory=list)
+    scores: ScoreBreakdown = field(default_factory=ScoreBreakdown)
 
 
 @dataclass

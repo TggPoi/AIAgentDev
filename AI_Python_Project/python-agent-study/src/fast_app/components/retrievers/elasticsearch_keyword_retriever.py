@@ -5,7 +5,7 @@ from elasticsearch import AsyncElasticsearch
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.core.logging import get_logger
-from fast_app.domain.rag_models import RetrievedDoc
+from fast_app.domain.rag_models import RetrievedDoc, ScoreBreakdown
 from fast_app.services.exceptions import ExternalServiceError
 
 
@@ -64,12 +64,20 @@ class ElasticsearchKeywordRetriever(BaseRetriever):
                 logger.warning("ElasticSearch hit 缺少 id 或 content: hit=%s", hit)
                 continue
 
+            keyword_score = float(hit.get("_score", 0.0))
+            title = source.get("title")
+            metadata = source.get("metadata", {})
+
             docs.append(
                 RetrievedDoc(
                     id=str(doc_id),
                     content=str(content),
-                    score=float(hit.get("_score", 0.0)),
+                    score=keyword_score,
                     source="elasticsearch",
+                    title=str(title) if title else None,
+                    metadata=metadata if isinstance(metadata, dict) else {},
+                    retrieval_sources=["elasticsearch"],
+                    scores=ScoreBreakdown(keyword_score=keyword_score),
                 )
             )
 

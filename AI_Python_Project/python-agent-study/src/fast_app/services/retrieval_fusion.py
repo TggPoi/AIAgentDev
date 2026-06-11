@@ -1,7 +1,9 @@
 from dataclasses import replace
 
 from fast_app.domain.rag_models import RetrievedDoc
+from fast_app.core.logging import get_logger
 
+logger = get_logger(__name__)
 
 def reciprocal_rank_fusion(
     doc_lists: list[list[RetrievedDoc]],
@@ -14,9 +16,19 @@ def reciprocal_rank_fusion(
     doc_by_id: dict[str, RetrievedDoc] = {}
     # 保存每个 doc.id 目前见过的最高原始 score（保存的是 原始召回 score，不是 RRF 分数）
     best_original_score_by_id: dict[str, float] = {}
+    # 记录每个 doc_id 来自哪些来源
+    sources_by_id: dict[str, set[str]] = {}
 
     for docs in doc_lists:
         for rank, doc in enumerate(docs, start=1):
+
+            sources = sources_by_id.setdefault(doc.id, set())
+
+            if doc.retrieval_sources:
+                sources.update(doc.retrieval_sources)
+            else:
+                sources.add(doc.source)
+
             # 取出这个文档之前已经累计过的 RRF 分数；如果还没有出现过，就从 0.0 开始。
             rrf_scores[doc.id] = rrf_scores.get(doc.id, 0.0) + 1.0 / (k + rank)
 
@@ -39,6 +51,11 @@ def reciprocal_rank_fusion(
             replace(
                 original_doc,
                 score=rrf_score,
+                retrieval_sources=sorted(sources_by_id.get(doc_id, {original_doc.source})),
+                scores=replace(
+                    original_doc.scores,
+                    rrf_score=rrf_score,
+                ),
             )
         )
 

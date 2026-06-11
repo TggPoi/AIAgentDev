@@ -4,8 +4,8 @@ from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.core.logging import get_logger
-from fast_app.domain.rag_models import RetrievedDoc
 from fast_app.services.exceptions import ExternalServiceError
+from fast_app.domain.rag_models import RetrievedDoc, ScoreBreakdown
 
 
 logger = get_logger(__name__)
@@ -89,12 +89,18 @@ class MilvusVectorRetriever(BaseRetriever):
                 logger.warning("Milvus hit 缺少 id 或 content: hit=%s", hit)
                 continue
 
+            distance = float(hit.get("distance", 0.0))
+            title = entity.get("title")
+
             docs.append(
                 RetrievedDoc(
                     id=str(doc_id),
                     content=str(content),
-                    score=float(hit.get("distance", 0.0)),
+                    score=distance,
                     source="milvus",
+                    title=str(title) if title else None,
+                    retrieval_sources=["milvus"],
+                    scores=ScoreBreakdown(vector_score=distance),
                 )
             )
 

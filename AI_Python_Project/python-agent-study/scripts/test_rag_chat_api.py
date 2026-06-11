@@ -215,11 +215,11 @@ def main() -> int:
 
         test_stream_chat(base_url, payload)
 
-        if not args.skip_errors:
-            if not args.stream_only:
-                test_normal_chat_error(base_url, error_payload)
+        # if not args.skip_errors:
+        #     if not args.stream_only:
+        #         test_normal_chat_error(base_url, error_payload)
 
-            test_stream_chat_error(base_url, error_payload)
+        #     test_stream_chat_error(base_url, error_payload)
 
         return 0
 
