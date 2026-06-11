@@ -53,6 +53,7 @@ class MilvusVectorRetriever(BaseRetriever):
                     self.settings.milvus_content_field,
                     "source",
                     "title",
+                    "metadata",
                 ],
                 search_params={
                     "metric_type": "COSINE",
@@ -91,6 +92,8 @@ class MilvusVectorRetriever(BaseRetriever):
 
             distance = float(hit.get("distance", 0.0))
             title = entity.get("title")
+            # 目前测试用的milvus里面没有metadata，需要重新创建Collection 补充测试数据
+            metadata = entity.get("metadata", {})
 
             docs.append(
                 RetrievedDoc(
@@ -99,6 +102,7 @@ class MilvusVectorRetriever(BaseRetriever):
                     score=distance,
                     source="milvus",
                     title=str(title) if title else None,
+                    metadata=metadata if isinstance(metadata, dict) else {},
                     retrieval_sources=["milvus"],
                     scores=ScoreBreakdown(vector_score=distance),
                 )

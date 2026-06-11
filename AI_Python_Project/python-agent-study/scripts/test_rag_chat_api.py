@@ -64,6 +64,29 @@ def assert_sources_have_retrieval_sources(body: dict[str, object]) -> None:
         raise AssertionError("expected source.retrieval_sources to be non-empty list")
 
 
+def assert_sources_have_metadata(body: dict[str, object]) -> None:
+    sources = body.get("sources")
+
+    if not isinstance(sources, list) or not sources:
+        raise AssertionError("expected non-empty sources")
+
+    first_source = sources[0]
+    if not isinstance(first_source, dict):
+        raise AssertionError("expected source item to be object")
+
+    title = first_source.get("title")
+    if title is not None and not isinstance(title, str):
+        raise AssertionError("expected source.title to be string or null")
+
+    section_path = first_source.get("section_path")
+    if not isinstance(section_path, list):
+        raise AssertionError("expected source.section_path to be list")
+
+    metadata = first_source.get("metadata")
+    if not isinstance(metadata, dict):
+        raise AssertionError("expected source.metadata to be object")
+
+
 def test_normal_chat(base_url: str, payload: dict[str, object]) -> None:
     """测试非流式 RAG 聊天接口。"""
     url = f"{base_url}/rag/chat"
@@ -81,6 +104,7 @@ def test_normal_chat(base_url: str, payload: dict[str, object]) -> None:
     body = resp.json()
     assert_sources_have_scores(body)
     assert_sources_have_retrieval_sources(body)
+    assert_sources_have_metadata(body)
 
     resp.raise_for_status()
 

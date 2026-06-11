@@ -178,6 +178,16 @@ def normalize_retrieval_sources(doc: RetrievedDoc) -> list[str]:
 
     return [doc.source]
 
+# 从 metadata 中提取 section_path section_path 理论上应该是 list[str]，但外部数据不一定永远干净。
+# 单独 helper 可以做防御性转换，避免 API response 因 metadata 形状异常报错。
+def extract_section_path(doc: RetrievedDoc) -> list[str]:
+    section_path = doc.metadata.get("section_path")
+
+    if not isinstance(section_path, list):
+        return []
+
+    return [str(item) for item in section_path]
+
 
 async def retrieve_node(req: RagChatRequest) -> list[RetrievedDoc]:
     """根据检索模式执行召回、过滤、合并和异常处理。"""
@@ -419,12 +429,16 @@ def build_content_preview(
 
     return normalized[:max_chars].rstrip() + "..."
 
-# 文档内容重新封装
+# 文档内容重新封装 内部 RetrievedDoc 转 API RagSource 的唯一出口
 def docs_to_sources(docs: list[RetrievedDoc]) -> list[RagSource]:
     return [
         RagSource(
             id=doc.id,
             source=doc.source,
+            retrieval_sources=normalize_retrieval_sources(doc),
+            title=doc.title,
+            section_path=extract_section_path(doc),
+            metadata=doc.metadata,
             score=doc.score,
             scores=score_breakdown_to_source_scores(doc),
             content_preview=build_content_preview(doc.content),

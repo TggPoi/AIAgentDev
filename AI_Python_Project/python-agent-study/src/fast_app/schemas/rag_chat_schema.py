@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -60,15 +60,18 @@ class RagScoreBreakdown(BaseModel):
 # 检索来源
 class RagSource(BaseModel):
     id: str = Field(description="命中的 chunk id")
-    source: str = Field(description="检索来源，例如 milvus / elasticsearch") #主来源
+    source: str = Field(description="检索来源，例如 milvus / elasticsearch")
     retrieval_sources: list[str] = Field(
         default_factory=list,
         description="实际命中过该 chunk 的召回来源列表",
     )
+    title: str | None = Field(default=None, description="命中 chunk 所属标题")
+    section_path: list[str] = Field(default_factory=list, description="命中 chunk 所属标题路径")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="命中 chunk 的结构化 metadata")
     score: float = Field(description="当前最终排序分数")
     scores: RagScoreBreakdown = Field(description="多阶段分数明细")
     content_preview: str = Field(description="命中文档内容预览")
-
+    
 # 最终检索结果
 class RagChatResponse(BaseModel):
     query: str
