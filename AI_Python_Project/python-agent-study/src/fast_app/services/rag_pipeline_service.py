@@ -8,7 +8,7 @@ from fast_app.core.config import Settings
 from fast_app.core.logging import get_logger
 from fast_app.domain.rag_models import RagContext, RetrievedDoc, RagMode
 from fast_app.graph.rag_state import RagState
-from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse, RagSource
+from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse, RagScoreBreakdown, RagSource
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
 from fast_app.services.retrieval_fusion import reciprocal_rank_fusion
 from fast_app.services.rag_context_builder import build_rag_context
@@ -160,6 +160,15 @@ def merge_docs_by_id(
     )
 
     return merged_docs[:top_k]
+
+# 不同检索来源的分数拆分
+def score_breakdown_to_source_scores(doc: RetrievedDoc) -> RagScoreBreakdown:
+    return RagScoreBreakdown(
+        vector_score=doc.scores.vector_score,
+        keyword_score=doc.scores.keyword_score,
+        rrf_score=doc.scores.rrf_score,
+        rerank_score=doc.scores.rerank_score,
+    )
 
 
 async def retrieve_node(req: RagChatRequest) -> list[RetrievedDoc]:
@@ -409,6 +418,7 @@ def docs_to_sources(docs: list[RetrievedDoc]) -> list[RagSource]:
             id=doc.id,
             source=doc.source,
             score=doc.score,
+            scores=score_breakdown_to_source_scores(doc),
             content_preview=build_content_preview(doc.content),
         )
         for doc in docs

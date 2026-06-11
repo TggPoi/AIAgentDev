@@ -33,6 +33,21 @@ def print_response_json(resp: requests.Response) -> None:
     except ValueError:
         print(resp.text)
 
+# 轻量检查函数
+def assert_sources_have_scores(body: dict[str, object]) -> None:
+    sources = body.get("sources")
+
+    if not isinstance(sources, list) or not sources:
+        raise AssertionError("expected non-empty sources")
+
+    first_source = sources[0]
+    if not isinstance(first_source, dict):
+        raise AssertionError("expected source item to be object")
+
+    scores = first_source.get("scores")
+    if not isinstance(scores, dict):
+        raise AssertionError("expected source.scores to be object")
+
 
 def test_normal_chat(base_url: str, payload: dict[str, object]) -> None:
     """测试非流式 RAG 聊天接口。"""
@@ -47,6 +62,10 @@ def test_normal_chat(base_url: str, payload: dict[str, object]) -> None:
     print(f"\nstatus: {resp.status_code}")
     print("response:")
     print_response_json(resp)
+
+    body = resp.json()
+    assert_sources_have_scores(body)
+
     resp.raise_for_status()
 
 

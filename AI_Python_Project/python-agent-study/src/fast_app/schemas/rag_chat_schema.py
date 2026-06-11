@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 RetrievalMode = Literal["vector", "keyword", "hybrid"]
 
 
+
 class RagChatRequest(BaseModel):
     # 禁止客户端传入未声明字段
     model_config = ConfigDict(extra="forbid")
@@ -49,14 +50,22 @@ class RagChatRequest(BaseModel):
 
         return normalized
 
+# 不同检索阶段分数拆解
+class RagScoreBreakdown(BaseModel):
+    vector_score: float | None = Field(default=None, description="Milvus 向量检索原始分数")
+    keyword_score: float | None = Field(default=None, description="ElasticSearch 关键词检索原始分数")
+    rrf_score: float | None = Field(default=None, description="RRF 融合分数")
+    rerank_score: float | None = Field(default=None, description="Rerank 精排分数")
 
+# 检索来源
 class RagSource(BaseModel):
     id: str = Field(description="命中的 chunk id")
     source: str = Field(description="检索来源，例如 milvus / elasticsearch")
-    score: float = Field(description="当前排序分数，可能是向量分数、BM25 分数或 RRF 分数")
+    score: float = Field(description="当前最终排序分数")
+    scores: RagScoreBreakdown = Field(description="多阶段分数明细")
     content_preview: str = Field(description="命中文档内容预览")
 
-
+# 最终检索结果
 class RagChatResponse(BaseModel):
     query: str
     answer: str
