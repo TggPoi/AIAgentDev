@@ -170,6 +170,14 @@ def score_breakdown_to_source_scores(doc: RetrievedDoc) -> RagScoreBreakdown:
         rerank_score=doc.scores.rerank_score,
     )
 
+# 兼容旧 mock、旧 demo、旧构造代码，如果 retrieval_sources 为空，就回退到 [doc.source] 主来源
+def normalize_retrieval_sources(doc: RetrievedDoc) -> list[str]:
+    if doc.retrieval_sources:
+        # set 去重 sorted 用来保证 response 顺序稳定，方便阅读
+        return sorted(set(doc.retrieval_sources))
+
+    return [doc.source]
+
 
 async def retrieve_node(req: RagChatRequest) -> list[RetrievedDoc]:
     """根据检索模式执行召回、过滤、合并和异常处理。"""

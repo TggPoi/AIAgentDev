@@ -60,7 +60,11 @@ class RagScoreBreakdown(BaseModel):
 # 检索来源
 class RagSource(BaseModel):
     id: str = Field(description="命中的 chunk id")
-    source: str = Field(description="检索来源，例如 milvus / elasticsearch")
+    source: str = Field(description="检索来源，例如 milvus / elasticsearch") #主来源
+    retrieval_sources: list[str] = Field(
+        default_factory=list,
+        description="实际命中过该 chunk 的召回来源列表",
+    )
     score: float = Field(description="当前最终排序分数")
     scores: RagScoreBreakdown = Field(description="多阶段分数明细")
     content_preview: str = Field(description="命中文档内容预览")

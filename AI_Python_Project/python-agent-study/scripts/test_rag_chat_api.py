@@ -33,7 +33,7 @@ def print_response_json(resp: requests.Response) -> None:
     except ValueError:
         print(resp.text)
 
-# 轻量检查函数
+# 检查scores字段存在且格式正确
 def assert_sources_have_scores(body: dict[str, object]) -> None:
     sources = body.get("sources")
 
@@ -47,6 +47,21 @@ def assert_sources_have_scores(body: dict[str, object]) -> None:
     scores = first_source.get("scores")
     if not isinstance(scores, dict):
         raise AssertionError("expected source.scores to be object")
+
+# 检查检索来源内容存在
+def assert_sources_have_retrieval_sources(body: dict[str, object]) -> None:
+    sources = body.get("sources")
+
+    if not isinstance(sources, list) or not sources:
+        raise AssertionError("expected non-empty sources")
+
+    first_source = sources[0]
+    if not isinstance(first_source, dict):
+        raise AssertionError("expected source item to be object")
+
+    retrieval_sources = first_source.get("retrieval_sources")
+    if not isinstance(retrieval_sources, list) or not retrieval_sources:
+        raise AssertionError("expected source.retrieval_sources to be non-empty list")
 
 
 def test_normal_chat(base_url: str, payload: dict[str, object]) -> None:
@@ -65,6 +80,7 @@ def test_normal_chat(base_url: str, payload: dict[str, object]) -> None:
 
     body = resp.json()
     assert_sources_have_scores(body)
+    assert_sources_have_retrieval_sources(body)
 
     resp.raise_for_status()
 
