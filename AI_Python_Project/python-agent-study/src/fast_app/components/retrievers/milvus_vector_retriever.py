@@ -20,16 +20,18 @@ class MilvusVectorRetriever(BaseRetriever):
         self,
         settings: Settings,
         embedding_client: BaseEmbeddingClient,
+        client: MilvusClient | None = None,
     ):
-        self.settings = settings
-        self.embedding_client = embedding_client
-
-        uri = build_milvus_uri(
-            host=settings.milvus_host,
-            port=settings.milvus_port,
-        )
-
-        self.client = MilvusClient(uri=uri)
+        if client is not None:
+            self.client = client
+        else:
+            uri = build_milvus_uri(
+                host=settings.milvus_host,
+                port=settings.milvus_port,
+            )
+            self.client = MilvusClient(uri=uri)
+            self.embedding_client = embedding_client
+            self.settings = settings
 
     async def retrieve(self, query: str) -> list[RetrievedDoc]:
         try:

@@ -13,10 +13,13 @@ logger = get_logger(__name__)
 
 
 class ElasticsearchKeywordRetriever(BaseRetriever):
-    def __init__(self, settings: Settings):
+    def __init__(
+        self,
+        settings: Settings,
+        client: AsyncElasticsearch | None = None,
+    ):
         self.settings = settings
-
-        self.client = AsyncElasticsearch(
+        self.client = client or AsyncElasticsearch(
             hosts=[settings.elasticsearch_url],
         )
 

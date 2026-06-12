@@ -17,11 +17,16 @@ DASHSCOPE_RERANK_URL = "https://dashscope.aliyuncs.com/api/v1/services/rerank/te
 
 
 class DashScopeReranker(BaseReranker):
-    def __init__(self, settings: Settings):
+    def __init__(
+        self,
+        settings: Settings,
+        http_client: httpx.AsyncClient | None = None,
+    ):
         if not settings.openai_api_key:
             raise RuntimeError("OPENAI_API_KEY 为空，无法调用 DashScope Rerank 模型")
 
         self.settings = settings
+        self.http_client = http_client or httpx.AsyncClient(timeout=30.0)
 
     async def rerank(
         self,
@@ -52,13 +57,12 @@ class DashScopeReranker(BaseReranker):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    DASHSCOPE_RERANK_URL,
-                    headers=headers,
-                    json=payload,
-                )
-                response.raise_for_status()
+            response = await self.http_client.post(
+                DASHSCOPE_RERANK_URL,
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
 
             data = response.json()
 

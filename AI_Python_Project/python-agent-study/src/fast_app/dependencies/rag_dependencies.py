@@ -22,6 +22,8 @@ from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.rerankers.dashscope_reranker import DashScopeReranker
 from fast_app.components.rerankers.mock_reranker import MockReranker
 
+from fastapi import Depends, Request
+
 
 
 def get_llm_client(
@@ -53,6 +55,7 @@ def get_embedding_client(
 
 
 def get_vector_retriever(
+    request: Request,
     settings: Settings = Depends(get_settings),
 ) -> BaseRetriever:
     provider = settings.vector_retriever_provider.lower().strip()
@@ -61,12 +64,13 @@ def get_vector_retriever(
         return MockVectorRetriever()
 
     if provider == "milvus":
-        # Depends(get_embedding_client) 不使用这种写法,因为即使 VECTOR_RETRIEVER_PROVIDER=mock，FastAPI 执行get_vector_retriever 时 也会先创建 embedding_client。mock 测试并不需要这些内容
         embedding_client = get_embedding_client(settings=settings)
+        milvus_client = request.app.state.milvus_client
 
         return MilvusVectorRetriever(
             settings=settings,
             embedding_client=embedding_client,
+            client=milvus_client,
         )
 
     raise AppServiceError(
@@ -75,6 +79,7 @@ def get_vector_retriever(
 
 
 def get_keyword_retriever(
+    request: Request,
     settings: Settings = Depends(get_settings),
 ) -> BaseRetriever:
     provider = settings.keyword_retriever_provider.lower().strip()
@@ -83,7 +88,12 @@ def get_keyword_retriever(
         return MockKeywordRetriever()
 
     if provider == "elasticsearch":
-        return ElasticsearchKeywordRetriever(settings=settings)
+        elasticsearch_client = request.app.state.elasticsearch_client
+
+        return ElasticsearchKeywordRetriever(
+            settings=settings,
+            client=elasticsearch_client,
+        )
 
     raise AppServiceError(
         f"不支持的 KEYWORD_RETRIEVER_PROVIDER: {settings.keyword_retriever_provider}"
@@ -91,6 +101,7 @@ def get_keyword_retriever(
 
 
 def get_reranker(
+    request: Request,
     settings: Settings = Depends(get_settings),
 ) -> BaseReranker:
     provider = settings.reranker_provider.lower().strip()
@@ -102,7 +113,10 @@ def get_reranker(
         return MockReranker()
 
     if provider == "dashscope":
-        return DashScopeReranker(settings=settings)
+        return DashScopeReranker(
+            settings=settings,
+            http_client=request.app.state.rerank_http_client,
+        )
 
     raise AppServiceError(
         f"不支持的 RERANKER_PROVIDER: {settings.reranker_provider}"

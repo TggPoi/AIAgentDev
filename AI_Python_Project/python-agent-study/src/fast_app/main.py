@@ -14,7 +14,11 @@ from fast_app.core.config import get_settings
 from fast_app.core.logging import get_logger, setup_logging
 
 from fast_app.core.exception_handlers import register_exception_handlers
+import httpx
+from elasticsearch import AsyncElasticsearch
+from pymilvus import MilvusClient
 
+from fast_app.components.retrievers.milvus_vector_retriever import build_milvus_uri
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -26,12 +30,44 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     logger.info("应用启动: app_name=%s, env=%s", settings.app_name, settings.app_env)
 
-    # 应用启动时，FastAPI 会执行 lifespan 中 `yield` 之前的代码
+    if settings.vector_retriever_provider.lower().strip() == "milvus":
+        app.state.milvus_client = MilvusClient(
+            uri=build_milvus_uri(
+                host=settings.milvus_host,
+                port=settings.milvus_port,
+            )
+        )
+        logger.info("Milvus client 已创建")
 
-    yield
+    if settings.keyword_retriever_provider.lower().strip() == "elasticsearch":
+        app.state.elasticsearch_client = AsyncElasticsearch(
+            hosts=[settings.elasticsearch_url],
+        )
+        logger.info("ElasticSearch client 已创建")
 
-    # 应用关闭时，执行 `yield` 后面的代码
-    logger.info("应用关闭")
+    if settings.reranker_provider.lower().strip() == "dashscope":
+        app.state.rerank_http_client = httpx.AsyncClient(timeout=30.0)
+        logger.info("Rerank httpx client 已创建")
+
+    try:
+        yield
+    finally:
+        milvus_client = getattr(app.state, "milvus_client", None)
+        if milvus_client is not None:
+            milvus_client.close()
+            logger.info("Milvus client 已关闭")
+
+        elasticsearch_client = getattr(app.state, "elasticsearch_client", None)
+        if elasticsearch_client is not None:
+            await elasticsearch_client.close()
+            logger.info("ElasticSearch client 已关闭")
+
+        rerank_http_client = getattr(app.state, "rerank_http_client", None)
+        if rerank_http_client is not None:
+            await rerank_http_client.aclose()
+            logger.info("Rerank httpx client 已关闭")
+
+        logger.info("应用关闭")
 
 
 app = FastAPI(
