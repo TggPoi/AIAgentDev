@@ -14,11 +14,39 @@ from fast_app.services.rag_pipeline_service import (
 )
 from fast_app.services.retrieval_fusion import reciprocal_rank_fusion
 
+from fast_app.components.rerankers.base import BaseReranker
+
 
 logger = get_logger(__name__)
 
 
 GraphNode = Callable[[GraphRagState], dict]
+
+# 重排序节点 只处理 rerank 只接收和返回 docs
+def create_rerank_node(
+    reranker: BaseReranker,
+    rerank_top_k: int,
+) -> Callable[[GraphRagState], object]:
+
+    async def rerank_node(state: GraphRagState) -> dict[str, list[RetrievedDoc]]:
+        docs = state["docs"]
+
+        if not docs:
+            return {"docs": []}
+
+        try:
+            reranked_docs = await reranker.rerank(
+                query=state["query"],
+                docs=docs,
+                top_k=min(rerank_top_k, len(docs)),
+            )
+            return {"docs": reranked_docs}
+
+        except ExternalServiceError as exc:
+            logger.warning("LangGraph Rerank 失败，使用召回结果降级继续: %s", exc)
+            return {"docs": docs[:rerank_top_k]}
+
+    return rerank_node
 
 # 构造检索过滤条件
 def build_graph_retrieval_options(state: GraphRagState) -> RetrievalOptions:

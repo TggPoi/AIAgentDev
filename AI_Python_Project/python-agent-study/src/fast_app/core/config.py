@@ -89,6 +89,22 @@ class Settings(BaseSettings):
         alias="KEYWORD_RETRIEVER_PROVIDER",
     )
 
+    # 容错，超时相关配置 start
+    external_call_max_retries: int = Field(default=2, alias="EXTERNAL_CALL_MAX_RETRIES")
+    external_call_retry_base_delay: float = Field(
+        default=0.2,
+        alias="EXTERNAL_CALL_RETRY_BASE_DELAY",
+    )
+
+    rerank_timeout_seconds: float = Field(default=10.0, alias="RERANK_TIMEOUT_SECONDS")
+    elasticsearch_request_timeout: float = Field(
+        default=10.0,
+        alias="ELASTICSEARCH_REQUEST_TIMEOUT",
+    )
+    llm_timeout_seconds: float = Field(default=60.0, alias="LLM_TIMEOUT_SECONDS")
+    embedding_timeout_seconds: float = Field(default=30.0, alias="EMBEDDING_TIMEOUT_SECONDS")
+    # 容错，超时相关配置 end
+
     @property
     def cors_origins(self) -> list[str]:
         return [

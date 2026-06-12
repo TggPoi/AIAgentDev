@@ -491,20 +491,29 @@ class RagPipeline:
         self.llm_client = llm_client
         self.reranker = reranker
 
+    # 重排序模型报错时降级处理 rerank 是增强能力 增强能力失败时，不应该直接让普通问答接口失败
+    async def rerank_with_fallback(
+        self,
+        query: str,
+        docs: list[RetrievedDoc],
+    ) -> list[RetrievedDoc]:
+        if not docs:
+            return []
+
+        try:
+            return await self.reranker.rerank(
+                query=query,
+                docs=docs,
+                top_k=min(self.settings.rerank_top_k, len(docs)),
+            )
+        except ExternalServiceError as exc:
+            logger.warning("Rerank 失败，使用召回结果降级继续: %s", exc)
+            return docs[: self.settings.rerank_top_k]
+
+
     async def run(self, req: RagChatRequest) -> RagChatResponse:
-        """执行一次完整的非流式 RAG 请求。
+        """执行一次完整的非流式 RAG 请求。"""
 
-        功能：
-            先召回文档，再构造上下文，最后调用 LLM 一次性生成完整回答。
-            这个方法适合普通 HTTP JSON 接口，例如 `/rag/chat`。
-                   
-        可能抛出的异常：
-            NoSearchResultError:
-                检索成功但没有文档满足 `min_score`。
-
-            ExternalServiceError:
-                混合检索时所有召回源都失败。
-        """
         logger.info(
             "开始执行 RAG Pipeline: query=%s, mode=%s, top_k=%s, min_score=%s",
             req.query,
@@ -521,12 +530,7 @@ class RagPipeline:
         }
         
         docs = await self.retrieve(req)
-
-        docs = await self.reranker.rerank(
-            query=req.query,
-            docs=docs,
-            top_k=min(self.settings.rerank_top_k, len(docs)),
-        )
+        docs = await self.rerank_with_fallback(req.query, docs)
 
         state["docs"] = docs
 

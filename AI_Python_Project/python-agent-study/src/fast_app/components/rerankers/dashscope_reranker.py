@@ -9,6 +9,11 @@ from fast_app.core.logging import get_logger
 from fast_app.domain.rag_models import RetrievedDoc
 from fast_app.services.exceptions import ExternalServiceError
 
+from fast_app.services.external_call_policy import (
+    call_with_retry,
+    is_retryable_httpx_error,
+)
+
 
 logger = get_logger(__name__)
 
@@ -57,12 +62,24 @@ class DashScopeReranker(BaseReranker):
         }
 
         try:
-            response = await self.http_client.post(
-                DASHSCOPE_RERANK_URL,
-                headers=headers,
-                json=payload,
+            # DashScope Rerank 单次请求有明确 timeout;网络抖动、timeout、429、5xx 会有限重试 400、401、403 这类配置或参数错误不会盲目重试
+            async def _post_rerank_request() -> httpx.Response:
+                response = await self.http_client.post(
+                    DASHSCOPE_RERANK_URL,
+                    headers=headers,
+                    json=payload,
+                    timeout=self.settings.rerank_timeout_seconds,
+                )
+                response.raise_for_status()
+                return response
+
+            response = await call_with_retry(
+                operation_name="DashScope Rerank",
+                func=_post_rerank_request,
+                max_retries=self.settings.external_call_max_retries,
+                base_delay=self.settings.external_call_retry_base_delay,
+                is_retryable=is_retryable_httpx_error,
             )
-            response.raise_for_status()
 
             data = response.json()
 

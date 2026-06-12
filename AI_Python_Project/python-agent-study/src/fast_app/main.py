@@ -46,7 +46,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("ElasticSearch client 已创建")
 
     if settings.reranker_provider.lower().strip() == "dashscope":
-        app.state.rerank_http_client = httpx.AsyncClient(timeout=30.0)
+        app.state.rerank_http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(settings.rerank_timeout_seconds)
+        )
         logger.info("Rerank httpx client 已创建")
 
     try:

@@ -2,6 +2,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from fast_app.components.llms.base import BaseLLMClient
+from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.core.logging import get_logger
@@ -14,6 +15,7 @@ from fast_app.services.rag_pipeline_service import docs_to_sources
 from fast_app.graph.rag_graph_nodes import (
     create_build_context_node,
     create_retrieve_node,
+    create_rerank_node,
 )
 from fast_app.services.exceptions import ExternalServiceError
 
@@ -29,17 +31,25 @@ class LangGraphRagPipeline:
         vector_retriever: BaseRetriever,
         keyword_retriever: BaseRetriever,
         llm_client: BaseLLMClient,
+        reranker: BaseReranker
     ):
         self.settings = settings
         self.vector_retriever = vector_retriever
         self.keyword_retriever = keyword_retriever
         self.llm_client = llm_client
+        self.reranker = reranker
+        self.rerank_node = create_rerank_node(
+            reranker=reranker,
+            rerank_top_k=settings.rerank_top_k,
+        )
         
         # `build_rag_graph(...)` 不在每次 `run()` 里调用，而是在构造 pipeline 时调用。因为 graph 结构是固定的。每次请求变化的是 initial_state。
         self.graph = build_rag_graph(
             vector_retriever=vector_retriever,
             keyword_retriever=keyword_retriever,
             llm_client=llm_client,
+            reranker=reranker,
+            rerank_top_k=settings.rerank_top_k,
         )
 
         self.retrieve_node = create_retrieve_node(
@@ -107,11 +117,14 @@ class LangGraphRagPipeline:
 
         state = self._build_initial_state(req)
 
-        retrieve_update = await self.retrieve_node(state)
-        state.update(retrieve_update)
+        rerank_update = await self.rerank_node(state)
+        state.update(rerank_update)
 
         build_context_update = await self.build_context_node(state)
         state.update(build_context_update)
+
+        retrieve_update = await self.retrieve_node(state)
+        state.update(retrieve_update)
 
         context = state["context"]
 

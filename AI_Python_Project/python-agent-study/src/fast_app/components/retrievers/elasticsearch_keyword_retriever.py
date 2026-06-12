@@ -79,6 +79,8 @@ class ElasticsearchKeywordRetriever(BaseRetriever):
                 index=self.settings.elasticsearch_index_name,
                 query=build_es_query(query, options.filters),
                 size=options.candidate_k,
+                # 增加请求级 timeout
+                request_timeout=self.settings.elasticsearch_request_timeout,
             )
 
             docs = self._convert_hits_to_docs(response)

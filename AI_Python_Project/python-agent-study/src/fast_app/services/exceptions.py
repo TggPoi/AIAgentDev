@@ -16,3 +16,7 @@ class ExternalServiceError(AppServiceError):
 
 class LLMCallError(ExternalServiceError):
     """大模型调用异常。"""
+
+
+class ExternalServiceTimeoutError(ExternalServiceError):
+    """外部服务调用超时。"""
