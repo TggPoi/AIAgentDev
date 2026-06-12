@@ -5,11 +5,55 @@ from elasticsearch import AsyncElasticsearch
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.core.logging import get_logger
-from fast_app.domain.rag_models import RetrievedDoc, ScoreBreakdown
+from fast_app.domain.rag_models import RetrievalFilters, RetrievalOptions, RetrievedDoc, ScoreBreakdown
 from fast_app.services.exceptions import ExternalServiceError
 
 
 logger = get_logger(__name__)
+
+
+def build_es_filters(filters: RetrievalFilters) -> list[dict[str, Any]]:
+    es_filters: list[dict[str, Any]] = []
+
+    if filters.source_path:
+        es_filters.append(
+            {"term": {"metadata.source_path": filters.source_path}}
+        )
+
+    if filters.section_path:
+        es_filters.append(
+            {"terms": {"metadata.section_path": filters.section_path}}
+        )
+
+    return es_filters
+
+# 构建查询条件
+def build_es_query(query: str, filters: RetrievalFilters) -> dict[str, Any]:
+    filter_clauses = build_es_filters(filters)
+
+    if not filter_clauses:
+        return {
+            "match": {
+                "content": {
+                    "query": query,
+                }
+            }
+        }
+
+    return {
+        "bool": {
+            "must": [
+                {
+                    "match": {
+                        "content": {
+                            "query": query,
+                        }
+                    }
+                }
+            ],
+            "filter": filter_clauses,
+        }
+    }
 
 
 class ElasticsearchKeywordRetriever(BaseRetriever):
@@ -23,20 +67,18 @@ class ElasticsearchKeywordRetriever(BaseRetriever):
             hosts=[settings.elasticsearch_url],
         )
 
-    async def retrieve(self, query: str) -> list[RetrievedDoc]:
+    async def retrieve(
+        self,
+        query: str,
+        options: RetrievalOptions,
+    ) -> list[RetrievedDoc]:
         try:
             logger.info("开始 ElasticSearch 关键词检索: query=%s", query)
 
             response = await self.client.search(
                 index=self.settings.elasticsearch_index_name,
-                query={
-                    "match": {
-                        "content": {
-                            "query": query,
-                        }
-                    }
-                },
-                size=self.settings.rag_default_top_k,
+                query=build_es_query(query, options.filters),
+                size=options.candidate_k,
             )
 
             docs = self._convert_hits_to_docs(response)

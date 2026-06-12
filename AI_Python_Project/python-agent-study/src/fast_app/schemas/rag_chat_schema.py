@@ -5,7 +5,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 RetrievalMode = Literal["vector", "keyword", "hybrid"]
 
-
+# 检索过滤
+class RagRetrievalFilters(BaseModel):
+    source_path: str | None = Field(default=None, description="限定检索的原始文档路径")
+    section_path: list[str] = Field(default_factory=list, description="限定检索的章节路径")
 
 class RagChatRequest(BaseModel):
     # 禁止客户端传入未声明字段
@@ -38,6 +41,18 @@ class RagChatRequest(BaseModel):
         ge=0.0,
         le=1.0,
         description="最低文档分数",
+    )
+
+    candidate_k: int | None = Field(
+        default=None,
+        ge=1,
+        le=50,
+        description="每个召回源先取多少候选文档；为空时使用 top_k",
+    )
+
+    filters: RagRetrievalFilters = Field(
+        default_factory=RagRetrievalFilters,
+        description="metadata 过滤条件",
     )
 
     @field_validator("query")

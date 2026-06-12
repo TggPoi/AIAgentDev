@@ -58,7 +58,46 @@ python scripts/test_rag_chat_api.py --stream-only
 已启动程序并运行测试脚本，正常情况和异常情况都通过。
 
 
+2026年6月12日：
+已更新 [scripts/test_rag_chat_api.py](d:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/test_rag_chat_api.py)。
 
+现在脚本支持新增参数：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\test_rag_chat_api.py `
+  --mode hybrid `
+  --top-k 3 `
+  --candidate-k 10 `
+  --source-path "src/app/demo_docs/rag_intro.md" `
+  --section-path "RAG 基础"
+```
+
+也可以重复传多个章节过滤值：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\test_rag_chat_api.py `
+  --mode hybrid `
+  --top-k 3 `
+  --candidate-k 10 `
+  --section-path "RAG 基础" `
+  --section-path "混合检索"
+```
+
+这次改动包括：
+
+- `--candidate-k`：写入请求体的 `candidate_k`
+- `--source-path`：写入 `filters.source_path`
+- `--section-path`：写入 `filters.section_path`，支持重复传参
+- 普通 `/rag/chat` 和流式 `/rag/chat/stream` 会共用同一份 payload
+- 如果传了 filters，普通接口返回后会检查 `sources[*].metadata` 是否符合过滤条件
+
+已验证：
+
+```powershell
+.\.venv\Scripts\python.exe -m py_compile scripts\test_rag_chat_api.py
+```
+
+语法检查通过。
 
 
 执行结果包含 4 个用例：

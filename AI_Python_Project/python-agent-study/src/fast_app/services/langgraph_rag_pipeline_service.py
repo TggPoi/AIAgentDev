@@ -23,26 +23,6 @@ logger = get_logger(__name__)
 # FastAPI 请求模型和LangGraph final_state之间的适配层。
 class LangGraphRagPipeline:
 
-    # def __init__(
-    #     self,
-    #     settings: Settings,
-    #     vector_retriever: BaseRetriever,
-    #     keyword_retriever: BaseRetriever,
-    #     llm_client: BaseLLMClient,
-    # ):
-    #     self.settings = settings
-    #     self.vector_retriever = vector_retriever
-    #     self.keyword_retriever = keyword_retriever
-    #     self.llm_client = llm_client
-
-    #     
-    #     self.graph = build_rag_graph(
-    #         vector_retriever=vector_retriever,
-    #         keyword_retriever=keyword_retriever,
-    #         llm_client=llm_client,
-    #     )
-
-
     def __init__(
         self,
         settings: Settings,
@@ -104,62 +84,13 @@ class LangGraphRagPipeline:
             "query": req.query,
             "mode": req.mode,
             "top_k": req.top_k,
+            "candidate_k": req.candidate_k,
             "min_score": req.min_score,
+            "filters": req.filters.model_dump(),
             "docs": [],
             "context": None,
             "answer": None,
         }
-
-
-    # async def stream(
-    #     self,
-    #     req: RagChatRequest,
-    # ) -> AsyncGenerator[str, None]:
-    #     logger.info(
-    #         "开始执行 LangGraph RAG Stream Pipeline: query=%s, mode=%s, top_k=%s, min_score=%s",
-    #         req.query,
-    #         req.mode,
-    #         req.top_k,
-    #         req.min_score,
-    #     )
-
-    #     initial_state = self._build_initial_state(req)
-
-    #     context_state = await self._run_until_context(initial_state)
-
-    #     context = context_state["context"]
-
-    #     if context is None:
-    #         raise RuntimeError("LangGraph RAG Stream 上下文为空，无法流式生成回答")
-
-    #     token_count = 0
-
-    #     async for token in self.llm_client.stream(
-    #         query=req.query,
-    #         context=context,
-    #     ):
-    #         token_count += 1
-    #         yield token
-
-    #     logger.info(
-    #         "LangGraph RAG Stream Pipeline 执行完成: token_count=%s",
-    #         token_count,
-    #     )
-
-
-    # async def _run_until_context(
-    #     self,
-    #     initial_state: GraphRagState,
-    # ) -> GraphRagState:
-    #     current_state = dict(initial_state)
-
-    #     retrieve_update = await self.graph.nodes["retrieve"].ainvoke(current_state)
-    #     current_state.update(retrieve_update)
-
-    #     build_context_update = await self.graph.nodes["build_context"].ainvoke(current_state)
-    #     current_state.update(build_context_update)
-
-    #     return current_state
     
 
     async def stream(

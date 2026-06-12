@@ -6,7 +6,7 @@ from fast_app.components.retrievers.base import BaseRetriever
 
 from fast_app.core.config import Settings
 from fast_app.core.logging import get_logger
-from fast_app.domain.rag_models import RagContext, RetrievedDoc, RagMode
+from fast_app.domain.rag_models import RagContext, RetrievalOptions, RetrievedDoc, RagMode, RetrievalFilters
 from fast_app.graph.rag_state import RagState
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse, RagScoreBreakdown, RagSource
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
@@ -188,9 +188,26 @@ def extract_section_path(doc: RetrievedDoc) -> list[str]:
 
     return [str(item) for item in section_path]
 
+# 把 API request 转成内部检索参数
+def build_retrieval_options(req: RagChatRequest) -> RetrievalOptions:
+    candidate_k = max(req.candidate_k or req.top_k, req.top_k)
+
+    return RetrievalOptions(
+        top_k=req.top_k,
+        candidate_k=candidate_k,
+        filters=RetrievalFilters(
+            source_path=req.filters.source_path,
+            section_path=req.filters.section_path,
+        ),
+    )
+
 
 async def retrieve_node(req: RagChatRequest) -> list[RetrievedDoc]:
     """根据检索模式执行召回、过滤、合并和异常处理。"""
+    
+    # 构建查询条件
+    options = build_retrieval_options(req)
+
     if req.mode == "vector":
         logger.info("开始向量检索: query=%s", req.query)
 
@@ -502,7 +519,7 @@ class RagPipeline:
             "context": None,
             "answer": None,
         }
-
+        
         docs = await self.retrieve(req)
 
         docs = await self.reranker.rerank(
@@ -593,10 +610,12 @@ class RagPipeline:
             ExternalServiceError:
                 混合检索时所有召回源都抛出异常。
         """
+        options = build_retrieval_options(req)
+
         if req.mode == "vector":
             logger.info("开始向量检索: query=%s", req.query)
 
-            docs = await self.vector_retriever.retrieve(req.query)
+            docs = await self.vector_retriever.retrieve(req.query, options)
             filtered_docs = filter_docs_by_score(docs, req.min_score)
 
             logger.info(
@@ -616,7 +635,7 @@ class RagPipeline:
         if req.mode == "keyword":
             logger.info("开始关键词检索: query=%s", req.query)
 
-            docs = await self.keyword_retriever.retrieve(req.query)
+            docs = await self.keyword_retriever.retrieve(req.query, options)
             filtered_docs = filter_docs_by_mode(docs, req.mode, req.min_score)
 
             logger.info(
@@ -637,8 +656,8 @@ class RagPipeline:
         logger.info("开始混合检索: query=%s", req.query)
 
         results = await asyncio.gather(
-            self.vector_retriever.retrieve(req.query),
-            self.keyword_retriever.retrieve(req.query),
+            self.vector_retriever.retrieve(req.query, options),
+            self.keyword_retriever.retrieve(req.query, options),
             return_exceptions=True,
         )
 

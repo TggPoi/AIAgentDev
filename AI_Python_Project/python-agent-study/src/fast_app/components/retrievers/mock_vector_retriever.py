@@ -1,14 +1,18 @@
 import asyncio
 
 from fast_app.components.retrievers.base import BaseRetriever
-from fast_app.domain.rag_models import RetrievedDoc
+from fast_app.domain.rag_models import RetrievalOptions, RetrievedDoc
 
 
 class MockVectorRetriever(BaseRetriever):
-    async def retrieve(self, query: str) -> list[RetrievedDoc]:
+    async def retrieve(
+        self,
+        query: str,
+        options: RetrievalOptions,
+    ) -> list[RetrievedDoc]:
         await asyncio.sleep(1)
 
-        return [
+        docs = [
             RetrievedDoc(
                 id="doc_milvus_001",
                 content=f"Milvus 向量召回结果：{query} 通常需要向量相似度搜索。",
@@ -22,3 +26,5 @@ class MockVectorRetriever(BaseRetriever):
                 source="milvus",
             ),
         ]
+        
+        return docs[: options.candidate_k]

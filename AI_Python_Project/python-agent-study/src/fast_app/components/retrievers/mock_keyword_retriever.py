@@ -1,14 +1,18 @@
 import asyncio
 
 from fast_app.components.retrievers.base import BaseRetriever
-from fast_app.domain.rag_models import RetrievedDoc
+from fast_app.domain.rag_models import RetrievalOptions, RetrievedDoc
 
 
 class MockKeywordRetriever(BaseRetriever):
-    async def retrieve(self, query: str) -> list[RetrievedDoc]:
+    async def retrieve(
+        self,
+        query: str,
+        options: RetrievalOptions,
+    ) -> list[RetrievedDoc]:
         await asyncio.sleep(1)
 
-        return [
+        docs = [
             RetrievedDoc(
                 id="doc_es_001",
                 content=f"ElasticSearch 关键词召回结果：{query} 可以通过 BM25 匹配关键词。",
@@ -22,3 +26,5 @@ class MockKeywordRetriever(BaseRetriever):
                 source="elasticsearch",
             ),
         ]
+
+        return docs[: options.candidate_k]

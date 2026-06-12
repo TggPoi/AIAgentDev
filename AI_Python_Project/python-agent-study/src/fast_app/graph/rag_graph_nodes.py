@@ -4,7 +4,7 @@ from collections.abc import Callable
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.logging import get_logger
-from fast_app.domain.rag_models import RagContext, RetrievedDoc
+from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievalOptions, RetrievedDoc
 from fast_app.graph.rag_graph_state import GraphRagState
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
 from fast_app.services.rag_pipeline_service import (
@@ -19,6 +19,31 @@ logger = get_logger(__name__)
 
 
 GraphNode = Callable[[GraphRagState], dict]
+
+# 构造检索过滤条件
+def build_graph_retrieval_options(state: GraphRagState) -> RetrievalOptions:
+    raw_filters = state.get("filters", {})
+    filters = raw_filters if isinstance(raw_filters, dict) else {}
+    # 提取过滤器中的参数
+    raw_section_path = filters.get("section_path") or []
+    section_path = (
+        [str(item) for item in raw_section_path]
+        if isinstance(raw_section_path, list)
+        else []
+    )
+
+    source_path = filters.get("source_path")
+    top_k = state["top_k"]
+    candidate_k = max(state.get("candidate_k") or top_k, top_k)
+
+    return RetrievalOptions(
+        top_k=top_k,
+        candidate_k=candidate_k,
+        filters=RetrievalFilters(
+            source_path=str(source_path) if source_path else None,
+            section_path=section_path,
+        ),
+    )
 
 # Node Factory **如果直接在 node 里 new，vector_retriever = MockVectorRetriever() **就破坏了阶段 4-7 的可替换组件设计。
 # 外层函数接收组件依赖。内层函数才是真正的 LangGraph node。内层 node 通过闭包使用外层传入的组件。
@@ -35,11 +60,12 @@ def create_retrieve_node(
         mode = state["mode"]
         top_k = state["top_k"]
         min_score = state["min_score"]
+        options = build_graph_retrieval_options(state)
 
         if mode == "vector":
             logger.info("LangGraph 开始向量检索: query=%s", query)
 
-            docs = await vector_retriever.retrieve(query)
+            docs = await vector_retriever.retrieve(query, options)
             filtered_docs = filter_docs_by_score(docs, min_score)
 
             logger.info(
@@ -58,7 +84,7 @@ def create_retrieve_node(
         if mode == "keyword":
             logger.info("LangGraph 开始关键词检索: query=%s", query)
 
-            docs = await keyword_retriever.retrieve(query)
+            docs = await keyword_retriever.retrieve(query, options)
             filtered_docs = filter_docs_by_mode(docs, mode, min_score)
 
             logger.info(
@@ -78,8 +104,8 @@ def create_retrieve_node(
         logger.info("LangGraph 开始混合检索: query=%s", query)
 
         results = await asyncio.gather(
-            vector_retriever.retrieve(query),
-            keyword_retriever.retrieve(query),
+            vector_retriever.retrieve(query, options),
+            keyword_retriever.retrieve(query, options),
             return_exceptions=True,
         )
 

@@ -5,7 +5,7 @@ from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.core.logging import get_logger
 from fast_app.services.exceptions import ExternalServiceError
-from fast_app.domain.rag_models import RetrievedDoc, ScoreBreakdown
+from fast_app.domain.rag_models import RetrievalFilters, RetrievalOptions, RetrievedDoc, ScoreBreakdown
 
 
 logger = get_logger(__name__)
@@ -15,6 +15,32 @@ def build_milvus_uri(host: str, port: int) -> str:
     return f"http://{host}:{port}"
 
 
+def build_milvus_output_fields(settings: Settings) -> list[str]:
+    return [
+        settings.milvus_id_field,
+        settings.milvus_content_field,
+        "source",
+        "title",
+        "metadata",
+    ]
+
+
+def build_milvus_filter_expr(filters: RetrievalFilters) -> str | None:
+    expressions: list[str] = []
+
+    if filters.source_path:
+        expressions.append(f'metadata["source_path"] == "{filters.source_path}"')
+
+    if filters.section_path:
+        section_path = filters.section_path[-1]
+        expressions.append(f'array_contains(metadata["section_path"], "{section_path}")')
+
+    if not expressions:
+        return None
+
+    return " and ".join(expressions)
+
+
 class MilvusVectorRetriever(BaseRetriever):
     def __init__(
         self,
@@ -22,6 +48,9 @@ class MilvusVectorRetriever(BaseRetriever):
         embedding_client: BaseEmbeddingClient,
         client: MilvusClient | None = None,
     ):
+        self.settings = settings
+        self.embedding_client = embedding_client
+
         if client is not None:
             self.client = client
         else:
@@ -30,10 +59,13 @@ class MilvusVectorRetriever(BaseRetriever):
                 port=settings.milvus_port,
             )
             self.client = MilvusClient(uri=uri)
-            self.embedding_client = embedding_client
-            self.settings = settings
 
-    async def retrieve(self, query: str) -> list[RetrievedDoc]:
+
+    async def retrieve(
+        self,
+        query: str,
+        options: RetrievalOptions,
+    ) -> list[RetrievedDoc]:
         try:
             logger.info("开始 Milvus 向量检索: query=%s", query)
 
@@ -45,18 +77,17 @@ class MilvusVectorRetriever(BaseRetriever):
                     f"actual={len(query_vector)}, settings={self.settings.embedding_dim}"
                 )
 
+            # 构建过滤条件 milvus filter表达式
+            filter_expr = build_milvus_filter_expr(options.filters)
+            output_fields = options.output_fields or build_milvus_output_fields(self.settings)
+
             results = self.client.search(
                 collection_name=self.settings.milvus_collection_name,
                 data=[query_vector],
                 anns_field=self.settings.milvus_vector_field,
-                limit=self.settings.rag_default_top_k,
-                output_fields=[
-                    self.settings.milvus_id_field,
-                    self.settings.milvus_content_field,
-                    "source",
-                    "title",
-                    "metadata",
-                ],
+                limit=options.candidate_k,
+                filter=filter_expr,
+                output_fields=output_fields,
                 search_params={
                     "metric_type": "COSINE",
                     "params": {},

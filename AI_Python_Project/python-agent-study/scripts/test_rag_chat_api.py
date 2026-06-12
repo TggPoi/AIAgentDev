@@ -8,22 +8,32 @@ import requests
 
 def build_payload(args: argparse.Namespace) -> dict[str, object]:
     """根据命令行参数构造 RagChatRequest 请求体。"""
-    return {
+    payload: dict[str, object] = {
         "query": args.query,
         "mode": args.mode,
         "top_k": args.top_k,
         "min_score": args.min_score,
     }
 
+    if args.candidate_k is not None:
+        payload["candidate_k"] = args.candidate_k
+
+    filters: dict[str, object] = {}
+    if args.source_path:
+        filters["source_path"] = args.source_path
+    if args.section_path:
+        filters["section_path"] = args.section_path
+    if filters:
+        payload["filters"] = filters
+
+    return payload
+
 
 def build_no_result_payload(args: argparse.Namespace) -> dict[str, object]:
     """构造一个会触发 NoSearchResultError 的请求体。"""
-    return {
-        "query": args.query,
-        "mode": args.mode,
-        "top_k": args.top_k,
-        "min_score": 1.0,
-    }
+    payload = build_payload(args)
+    payload["min_score"] = 1.0
+    return payload
 
 
 def print_response_json(resp: requests.Response) -> None:
@@ -87,6 +97,46 @@ def assert_sources_have_metadata(body: dict[str, object]) -> None:
         raise AssertionError("expected source.metadata to be object")
 
 
+def assert_sources_match_filters(
+    body: dict[str, object],
+    source_path: str | None,
+    section_path: list[str],
+) -> None:
+    """当命令行传入 filters 时，检查返回 sources 是否带有对应 metadata。"""
+    if not source_path and not section_path:
+        return
+
+    sources = body.get("sources")
+
+    if not isinstance(sources, list) or not sources:
+        raise AssertionError("expected non-empty sources")
+
+    for source in sources:
+        if not isinstance(source, dict):
+            raise AssertionError("expected source item to be object")
+
+        metadata = source.get("metadata")
+        if not isinstance(metadata, dict):
+            raise AssertionError("expected source.metadata to be object")
+
+        if source_path and metadata.get("source_path") != source_path:
+            raise AssertionError(
+                "expected source.metadata.source_path to match filter: "
+                f"{source_path}"
+            )
+
+        if section_path:
+            metadata_section_path = metadata.get("section_path")
+            if not isinstance(metadata_section_path, list):
+                raise AssertionError("expected source.metadata.section_path to be list")
+
+            if not set(section_path).intersection(set(metadata_section_path)):
+                raise AssertionError(
+                    "expected source.metadata.section_path to match at least one "
+                    f"filter value: {section_path}"
+                )
+
+
 def test_normal_chat(base_url: str, payload: dict[str, object]) -> None:
     """测试非流式 RAG 聊天接口。"""
     url = f"{base_url}/rag/chat"
@@ -105,6 +155,16 @@ def test_normal_chat(base_url: str, payload: dict[str, object]) -> None:
     assert_sources_have_scores(body)
     assert_sources_have_retrieval_sources(body)
     assert_sources_have_metadata(body)
+
+    filters = payload.get("filters")
+    if isinstance(filters, dict):
+        source_path = filters.get("source_path")
+        section_path = filters.get("section_path")
+        assert_sources_match_filters(
+            body=body,
+            source_path=source_path if isinstance(source_path, str) else None,
+            section_path=section_path if isinstance(section_path, list) else [],
+        )
 
     resp.raise_for_status()
 
@@ -248,6 +308,23 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.0,
         help="最低文档分数",
+    )
+    parser.add_argument(
+        "--candidate-k",
+        type=int,
+        default=None,
+        help="每个召回源先取多少候选文档；不传时后端使用 top_k",
+    )
+    parser.add_argument(
+        "--source-path",
+        default=None,
+        help="按 metadata.source_path 限定检索范围",
+    )
+    parser.add_argument(
+        "--section-path",
+        action="append",
+        default=[],
+        help="按 metadata.section_path 限定检索范围；可以重复传入多次",
     )
     parser.add_argument(
         "--stream-only",
