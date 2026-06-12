@@ -239,6 +239,102 @@ def test_stream_chat(base_url: str, payload: dict[str, object]) -> None:
             print(data if data else "\n", end="", flush=True)
 
 
+def parse_sse_json_data(data: str) -> dict[str, object]:
+    try:
+        value = json.loads(data)
+    except json.JSONDecodeError as e:
+        raise AssertionError(f"expected JSON SSE data, got {data}") from e
+
+    if not isinstance(value, dict):
+        raise AssertionError(f"expected SSE data object, got {type(value)}")
+
+    return value
+
+
+def test_structured_stream_chat(base_url: str, payload: dict[str, object]) -> None:
+    """测试结构化流式 RAG 聊天接口。"""
+    url = f"{base_url}/rag/chat/stream/events"
+
+    print("\n========== POST /rag/chat/stream/events ==========")
+    print("structured stream output:")
+
+    saw_sources = False
+    saw_token = False
+    saw_done = False
+    token_preview: list[str] = []
+
+    with requests.post(url, json=payload, stream=True, timeout=60) as resp:
+        print(f"status: {resp.status_code}\n")
+        resp.raise_for_status()
+
+        current_event = "message"
+
+        for line in iter_sse_lines(resp):
+            print(line)
+
+            if line.startswith("event:"):
+                current_event = line.removeprefix("event:").strip()
+                continue
+
+            if not line.startswith("data:"):
+                continue
+
+            data = line.removeprefix("data:")
+            if data.startswith(" "):
+                data = data[1:]
+
+            body = parse_sse_json_data(data)
+
+            if current_event == "sources":
+                saw_sources = True
+                sources = body.get("sources")
+                if not isinstance(sources, list) or not sources:
+                    raise AssertionError("expected non-empty sources event")
+
+                assert_sources_have_scores(body)
+                assert_sources_have_retrieval_sources(body)
+                assert_sources_have_metadata(body)
+
+                filters = payload.get("filters")
+                if isinstance(filters, dict):
+                    source_path = filters.get("source_path")
+                    section_path = filters.get("section_path")
+                    assert_sources_match_filters(
+                        body=body,
+                        source_path=source_path if isinstance(source_path, str) else None,
+                        section_path=section_path if isinstance(section_path, list) else [],
+                    )
+
+            elif current_event == "token":
+                saw_token = True
+                token = body.get("token")
+                if not isinstance(token, str):
+                    raise AssertionError("expected token event data.token to be string")
+                if len(token_preview) < 20:
+                    token_preview.append(token)
+
+            elif current_event == "done":
+                saw_done = True
+                if body.get("status") != "done":
+                    raise AssertionError(
+                        f"expected done status, got {body.get('status')}"
+                    )
+                break
+
+            elif current_event == "error":
+                raise AssertionError(f"unexpected structured stream error: {body}")
+
+    if not saw_sources:
+        raise AssertionError("expected sources event")
+    if not saw_token:
+        raise AssertionError("expected token event")
+    if not saw_done:
+        raise AssertionError("expected done event")
+
+    print("\nstructured token preview:")
+    print("".join(token_preview))
+
+
 def test_stream_chat_error(base_url: str, payload: dict[str, object]) -> None:
     """测试流式接口在异常时返回 SSE error event。"""
     url = f"{base_url}/rag/chat/stream"
@@ -332,6 +428,16 @@ def parse_args() -> argparse.Namespace:
         help="只测试流式接口",
     )
     parser.add_argument(
+        "--structured-stream-only",
+        action="store_true",
+        help="只测试结构化流式接口 /rag/chat/stream/events",
+    )
+    parser.add_argument(
+        "--skip-structured-stream",
+        action="store_true",
+        help="跳过结构化流式接口测试",
+    )
+    parser.add_argument(
         "--skip-errors",
         action="store_true",
         help="跳过异常场景测试",
@@ -346,10 +452,17 @@ def main() -> int:
     error_payload = build_no_result_payload(args)
 
     try:
+        if args.structured_stream_only:
+            test_structured_stream_chat(base_url, payload)
+            return 0
+
         if not args.stream_only:
             test_normal_chat(base_url, payload)
 
         test_stream_chat(base_url, payload)
+
+        if not args.skip_structured_stream:
+            test_structured_stream_chat(base_url, payload)
 
         # if not args.skip_errors:
         #     if not args.stream_only:

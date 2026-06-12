@@ -105,6 +105,26 @@ class Settings(BaseSettings):
     embedding_timeout_seconds: float = Field(default=30.0, alias="EMBEDDING_TIMEOUT_SECONDS")
     # 容错，超时相关配置 end
 
+
+    # ingestion 的基础配置 start
+    # 本地 Markdown 知识库目录
+    knowledge_base_dir: str = Field(
+        default="knowledge-base",
+        alias="KNOWLEDGE_BASE_DIR",
+    )
+    # 写入 KnowledgeChunk.source 的来源标识
+    ingestion_source_name: str = Field(
+        default="local_markdown",
+        alias="INGESTION_SOURCE_NAME",
+    )
+    # 单个 chunk 的最大字符数
+    markdown_chunk_max_chars: int = Field(
+        default=1200,
+        alias="MARKDOWN_CHUNK_MAX_CHARS",
+    )
+    # ingestion 的基础配置 end
+
+
     @property
     def cors_origins(self) -> list[str]:
         return [

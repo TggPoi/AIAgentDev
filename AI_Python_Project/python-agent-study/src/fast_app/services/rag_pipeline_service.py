@@ -13,6 +13,7 @@ from fast_app.services.exceptions import ExternalServiceError, NoSearchResultErr
 from fast_app.services.retrieval_fusion import reciprocal_rank_fusion
 from fast_app.services.rag_context_builder import build_rag_context
 from fast_app.components.rerankers.base import BaseReranker
+from fast_app.domain.rag_stream_models import RagStreamEvent
 
 
 # `__name__` 是当前模块名。
@@ -510,7 +511,7 @@ class RagPipeline:
             logger.warning("Rerank 失败，使用召回结果降级继续: %s", exc)
             return docs[: self.settings.rerank_top_k]
 
-
+    #非流式普通接口
     async def run(self, req: RagChatRequest) -> RagChatResponse:
         """执行一次完整的非流式 RAG 请求。"""
 
@@ -555,24 +556,13 @@ class RagPipeline:
             sources=docs_to_sources(docs),
         )
 
+    # 流式接口，只以异步生成器形式流式返回 token，未实现stream event
     async def stream(
         self,
         req: RagChatRequest,
     ) -> AsyncGenerator[str, None]:
-        """执行完整 RAG 请求，并以异步生成器形式流式返回 token。
+        """执行完整 RAG 请求，并以异步生成器形式流式返回 token。"""
 
-        功能：
-            先完成检索和上下文构造，然后调用 LLM client 的 `stream` 方法。
-            每次 `yield` 一个 token，API 层再把 token 包装成 SSE 格式。
-            这个方法适合 `/rag/chat/stream` 这类流式接口。
-
-        可能抛出的异常：
-            NoSearchResultError:
-                没有满足条件的召回文档。
-
-            ExternalServiceError:
-                混合检索时所有召回源都失败。
-        """
         logger.info(
             "开始执行 RAG Stream Pipeline: query=%s, mode=%s, top_k=%s, min_score=%s",
             req.query,
@@ -582,6 +572,8 @@ class RagPipeline:
         )
 
         docs = await self.retrieve(req)
+
+        docs = await self.rerank_with_fallback(req.query, docs)
 
         logger.info("RAG Stream 召回完成: docs_count=%s", len(docs))
 
@@ -597,7 +589,7 @@ class RagPipeline:
 
         logger.info("RAG Stream 输出完成: token_count=%s", token_count)
 
-
+    # 检索文档
     async def retrieve(self, req: RagChatRequest) -> list[RetrievedDoc]:
         """根据请求模式召回文档并完成过滤、合并、去重。
 
@@ -708,3 +700,44 @@ class RagPipeline:
             )
 
         return merged_docs
+
+    # 流式事件接口
+    async def stream_events(
+        self,
+        req: RagChatRequest,
+    ) -> AsyncGenerator[RagStreamEvent, None]:
+        logger.info(
+            "开始执行 RAG Stream Events Pipeline: query=%s, mode=%s, top_k=%s, min_score=%s",
+            req.query,
+            req.mode,
+            req.top_k,
+            req.min_score,
+        )
+
+        docs = await self.retrieve(req)
+        docs = await self.rerank_with_fallback(req.query, docs)
+
+        yield RagStreamEvent(
+            event="sources",
+            data={
+                "sources": docs_to_sources(docs),
+            },
+        )
+
+        context = build_rag_context(req.query, docs)
+
+        token_count = 0
+
+        async for token in self.llm_client.stream(req.query, context):
+            token_count += 1
+            yield RagStreamEvent(
+                event="token",
+                data={
+                    "token": token,
+                },
+            )
+
+        logger.info(
+            "RAG Stream Events 输出完成: token_count=%s",
+            token_count,
+        )

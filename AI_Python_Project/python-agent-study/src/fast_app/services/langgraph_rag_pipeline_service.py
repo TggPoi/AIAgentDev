@@ -19,6 +19,8 @@ from fast_app.graph.rag_graph_nodes import (
 )
 from fast_app.services.exceptions import ExternalServiceError
 
+from fast_app.domain.rag_stream_models import RagStreamEvent
+
 
 logger = get_logger(__name__)
 
@@ -102,7 +104,7 @@ class LangGraphRagPipeline:
             "answer": None,
         }
     
-
+    # 只产生token的流式接口
     async def stream(
         self,
         req: RagChatRequest,
@@ -117,14 +119,14 @@ class LangGraphRagPipeline:
 
         state = self._build_initial_state(req)
 
+        retrieve_update = await self.retrieve_node(state)
+        state.update(retrieve_update)
+
         rerank_update = await self.rerank_node(state)
         state.update(rerank_update)
 
         build_context_update = await self.build_context_node(state)
         state.update(build_context_update)
-
-        retrieve_update = await self.retrieve_node(state)
-        state.update(retrieve_update)
 
         context = state["context"]
 
@@ -142,5 +144,62 @@ class LangGraphRagPipeline:
 
         logger.info(
             "LangGraph RAG Stream Pipeline 执行完成: token_count=%s",
+            token_count,
+        )
+
+    # 流式事件的接口，事件包括：sources（检索结果）和token（生成的回答token）
+    async def stream_events(
+        self,
+        req: RagChatRequest,
+    ) -> AsyncGenerator[RagStreamEvent, None]:
+        logger.info(
+            "开始执行 LangGraph RAG Stream Events Pipeline: query=%s, mode=%s, top_k=%s, min_score=%s",
+            req.query,
+            req.mode,
+            req.top_k,
+            req.min_score,
+        )
+
+        state = self._build_initial_state(req)
+
+        retrieve_update = await self.retrieve_node(state)
+        state.update(retrieve_update)
+
+        rerank_update = await self.rerank_node(state)
+        state.update(rerank_update)
+
+        docs = state["docs"]
+
+        yield RagStreamEvent(
+            event="sources",
+            data={
+                "sources": docs_to_sources(docs),
+            },
+        )
+
+        build_context_update = await self.build_context_node(state)
+        state.update(build_context_update)
+
+        context = state["context"]
+
+        if context is None:
+            raise ExternalServiceError("LangGraph RAG Stream Events 上下文为空，无法流式生成回答")
+
+        token_count = 0
+
+        async for token in self.llm_client.stream(
+            query=req.query,
+            context=context,
+        ):
+            token_count += 1
+            yield RagStreamEvent(
+                event="token",
+                data={
+                    "token": token,
+                },
+            )
+
+        logger.info(
+            "LangGraph RAG Stream Events Pipeline 执行完成: token_count=%s",
             token_count,
         )
