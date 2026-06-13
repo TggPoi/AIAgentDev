@@ -6,6 +6,14 @@ from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.core.logging import get_logger
 from fast_app.domain.rag_models import RetrievalFilters, RetrievalOptions, RetrievedDoc, ScoreBreakdown
+from fast_app.ingestion.rag_store_schema import (
+    ES_CONTENT_FIELD,
+    ES_ID_FIELD,
+    ES_METADATA_FIELD,
+    ES_METADATA_SECTION_PATH_FIELD,
+    ES_METADATA_SOURCE_PATH_FIELD,
+    ES_TITLE_FIELD,
+)
 from fast_app.services.exceptions import ExternalServiceError
 
 
@@ -17,12 +25,12 @@ def build_es_filters(filters: RetrievalFilters) -> list[dict[str, Any]]:
 
     if filters.source_path:
         es_filters.append(
-            {"term": {"metadata.source_path": filters.source_path}}
+            {"term": {ES_METADATA_SOURCE_PATH_FIELD: filters.source_path}}
         )
 
     if filters.section_path:
         es_filters.append(
-            {"terms": {"metadata.section_path": filters.section_path}}
+            {"terms": {ES_METADATA_SECTION_PATH_FIELD: filters.section_path}}
         )
 
     return es_filters
@@ -34,7 +42,7 @@ def build_es_query(query: str, filters: RetrievalFilters) -> dict[str, Any]:
     if not filter_clauses:
         return {
             "match": {
-                "content": {
+                ES_CONTENT_FIELD: {
                     "query": query,
                 }
             }
@@ -45,7 +53,7 @@ def build_es_query(query: str, filters: RetrievalFilters) -> dict[str, Any]:
             "must": [
                 {
                     "match": {
-                        "content": {
+                        ES_CONTENT_FIELD: {
                             "query": query,
                         }
                     }
@@ -104,16 +112,16 @@ class ElasticsearchKeywordRetriever(BaseRetriever):
         for hit in hits:
             source = hit.get("_source", {})
 
-            doc_id = source.get("id")
-            content = source.get("content")
+            doc_id = source.get(ES_ID_FIELD)
+            content = source.get(ES_CONTENT_FIELD)
 
             if not doc_id or not content:
                 logger.warning("ElasticSearch hit 缺少 id 或 content: hit=%s", hit)
                 continue
 
             keyword_score = float(hit.get("_score", 0.0))
-            title = source.get("title")
-            metadata = source.get("metadata", {})
+            title = source.get(ES_TITLE_FIELD)
+            metadata = source.get(ES_METADATA_FIELD, {})
 
             docs.append(
                 RetrievedDoc(

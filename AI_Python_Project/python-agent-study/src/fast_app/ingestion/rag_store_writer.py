@@ -7,6 +7,14 @@ from pymilvus import MilvusClient
 from fast_app.core.config import Settings
 from fast_app.domain.knowledge_models import KnowledgeChunk
 from fast_app.ingestion.rag_store_schema import (
+    ES_CONTENT_FIELD,
+    ES_CREATED_AT_FIELD,
+    ES_ID_FIELD,
+    ES_IK_INDEX_ANALYZER,
+    ES_IK_SEARCH_ANALYZER,
+    ES_METADATA_FIELD,
+    ES_SOURCE_FIELD,
+    ES_TITLE_FIELD,
     MILVUS_CHUNK_INDEX_FIELD,
     MILVUS_DOC_ID_FIELD,
     MILVUS_DOCUMENT_TYPE_FIELD,
@@ -21,12 +29,24 @@ from fast_app.ingestion.rag_store_schema import (
 
 # 负责把 `KnowledgeChunk` 写入 ES 和 Milvus 存储
 
+async def verify_es_ik_analyzers(client: AsyncElasticsearch) -> None:
+    sample_text = "混合检索结合向量召回和关键词召回"
+
+    for analyzer in [ES_IK_INDEX_ANALYZER, ES_IK_SEARCH_ANALYZER]:
+        await client.indices.analyze(
+            analyzer=analyzer,
+            text=sample_text,
+        )
+
+
 async def recreate_es_index(
     client: AsyncElasticsearch,
     settings: Settings,
     chunks: list[KnowledgeChunk],
 ) -> int:
     index_name = settings.elasticsearch_index_name
+
+    await verify_es_ik_analyzers(client)
 
     if await client.indices.exists(index=index_name):
         await client.indices.delete(index=index_name)
@@ -40,12 +60,12 @@ async def recreate_es_index(
             "_index": index_name,
             "_id": chunk.id,
             "_source": {
-                "id": chunk.id,
-                "content": chunk.content,
-                "title": chunk.title,
-                "source": chunk.source,
-                "metadata": chunk.metadata,
-                "created_at": now,
+                ES_ID_FIELD: chunk.id,
+                ES_CONTENT_FIELD: chunk.content,
+                ES_TITLE_FIELD: chunk.title,
+                ES_SOURCE_FIELD: chunk.source,
+                ES_METADATA_FIELD: chunk.metadata,
+                ES_CREATED_AT_FIELD: now,
             },
         }
         for chunk in chunks

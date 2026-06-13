@@ -132,6 +132,28 @@ flowchart TD
 默认 output_fields 由 rag_store_schema.py 中的 build_milvus_output_fields 统一生成。
 
 
+## ElasticSearch Index 字段
+
+当前 ElasticSearch index 主要字段包括：
+
+- id
+- content
+- title
+- source
+- metadata
+- created_at
+
+其中：
+
+- content 使用 ik_max_word 建索引，使用 ik_smart 搜索
+- title 使用 ik_max_word / ik_smart，并保留 keyword 子字段
+- metadata.doc_id / metadata.chunk_id / metadata.source_path / metadata.section_path 使用 keyword
+- metadata.title 使用和 title 相同的中文分词规则
+- created_at 用于记录写入时间
+
+重建 index 前会验证 ik_max_word 和 ik_smart 是否可用。
+
+
 ## 当前写入策略
 
 当前阶段使用 recreate 策略：

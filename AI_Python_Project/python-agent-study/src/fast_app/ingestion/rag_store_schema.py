@@ -1,4 +1,5 @@
 from typing import Any
+
 from pymilvus import DataType, MilvusClient
 
 from fast_app.core.config import Settings
@@ -12,49 +13,81 @@ MILVUS_DOC_ID_FIELD = "doc_id"
 MILVUS_SOURCE_PATH_FIELD = "source_path"
 MILVUS_DOCUMENT_TYPE_FIELD = "document_type"
 MILVUS_CHUNK_INDEX_FIELD = "chunk_index"
+#ES mapping字段常量
+ES_ID_FIELD = "id"
+ES_CONTENT_FIELD = "content"
+ES_TITLE_FIELD = "title"
+ES_SOURCE_FIELD = "source"
+ES_METADATA_FIELD = "metadata"
+ES_CREATED_AT_FIELD = "created_at"
+
+ES_IK_INDEX_ANALYZER = "ik_max_word"
+ES_IK_SEARCH_ANALYZER = "ik_smart"
+
+ES_METADATA_DOC_ID_FIELD = "metadata.doc_id"
+ES_METADATA_CHUNK_ID_FIELD = "metadata.chunk_id"
+ES_METADATA_SOURCE_PATH_FIELD = "metadata.source_path"
+ES_METADATA_SECTION_PATH_FIELD = "metadata.section_path"
+ES_METADATA_DOCUMENT_TYPE_FIELD = "metadata.document_type"
+
+
+def build_es_text_field_mapping(with_keyword: bool = False) -> dict[str, Any]:
+    mapping: dict[str, Any] = {
+        "type": "text",
+        "analyzer": ES_IK_INDEX_ANALYZER,
+        "search_analyzer": ES_IK_SEARCH_ANALYZER,
+    }
+
+    if with_keyword:
+        mapping["fields"] = {"keyword": {"type": "keyword"}}
+
+    return mapping
+
+
+def build_es_index_settings() -> dict[str, Any]:
+    return {
+        "number_of_shards": 1,
+        "number_of_replicas": 0,
+    }
+
+
+def build_es_mappings() -> dict[str, Any]:
+    return {
+        "properties": {
+            ES_ID_FIELD: {"type": "keyword"},
+            ES_CONTENT_FIELD: build_es_text_field_mapping(),
+            ES_TITLE_FIELD: build_es_text_field_mapping(with_keyword=True),
+            ES_SOURCE_FIELD: {"type": "keyword"},
+            ES_METADATA_FIELD: {
+                "properties": {
+                    "doc_id": {"type": "keyword"},
+                    "chunk_id": {"type": "keyword"},
+                    "title": build_es_text_field_mapping(with_keyword=True),
+                    "source_path": {"type": "keyword"},
+                    "section_path": {"type": "keyword"},
+                    "document_type": {"type": "keyword"},
+                    "file_name": {"type": "keyword"},
+                    "file_extension": {"type": "keyword"},
+                    "heading_level": {"type": "integer"},
+                    "section_index": {"type": "integer"},
+                    "chunk_index": {"type": "integer"},
+                }
+            },
+            ES_CREATED_AT_FIELD: {"type": "date"},
+        }
+    }
+
+
+def build_es_index_body() -> dict[str, Any]:
+    return {
+        "settings": build_es_index_settings(),
+        "mappings": build_es_mappings(),
+    }
 
 
 def build_es_mapping() -> dict[str, Any]:
-    return {
-        "mappings": {
-            "properties": {
-                "id": {"type": "keyword"},
-                "content": {
-                    "type": "text",
-                    "analyzer": "ik_max_word",
-                    "search_analyzer": "ik_smart",
-                },
-                "title": {
-                    "type": "text",
-                    "analyzer": "ik_max_word",
-                    "search_analyzer": "ik_smart",
-                    "fields": {"keyword": {"type": "keyword"}},
-                },
-                "source": {"type": "keyword"},
-                "metadata": {
-                    "properties": {
-                        "doc_id": {"type": "keyword"},
-                        "chunk_id": {"type": "keyword"},
-                        "title": {
-                            "type": "text",
-                            "analyzer": "ik_max_word",
-                            "search_analyzer": "ik_smart",
-                            "fields": {"keyword": {"type": "keyword"}},
-                        },
-                        "source_path": {"type": "keyword"},
-                        "section_path": {"type": "keyword"},
-                        "document_type": {"type": "keyword"},
-                        "file_name": {"type": "keyword"},
-                        "file_extension": {"type": "keyword"},
-                        "heading_level": {"type": "integer"},
-                        "section_index": {"type": "integer"},
-                        "chunk_index": {"type": "integer"},
-                    }
-                },
-                "created_at": {"type": "date"},
-            }
-        }
-    }
+    return build_es_index_body()
+
 
 # 构建Collection结构
 def build_milvus_schema(settings: Settings):
@@ -126,6 +159,7 @@ def build_milvus_output_fields(settings: Settings) -> list[str]:
         MILVUS_CHUNK_INDEX_FIELD,
         MILVUS_METADATA_FIELD,
     ]
+
 
 # 构建Index索引
 def build_milvus_index_params(settings: Settings):
