@@ -154,6 +154,26 @@ flowchart TD
 重建 index 前会验证 ik_max_word 和 ik_smart 是否可用。
 
 
+## 双写流程
+
+当前 ingestion 写入阶段由 rag_store_writer.py 统一编排。
+
+核心入口：
+
+- recreate_rag_stores
+
+写入流程：
+
+1. 校验 chunks / vectors 数量
+2. 校验 chunk.id 唯一性
+3. 校验标准 metadata 字段
+4. 重建并写入 ElasticSearch index
+5. 重建并写入 Milvus collection
+6. 返回 DualStoreWriteResult
+
+当前仍然使用 recreate 策略，适合学习阶段和本地小型知识库。
+
+
 ## 当前写入策略
 
 当前阶段使用 recreate 策略：

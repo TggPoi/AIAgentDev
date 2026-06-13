@@ -1,4 +1,6 @@
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any, Literal
 
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_bulk
@@ -28,6 +30,61 @@ from fast_app.ingestion.rag_store_schema import (
 )
 
 # 负责把 `KnowledgeChunk` 写入 ES 和 Milvus 存储
+StoreName = Literal["elasticsearch", "milvus"]
+
+
+@dataclass(frozen=True)
+class StoreWriteResult:
+    store_name: StoreName
+    success_count: int
+    detail: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class DualStoreWriteResult:
+    chunk_count: int
+    es: StoreWriteResult
+    milvus: StoreWriteResult
+
+
+def validate_store_write_inputs(
+    chunks: list[KnowledgeChunk],
+    vectors: list[list[float]],
+) -> None:
+    if not chunks:
+        raise RuntimeError("写入 store 失败: chunks 不能为空")
+
+    if len(chunks) != len(vectors):
+        raise RuntimeError(
+            "写入 store 失败: chunks 和 vectors 数量不一致: "
+            f"chunks={len(chunks)}, vectors={len(vectors)}"
+        )
+
+    chunk_ids = [chunk.id for chunk in chunks]
+    if len(chunk_ids) != len(set(chunk_ids)):
+        raise RuntimeError("写入 store 失败: chunk.id 存在重复")
+
+    required_metadata_keys = [
+        "doc_id",
+        "chunk_id",
+        "source_path",
+        "document_type",
+        "chunk_index",
+    ]
+
+    for chunk in chunks:
+        if chunk.metadata.get("chunk_id") != chunk.id:
+            raise RuntimeError(
+                "写入 store 失败: metadata.chunk_id 与 chunk.id 不一致: "
+                f"{chunk.id}"
+            )
+
+        for key in required_metadata_keys:
+            if key not in chunk.metadata:
+                raise RuntimeError(
+                    f"写入 store 失败: chunk 缺少 metadata.{key}: {chunk.id}"
+                )
+
 
 async def verify_es_ik_analyzers(client: AsyncElasticsearch) -> None:
     sample_text = "混合检索结合向量召回和关键词召回"
@@ -125,3 +182,45 @@ def recreate_milvus_collection(
     client.load_collection(collection_name=collection_name)
 
     return result
+
+# 双链路 写入 es milvus数据库入口
+async def recreate_rag_stores(
+    elasticsearch_client: AsyncElasticsearch,
+    milvus_client: MilvusClient,
+    settings: Settings,
+    chunks: list[KnowledgeChunk],
+    vectors: list[list[float]],
+) -> DualStoreWriteResult:
+    validate_store_write_inputs(chunks, vectors)
+
+    es_success_count = await recreate_es_index(
+        client=elasticsearch_client,
+        settings=settings,
+        chunks=chunks,
+    )
+
+    milvus_insert_result = recreate_milvus_collection(
+        client=milvus_client,
+        settings=settings,
+        chunks=chunks,
+        vectors=vectors,
+    )
+
+    return DualStoreWriteResult(
+        chunk_count=len(chunks),
+        es=StoreWriteResult(
+            store_name="elasticsearch",
+            success_count=es_success_count,
+            detail={
+                "index_name": settings.elasticsearch_index_name,
+            },
+        ),
+        milvus=StoreWriteResult(
+            store_name="milvus",
+            success_count=len(chunks),
+            detail={
+                "collection_name": settings.milvus_collection_name,
+                "insert_result": milvus_insert_result,
+            },
+        ),
+    )

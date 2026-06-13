@@ -7,10 +7,7 @@ from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.core.config import Settings
 from fast_app.domain.knowledge_models import KnowledgeChunk
 from fast_app.ingestion.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
-from fast_app.ingestion.rag_store_writer import (
-    recreate_es_index,
-    recreate_milvus_collection,
-)
+from fast_app.ingestion.rag_store_writer import recreate_rag_stores
 from fast_app.ingestion.document_loaders import (
     BaseDocumentLoader,
     CompositeDocumentLoader,
@@ -76,14 +73,9 @@ class MarkdownIngestionService:
 
         self._validate_vectors(chunks, vectors)
 
-        es_success_count = await recreate_es_index(
-            client=self.elasticsearch_client,
-            settings=self.settings,
-            chunks=chunks,
-        )
-
-        milvus_insert_result = recreate_milvus_collection(
-            client=self.milvus_client,
+        store_write_result = await recreate_rag_stores(
+            elasticsearch_client=self.elasticsearch_client,
+            milvus_client=self.milvus_client,
             settings=self.settings,
             chunks=chunks,
             vectors=vectors,
@@ -92,8 +84,8 @@ class MarkdownIngestionService:
         return MarkdownIngestionResult(
             document_count=len(documents),
             chunk_count=len(chunks),
-            es_success_count=es_success_count,
-            milvus_insert_result=milvus_insert_result,
+            es_success_count=store_write_result.es.success_count,
+            milvus_insert_result=store_write_result.milvus.detail,
         )
 
     def _validate_vectors(
