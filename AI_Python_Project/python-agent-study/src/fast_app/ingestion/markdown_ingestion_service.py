@@ -8,11 +8,16 @@ from fast_app.core.config import Settings
 from fast_app.domain.knowledge_models import KnowledgeChunk
 from fast_app.ingestion.markdown_chunker import (
     build_markdown_chunks,
-    read_markdown_documents,
 )
 from fast_app.ingestion.rag_store_writer import (
     recreate_es_index,
     recreate_milvus_collection,
+)
+from fast_app.ingestion.document_loaders import (
+    BaseDocumentLoader,
+    CompositeDocumentLoader,
+    MarkdownDocumentLoader,
+    TextDocumentLoader,
 )
 
 # 读取 Markdown
@@ -39,14 +44,21 @@ class MarkdownIngestionService:
         embedding_client: BaseEmbeddingClient,
         elasticsearch_client: AsyncElasticsearch,
         milvus_client: MilvusClient,
+        document_loader: BaseDocumentLoader | None = None,
     ):
         self.settings = settings
         self.embedding_client = embedding_client
         self.elasticsearch_client = elasticsearch_client
         self.milvus_client = milvus_client
+        self.document_loader = document_loader or CompositeDocumentLoader(
+            loaders=[
+                MarkdownDocumentLoader(),
+                TextDocumentLoader(),
+            ]
+        )
 
     async def ingest(self) -> MarkdownIngestionResult:
-        documents = read_markdown_documents(self.settings.knowledge_base_dir)
+        documents = self.document_loader.load(self.settings.knowledge_base_dir)
         chunks = build_markdown_chunks(
             documents=documents,
             source=self.settings.ingestion_source_name,

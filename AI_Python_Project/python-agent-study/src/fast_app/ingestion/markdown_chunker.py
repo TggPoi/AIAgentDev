@@ -1,22 +1,11 @@
 import hashlib
 from pathlib import Path
 
-from fast_app.domain.knowledge_models import KnowledgeChunk, MarkdownDocument
+from fast_app.domain.knowledge_models import KnowledgeChunk, LoadedDocument
+from fast_app.ingestion.document_loaders import MarkdownDocumentLoader
 
-# 从知识库目录递归读取 .md 文件 保留 source_path 使用 UTF-8 读取中文 Markdown 返回原始 MarkdownDocument
-def read_markdown_documents(base_dir: str) -> list[MarkdownDocument]:
-    root = Path(base_dir)
-    documents: list[MarkdownDocument] = []
-
-    for path in sorted(root.rglob("*.md")):
-        documents.append(
-            MarkdownDocument(
-                source_path=path.as_posix(),
-                content=path.read_text(encoding="utf-8"),
-            )
-        )
-
-    return documents
+def read_markdown_documents(base_dir: str) -> list[LoadedDocument]:
+    return MarkdownDocumentLoader().load(base_dir)
 
 # 标题识别 helper
 def parse_heading(line: str) -> tuple[int, str] | None:
@@ -64,29 +53,40 @@ def split_text(text: str, max_chars: int) -> list[str]:
 
 # chunk拆分
 def build_markdown_chunks(
-    documents: list[MarkdownDocument],
+    documents: list[LoadedDocument],
     source: str,
     max_chars: int,
 ) -> list[KnowledgeChunk]:
+    # 最终结果列表。所有文档切出来的 chunk 都会 append 到这里
     chunks: list[KnowledgeChunk] = []
 
     for document in documents:
+        # 保存当前标题路径 # RAG 基础教程--## 混合检索--### RRF->融合["RAG 基础教程", "混合检索", "RRF 融合"]
         heading_stack: list[str] = []
+        # 当前章节里的正文行
         section_lines: list[str] = []
+        # 记录当前是第几个 section 每遇到一个标题 section_index += 1
         section_index = 0
+        # 记录当前文档里已经生成了第几个 chunk
         chunk_index = 0
+        # docs/rag_intro.md -> rag_intro 用于没有标题时的默认标题；stem 去除文件后缀
         current_title = Path(document.source_path).stem
         current_heading_level = 0
 
+        # 把当前已经收集的 section_lines 保存成 chunk。
         def flush_section() -> None:
             nonlocal chunk_index
 
             content = "\n".join(section_lines).strip()
+            
+            # 正文为空，就不生成 chunk
             if not content:
                 return
 
+            # 按最大字符数切分
             for part in split_text(content, max_chars):
                 chunk_index += 1
+                # :符号在这里的作用是 浅拷贝heading_stack 避免后续修改 `heading_stack` 影响已经保存的 metadata
                 section_path = heading_stack[:] or [current_title]
 
                 chunks.append(
@@ -98,34 +98,49 @@ def build_markdown_chunks(
                         ),
                         content=part,
                         source=source,
+                        #获取最后一元素作为当前chunk的标题  section_path = ["RAG 基础教程", "混合检索", "RRF 融合"]
                         title=section_path[-1],
                         metadata={
+                            **document.metadata,
                             "section_path": section_path,
                             "heading_level": current_heading_level,
                             "section_index": section_index,
                             "chunk_index": chunk_index,
                             "source_path": document.source_path,
+                            "document_type": document.document_type,
                         },
                     )
                 )
 
+        # 实际扫描markdown的逻辑
         for line in document.content.splitlines():
             heading = parse_heading(line)
 
             if heading is not None:
+                # 如果是标题 先保存上一个 section
                 flush_section()
+                
+                # 清空正文缓存 后面的正文应该属于新 section
                 section_lines = []
                 section_index += 1
 
+                # 取出标题层级和标题文字
                 level, title = heading
                 current_heading_level = level
                 current_title = title
-                heading_stack = heading_stack[: level - 1]
-                heading_stack.append(title)
-                continue
 
+                # doc 9-10 原heading_stack = ["RAG 基础教程", "混合检索", "RRF 融合"]
+                # 现在遇到一个新的二级标题 ## 向量检索---level = 2 通过下面的处理保存新的标题层级
+                heading_stack = heading_stack[: level - 1]
+                # 处理后，新的二级标题进入正确的索引位置 ["RAG 基础教程", "向量检索"]
+                heading_stack.append(title)
+
+                continue
+            
+            # 普通正文，收集起来，等遇到下一个标题或文件结束时再切 chunk
             section_lines.append(line)
 
+        # 最后一个 section 手动触发保存
         flush_section()
 
     return chunks
