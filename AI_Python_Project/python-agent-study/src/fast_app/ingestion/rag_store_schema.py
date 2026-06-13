@@ -25,11 +25,22 @@ def build_es_mapping() -> dict[str, Any]:
                 "source": {"type": "keyword"},
                 "metadata": {
                     "properties": {
+                        "doc_id": {"type": "keyword"},
+                        "chunk_id": {"type": "keyword"},
+                        "title": {
+                            "type": "text",
+                            "analyzer": "ik_max_word",
+                            "search_analyzer": "ik_smart",
+                            "fields": {"keyword": {"type": "keyword"}},
+                        },
+                        "source_path": {"type": "keyword"},
                         "section_path": {"type": "keyword"},
+                        "document_type": {"type": "keyword"},
+                        "file_name": {"type": "keyword"},
+                        "file_extension": {"type": "keyword"},
                         "heading_level": {"type": "integer"},
                         "section_index": {"type": "integer"},
                         "chunk_index": {"type": "integer"},
-                        "source_path": {"type": "keyword"},
                     }
                 },
                 "created_at": {"type": "date"},

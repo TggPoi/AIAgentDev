@@ -40,6 +40,18 @@
 - TextSplitter
 - MarkdownChunkBuilder
 
+`metadata_models.py`
+
+负责生成 ingestion 阶段的标准 metadata。
+
+当前包含：
+
+- normalize_source_path
+- build_doc_id
+- build_chunk_id
+- build_document_metadata
+- build_chunk_metadata
+
 `rag_store_schema.py`
 
 负责生成 ElasticSearch mapping、Milvus collection schema 和 Milvus index params。
@@ -65,6 +77,33 @@ flowchart TD
     F --> G["embed_documents"]
     F --> H["StoreWriter"]
 ```
+
+
+## Metadata 规范
+
+当前 KnowledgeChunk.metadata 至少包含：
+
+- doc_id
+- chunk_id
+- title
+- source_path
+- section_path
+- document_type
+- file_name
+- file_extension
+- heading_level
+- section_index
+- chunk_index
+
+写入规则：
+
+- KnowledgeChunk.id 与 metadata.chunk_id 保持一致
+- KnowledgeChunk.title 与 metadata.title 保持一致
+- doc_id 表示文档级稳定 ID
+- chunk_id 表示 chunk 级稳定 ID
+- source_path 表示本地知识库中的来源路径
+- section_path 表示 Markdown 标题路径
+- ES 和 Milvus 写入同一份 metadata
 
 
 ## 当前写入策略

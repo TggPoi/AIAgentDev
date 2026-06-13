@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Protocol
 
 from fast_app.domain.knowledge_models import LoadedDocument
+from fast_app.ingestion.metadata_models import build_document_metadata
 
 # 文档读取层 loader
 
@@ -16,15 +17,16 @@ class MarkdownDocumentLoader:
         documents: list[LoadedDocument] = []
 
         for path in sorted(root.rglob("*.md")):
+            source_path = path.as_posix()
             documents.append(
                 LoadedDocument(
-                    source_path=path.as_posix(),
+                    source_path=source_path,
                     content=path.read_text(encoding="utf-8"),
                     document_type="markdown",
-                    metadata={
-                        "file_name": path.name,
-                        "suffix": path.suffix,
-                    },
+                    metadata=build_document_metadata(
+                        source_path=source_path,
+                        document_type="markdown",
+                    ),
                 )
             )
 
@@ -37,15 +39,16 @@ class TextDocumentLoader:
         documents: list[LoadedDocument] = []
 
         for path in sorted(root.rglob("*.txt")):
+            source_path = path.as_posix()
             documents.append(
                 LoadedDocument(
-                    source_path=path.as_posix(),
+                    source_path=source_path,
                     content=path.read_text(encoding="utf-8"),
                     document_type="text",
-                    metadata={
-                        "file_name": path.name,
-                        "suffix": path.suffix,
-                    },
+                    metadata=build_document_metadata(
+                        source_path=source_path,
+                        document_type="text",
+                    ),
                 )
             )
 

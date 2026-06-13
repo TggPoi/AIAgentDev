@@ -87,6 +87,20 @@ def assert_chunks(chunks: list[KnowledgeChunk]) -> None:
         if not chunk.source:
             raise AssertionError(f"expected chunk.source: {chunk.id}")
 
+        chunk_id = chunk.metadata.get("chunk_id")
+        if chunk_id != chunk.id:
+            raise AssertionError(f"expected metadata.chunk_id to equal chunk.id: {chunk.id}")
+
+        metadata_title = chunk.metadata.get("title")
+        if metadata_title != chunk.title:
+            raise AssertionError(
+                f"expected metadata.title to equal chunk.title: {chunk.id}"
+            )
+
+        doc_id = chunk.metadata.get("doc_id")
+        if not isinstance(doc_id, str) or not doc_id.startswith("doc_"):
+            raise AssertionError(f"expected metadata.doc_id: {chunk.id}")
+
         section_path = chunk.metadata.get("section_path")
         if not isinstance(section_path, list) or not section_path:
             raise AssertionError(f"expected metadata.section_path list: {chunk.id}")
@@ -94,6 +108,20 @@ def assert_chunks(chunks: list[KnowledgeChunk]) -> None:
         source_path = chunk.metadata.get("source_path")
         if not isinstance(source_path, str) or not source_path:
             raise AssertionError(f"expected metadata.source_path string: {chunk.id}")
+
+        document_type = chunk.metadata.get("document_type")
+        if document_type not in {"markdown", "text", "pdf"}:
+            raise AssertionError(f"expected metadata.document_type: {chunk.id}")
+
+        file_name = chunk.metadata.get("file_name")
+        if not isinstance(file_name, str) or not file_name:
+            raise AssertionError(f"expected metadata.file_name string: {chunk.id}")
+
+        file_extension = chunk.metadata.get("file_extension")
+        if not isinstance(file_extension, str) or not file_extension:
+            raise AssertionError(
+                f"expected metadata.file_extension string: {chunk.id}"
+            )
 
         chunk_index = chunk.metadata.get("chunk_index")
         if not isinstance(chunk_index, int) or chunk_index < 1:

@@ -3,7 +3,12 @@ from pathlib import Path
 from typing import Any
 
 from fast_app.domain.knowledge_models import KnowledgeChunk, LoadedDocument
-from fast_app.ingestion.markdown_chunker import build_chunk_id, parse_heading
+from fast_app.ingestion.markdown_chunker import parse_heading
+from fast_app.ingestion.metadata_models import (
+    build_chunk_id,
+    build_chunk_metadata,
+    build_document_metadata,
+)
 
 # 构造chunk的可选配置
 @dataclass(frozen=True)
@@ -122,7 +127,7 @@ class MarkdownChunkBuilder:
                 MarkdownSection(
                     source_path=document.source_path,
                     document_type=document.document_type,
-                    document_metadata=document.metadata,
+                    document_metadata=self._document_metadata(document),
                     section_path=section_path,
                     heading_level=current_heading_level,
                     section_index=section_index,
@@ -157,22 +162,39 @@ class MarkdownChunkBuilder:
         content: str,
         chunk_index: int,
     ) -> KnowledgeChunk:
+        doc_id = str(section.document_metadata["doc_id"])
+        title = section.section_path[-1]
+        chunk_id = build_chunk_id(
+            doc_id=doc_id,
+            section_path=section.section_path,
+            chunk_index=chunk_index,
+        )
+
         return KnowledgeChunk(
-            id=build_chunk_id(
-                source_path=section.source_path,
-                section_path=section.section_path,
-                chunk_index=chunk_index,
-            ),
+            id=chunk_id,
             content=content,
             source=options.source,
-            title=section.section_path[-1],
-            metadata={
-                **section.document_metadata,
-                "section_path": section.section_path,
-                "heading_level": section.heading_level,
-                "section_index": section.section_index,
-                "chunk_index": chunk_index,
-                "source_path": section.source_path,
-                "document_type": section.document_type,
-            },
+            title=title,
+            metadata=build_chunk_metadata(
+                document_metadata=section.document_metadata,
+                chunk_id=chunk_id,
+                title=title,
+                section_path=section.section_path,
+                heading_level=section.heading_level,
+                section_index=section.section_index,
+                chunk_index=chunk_index,
+            ),
         )
+
+    def _document_metadata(self, document: LoadedDocument) -> dict[str, Any]:
+        metadata = dict(document.metadata)
+
+        if "doc_id" not in metadata:
+            metadata.update(
+                build_document_metadata(
+                    source_path=document.source_path,
+                    document_type=document.document_type,
+                )
+            )
+
+        return metadata

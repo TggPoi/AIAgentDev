@@ -1,7 +1,9 @@
-import hashlib
-
 from fast_app.domain.knowledge_models import KnowledgeChunk, LoadedDocument
 from fast_app.ingestion.document_loaders import MarkdownDocumentLoader
+from fast_app.ingestion.metadata_models import (
+    build_chunk_id as build_standard_chunk_id,
+    build_doc_id,
+)
 
 def read_markdown_documents(base_dir: str) -> list[LoadedDocument]:
     return MarkdownDocumentLoader().load(base_dir)
@@ -27,9 +29,11 @@ def parse_heading(line: str) -> tuple[int, str] | None:
 
 # 稳定 id helper ；同一份 Markdown 在相同章节位置生成的 chunk id 稳定
 def build_chunk_id(source_path: str, section_path: list[str], chunk_index: int) -> str:
-    raw = "|".join([source_path, *section_path, str(chunk_index)])
-    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
-    return f"md_{digest}"
+    return build_standard_chunk_id(
+        doc_id=build_doc_id(source_path),
+        section_path=section_path,
+        chunk_index=chunk_index,
+    )
 
 # 简易版本的切分函数
 def split_text(text: str, max_chars: int) -> list[str]:
