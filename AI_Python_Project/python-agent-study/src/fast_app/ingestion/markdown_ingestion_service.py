@@ -7,7 +7,7 @@ from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.core.config import Settings
 from fast_app.domain.knowledge_models import KnowledgeChunk
 from fast_app.ingestion.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
-from fast_app.ingestion.rag_store_writer import recreate_rag_stores
+from fast_app.ingestion.rag_store_writer import write_rag_stores
 from fast_app.ingestion.document_loaders import (
     BaseDocumentLoader,
     CompositeDocumentLoader,
@@ -73,7 +73,7 @@ class MarkdownIngestionService:
 
         self._validate_vectors(chunks, vectors)
 
-        store_write_result = await recreate_rag_stores(
+        store_write_result = await write_rag_stores(
             elasticsearch_client=self.elasticsearch_client,
             milvus_client=self.milvus_client,
             settings=self.settings,

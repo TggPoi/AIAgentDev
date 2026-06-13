@@ -160,29 +160,44 @@ flowchart TD
 
 核心入口：
 
-- recreate_rag_stores
+- write_rag_stores
 
 写入流程：
 
 1. 校验 chunks / vectors 数量
 2. 校验 chunk.id 唯一性
 3. 校验标准 metadata 字段
-4. 重建并写入 ElasticSearch index
-5. 重建并写入 Milvus collection
-6. 返回 DualStoreWriteResult
+4. 根据 INGESTION_WRITE_MODE 选择 recreate 或 upsert
+5. 写入 ElasticSearch index
+6. 写入 Milvus collection
+7. 返回 DualStoreWriteResult
 
-当前仍然使用 recreate 策略，适合学习阶段和本地小型知识库。
+
+## 写入模式
+
+当前支持两种写入模式：
+
+- recreate
+- upsert
+
+`recreate` 会删除并重建 ES index 和 Milvus collection，适合 schema 变化或本地全量重建。
+
+`upsert` 会保留已有 ES index 和 Milvus collection，并按 chunk_id 覆盖或新增数据。
+
+写入模式由 INGESTION_WRITE_MODE 控制，默认值是 recreate。
+
+当前 `upsert` 不会自动删除本次未出现的旧 chunks。如果文档切分策略变化，或者某个文档的新 chunk 数量少于旧 chunk 数量，需要后续文档级删除或 replace 流程配合处理。
 
 
 ## 当前写入策略
 
-当前阶段使用 recreate 策略：
+当前默认使用 recreate 策略：
 
 1. 删除并重建当前配置中的 ElasticSearch index
 2. 删除并重建当前配置中的 Milvus collection
 3. 写入同一批 KnowledgeChunk
 
-这个策略适合学习阶段和小型本地知识库。
+这个策略适合 schema 仍在变化的学习阶段和小型本地知识库。
 
 
 ## 后续演进方向

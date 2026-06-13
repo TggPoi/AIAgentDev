@@ -67,7 +67,7 @@ class TextSplitter:
             start += step
 
         return parts
-
+    # 获取滑动窗口 当前窗口要滑动的字符距离
     def _window_size(self, options: ChunkBuildOptions) -> int:
         return max(
             1,

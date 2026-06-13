@@ -47,6 +47,8 @@ def apply_arg_overrides(args: argparse.Namespace) -> None:
         os.environ["KNOWLEDGE_BASE_DIR"] = args.knowledge_base_dir
     if args.source_name:
         os.environ["INGESTION_SOURCE_NAME"] = args.source_name
+    if args.write_mode:
+        os.environ["INGESTION_WRITE_MODE"] = args.write_mode
     if args.max_chars is not None:
         os.environ["MARKDOWN_CHUNK_MAX_CHARS"] = str(args.max_chars)
     if args.overlap_chars is not None:
@@ -136,6 +138,7 @@ def print_chunk_summary(
     print("========== Markdown ingestion dry run ==========")
     print(f"knowledge_base_dir: {settings.knowledge_base_dir}")
     print(f"source_name: {settings.ingestion_source_name}")
+    print(f"write_mode: {settings.ingestion_write_mode}")
     print(f"max_chars: {settings.markdown_chunk_max_chars}")
     print(f"overlap_chars: {settings.markdown_chunk_overlap_chars}")
     print(f"max_tokens: {settings.markdown_chunk_max_tokens}")
@@ -206,6 +209,7 @@ async def run_write_stores(args: argparse.Namespace, settings: Settings) -> None
     print(f"Milvus collection: {settings.milvus_collection_name}")
     print(f"Embedding model: {settings.embedding_model_name}")
     print(f"Embedding dim: {settings.embedding_dim}")
+    print(f"write_mode: {settings.ingestion_write_mode}")
     print(f"use_mock_embeddings: {args.mock_embeddings}")
 
     elasticsearch_client = AsyncElasticsearch(hosts=[settings.elasticsearch_url])
@@ -253,6 +257,12 @@ def parse_args() -> argparse.Namespace:
         "--source-name",
         default=None,
         help="覆盖 INGESTION_SOURCE_NAME，默认读取 Settings。",
+    )
+    parser.add_argument(
+        "--write-mode",
+        choices=["recreate", "upsert"],
+        default=None,
+        help="覆盖 INGESTION_WRITE_MODE，支持 recreate 或 upsert。",
     )
     parser.add_argument(
         "--max-chars",

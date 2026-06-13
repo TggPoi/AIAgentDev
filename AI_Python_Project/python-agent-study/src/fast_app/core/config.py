@@ -117,6 +117,11 @@ class Settings(BaseSettings):
         default="local_markdown",
         alias="INGESTION_SOURCE_NAME",
     )
+    # ingestion 写入模式：recreate 删除重建，upsert 按 chunk_id 覆盖或新增
+    ingestion_write_mode: str = Field(
+        default="recreate",
+        alias="INGESTION_WRITE_MODE",
+    )
     # 单个 chunk 的最大字符数
     markdown_chunk_max_chars: int = Field(
         default=1200,
