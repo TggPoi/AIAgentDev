@@ -7,6 +7,13 @@ from pymilvus import MilvusClient
 from fast_app.core.config import Settings
 from fast_app.domain.knowledge_models import KnowledgeChunk
 from fast_app.ingestion.rag_store_schema import (
+    MILVUS_CHUNK_INDEX_FIELD,
+    MILVUS_DOC_ID_FIELD,
+    MILVUS_DOCUMENT_TYPE_FIELD,
+    MILVUS_METADATA_FIELD,
+    MILVUS_SOURCE_FIELD,
+    MILVUS_SOURCE_PATH_FIELD,
+    MILVUS_TITLE_FIELD,
     build_es_mapping,
     build_milvus_index_params,
     build_milvus_schema,
@@ -78,9 +85,13 @@ def recreate_milvus_collection(
             settings.milvus_id_field: chunk.id,
             settings.milvus_vector_field: vector,
             settings.milvus_content_field: chunk.content,
-            "source": chunk.source,
-            "title": chunk.title,
-            "metadata": chunk.metadata,
+            MILVUS_SOURCE_FIELD: chunk.source,
+            MILVUS_TITLE_FIELD: chunk.title,
+            MILVUS_DOC_ID_FIELD: str(chunk.metadata["doc_id"]),
+            MILVUS_SOURCE_PATH_FIELD: str(chunk.metadata["source_path"]),
+            MILVUS_DOCUMENT_TYPE_FIELD: str(chunk.metadata["document_type"]),
+            MILVUS_CHUNK_INDEX_FIELD: int(chunk.metadata["chunk_index"]),
+            MILVUS_METADATA_FIELD: chunk.metadata,
         }
         for chunk, vector in zip(chunks, vectors, strict=True)
     ]

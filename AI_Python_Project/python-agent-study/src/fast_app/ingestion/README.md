@@ -106,6 +106,32 @@ flowchart TD
 - ES 和 Milvus 写入同一份 metadata
 
 
+## Milvus Collection 字段
+
+当前 Milvus collection 顶层字段包括：
+
+- id
+- embedding
+- content
+- source
+- title
+- doc_id
+- source_path
+- document_type
+- chunk_index
+- metadata
+
+其中：
+
+- id 是 chunk 主键，与 KnowledgeChunk.id 一致
+- embedding 是向量字段
+- content 是 chunk 正文
+- doc_id / source_path / document_type / chunk_index 是常用过滤和调试字段
+- metadata 保留完整标准 metadata
+
+默认 output_fields 由 rag_store_schema.py 中的 build_milvus_output_fields 统一生成。
+
+
 ## 当前写入策略
 
 当前阶段使用 recreate 策略：

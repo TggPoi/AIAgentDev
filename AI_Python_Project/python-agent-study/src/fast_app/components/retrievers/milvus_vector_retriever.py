@@ -6,6 +6,15 @@ from fast_app.core.config import Settings
 from fast_app.core.logging import get_logger
 from fast_app.services.exceptions import ExternalServiceError
 from fast_app.domain.rag_models import RetrievalFilters, RetrievalOptions, RetrievedDoc, ScoreBreakdown
+from fast_app.ingestion.rag_store_schema import (
+    MILVUS_CHUNK_INDEX_FIELD,
+    MILVUS_DOC_ID_FIELD,
+    MILVUS_DOCUMENT_TYPE_FIELD,
+    MILVUS_METADATA_FIELD,
+    MILVUS_SOURCE_PATH_FIELD,
+    MILVUS_TITLE_FIELD,
+    build_milvus_output_fields,
+)
 
 
 logger = get_logger(__name__)
@@ -15,25 +24,22 @@ def build_milvus_uri(host: str, port: int) -> str:
     return f"http://{host}:{port}"
 
 
-def build_milvus_output_fields(settings: Settings) -> list[str]:
-    return [
-        settings.milvus_id_field,
-        settings.milvus_content_field,
-        "source",
-        "title",
-        "metadata",
-    ]
+def escape_milvus_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def build_milvus_filter_expr(filters: RetrievalFilters) -> str | None:
     expressions: list[str] = []
 
     if filters.source_path:
-        expressions.append(f'metadata["source_path"] == "{filters.source_path}"')
+        source_path = escape_milvus_string(filters.source_path)
+        expressions.append(f'{MILVUS_SOURCE_PATH_FIELD} == "{source_path}"')
 
     if filters.section_path:
-        section_path = filters.section_path[-1]
-        expressions.append(f'array_contains(metadata["section_path"], "{section_path}")')
+        section_path = escape_milvus_string(filters.section_path[-1])
+        expressions.append(
+            f'array_contains({MILVUS_METADATA_FIELD}["section_path"], "{section_path}")'
+        )
 
     if not expressions:
         return None
@@ -124,9 +130,25 @@ class MilvusVectorRetriever(BaseRetriever):
                 continue
 
             distance = float(hit.get("distance", 0.0))
-            title = entity.get("title")
-            # 目前测试用的milvus里面没有metadata，需要重新创建Collection 补充测试数据
-            metadata = entity.get("metadata", {})
+            title = entity.get(MILVUS_TITLE_FIELD)
+            metadata = entity.get(MILVUS_METADATA_FIELD, {})
+
+            if not isinstance(metadata, dict):
+                metadata = {}
+
+            metadata.setdefault(MILVUS_DOC_ID_FIELD, entity.get(MILVUS_DOC_ID_FIELD))
+            metadata.setdefault(
+                MILVUS_SOURCE_PATH_FIELD,
+                entity.get(MILVUS_SOURCE_PATH_FIELD),
+            )
+            metadata.setdefault(
+                MILVUS_DOCUMENT_TYPE_FIELD,
+                entity.get(MILVUS_DOCUMENT_TYPE_FIELD),
+            )
+            metadata.setdefault(
+                MILVUS_CHUNK_INDEX_FIELD,
+                entity.get(MILVUS_CHUNK_INDEX_FIELD),
+            )
 
             docs.append(
                 RetrievedDoc(
@@ -135,7 +157,7 @@ class MilvusVectorRetriever(BaseRetriever):
                     score=distance,
                     source="milvus",
                     title=str(title) if title else None,
-                    metadata=metadata if isinstance(metadata, dict) else {},
+                    metadata=metadata,
                     retrieval_sources=["milvus"],
                     scores=ScoreBreakdown(vector_score=distance),
                 )
