@@ -122,6 +122,21 @@ class Settings(BaseSettings):
         default=1200,
         alias="MARKDOWN_CHUNK_MAX_CHARS",
     )
+    # 相邻 chunk 之间保留多少重叠字符
+    markdown_chunk_overlap_chars: int = Field(
+        default=120,
+        alias="MARKDOWN_CHUNK_OVERLAP_CHARS",
+    )
+    # 单个 chunk 估算最大 token 数
+    markdown_chunk_max_tokens: int = Field(
+        default=500,
+        alias="MARKDOWN_CHUNK_MAX_TOKENS",
+    )
+    # 太短的 chunk 不单独写入
+    markdown_chunk_min_chars: int = Field(
+        default=20,
+        alias="MARKDOWN_CHUNK_MIN_CHARS",
+    )
     # ingestion 的基础配置 end
 
 

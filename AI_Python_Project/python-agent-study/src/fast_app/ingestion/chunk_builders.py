@@ -1,0 +1,178 @@
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from fast_app.domain.knowledge_models import KnowledgeChunk, LoadedDocument
+from fast_app.ingestion.markdown_chunker import build_chunk_id, parse_heading
+
+# 构造chunk的可选配置
+@dataclass(frozen=True)
+class ChunkBuildOptions:
+    source: str
+    max_chars: int
+    overlap_chars: int
+    max_tokens: int
+    min_chars: int
+
+# 一个 Markdown 文档中的一个章节
+@dataclass(frozen=True)
+class MarkdownSection:
+    source_path: str
+    document_type: str
+    document_metadata: dict[str, Any]
+    section_path: list[str]
+    heading_level: int
+    section_index: int
+    content: str
+
+# 先让 ChunkBuilder 具备 token 长度控制入口。后续可以替换成真实 tokenizer
+class SimpleTokenCounter:
+    def count(self, text: str) -> int:
+        ascii_count = sum(1 for char in text if ord(char) < 128)
+        non_ascii_count = len(text) - ascii_count
+        return ascii_count // 4 + non_ascii_count
+
+# 支持 overlap支持 min_chars支持 token 估算边界
+class TextSplitter:
+    def __init__(self, token_counter: SimpleTokenCounter | None = None):
+        self.token_counter = token_counter or SimpleTokenCounter()
+
+    def split(self, text: str, options: ChunkBuildOptions) -> list[str]:
+        normalized = text.strip()
+
+        if not normalized:
+            return []
+
+        if (
+            len(normalized) <= options.max_chars
+            and self.token_counter.count(normalized) <= options.max_tokens
+        ):
+            return [normalized]
+        # 正文内容过长，进行切割工作
+        parts: list[str] = []
+        window_size = self._window_size(options)
+        overlap_chars = max(0, min(options.overlap_chars, window_size - 1))
+        step = max(1, window_size - overlap_chars)
+        start = 0
+
+        while start < len(normalized):
+            part = normalized[start : start + window_size].strip()
+            if len(part) >= options.min_chars:
+                parts.append(part)
+            start += step
+
+        return parts
+
+    def _window_size(self, options: ChunkBuildOptions) -> int:
+        return max(
+            1,
+            options.min_chars,
+            min(options.max_chars, options.max_tokens),
+        )
+
+
+class MarkdownChunkBuilder:
+    def __init__(self, splitter: TextSplitter | None = None):
+        self.splitter = splitter or TextSplitter()
+
+    def build(
+        self,
+        documents: list[LoadedDocument],
+        options: ChunkBuildOptions,
+    ) -> list[KnowledgeChunk]:
+        chunks: list[KnowledgeChunk] = []
+
+        for document in documents:
+            sections = self._build_sections(document)
+            chunk_index = 0
+
+            for section in sections:
+                parts = self.splitter.split(section.content, options)
+
+                for part in parts:
+                    chunk_index += 1
+                    chunks.append(
+                        self._build_chunk(
+                            section=section,
+                            options=options,
+                            content=part,
+                            chunk_index=chunk_index,
+                        )
+                    )
+
+        return chunks
+
+    def _build_sections(self, document: LoadedDocument) -> list[MarkdownSection]:
+        sections: list[MarkdownSection] = []
+        heading_stack: list[str] = []
+        section_lines: list[str] = []
+        section_index = 0
+        current_title = Path(document.source_path).stem
+        current_heading_level = 0
+
+        def flush_section() -> None:
+            content = "\n".join(section_lines).strip()
+
+            if not content:
+                return
+
+            section_path = heading_stack[:] or [current_title]
+
+            sections.append(
+                MarkdownSection(
+                    source_path=document.source_path,
+                    document_type=document.document_type,
+                    document_metadata=document.metadata,
+                    section_path=section_path,
+                    heading_level=current_heading_level,
+                    section_index=section_index,
+                    content=content,
+                )
+            )
+
+        for line in document.content.splitlines():
+            heading = parse_heading(line)
+
+            if heading is not None:
+                flush_section()
+                section_lines = []
+                section_index += 1
+
+                level, title = heading
+                current_heading_level = level
+                current_title = title
+                heading_stack = heading_stack[: level - 1]
+                heading_stack.append(title)
+                continue
+
+            section_lines.append(line)
+
+        flush_section()
+        return sections
+
+    def _build_chunk(
+        self,
+        section: MarkdownSection,
+        options: ChunkBuildOptions,
+        content: str,
+        chunk_index: int,
+    ) -> KnowledgeChunk:
+        return KnowledgeChunk(
+            id=build_chunk_id(
+                source_path=section.source_path,
+                section_path=section.section_path,
+                chunk_index=chunk_index,
+            ),
+            content=content,
+            source=options.source,
+            title=section.section_path[-1],
+            metadata={
+                **section.document_metadata,
+                "section_path": section.section_path,
+                "heading_level": section.heading_level,
+                "section_index": section.section_index,
+                "chunk_index": chunk_index,
+                "source_path": section.source_path,
+                "document_type": section.document_type,
+            },
+        )

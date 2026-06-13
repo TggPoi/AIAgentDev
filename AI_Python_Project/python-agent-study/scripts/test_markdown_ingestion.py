@@ -19,10 +19,8 @@ from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingCl
 from fast_app.components.retrievers.milvus_vector_retriever import build_milvus_uri
 from fast_app.core.config import Settings, get_settings
 from fast_app.domain.knowledge_models import KnowledgeChunk
-from fast_app.ingestion.markdown_chunker import (
-    build_markdown_chunks,
-    read_markdown_documents,
-)
+from fast_app.ingestion.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
+from fast_app.ingestion.markdown_chunker import read_markdown_documents
 from fast_app.ingestion.markdown_ingestion_service import MarkdownIngestionService
 
 
@@ -51,6 +49,12 @@ def apply_arg_overrides(args: argparse.Namespace) -> None:
         os.environ["INGESTION_SOURCE_NAME"] = args.source_name
     if args.max_chars is not None:
         os.environ["MARKDOWN_CHUNK_MAX_CHARS"] = str(args.max_chars)
+    if args.overlap_chars is not None:
+        os.environ["MARKDOWN_CHUNK_OVERLAP_CHARS"] = str(args.overlap_chars)
+    if args.max_tokens is not None:
+        os.environ["MARKDOWN_CHUNK_MAX_TOKENS"] = str(args.max_tokens)
+    if args.min_chars is not None:
+        os.environ["MARKDOWN_CHUNK_MIN_CHARS"] = str(args.min_chars)
 
     get_settings.cache_clear()
 
@@ -105,6 +109,9 @@ def print_chunk_summary(
     print(f"knowledge_base_dir: {settings.knowledge_base_dir}")
     print(f"source_name: {settings.ingestion_source_name}")
     print(f"max_chars: {settings.markdown_chunk_max_chars}")
+    print(f"overlap_chars: {settings.markdown_chunk_overlap_chars}")
+    print(f"max_tokens: {settings.markdown_chunk_max_tokens}")
+    print(f"min_chars: {settings.markdown_chunk_min_chars}")
     print(f"chunk_count: {len(chunks)}")
 
     print("\nchunk samples:")
@@ -128,10 +135,15 @@ def build_chunks(settings: Settings) -> list[KnowledgeChunk]:
             f"expected at least one .md file under {settings.knowledge_base_dir}"
         )
 
-    chunks = build_markdown_chunks(
+    chunks = MarkdownChunkBuilder().build(
         documents=documents,
-        source=settings.ingestion_source_name,
-        max_chars=settings.markdown_chunk_max_chars,
+        options=ChunkBuildOptions(
+            source=settings.ingestion_source_name,
+            max_chars=settings.markdown_chunk_max_chars,
+            overlap_chars=settings.markdown_chunk_overlap_chars,
+            max_tokens=settings.markdown_chunk_max_tokens,
+            min_chars=settings.markdown_chunk_min_chars,
+        ),
     )
     assert_chunks(chunks)
     return chunks
@@ -219,6 +231,24 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="覆盖 MARKDOWN_CHUNK_MAX_CHARS，默认读取 Settings。",
+    )
+    parser.add_argument(
+        "--overlap-chars",
+        type=int,
+        default=None,
+        help="覆盖 MARKDOWN_CHUNK_OVERLAP_CHARS，默认读取 Settings。",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help="覆盖 MARKDOWN_CHUNK_MAX_TOKENS，默认读取 Settings。",
+    )
+    parser.add_argument(
+        "--min-chars",
+        type=int,
+        default=None,
+        help="覆盖 MARKDOWN_CHUNK_MIN_CHARS，默认读取 Settings。",
     )
     parser.add_argument(
         "--sample-size",

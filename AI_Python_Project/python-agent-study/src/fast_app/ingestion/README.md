@@ -4,7 +4,7 @@
 
 当前阶段支持：
 
-- 读取 Markdown 文件
+- 读取 Markdown 和 Text 文件
 - 构造 KnowledgeChunk
 - 批量生成 embedding
 - 重建 ElasticSearch index
@@ -16,7 +16,29 @@
 
 `markdown_chunker.py`
 
-负责 Markdown 文件读取、标题解析、section_path 构造、字符级切分和 KnowledgeChunk 构造。
+保留 Markdown 标题解析、稳定 chunk id 生成，以及 build_markdown_chunks 兼容入口。
+
+`document_loaders.py`
+
+负责从本地知识库目录读取原始文档，并输出 LoadedDocument。
+
+当前包含：
+
+- MarkdownDocumentLoader
+- TextDocumentLoader
+- CompositeDocumentLoader
+
+`chunk_builders.py`
+
+负责把 LoadedDocument 转成 KnowledgeChunk。
+
+当前包含：
+
+- ChunkBuildOptions
+- MarkdownSection
+- SimpleTokenCounter
+- TextSplitter
+- MarkdownChunkBuilder
 
 `rag_store_schema.py`
 
@@ -29,6 +51,20 @@
 `markdown_ingestion_service.py`
 
 负责编排读取、切分、embedding、向量校验、ES 写入和 Milvus 写入。
+
+
+## 当前数据流
+
+```mermaid
+flowchart TD
+    A["CompositeDocumentLoader"] --> B["LoadedDocument"]
+    B --> C["MarkdownChunkBuilder"]
+    C --> D["MarkdownSection"]
+    D --> E["TextSplitter"]
+    E --> F["KnowledgeChunk"]
+    F --> G["embed_documents"]
+    F --> H["StoreWriter"]
+```
 
 
 ## 当前写入策略
@@ -56,18 +92,3 @@
 - 删除与重建安全脚本
 - Ingestion CLI
 - 回归测试和真实文档集验证
-
-
-`document_loaders.py`
-
-负责从本地知识库目录读取原始文档，并输出 LoadedDocument。
-
-当前包含：
-
-- MarkdownDocumentLoader
-- TextDocumentLoader
-- CompositeDocumentLoader
-
-`markdown_chunker.py`
-
-负责把 LoadedDocument 转成 KnowledgeChunk，包括 Markdown 标题解析、section_path 构造、字符级切分和 chunk metadata 构造。

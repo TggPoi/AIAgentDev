@@ -6,9 +6,7 @@ from pymilvus import MilvusClient
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.core.config import Settings
 from fast_app.domain.knowledge_models import KnowledgeChunk
-from fast_app.ingestion.markdown_chunker import (
-    build_markdown_chunks,
-)
+from fast_app.ingestion.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
 from fast_app.ingestion.rag_store_writer import (
     recreate_es_index,
     recreate_milvus_collection,
@@ -45,6 +43,7 @@ class MarkdownIngestionService:
         elasticsearch_client: AsyncElasticsearch,
         milvus_client: MilvusClient,
         document_loader: BaseDocumentLoader | None = None,
+        chunk_builder: MarkdownChunkBuilder | None = None,
     ):
         self.settings = settings
         self.embedding_client = embedding_client
@@ -56,13 +55,19 @@ class MarkdownIngestionService:
                 TextDocumentLoader(),
             ]
         )
+        self.chunk_builder = chunk_builder or MarkdownChunkBuilder()
 
     async def ingest(self) -> MarkdownIngestionResult:
         documents = self.document_loader.load(self.settings.knowledge_base_dir)
-        chunks = build_markdown_chunks(
+        chunks = self.chunk_builder.build(
             documents=documents,
-            source=self.settings.ingestion_source_name,
-            max_chars=self.settings.markdown_chunk_max_chars,
+            options=ChunkBuildOptions(
+                source=self.settings.ingestion_source_name,
+                max_chars=self.settings.markdown_chunk_max_chars,
+                overlap_chars=self.settings.markdown_chunk_overlap_chars,
+                max_tokens=self.settings.markdown_chunk_max_tokens,
+                min_chars=self.settings.markdown_chunk_min_chars,
+            ),
         )
 
         vectors = await self.embedding_client.embed_documents(
