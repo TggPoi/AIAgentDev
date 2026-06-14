@@ -117,7 +117,7 @@ class Settings(BaseSettings):
         default="local_markdown",
         alias="INGESTION_SOURCE_NAME",
     )
-    # ingestion 写入模式：recreate 删除重建，upsert 按 chunk_id 覆盖或新增
+    # ingestion 写入模式：recreate 删除重建，upsert 按 chunk_id 覆盖或新增，replace_docs 按 doc_id 先删旧 chunks 再写入
     ingestion_write_mode: str = Field(
         default="recreate",
         alias="INGESTION_WRITE_MODE",

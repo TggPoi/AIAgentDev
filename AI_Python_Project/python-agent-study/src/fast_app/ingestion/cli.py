@@ -1,0 +1,340 @@
+import argparse
+import asyncio
+import json
+import os
+import sys
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
+
+from elasticsearch import AsyncElasticsearch
+from pymilvus import MilvusClient
+
+from fast_app.components.embeddings.base import BaseEmbeddingClient
+from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingClient
+from fast_app.core.config import Settings, get_settings
+from fast_app.domain.knowledge_models import KnowledgeChunk, LoadedDocument
+from fast_app.ingestion.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
+from fast_app.ingestion.document_loaders import (
+    CompositeDocumentLoader,
+    MarkdownDocumentLoader,
+    TextDocumentLoader,
+)
+from fast_app.ingestion.markdown_ingestion_service import MarkdownIngestionService
+from fast_app.ingestion.rag_store_admin import StoreResetOptions, reset_rag_stores
+
+
+class MockEmbeddingClient(BaseEmbeddingClient):
+    # CLI 的 --mock-embeddings 会使用这个客户端。
+    # 它不调用外部 embedding 服务，只根据文本稳定生成固定维度向量。
+    # 这样可以在本地验证 ES / Milvus 写入链路，而不消耗真实模型调用。
+    def __init__(self, dim: int):
+        self.dim = dim
+
+    async def embed_query(self, text: str) -> list[float]:
+        return self._vector_for_text(text)
+
+    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [self._vector_for_text(text) for text in texts]
+
+    def _vector_for_text(self, text: str) -> list[float]:
+        seed = sum(ord(char) for char in text) or 1
+        return [((seed + index) % 997) / 997 for index in range(self.dim)]
+
+
+def apply_arg_overrides(args: argparse.Namespace) -> None:
+    # 当前工程的 .env 可能出现 DEBUG=release，CLI 不依赖 debug 语义，统一转成可解析布尔值。
+    os.environ["DEBUG"] = "true"
+    # 命令行参数名：--knowledge-base-dir 其中的 - 符号会被argparse解析为 _ 
+    if getattr(args, "knowledge_base_dir", None):
+        os.environ["KNOWLEDGE_BASE_DIR"] = args.knowledge_base_dir
+    if getattr(args, "source_name", None):
+        os.environ["INGESTION_SOURCE_NAME"] = args.source_name
+    if getattr(args, "write_mode", None):
+        os.environ["INGESTION_WRITE_MODE"] = args.write_mode
+    if getattr(args, "max_chars", None) is not None:
+        os.environ["MARKDOWN_CHUNK_MAX_CHARS"] = str(args.max_chars)
+    if getattr(args, "overlap_chars", None) is not None:
+        os.environ["MARKDOWN_CHUNK_OVERLAP_CHARS"] = str(args.overlap_chars)
+    if getattr(args, "max_tokens", None) is not None:
+        os.environ["MARKDOWN_CHUNK_MAX_TOKENS"] = str(args.max_tokens)
+    if getattr(args, "min_chars", None) is not None:
+        os.environ["MARKDOWN_CHUNK_MIN_CHARS"] = str(args.min_chars)
+
+    # get_settings() 使用了 @lru_cache。
+    # 修改 os.environ 后必须清缓存，否则后续拿到的可能还是旧 Settings。
+    get_settings.cache_clear()
+
+
+def build_milvus_uri(settings: Settings) -> str:
+    return f"http://{settings.milvus_host}:{settings.milvus_port}"
+
+
+def build_elasticsearch_client(settings: Settings) -> AsyncElasticsearch:
+    # CLI 没有 FastAPI app.state，所以需要自己创建 ES client。
+    # 这里集中处理 URL、超时和可选 basic_auth，避免每个子命令重复写连接逻辑。
+    kwargs: dict[str, Any] = {
+        "hosts": [settings.elasticsearch_url],
+        "request_timeout": settings.elasticsearch_request_timeout,
+    }
+
+    if settings.elasticsearch_username and settings.elasticsearch_password:
+        kwargs["basic_auth"] = (
+            settings.elasticsearch_username,
+            settings.elasticsearch_password,
+        )
+
+    return AsyncElasticsearch(**kwargs)
+
+
+def build_milvus_client(settings: Settings) -> MilvusClient:
+    # MilvusClient 是同步客户端，CLI 在需要写入或 reset 时创建，用完后显式 close。
+    return MilvusClient(uri=build_milvus_uri(settings))
+
+
+def build_embedding_client(
+    settings: Settings,
+    use_mock_embeddings: bool,
+) -> BaseEmbeddingClient:
+    # --mock-embeddings 用于本地验证写入链路。
+    # 不传该参数时，使用真实 QwenEmbeddingClient。
+    if use_mock_embeddings:
+        return MockEmbeddingClient(dim=settings.embedding_dim)
+
+    return QwenEmbeddingClient(settings=settings)
+
+
+def build_chunks(settings: Settings) -> tuple[list[LoadedDocument], list[KnowledgeChunk]]:
+    # dry-run 和真实 ingestion 都需要先确认知识库目录存在。
+    # 这里提前失败，比后面 loader 递归读取时才失败更容易定位问题。
+    root = Path(settings.knowledge_base_dir)
+
+    if not root.exists():
+        raise RuntimeError(f"知识库目录不存在: {root}")
+
+    if not root.is_dir():
+        raise RuntimeError(f"知识库路径不是目录: {root}")
+
+    document_loader = CompositeDocumentLoader(
+        loaders=[
+            MarkdownDocumentLoader(),
+            TextDocumentLoader(),
+        ]
+    )
+    # Loader 负责把本地文件读成 LoadedDocument。
+    # ChunkBuilder 再负责把 LoadedDocument 切成 KnowledgeChunk。
+    documents = document_loader.load(settings.knowledge_base_dir)
+    chunks = MarkdownChunkBuilder().build(
+        documents=documents,
+        options=ChunkBuildOptions(
+            source=settings.ingestion_source_name,
+            max_chars=settings.markdown_chunk_max_chars,
+            overlap_chars=settings.markdown_chunk_overlap_chars,
+            max_tokens=settings.markdown_chunk_max_tokens,
+            min_chars=settings.markdown_chunk_min_chars,
+        ),
+    )
+
+    return documents, chunks
+
+
+def print_json(data: dict[str, Any]) -> None:
+    print(json.dumps(data, ensure_ascii=False, indent=2, default=str))
+
+
+async def run_dry_run(args: argparse.Namespace, settings: Settings) -> int:
+    # dry-run 只验证“读取 + 切分 + metadata”。
+    # 它不会调用 embedding，也不会连接 ES / Milvus。
+    documents, chunks = build_chunks(settings)
+
+    print_json(
+        {
+            "command": "dry-run",
+            "knowledge_base_dir": settings.knowledge_base_dir,
+            "source_name": settings.ingestion_source_name,
+            "write_mode": settings.ingestion_write_mode,
+            "document_count": len(documents),
+            "chunk_count": len(chunks),
+            "chunk_options": {
+                "max_chars": settings.markdown_chunk_max_chars,
+                "overlap_chars": settings.markdown_chunk_overlap_chars,
+                "max_tokens": settings.markdown_chunk_max_tokens,
+                "min_chars": settings.markdown_chunk_min_chars,
+            },
+            "sample_chunks": [
+                {
+                    "id": chunk.id,
+                    "title": chunk.title,
+                    "source": chunk.source,
+                    "content_preview": " ".join(chunk.content.split())[:120],
+                    "metadata": chunk.metadata,
+                }
+                for chunk in chunks[: args.sample_size]
+            ],
+        }
+    )
+    return 0
+
+
+async def run_ingest(args: argparse.Namespace, settings: Settings) -> int:
+    # ingest 会真实写入 ES / Milvus。
+    # upsert / replace_docs 都会修改存储数据，recreate 还会删除重建结构，所以必须显式 --yes。
+    if not args.yes:
+        raise RuntimeError("执行真实 ingestion 需要显式传入 --yes")
+
+    elasticsearch_client = build_elasticsearch_client(settings)
+    milvus_client = build_milvus_client(settings)
+
+    try:
+        # CLI 只负责创建依赖和调用 service。
+        # 真正的 ingestion 主流程仍然放在 MarkdownIngestionService 中。
+        service = MarkdownIngestionService(
+            settings=settings,
+            embedding_client=build_embedding_client(
+                settings=settings,
+                use_mock_embeddings=args.mock_embeddings,
+            ),
+            elasticsearch_client=elasticsearch_client,
+            milvus_client=milvus_client,
+        )
+        result = await service.ingest()
+
+        print_json(
+            {
+                "command": "ingest",
+                "write_mode": settings.ingestion_write_mode,
+                "use_mock_embeddings": args.mock_embeddings,
+                "result": asdict(result),
+            }
+        )
+        return 0
+
+    finally:
+        # ES 是异步客户端，需要 await close。
+        # MilvusClient 是同步客户端，直接 close。
+        await elasticsearch_client.close()
+        milvus_client.close()
+
+
+async def run_reset_stores(args: argparse.Namespace, settings: Settings) -> int:
+    # reset-stores 是危险操作：会删除或重建 ES index / Milvus collection。
+    # 这里先检查 --yes，再创建外部 client。
+    if not args.yes:
+        raise RuntimeError("重建 ES / Milvus 存储需要显式传入 --yes")
+
+    elasticsearch_client = build_elasticsearch_client(settings)
+    milvus_client = build_milvus_client(settings)
+
+    try:
+        # CLI 不直接调用 indices.delete 或 drop_collection。
+        # 结构级危险操作统一交给 rag_store_admin.reset_rag_stores。
+        result = await reset_rag_stores(
+            elasticsearch_client=elasticsearch_client,
+            milvus_client=milvus_client,
+            settings=settings,
+            options=StoreResetOptions(
+                target=args.target,
+                recreate_schema=not args.drop_only,
+                confirm=True,
+            ),
+        )
+
+        print_json(
+            {
+                "command": "reset-stores",
+                "target": args.target,
+                "drop_only": args.drop_only,
+                "result": asdict(result),
+            }
+        )
+        return 0
+
+    finally:
+        await elasticsearch_client.close()
+        milvus_client.close()
+
+
+def add_ingestion_common_args(parser: argparse.ArgumentParser) -> None:
+    # dry-run 和 ingest 都需要这些 ingestion 参数。
+    # 抽成 helper 可以避免两个子命令重复声明同一组参数。
+    parser.add_argument("--knowledge-base-dir", default=None)
+    parser.add_argument("--source-name", default=None)
+    parser.add_argument(
+        "--write-mode",
+        choices=["recreate", "upsert", "replace_docs"],
+        default=None,
+    )
+    parser.add_argument("--max-chars", type=int, default=None)
+    parser.add_argument("--overlap-chars", type=int, default=None)
+    parser.add_argument("--max-tokens", type=int, default=None)
+    parser.add_argument("--min-chars", type=int, default=None)
+
+
+def parse_args() -> argparse.Namespace:
+    # ArgumentParser 是整个 CLI 的顶层解析器。
+    # 它负责把命令行文本解析成 args 对象。
+    parser = argparse.ArgumentParser(
+        description="Milvus + ElasticSearch knowledge base ingestion CLI.",
+    )
+    # add_subparsers 用来创建子命令。
+    # dest="command" 表示子命令名字会保存到 args.command。
+    # required=True 表示必须传 dry-run / ingest / reset-stores 之一。
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # dry-run 子命令：只读取和切分，不写入外部存储。
+    dry_run_parser = subparsers.add_parser("dry-run")
+    add_ingestion_common_args(dry_run_parser)
+    dry_run_parser.add_argument("--sample-size", type=int, default=3)
+
+    # ingest 子命令：执行真实写入，所以有 --yes 和 --mock-embeddings。
+    ingest_parser = subparsers.add_parser("ingest")
+    add_ingestion_common_args(ingest_parser)
+    ingest_parser.add_argument("--yes", action="store_true")
+    ingest_parser.add_argument("--mock-embeddings", action="store_true")
+
+    # reset-stores 子命令：只管理 ES / Milvus 结构，不读取文档。
+    reset_parser = subparsers.add_parser("reset-stores")
+    reset_parser.add_argument(
+        "--target",
+        choices=["elasticsearch", "milvus", "both"],
+        default="both",
+    )
+    reset_parser.add_argument("--drop-only", action="store_true")
+    reset_parser.add_argument("--yes", action="store_true")
+
+    return parser.parse_args()
+
+
+async def main_async() -> int:
+    # 入口流程：
+    # 1. 解析命令行参数
+    # 2. 把参数覆盖到 os.environ
+    # 3. 重新读取 Settings
+    # 4. 根据子命令分发到具体处理函数
+    args = parse_args()
+    apply_arg_overrides(args)
+    settings = get_settings()
+
+    try:
+        if args.command == "dry-run":
+            return await run_dry_run(args, settings)
+
+        if args.command == "ingest":
+            return await run_ingest(args, settings)
+
+        if args.command == "reset-stores":
+            return await run_reset_stores(args, settings)
+
+        raise RuntimeError(f"不支持的 CLI 命令: {args.command}")
+
+    except Exception as exc:
+        print(f"ingestion CLI 执行失败: {exc}", file=sys.stderr)
+        return 1
+
+
+def main() -> int:
+    return asyncio.run(main_async())
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

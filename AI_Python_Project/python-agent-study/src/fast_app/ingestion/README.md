@@ -56,9 +56,13 @@
 
 负责生成 ElasticSearch mapping、Milvus collection schema 和 Milvus index params。
 
+`rag_store_admin.py`
+
+负责 ES index 和 Milvus collection 的结构级管理，包括受控删除、重建空结构和返回重建结果。
+
 `rag_store_writer.py`
 
-负责把 KnowledgeChunk 写入 ElasticSearch 和 Milvus。
+负责把 KnowledgeChunk 写入 ElasticSearch 和 Milvus。recreate 模式需要删除和重建结构时，也通过 rag_store_admin.py 完成。
 
 `markdown_ingestion_service.py`
 
@@ -167,7 +171,7 @@ flowchart TD
 1. 校验 chunks / vectors 数量
 2. 校验 chunk.id 唯一性
 3. 校验标准 metadata 字段
-4. 根据 INGESTION_WRITE_MODE 选择 recreate 或 upsert
+4. 根据 INGESTION_WRITE_MODE 选择 recreate、upsert 或 replace_docs
 5. 写入 ElasticSearch index
 6. 写入 Milvus collection
 7. 返回 DualStoreWriteResult
@@ -175,18 +179,80 @@ flowchart TD
 
 ## 写入模式
 
-当前支持两种写入模式：
+当前支持三种写入模式：
 
 - recreate
 - upsert
+- replace_docs
 
 `recreate` 会删除并重建 ES index 和 Milvus collection，适合 schema 变化或本地全量重建。
 
 `upsert` 会保留已有 ES index 和 Milvus collection，并按 chunk_id 覆盖或新增数据。
 
+`replace_docs` 会先根据本次 chunks 中的 `metadata.doc_id` 删除这些文档在 ES / Milvus 中的旧 chunks，再写入本次新 chunks，适合文档内容变化、chunk 数量变化、chunk_index 后移等文档更新场景。
+
 写入模式由 INGESTION_WRITE_MODE 控制，默认值是 recreate。
 
-当前 `upsert` 不会自动删除本次未出现的旧 chunks。如果文档切分策略变化，或者某个文档的新 chunk 数量少于旧 chunk 数量，需要后续文档级删除或 replace 流程配合处理。
+`upsert` 不会自动删除本次未出现的旧 chunks。如果文档切分策略变化，或者某个文档的新 chunk 数量少于旧 chunk 数量，应使用 `replace_docs`。
+
+`replace_docs` 的核心流程：
+
+1. 从本次 chunks 中收集 `metadata.doc_id`
+2. 在 ES 中按 `metadata.doc_id` 执行 `delete_by_query`
+3. 在 Milvus 中按 `doc_id` filter 执行 `delete`
+4. 把本次 chunks / vectors 重新 upsert 到 ES / Milvus
+
+
+## 删除与重建安全边界
+
+ES index 和 Milvus collection 的删除操作统一放在 `rag_store_admin.py`。
+
+当前核心入口：
+
+- `reset_es_index`
+- `reset_milvus_collection`
+- `reset_rag_stores`
+
+删除类函数必须显式传入 `confirm=True` 才会执行。
+
+`rag_store_writer.py` 只负责写入 chunks / vectors。当 recreate 模式需要重建 ES index 或 Milvus collection 时，也通过 admin 模块完成。
+
+后续 CLI 只能调用 `reset_rag_stores()`，不应该在 CLI 中直接写 `indices.delete()` 或 `drop_collection()`。
+
+
+## Ingestion CLI
+
+正式 CLI 入口：
+
+```powershell
+$env:PYTHONPATH="src"
+python -m fast_app.ingestion.cli dry-run
+```
+
+常用命令：
+
+```powershell
+python -m fast_app.ingestion.cli dry-run `
+  --knowledge-base-dir learning-docs\phase-9 `
+  --sample-size 2
+
+python -m fast_app.ingestion.cli ingest `
+  --knowledge-base-dir learning-docs\phase-9 `
+  --write-mode replace_docs `
+  --mock-embeddings `
+  --yes
+
+python -m fast_app.ingestion.cli reset-stores `
+  --target both `
+  --yes
+```
+
+命令职责：
+
+- `dry-run` 只读取文档和构造 chunks，不调用 embedding，不写入 ES / Milvus。
+- `ingest` 会执行真实 ingestion，生成 embedding，并写入 ES / Milvus。
+- `reset-stores` 会删除或重建 ES index / Milvus collection 结构。
+- `ingest` 和 `reset-stores` 都必须显式传入 `--yes`。
 
 
 ## 当前写入策略

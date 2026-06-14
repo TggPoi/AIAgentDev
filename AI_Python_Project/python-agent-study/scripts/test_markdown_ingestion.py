@@ -198,8 +198,8 @@ def build_embedding_client(
 async def run_write_stores(args: argparse.Namespace, settings: Settings) -> None:
     if not args.yes:
         raise AssertionError(
-            "writing stores will delete and recreate current ES index and Milvus "
-            "collection; pass --yes to confirm"
+            "writing stores will modify current ES index and Milvus collection; "
+            "pass --yes to confirm"
         )
 
     print("========== Markdown ingestion write stores ==========")
@@ -260,9 +260,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--write-mode",
-        choices=["recreate", "upsert"],
+        choices=["recreate", "upsert", "replace_docs"],
         default=None,
-        help="覆盖 INGESTION_WRITE_MODE，支持 recreate 或 upsert。",
+        help="覆盖 INGESTION_WRITE_MODE，支持 recreate、upsert 或 replace_docs。",
     )
     parser.add_argument(
         "--max-chars",

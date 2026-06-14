@@ -8,12 +8,16 @@ from pymilvus import MilvusClient
 
 from fast_app.core.config import Settings
 from fast_app.domain.knowledge_models import KnowledgeChunk
+from fast_app.ingestion.rag_store_admin import (
+    StoreResetOptions,
+    reset_es_index,
+    reset_milvus_collection,
+    verify_es_ik_analyzers,
+)
 from fast_app.ingestion.rag_store_schema import (
     ES_CONTENT_FIELD,
     ES_CREATED_AT_FIELD,
     ES_ID_FIELD,
-    ES_IK_INDEX_ANALYZER,
-    ES_IK_SEARCH_ANALYZER,
     ES_METADATA_FIELD,
     ES_SOURCE_FIELD,
     ES_TITLE_FIELD,
@@ -31,7 +35,7 @@ from fast_app.ingestion.rag_store_schema import (
 
 # 负责把 `KnowledgeChunk` 写入 ES 和 Milvus 存储
 StoreName = Literal["elasticsearch", "milvus"]
-IngestionWriteMode = Literal["recreate", "upsert"]
+IngestionWriteMode = Literal["recreate", "upsert", "replace_docs"]
 
 
 @dataclass(frozen=True)
@@ -51,7 +55,7 @@ class DualStoreWriteResult:
 def get_ingestion_write_mode(settings: Settings) -> IngestionWriteMode:
     mode = settings.ingestion_write_mode.strip().lower()
 
-    if mode not in {"recreate", "upsert"}:
+    if mode not in {"recreate", "upsert", "replace_docs"}:
         raise RuntimeError(
             f"不支持的 ingestion 写入模式: {settings.ingestion_write_mode}"
         )
@@ -98,14 +102,13 @@ def validate_store_write_inputs(
                 )
 
 
-async def verify_es_ik_analyzers(client: AsyncElasticsearch) -> None:
-    sample_text = "混合检索结合向量召回和关键词召回"
+def collect_doc_ids(chunks: list[KnowledgeChunk]) -> list[str]:
+    doc_ids = {str(chunk.metadata["doc_id"]) for chunk in chunks}
+    return sorted(doc_ids)
 
-    for analyzer in [ES_IK_INDEX_ANALYZER, ES_IK_SEARCH_ANALYZER]:
-        await client.indices.analyze(
-            analyzer=analyzer,
-            text=sample_text,
-        )
+
+def escape_milvus_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 async def ensure_es_index(
@@ -154,12 +157,15 @@ async def recreate_es_index(
 ) -> int:
     index_name = settings.elasticsearch_index_name
 
-    await verify_es_ik_analyzers(client)
-
-    if await client.indices.exists(index=index_name):
-        await client.indices.delete(index=index_name)
-
-    await client.indices.create(index=index_name, **build_es_mapping())
+    await reset_es_index(
+        client=client,
+        settings=settings,
+        options=StoreResetOptions(
+            target="elasticsearch",
+            recreate_schema=True,
+            confirm=True,
+        ),
+    )
 
     success_count, errors = await async_bulk(
         client=client,
@@ -193,6 +199,50 @@ async def upsert_es_index(
     return int(success_count)
 
 
+async def delete_es_docs_by_doc_ids(
+    client: AsyncElasticsearch,
+    settings: Settings,
+    doc_ids: list[str],
+) -> dict[str, Any]:
+    await ensure_es_index(client=client, settings=settings)
+
+    if not doc_ids:
+        return {"deleted": 0}
+
+    result = await client.delete_by_query(
+        index=settings.elasticsearch_index_name,
+        body={
+            "query": {
+                "terms": {
+                    "metadata.doc_id": doc_ids,
+                }
+            }
+        },
+        conflicts="proceed",
+        refresh=True,
+    )
+    return dict(result)
+
+
+async def replace_docs_es_index(
+    client: AsyncElasticsearch,
+    settings: Settings,
+    chunks: list[KnowledgeChunk],
+) -> tuple[int, dict[str, Any]]:
+    doc_ids = collect_doc_ids(chunks)
+    delete_result = await delete_es_docs_by_doc_ids(
+        client=client,
+        settings=settings,
+        doc_ids=doc_ids,
+    )
+    success_count = await upsert_es_index(
+        client=client,
+        settings=settings,
+        chunks=chunks,
+    )
+    return success_count, delete_result
+
+
 def build_milvus_rows(
     settings: Settings,
     chunks: list[KnowledgeChunk],
@@ -223,13 +273,14 @@ def recreate_milvus_collection(
 ) -> dict:
     collection_name = settings.milvus_collection_name
 
-    if client.has_collection(collection_name):
-        client.drop_collection(collection_name)
-
-    client.create_collection(
-        collection_name=collection_name,
-        schema=build_milvus_schema(settings),
-        index_params=build_milvus_index_params(settings),
+    reset_milvus_collection(
+        client=client,
+        settings=settings,
+        options=StoreResetOptions(
+            target="milvus",
+            recreate_schema=True,
+            confirm=True,
+        ),
     )
 
     result = client.insert(
@@ -279,6 +330,51 @@ def upsert_milvus_collection(
     client.load_collection(collection_name=collection_name)
 
     return result
+
+
+def delete_milvus_docs_by_doc_ids(
+    client: MilvusClient,
+    settings: Settings,
+    doc_ids: list[str],
+) -> dict[str, Any]:
+    ensure_milvus_collection(client=client, settings=settings)
+
+    if not doc_ids:
+        return {"delete_count": 0}
+
+    quoted_doc_ids = ", ".join(
+        f'"{escape_milvus_string(doc_id)}"' for doc_id in doc_ids
+    )
+    filter_expr = f'{MILVUS_DOC_ID_FIELD} in [{quoted_doc_ids}]'
+
+    result = client.delete(
+        collection_name=settings.milvus_collection_name,
+        filter=filter_expr,
+    )
+    client.flush(collection_name=settings.milvus_collection_name)
+    client.load_collection(collection_name=settings.milvus_collection_name)
+    return result
+
+
+def replace_docs_milvus_collection(
+    client: MilvusClient,
+    settings: Settings,
+    chunks: list[KnowledgeChunk],
+    vectors: list[list[float]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    doc_ids = collect_doc_ids(chunks)
+    delete_result = delete_milvus_docs_by_doc_ids(
+        client=client,
+        settings=settings,
+        doc_ids=doc_ids,
+    )
+    upsert_result = upsert_milvus_collection(
+        client=client,
+        settings=settings,
+        chunks=chunks,
+        vectors=vectors,
+    )
+    return upsert_result, delete_result
 
 
 # 双链路 写入 es milvus数据库入口
@@ -370,6 +466,55 @@ async def upsert_rag_stores(
     )
 
 
+async def replace_docs_rag_stores(
+    elasticsearch_client: AsyncElasticsearch,
+    milvus_client: MilvusClient,
+    settings: Settings,
+    chunks: list[KnowledgeChunk],
+    vectors: list[list[float]],
+) -> DualStoreWriteResult:
+    validate_store_write_inputs(chunks, vectors)
+    doc_ids = collect_doc_ids(chunks)
+
+    es_success_count, es_delete_result = await replace_docs_es_index(
+        client=elasticsearch_client,
+        settings=settings,
+        chunks=chunks,
+    )
+
+    milvus_upsert_result, milvus_delete_result = replace_docs_milvus_collection(
+        client=milvus_client,
+        settings=settings,
+        chunks=chunks,
+        vectors=vectors,
+    )
+
+    return DualStoreWriteResult(
+        chunk_count=len(chunks),
+        es=StoreWriteResult(
+            store_name="elasticsearch",
+            success_count=es_success_count,
+            detail={
+                "index_name": settings.elasticsearch_index_name,
+                "write_mode": "replace_docs",
+                "doc_ids": doc_ids,
+                "delete_result": es_delete_result,
+            },
+        ),
+        milvus=StoreWriteResult(
+            store_name="milvus",
+            success_count=len(chunks),
+            detail={
+                "collection_name": settings.milvus_collection_name,
+                "write_mode": "replace_docs",
+                "doc_ids": doc_ids,
+                "delete_result": milvus_delete_result,
+                "upsert_result": milvus_upsert_result,
+            },
+        ),
+    )
+
+
 async def write_rag_stores(
     elasticsearch_client: AsyncElasticsearch,
     milvus_client: MilvusClient,
@@ -381,6 +526,16 @@ async def write_rag_stores(
     # 删除现有结构 数据，重新写入
     if mode == "recreate":
         return await recreate_rag_stores(
+            elasticsearch_client=elasticsearch_client,
+            milvus_client=milvus_client,
+            settings=settings,
+            chunks=chunks,
+            vectors=vectors,
+        )
+    # 文档级替换：先按 doc_id 删除旧 chunks，再写入本次新 chunks。
+    # 适合文档内容变化导致 chunk 数量、chunk_index 或 chunk_id 变化的场景。
+    if mode == "replace_docs":
+        return await replace_docs_rag_stores(
             elasticsearch_client=elasticsearch_client,
             milvus_client=milvus_client,
             settings=settings,
