@@ -1,0 +1,121 @@
+{
+  "name": "stage11_rag_eval_cases",
+  "description": "阶段 11 使用的小型 RAG 问答评测集",
+  "knowledge_base_dir": "learning-docs/phase-9",
+  "cases": [
+    {
+      "id": "phase9_hybrid_retrieval_basic",
+      "case_type": "answerable",
+      "question": "阶段 9 为什么要保留 vector_score、keyword_score、rrf_score 和 rerank_score？",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0,
+      "filters": {},
+      "expected_sources": [
+        {
+          "source_path": null,
+          "section_keywords": ["score", "rerank", "RRF"],
+          "chunk_ids": []
+        }
+      ],
+      "expected_answer_keywords": ["vector_score", "keyword_score", "rrf_score", "rerank_score"],
+      "forbidden_answer_keywords": [],
+      "note": "用于检查多阶段分数相关内容是否能被召回和回答。"
+    },
+    {
+      "id": "phase9_metadata_sources",
+      "case_type": "answerable",
+      "question": "阶段 9 为什么要把 metadata 写入 ES 和 Milvus，并在 sources 中展示 title 和 section_path？",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0,
+      "filters": {},
+      "expected_sources": [
+        {
+          "source_path": null,
+          "section_keywords": ["metadata", "sources", "section_path"],
+          "chunk_ids": []
+        }
+      ],
+      "expected_answer_keywords": ["metadata", "sources", "title", "section_path"],
+      "forbidden_answer_keywords": [],
+      "note": "用于检查 sources 展示和 metadata 回流相关内容。"
+    },
+    {
+      "id": "phase9_lifespan_clients",
+      "case_type": "answerable",
+      "question": "FastAPI lifespan 为什么适合管理 Milvus、ES 和 httpx client？",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0,
+      "filters": {},
+      "expected_sources": [
+        {
+          "source_path": null,
+          "section_keywords": ["lifespan", "client"],
+          "chunk_ids": []
+        }
+      ],
+      "expected_answer_keywords": ["lifespan", "client", "启动", "关闭"],
+      "forbidden_answer_keywords": [],
+      "note": "用于检查 FastAPI lifespan 相关章节是否可检索。"
+    },
+    {
+      "id": "phase9_stream_events",
+      "case_type": "answerable",
+      "question": "阶段 9 的 stream event 协议为什么要区分 token、sources、done 和 error？",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0,
+      "filters": {},
+      "expected_sources": [
+        {
+          "source_path": null,
+          "section_keywords": ["stream", "token", "sources"],
+          "chunk_ids": []
+        }
+      ],
+      "expected_answer_keywords": ["token", "sources", "done", "error"],
+      "forbidden_answer_keywords": [],
+      "note": "用于检查结构化 stream 协议相关内容。"
+    },
+    {
+      "id": "phase9_fallback_policy",
+      "case_type": "answerable",
+      "question": "RAG 链路中为什么需要 timeout、retry 和 fallback？",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0,
+      "filters": {},
+      "expected_sources": [
+        {
+          "source_path": null,
+          "section_keywords": ["timeout", "retry", "fallback"],
+          "chunk_ids": []
+        }
+      ],
+      "expected_answer_keywords": ["timeout", "retry", "fallback", "外部服务"],
+      "forbidden_answer_keywords": [],
+      "note": "用于检查外部调用稳定性相关内容。"
+    },
+    {
+      "id": "no_answer_weather",
+      "case_type": "no_answer",
+      "question": "明天北京天气怎么样？",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0,
+      "filters": {},
+      "expected_sources": [],
+      "expected_answer_keywords": [],
+      "forbidden_answer_keywords": ["晴天", "下雨", "温度", "摄氏度"],
+      "note": "用于检查知识库无答案时是否避免编造实时天气。"
+    }
+  ]
+}
