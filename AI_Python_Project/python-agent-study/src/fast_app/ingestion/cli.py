@@ -21,6 +21,7 @@ from fast_app.ingestion.document_loaders import (
     TextDocumentLoader,
 )
 from fast_app.ingestion.markdown_ingestion_service import MarkdownIngestionService
+from fast_app.ingestion.ingestion_validation import validate_ingestion_result
 from fast_app.ingestion.rag_store_admin import StoreResetOptions, reset_rag_stores
 
 
@@ -60,6 +61,9 @@ def apply_arg_overrides(args: argparse.Namespace) -> None:
         os.environ["MARKDOWN_CHUNK_MAX_TOKENS"] = str(args.max_tokens)
     if getattr(args, "min_chars", None) is not None:
         os.environ["MARKDOWN_CHUNK_MIN_CHARS"] = str(args.min_chars)
+    if getattr(args, "no_es_auth", False):
+        os.environ["ELASTICSEARCH_USERNAME"] = ""
+        os.environ["ELASTICSEARCH_PASSWORD"] = ""
 
     # get_settings() 使用了 @lru_cache。
     # 修改 os.environ 后必须清缓存，否则后续拿到的可能还是旧 Settings。
@@ -78,13 +82,38 @@ def build_elasticsearch_client(settings: Settings) -> AsyncElasticsearch:
         "request_timeout": settings.elasticsearch_request_timeout,
     }
 
-    if settings.elasticsearch_username and settings.elasticsearch_password:
+    username = settings.elasticsearch_username.strip()
+    password = settings.elasticsearch_password.strip()
+    # 目前本地开发环境没有开启认证
+    if bool(username) != bool(password):
+        raise RuntimeError(
+            "ELASTICSEARCH_USERNAME 和 ELASTICSEARCH_PASSWORD 必须同时配置。"
+            "如果本地 ES 没有开启认证，请在 CLI 命令中添加 --no-es-auth。"
+        )
+
+    if username and password:
+        _validate_ascii_basic_auth(
+            username=username,
+            password=password,
+        )
         kwargs["basic_auth"] = (
-            settings.elasticsearch_username,
-            settings.elasticsearch_password,
+            username,
+            password,
         )
 
     return AsyncElasticsearch(**kwargs)
+
+
+def _validate_ascii_basic_auth(username: str, password: str) -> None:
+    try:
+        f"{username}:{password}".encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise RuntimeError(
+            "Elasticsearch basic_auth 只能使用 ASCII 字符。"
+            "当前 ELASTICSEARCH_USERNAME 或 ELASTICSEARCH_PASSWORD 包含中文或其他非 ASCII 字符。"
+            "如果本地 ES 没有开启认证，请在 CLI 命令中添加 --no-es-auth；"
+            "如果开启了认证，请把 .env 中的 ES 用户名和密码改成实际 ASCII 凭据。"
+        ) from exc
 
 
 def build_milvus_client(settings: Settings) -> MilvusClient:
@@ -173,6 +202,32 @@ async def run_dry_run(args: argparse.Namespace, settings: Settings) -> int:
             ],
         }
     )
+    return 0
+
+
+async def run_validate(args: argparse.Namespace, settings: Settings) -> int:
+    # validate 只验证本地文档读取、chunk 构造和 metadata 规范。
+    # 它不调用 embedding，也不连接 ES / Milvus，适合作为阶段 10 的快速回归检查。
+    documents, chunks = build_chunks(settings)
+    report = validate_ingestion_result(
+        documents=documents,
+        chunks=chunks,
+    )
+
+    print_json(
+        {
+            "command": "validate",
+            "knowledge_base_dir": settings.knowledge_base_dir,
+            "passed": report.passed,
+            "error_count": report.error_count,
+            "warning_count": report.warning_count,
+            "report": asdict(report),
+        }
+    )
+
+    if not report.passed:
+        return 1
+
     return 0
 
 
@@ -286,11 +341,16 @@ def parse_args() -> argparse.Namespace:
     add_ingestion_common_args(dry_run_parser)
     dry_run_parser.add_argument("--sample-size", type=int, default=3)
 
+    # validate 子命令：只做结构化回归检查，不写入外部存储。
+    validate_parser = subparsers.add_parser("validate")
+    add_ingestion_common_args(validate_parser)
+
     # ingest 子命令：执行真实写入，所以有 --yes 和 --mock-embeddings。
     ingest_parser = subparsers.add_parser("ingest")
     add_ingestion_common_args(ingest_parser)
     ingest_parser.add_argument("--yes", action="store_true")
     ingest_parser.add_argument("--mock-embeddings", action="store_true")
+    ingest_parser.add_argument("--no-es-auth", action="store_true")
 
     # reset-stores 子命令：只管理 ES / Milvus 结构，不读取文档。
     reset_parser = subparsers.add_parser("reset-stores")
@@ -301,6 +361,7 @@ def parse_args() -> argparse.Namespace:
     )
     reset_parser.add_argument("--drop-only", action="store_true")
     reset_parser.add_argument("--yes", action="store_true")
+    reset_parser.add_argument("--no-es-auth", action="store_true")
 
     return parser.parse_args()
 
@@ -318,6 +379,9 @@ async def main_async() -> int:
     try:
         if args.command == "dry-run":
             return await run_dry_run(args, settings)
+
+        if args.command == "validate":
+            return await run_validate(args, settings)
 
         if args.command == "ingest":
             return await run_ingest(args, settings)

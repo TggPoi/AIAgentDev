@@ -68,6 +68,10 @@
 
 负责编排读取、切分、embedding、向量校验、ES 写入和 Milvus 写入。
 
+`ingestion_validation.py`
+
+负责验证本地文档读取、chunk 构造和 metadata 规范，并输出结构化验证报告。
+
 
 ## 当前数据流
 
@@ -236,23 +240,61 @@ python -m fast_app.ingestion.cli dry-run `
   --knowledge-base-dir learning-docs\phase-9 `
   --sample-size 2
 
+python -m fast_app.ingestion.cli validate `
+  --knowledge-base-dir learning-docs\phase-9 `
+  --max-chars 1000
+
 python -m fast_app.ingestion.cli ingest `
   --knowledge-base-dir learning-docs\phase-9 `
   --write-mode replace_docs `
   --mock-embeddings `
+  --no-es-auth `
   --yes
 
 python -m fast_app.ingestion.cli reset-stores `
   --target both `
+  --no-es-auth `
   --yes
 ```
 
 命令职责：
 
 - `dry-run` 只读取文档和构造 chunks，不调用 embedding，不写入 ES / Milvus。
+- `validate` 会验证文档读取、chunk 构造和 metadata 规范，不调用 embedding，不写入 ES / Milvus。
 - `ingest` 会执行真实 ingestion，生成 embedding，并写入 ES / Milvus。
 - `reset-stores` 会删除或重建 ES index / Milvus collection 结构。
 - `ingest` 和 `reset-stores` 都必须显式传入 `--yes`。
+- 如果本地 ES 没有开启认证，但 `.env` 中存在 ES 用户名或密码占位符，执行 `ingest` / `reset-stores` 时添加 `--no-es-auth`。
+
+
+## Ingestion 回归验证
+
+正式验证命令：
+
+```powershell
+$env:PYTHONPATH="src"
+python -m fast_app.ingestion.cli validate `
+  --knowledge-base-dir learning-docs\phase-9 `
+  --max-chars 1000
+```
+
+`validate` 不调用 embedding，不连接 ES / Milvus。
+
+它会验证：
+
+- 是否读取到文档
+- 是否生成 chunks
+- chunk.id 是否唯一
+- metadata 是否包含必需字段
+- metadata.chunk_id 是否等于 chunk.id
+- metadata.title 是否等于 chunk.title
+- metadata.section_path 是否为非空列表
+- metadata.source_path 是否能对应到已读取文档
+
+阶段 10 的本地回归样例可以先使用：
+
+- `learning-docs/phase-9`
+- `learning-docs/phase-10`
 
 
 ## 当前写入策略

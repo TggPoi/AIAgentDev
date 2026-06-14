@@ -421,7 +421,7 @@ async def recreate_rag_stores(
         ),
     )
 
-
+# 增量写入 如果文档改动内容过多导致chunk index变动，会导致变动的chunk index 之后的chunk全部重新写入，并且旧的chunk 没有处理
 async def upsert_rag_stores(
     elasticsearch_client: AsyncElasticsearch,
     milvus_client: MilvusClient,
@@ -465,7 +465,7 @@ async def upsert_rag_stores(
         ),
     )
 
-
+# 文档级替换：先按 doc_id 删除旧 chunks，再写入本次新 chunks。
 async def replace_docs_rag_stores(
     elasticsearch_client: AsyncElasticsearch,
     milvus_client: MilvusClient,

@@ -59,7 +59,7 @@ async def verify_es_ik_analyzers(client: AsyncElasticsearch) -> None:
             text=sample_text,
         )
 
-
+# 删除已有mapping，构造新的Index
 async def reset_es_index(
     client: AsyncElasticsearch,
     settings: Settings,
@@ -92,7 +92,7 @@ async def reset_es_index(
         created=created,
     )
 
-
+# 删除已有Collection，构造新的
 def reset_milvus_collection(
     client: MilvusClient,
     settings: Settings,
@@ -128,7 +128,7 @@ def reset_milvus_collection(
         created=created,
     )
 
-
+# 重构ES，milvus的主入口
 async def reset_rag_stores(
     elasticsearch_client: AsyncElasticsearch,
     milvus_client: MilvusClient,
