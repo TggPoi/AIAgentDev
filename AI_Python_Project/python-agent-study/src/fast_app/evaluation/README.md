@@ -59,9 +59,56 @@ hybrid
 
 `forbidden_answer_keywords` 表示回答中不应该出现的关键词。
 
+## 检索评测指标
+
+阶段 11-3 增加纯函数指标计算。
+
+当前指标包括：
+
+```text
+Recall@K
+```
+
+前 K 个检索结果中命中的预期来源比例。
+
+```text
+MRR
+```
+
+第一个正确命中结果排名倒数的平均值。
+
+```text
+first_hit_rank
+```
+
+第一个正确结果出现的位置。
+
+```text
+matched_by
+```
+
+说明命中依据，例如：
+
+```text
+chunk_id
+source_path
+section_keywords
+```
+
+当前只对 `answerable` 样例计算检索指标。
+
+`no_answer` 样例主要用于后续生成评测。
+
 ## 本地校验
 
 ```powershell
 $env:PYTHONPATH="src"
 .\.venv\Scripts\python.exe -c "from fast_app.evaluation.eval_dataset_loader import load_eval_dataset; dataset = load_eval_dataset('src/fast_app/evaluation/datasets/stage11_rag_eval_cases.json'); print(dataset.name, len(dataset.cases))"
+```
+
+检索指标纯函数校验：
+
+```powershell
+$env:PYTHONPATH="src"
+.\.venv\Scripts\python.exe -c "from fast_app.evaluation.eval_dataset_loader import load_eval_dataset; from fast_app.evaluation.retrieval_metrics import evaluate_retrieval_case; from fast_app.domain.rag_models import RetrievedDoc; dataset = load_eval_dataset('src/fast_app/evaluation/datasets/stage11_rag_eval_cases.json'); case = dataset.cases[0]; docs = [RetrievedDoc(id='demo', content='这里包含 vector_score keyword_score rrf_score rerank_score 和 RRF rerank', score=0.9, source='mock', title='score demo', metadata={'section_path':['RRF rerank score'], 'source_path':'demo.md'})]; result = evaluate_retrieval_case(case, docs); print(result.case_id, result.recall_at_k, result.reciprocal_rank, result.passed)"
 ```
