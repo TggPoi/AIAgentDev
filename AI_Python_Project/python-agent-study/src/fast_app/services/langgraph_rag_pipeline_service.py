@@ -1,11 +1,12 @@
 from collections.abc import AsyncGenerator
+from time import perf_counter
 from typing import Any
 
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
-from fast_app.core.logging import get_logger
+from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.graph.rag_graph_builder import build_rag_graph
 from fast_app.graph.rag_graph_state import GraphRagState
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
@@ -63,25 +64,65 @@ class LangGraphRagPipeline:
 
 
     async def run(self, req: RagChatRequest) -> RagChatResponse:
+        start_time = perf_counter()
         logger.info(
-            "开始执行 LangGraph RAG Pipeline: query=%s, mode=%s, top_k=%s, min_score=%s",
-            req.query,
-            req.mode,
-            req.top_k,
-            req.min_score,
+            "rag_pipeline %s",
+            format_log_fields(
+                event="rag.pipeline.start",
+                pipeline_provider="langgraph",
+                query=req.query,
+                mode=req.mode,
+                top_k=req.top_k,
+                candidate_k=req.candidate_k,
+                min_score=req.min_score,
+            ),
         )
 
-        initial_state = self._build_initial_state(req)
+        try:
+            initial_state = self._build_initial_state(req)
 
-        final_state = await self.graph.ainvoke(initial_state)
+            final_state = await self.graph.ainvoke(initial_state)
 
-        answer = final_state.get("answer") or ""
-        docs = final_state.get("docs") or []
+            answer = final_state.get("answer") or ""
+            docs = final_state.get("docs") or []
 
+            logger.info(
+                "LangGraph RAG Pipeline 执行完成: docs_count=%s, answer_length=%s",
+                len(docs),
+                len(answer),
+            )
+        except Exception:
+            latency_ms = (perf_counter() - start_time) * 1000
+            logger.exception(
+                "rag_pipeline %s",
+                format_log_fields(
+                    event="rag.pipeline.failed",
+                    pipeline_provider="langgraph",
+                    query=req.query,
+                    mode=req.mode,
+                    top_k=req.top_k,
+                    candidate_k=req.candidate_k,
+                    min_score=req.min_score,
+                    latency_ms=round(latency_ms, 2),
+                ),
+            )
+            raise
+
+        latency_ms = (perf_counter() - start_time) * 1000
         logger.info(
-            "LangGraph RAG Pipeline 执行完成: docs_count=%s, answer_length=%s",
-            len(docs),
-            len(answer),
+            "rag_pipeline %s",
+            format_log_fields(
+                event="rag.pipeline.finish",
+                pipeline_provider="langgraph",
+                query=req.query,
+                mode=req.mode,
+                top_k=req.top_k,
+                candidate_k=req.candidate_k,
+                min_score=req.min_score,
+                latency_ms=round(latency_ms, 2),
+                source_count=len(docs),
+                answer_length=len(answer),
+            ),
         )
 
         return RagChatResponse(

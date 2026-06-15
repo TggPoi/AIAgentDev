@@ -1,11 +1,12 @@
 import asyncio
 from collections.abc import AsyncGenerator
+from time import perf_counter
 
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
 
 from fast_app.core.config import Settings
-from fast_app.core.logging import get_logger
+from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RagContext, RetrievalOptions, RetrievedDoc, RagMode, RetrievalFilters
 from fast_app.graph.rag_state import RagState
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse, RagScoreBreakdown, RagSource
@@ -515,40 +516,80 @@ class RagPipeline:
     async def run(self, req: RagChatRequest) -> RagChatResponse:
         """执行一次完整的非流式 RAG 请求。"""
 
+        start_time = perf_counter()
         logger.info(
-            "开始执行 RAG Pipeline: query=%s, mode=%s, top_k=%s, min_score=%s",
-            req.query,
-            req.mode,
-            req.top_k,
-            req.min_score,
+            "rag_pipeline %s",
+            format_log_fields(
+                event="rag.pipeline.start",
+                pipeline_provider="classic",
+                query=req.query,
+                mode=req.mode,
+                top_k=req.top_k,
+                candidate_k=req.candidate_k,
+                min_score=req.min_score,
+            ),
         )
 
-        state: RagState = {
-            "query": req.query,
-            "docs": [],
-            "context": None,
-            "answer": None,
-        }
-        
-        docs = await self.retrieve(req)
-        docs = await self.rerank_with_fallback(req.query, docs)
+        try:
+            state: RagState = {
+                "query": req.query,
+                "docs": [],
+                "context": None,
+                "answer": None,
+            }
+            
+            docs = await self.retrieve(req)
+            docs = await self.rerank_with_fallback(req.query, docs)
 
-        state["docs"] = docs
+            state["docs"] = docs
 
-        logger.info("RAG 召回完成: docs_count=%s", len(docs))
+            logger.info("RAG 召回完成: docs_count=%s", len(docs))
 
-        context = build_rag_context(req.query, docs)
-        state["context"] = context
+            context = build_rag_context(req.query, docs)
+            state["context"] = context
 
-        logger.info("RAG 上下文构造完成: context_docs_count=%s", len(context.docs))
+            logger.info("RAG 上下文构造完成: context_docs_count=%s", len(context.docs))
 
-        answer = await self.llm_client.generate(
-            query=state["query"],
-            context=context,
+            answer = await self.llm_client.generate(
+                query=state["query"],
+                context=context,
+            )
+            state["answer"] = answer
+
+            logger.info("RAG 回答生成完成: answer_length=%s", len(answer))
+        except Exception:
+            latency_ms = (perf_counter() - start_time) * 1000
+            logger.exception(
+                "rag_pipeline %s",
+                format_log_fields(
+                    event="rag.pipeline.failed",
+                    pipeline_provider="classic",
+                    query=req.query,
+                    mode=req.mode,
+                    top_k=req.top_k,
+                    candidate_k=req.candidate_k,
+                    min_score=req.min_score,
+                    latency_ms=round(latency_ms, 2),
+                ),
+            )
+            raise
+
+        latency_ms = (perf_counter() - start_time) * 1000
+        logger.info(
+            "rag_pipeline %s",
+            format_log_fields(
+                event="rag.pipeline.finish",
+                pipeline_provider="classic",
+                query=req.query,
+                mode=req.mode,
+                top_k=req.top_k,
+                candidate_k=req.candidate_k,
+                min_score=req.min_score,
+                latency_ms=round(latency_ms, 2),
+                source_count=len(docs),
+                answer_length=len(answer),
+            ),
         )
-        state["answer"] = answer
-
-        logger.info("RAG 回答生成完成: answer_length=%s", len(answer))
 
         return RagChatResponse(
             query=state["query"],

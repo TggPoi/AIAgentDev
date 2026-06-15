@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from time import perf_counter
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -8,7 +9,7 @@ from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
 from fast_app.services.rag_pipeline_service import RagPipeline
 
-from fast_app.core.logging import get_logger
+from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.core.request_context import get_request_id, get_trace_id
 
 import json
@@ -29,9 +30,56 @@ async def rag_chat_endpoint(
     req: RagChatRequest,
     pipeline: RagPipeline = Depends(get_rag_pipeline),
 ) -> RagChatResponse:
-    response = await pipeline.run(req)
+    start_time = perf_counter()
+    logger.info(
+        "rag_chat_request %s",
+        format_log_fields(
+            event="rag.chat.request.start",
+            query=req.query,
+            mode=req.mode,
+            top_k=req.top_k,
+            candidate_k=req.candidate_k,
+            min_score=req.min_score,
+        ),
+    )
+
+    try:
+        response = await pipeline.run(req)
+    except Exception:
+        latency_ms = (perf_counter() - start_time) * 1000
+        logger.exception(
+            "rag_chat_request %s",
+            format_log_fields(
+                event="rag.chat.request.failed",
+                query=req.query,
+                mode=req.mode,
+                top_k=req.top_k,
+                candidate_k=req.candidate_k,
+                min_score=req.min_score,
+                latency_ms=round(latency_ms, 2),
+            ),
+        )
+        raise
+
     response.request_id = get_request_id()
     response.trace_id = get_trace_id()
+
+    latency_ms = (perf_counter() - start_time) * 1000
+    logger.info(
+        "rag_chat_request %s",
+        format_log_fields(
+            event="rag.chat.request.finish",
+            query=req.query,
+            mode=req.mode,
+            top_k=req.top_k,
+            candidate_k=req.candidate_k,
+            min_score=req.min_score,
+            latency_ms=round(latency_ms, 2),
+            source_count=len(response.sources),
+            answer_length=len(response.answer),
+        ),
+    )
+
     return response
 
 

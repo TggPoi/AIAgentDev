@@ -1,3 +1,4 @@
+import json
 import logging
 
 from fast_app.core.config import Settings
@@ -23,9 +24,25 @@ def _add_request_context_filter(root_logger: logging.Logger) -> None:
         if not _has_request_context_filter(handler.filters):
             handler.addFilter(RequestContextFilter())
 
-# `setup_logging(settings)` 最合适的位置是应用启动时，也就是后续阶段 4-5 的 `lifespan`。
-# 但现在还没有学习 lifespan。
-# 所以本节先采用一个简单、安全的方式
+
+def format_log_fields(**fields: object) -> str:
+    parts: list[str] = []
+
+    for key, value in fields.items():
+        if value is None:
+            normalized = "-"
+        elif isinstance(value, str):
+            normalized = json.dumps(value, ensure_ascii=False)
+        else:
+            normalized = str(value)
+
+        normalized = normalized.replace("\n", "\\n").replace("\r", "\\r")
+        parts.append(f"{key}={normalized}")
+
+    return " ".join(parts)
+
+
+# `setup_logging(settings)` 最合适的位置是应用启动时
 def setup_logging(settings: Settings) -> None:
     log_level = settings.log_level.upper()
     # 影响整个 Python 程序的 logging 行为
