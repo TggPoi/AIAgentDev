@@ -270,6 +270,58 @@ reports/evaluation
 {dataset_name}-{YYYYMMDD-HHMMSS}.md
 ```
 
+## 日常修改流程
+
+阶段 11-10 增加阈值检查和日常回归流程。
+
+修改 RAG 主链路前：
+
+1. 使用真实离线评测脚本生成 baseline 报告。
+2. 记录 Markdown 报告路径。
+
+修改 RAG 主链路后：
+
+1. 使用同一份评测集、同一组参数再次运行脚本。
+2. 对比 Summary 中的 retrieval / generation 指标。
+3. 查看 Failed Generation Details。
+4. 如果阈值检查失败，先分析失败 case，再继续改代码。
+
+建议至少在修改这些内容后运行评测：
+
+- chunking
+- metadata
+- Milvus / ES 查询参数
+- RRF
+- rerank
+- Prompt
+- LLM model
+- Classic / LangGraph pipeline
+
+带阈值检查的命令示例：
+
+```powershell
+$env:PYTHONPATH="src"
+.\.venv\Scripts\python.exe scripts\run_real_offline_rag_eval.py `
+  --llm-provider qwen `
+  --embedding-provider mock `
+  --reranker-provider mock `
+  --pipeline-provider classic `
+  --output-dir reports\evaluation-real `
+  --min-retrieval-recall 0.2 `
+  --min-retrieval-mrr 0.1 `
+  --min-generation-pass-rate 0.2 `
+  --fail-on-threshold
+```
+
+阈值含义：
+
+```text
+--min-retrieval-recall：最低 mean_recall_at_k
+--min-retrieval-mrr：最低 mean_mrr
+--min-generation-pass-rate：最低 generation pass_rate
+--fail-on-threshold：任一阈值失败时返回退出码 1
+```
+
 ## 本地校验
 
 ```powershell

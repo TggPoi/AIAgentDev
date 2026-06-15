@@ -265,6 +265,7 @@ python -m fast_app.ingestion.cli reset-stores `
 - `reset-stores` 会删除或重建 ES index / Milvus collection 结构。
 - `ingest` 和 `reset-stores` 都必须显式传入 `--yes`。
 - 如果本地 ES 没有开启认证，但 `.env` 中存在 ES 用户名或密码占位符，执行 `ingest` / `reset-stores` 时添加 `--no-es-auth`。
+- 使用真实 Qwen embedding 时，`QwenEmbeddingClient` 会按每批最多 10 条文本分批调用 embedding 接口，避免 DashScope `input.contents` batch size 超限。
 
 
 ## Ingestion 回归验证

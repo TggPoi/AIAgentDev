@@ -57,6 +57,12 @@ def match_expected_source(
     例如同一个 doc 可能同时通过 chunk_id 和 section_keywords 命中。
     """
 
+    # 【配置注意点】
+    # 如果要测试严格的评测，使用chunk_id时，就不能配置 source_path
+    # 因为 source_path 的粒度比 chunk_id 粗很多。如果同一个 expected_source 里同时写：{"source_path": "learning-docs/phase-9/9-2-保留多阶段分数.md","chunk_ids": ["chunk_07365829a52ff264"]}
+    # 假设 ES / Milvus 检索返回了同一篇文件里的另一个 chunk，并且这个 chunk 不是我们真正期望，但是命中了source_path
+    # 当前 OR 逻辑会认为它命中了 这就会削弱真实 chunk 级评测
+    # 【没有命中正确 chunk 但命中了同一个文档文件】
     matched_by: list[str] = []
 
     # chunk_id 是最严格的命中方式。

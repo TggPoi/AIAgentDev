@@ -146,8 +146,8 @@ def check_source_citation(response: RagChatResponse) -> GenerationCheck:
     - 不能证明引用内容一定真的支持 answer。
     """
 
-    # 当前 Prompt 要求模型尽量引用文档 id。
-    # 这里检查 answer 文本中是否出现了 sources 里的 id。
+    # 当前给大模型提供的 Prompt 要求 “如果可以回答，请尽量引用相关文档 id，例如：[rag_hybrid_001]”。
+    # 这里检查 answer 文本中是否出现了 sources 里的 id。不能证明这个 source 的内容真的支撑了这句话，模型也可能会乱引用id
     cited_source_ids = [
         source.id
         for source in response.sources
@@ -185,6 +185,7 @@ def evaluate_generation_case(
     # 最终 passed = 所有检查都通过。
     checks: list[GenerationCheck] = []
 
+    # 线路1：
     if eval_case.case_type == "answerable":
         # answerable 表示知识库应该能回答。
         # 所以这里要求 answer 覆盖关键点，并且能回溯到 sources。
@@ -197,6 +198,8 @@ def evaluate_generation_case(
         checks.append(check_source_presence(response))
         checks.append(check_source_citation(response))
 
+
+    # 线路2：
     if eval_case.case_type == "no_answer":
         # no_answer 表示知识库不应该有答案。
         # 所以这里不检查 expected keywords，而是检查“是否拒答”和“是否避免编造具体事实”。
@@ -207,6 +210,7 @@ def evaluate_generation_case(
                 forbidden_keywords=eval_case.forbidden_answer_keywords,
             )
         )
+
 
     # 这条 case 的生成评测是否通过，由所有规则检查共同决定。
     # 只要其中一个 check 失败，整条 case 就失败。
@@ -238,6 +242,7 @@ def evaluate_generation_dataset(
     results: list[GenerationCaseResult] = []
 
     for eval_case in cases:
+        # 获取每条测试问题对应的Response
         response = responses_by_case_id.get(eval_case.id)
 
         if response is None:

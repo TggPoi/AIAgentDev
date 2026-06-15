@@ -15,8 +15,23 @@
       "expected_sources": [
         {
           "source_path": null,
-          "section_keywords": ["score", "rerank", "RRF"],
-          "chunk_ids": []
+          "section_keywords": [],
+          "chunk_ids": ["chunk_7a8cbf4ee850ad5b"]
+        },
+        {
+          "source_path": null,
+          "section_keywords": [],
+          "chunk_ids": ["chunk_33374553361fa03d"]
+        },
+        {
+          "source_path": null,
+          "section_keywords": [],
+          "chunk_ids": ["chunk_07365829a52ff264"]
+        },
+        {
+          "source_path": null,
+          "section_keywords": [],
+          "chunk_ids": ["chunk_c14ec615b040b5fb"]
         }
       ],
       "expected_answer_keywords": ["vector_score", "keyword_score", "rrf_score", "rerank_score"],
@@ -35,8 +50,23 @@
       "expected_sources": [
         {
           "source_path": null,
-          "section_keywords": ["metadata", "sources", "section_path"],
-          "chunk_ids": []
+          "section_keywords": [],
+          "chunk_ids": ["chunk_96516fd764846b5d"]
+        },
+        {
+          "source_path": null,
+          "section_keywords": [],
+          "chunk_ids": ["chunk_68fac00a95b9260e"]
+        },
+        {
+          "source_path": null,
+          "section_keywords": [],
+          "chunk_ids": ["chunk_4e44373b8c9f478f"]
+        },
+        {
+          "source_path": null,
+          "section_keywords": [],
+          "chunk_ids": ["chunk_fc208ad39ae255f3"]
         }
       ],
       "expected_answer_keywords": ["metadata", "sources", "title", "section_path"],
@@ -55,8 +85,18 @@
       "expected_sources": [
         {
           "source_path": null,
-          "section_keywords": ["lifespan", "client"],
-          "chunk_ids": []
+          "section_keywords": [],
+          "chunk_ids": ["chunk_6fbad71a519bd92b"]
+        },
+        {
+          "source_path": null,
+          "section_keywords": [],
+          "chunk_ids": ["chunk_ca134129acab63df"]
+        },
+        {
+          "source_path": null,
+          "section_keywords": [],
+          "chunk_ids": ["chunk_87629f29c88d5d5e"]
         }
       ],
       "expected_answer_keywords": ["lifespan", "client", "启动", "关闭"],
@@ -75,8 +115,23 @@
       "expected_sources": [
         {
           "source_path": null,
-          "section_keywords": ["stream", "token", "sources"],
-          "chunk_ids": []
+          "section_keywords": [],
+          "chunk_ids": ["chunk_116a2e694bb524ef"]
+        },
+        {
+          "source_path": null,
+          "section_keywords": [],
+          "chunk_ids": ["chunk_83c5cc5e2bedbfca"]
+        },
+        {
+          "source_path": null,
+          "section_keywords": [],
+          "chunk_ids": ["chunk_8321005c56ef7cf1"]
+        },
+        {
+          "source_path": null,
+          "section_keywords": [],
+          "chunk_ids": ["chunk_3ecb89678da0e95d"]
         }
       ],
       "expected_answer_keywords": ["token", "sources", "done", "error"],
@@ -95,8 +150,18 @@
       "expected_sources": [
         {
           "source_path": null,
-          "section_keywords": ["timeout", "retry", "fallback"],
-          "chunk_ids": []
+          "section_keywords": [],
+          "chunk_ids": ["chunk_01c879edf1f5efed"]
+        },
+        {
+          "source_path": null,
+          "section_keywords": [],
+          "chunk_ids": ["chunk_edf6599912adbf1a"]
+        },
+        {
+          "source_path": null,
+          "section_keywords": [],
+          "chunk_ids": ["chunk_83c032f57dc47724"]
         }
       ],
       "expected_answer_keywords": ["timeout", "retry", "fallback", "外部服务"],

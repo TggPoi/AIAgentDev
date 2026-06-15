@@ -28,6 +28,11 @@ from fast_app.components.retrievers.milvus_vector_retriever import (
 )
 from fast_app.core.config import Settings, get_settings
 from fast_app.evaluation.eval_dataset_loader import load_eval_dataset
+from fast_app.evaluation.eval_thresholds import (
+    EvalThresholdResult,
+    EvalThresholds,
+    check_offline_eval_thresholds,
+)
 from fast_app.evaluation.pipeline_eval_runner import run_offline_rag_eval
 from fast_app.evaluation.report_serialization import to_jsonable
 from fast_app.evaluation.report_writer import write_offline_eval_report
@@ -85,6 +90,29 @@ def parse_args() -> argparse.Namespace:
         "--print-json-summary",
         action="store_true",
         help="额外在终端打印一份 JSON 摘要。",
+    )
+    parser.add_argument(
+        "--min-retrieval-recall",
+        type=float,
+        default=0.0,
+        help="最低 retrieval mean_recall_at_k，通过阈值检查使用。",
+    )
+    parser.add_argument(
+        "--min-retrieval-mrr",
+        type=float,
+        default=0.0,
+        help="最低 retrieval mean_mrr，通过阈值检查使用。",
+    )
+    parser.add_argument(
+        "--min-generation-pass-rate",
+        type=float,
+        default=0.0,
+        help="最低 generation pass_rate，通过阈值检查使用。",
+    )
+    parser.add_argument(
+        "--fail-on-threshold",
+        action="store_true",
+        help="如果任一阈值检查失败，脚本返回退出码 1。",
     )
 
     return parser.parse_args()
@@ -227,6 +255,16 @@ def print_summary(report_paths, report) -> None:
     print(f"markdown_report: {report_paths.markdown_path}")
 
 
+def print_threshold_result(threshold_result: EvalThresholdResult) -> None:
+    print("threshold checks:")
+    for check in threshold_result.checks:
+        status = "PASS" if check.passed else "FAIL"
+        print(
+            f"  {check.name}: {status} "
+            f"actual={check.actual:.4f}, expected_min={check.expected_min:.4f}"
+        )
+
+
 async def main_async() -> int:
     args = parse_args()
     settings = load_settings()
@@ -289,6 +327,16 @@ async def main_async() -> int:
 
         print_summary(report_paths=report_paths, report=report)
 
+        threshold_result = check_offline_eval_thresholds(
+            report=report,
+            thresholds=EvalThresholds(
+                min_retrieval_recall_at_k=args.min_retrieval_recall,
+                min_retrieval_mrr=args.min_retrieval_mrr,
+                min_generation_pass_rate=args.min_generation_pass_rate,
+            ),
+        )
+        print_threshold_result(threshold_result)
+
         if args.print_json_summary:
             summary = {
                 "dataset": report.dataset_name,
@@ -305,8 +353,12 @@ async def main_async() -> int:
                     "evaluated_case_count": report.generation_report.evaluated_case_count,
                 },
                 "paths": asdict(report_paths),
+                "thresholds": asdict(threshold_result),
             }
             print(json.dumps(to_jsonable(summary), ensure_ascii=False, indent=2))
+
+        if args.fail_on_threshold and not threshold_result.passed:
+            return 1
 
         return 0
 
