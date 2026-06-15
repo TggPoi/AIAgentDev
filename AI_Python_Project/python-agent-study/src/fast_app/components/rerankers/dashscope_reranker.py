@@ -99,6 +99,7 @@ class DashScopeReranker(BaseReranker):
             logger.exception("DashScope Rerank 调用失败")
             raise ExternalServiceError(f"DashScope Rerank 调用失败: {exc}") from exc
 
+    # 将rerank重新排序后的文档顺序 转化为内部 业务检索文档对象
     def _convert_response_to_docs(
         self,
         data: dict[str, Any],
@@ -123,7 +124,7 @@ class DashScopeReranker(BaseReranker):
             original_doc = docs[int(index)]
 
             rerank_score = float(relevance_score)
-
+            # 按照rerank模型 排序后的文档顺序插入
             reranked_docs.append(
                 replace(
                     original_doc,

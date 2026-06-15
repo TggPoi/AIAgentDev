@@ -144,6 +144,51 @@ RagEvalCase
 - 当前 ES 查询主要 match `content` 字段。
 - 当前阶段只评测 `answerable` 样例。
 
+## Hybrid 对比实验
+
+阶段 11-6 增加 vector / keyword / RRF / rerank 对比。
+
+对比对象：
+
+```text
+vector
+```
+
+Milvus 单路向量召回。
+
+```text
+keyword
+```
+
+ElasticSearch 单路关键词召回。
+
+```text
+rrf
+```
+
+vector + keyword 的 RRF 融合结果。
+
+```text
+rerank
+```
+
+RRF 结果再经过 reranker。
+
+重点观察：
+
+```text
+mean_recall_at_k
+mean_mrr
+passed_case_count
+failed_case_count
+```
+
+注意：
+
+- RRF 主要观察两路召回是否互补。
+- rerank 主要观察正确结果是否被排到更前。
+- rerank 不能找回没有进入候选集的文档。
+
 ## 本地校验
 
 ```powershell
