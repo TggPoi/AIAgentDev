@@ -1,7 +1,7 @@
-from collections.abc import Mapping
+﻿from collections.abc import Mapping
 
-from fast_app.evaluation.eval_case_models import RagEvalCase
-from fast_app.evaluation.generation_eval_models import (
+from fast_app.evaluation.cases.models import RagEvalCase
+from fast_app.evaluation.generation.models import (
     GenerationCaseResult,
     GenerationCheck,
     GenerationDatasetReport,
@@ -281,3 +281,4 @@ def evaluate_generation_dataset(
         pass_rate=pass_rate,
         results=results,
     )
+

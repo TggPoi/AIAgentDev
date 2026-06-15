@@ -1,13 +1,13 @@
-from typing import Protocol
+﻿from typing import Protocol
 
 from fast_app.domain.rag_models import RetrievedDoc, ScoreBreakdown
-from fast_app.evaluation.eval_case_models import RagEvalDataset, RagEvalCase
-from fast_app.evaluation.generation_metrics import evaluate_generation_dataset
-from fast_app.evaluation.offline_eval_models import (
+from fast_app.evaluation.cases.models import RagEvalDataset, RagEvalCase
+from fast_app.evaluation.generation.metrics import evaluate_generation_dataset
+from fast_app.evaluation.pipeline.models import (
     OfflineRagEvalCaseOutput,
     OfflineRagEvalReport,
 )
-from fast_app.evaluation.retrieval_metrics import evaluate_retrieval_dataset
+from fast_app.evaluation.retrieval.metrics import evaluate_retrieval_dataset
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse, RagSource
 
 
@@ -140,3 +140,4 @@ async def run_offline_rag_eval(
             for case_id, response in responses_by_case_id.items()
         ],
     )
+

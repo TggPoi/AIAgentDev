@@ -1,26 +1,44 @@
-# RAG Evaluation
+﻿# RAG Evaluation
 
 本目录用于保存 RAG 评测相关模型、评测集和后续评测逻辑。
 
-## 当前阶段
-
-阶段 11-2 只定义评测集和 loader。
-
-当前不会执行真实 RAG 请求，也不会计算 Recall@K / MRR。
-
-## 文件说明
+## 目录说明
 
 ```text
-eval_case_models.py
+cases/
 ```
 
-定义评测集的数据结构。
+保存评测集数据结构和 dataset loader。
 
 ```text
-eval_dataset_loader.py
+retrieval/
 ```
 
-读取 JSON 评测集，并用 Pydantic 校验字段。
+保存检索评测结果模型、Recall@K / MRR 指标、Milvus 单路评测、ElasticSearch 单路评测、Hybrid / RRF / rerank 对比评测。
+
+```text
+generation/
+```
+
+保存规则型生成评测结果模型和生成指标计算。
+
+```text
+pipeline/
+```
+
+保存离线 RAG pipeline runner 和完整评测报告模型。
+
+```text
+reports/
+```
+
+保存 JSON / Markdown 报告序列化、渲染和写入逻辑。
+
+```text
+thresholds/
+```
+
+保存评测阈值检查逻辑，用于日常回归。
 
 ```text
 datasets/stage11_rag_eval_cases.json
@@ -326,12 +344,13 @@ $env:PYTHONPATH="src"
 
 ```powershell
 $env:PYTHONPATH="src"
-.\.venv\Scripts\python.exe -c "from fast_app.evaluation.eval_dataset_loader import load_eval_dataset; dataset = load_eval_dataset('src/fast_app/evaluation/datasets/stage11_rag_eval_cases.json'); print(dataset.name, len(dataset.cases))"
+.\.venv\Scripts\python.exe -c "from fast_app.evaluation.cases.loader import load_eval_dataset; dataset = load_eval_dataset('src/fast_app/evaluation/datasets/stage11_rag_eval_cases.json'); print(dataset.name, len(dataset.cases))"
 ```
 
 检索指标纯函数校验：
 
 ```powershell
 $env:PYTHONPATH="src"
-.\.venv\Scripts\python.exe -c "from fast_app.evaluation.eval_dataset_loader import load_eval_dataset; from fast_app.evaluation.retrieval_metrics import evaluate_retrieval_case; from fast_app.domain.rag_models import RetrievedDoc; dataset = load_eval_dataset('src/fast_app/evaluation/datasets/stage11_rag_eval_cases.json'); case = dataset.cases[0]; docs = [RetrievedDoc(id='demo', content='这里包含 vector_score keyword_score rrf_score rerank_score 和 RRF rerank', score=0.9, source='mock', title='score demo', metadata={'section_path':['RRF rerank score'], 'source_path':'demo.md'})]; result = evaluate_retrieval_case(case, docs); print(result.case_id, result.recall_at_k, result.reciprocal_rank, result.passed)"
+.\.venv\Scripts\python.exe -c "from fast_app.evaluation.cases.loader import load_eval_dataset; from fast_app.evaluation.retrieval.metrics import evaluate_retrieval_case; from fast_app.domain.rag_models import RetrievedDoc; dataset = load_eval_dataset('src/fast_app/evaluation/datasets/stage11_rag_eval_cases.json'); case = dataset.cases[0]; docs = [RetrievedDoc(id='demo', content='这里包含 vector_score keyword_score rrf_score rerank_score 和 RRF rerank', score=0.9, source='mock', title='score demo', metadata={'section_path':['RRF rerank score'], 'source_path':'demo.md'})]; result = evaluate_retrieval_case(case, docs); print(result.case_id, result.recall_at_k, result.reciprocal_rank, result.passed)"
 ```
+

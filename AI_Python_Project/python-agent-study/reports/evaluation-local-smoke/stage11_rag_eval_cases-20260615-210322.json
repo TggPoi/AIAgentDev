@@ -1,0 +1,1564 @@
+{
+  "dataset_name": "stage11_rag_eval_cases",
+  "case_count": 6,
+  "response_count": 6,
+  "retrieval_report": {
+    "case_count": 6,
+    "evaluated_case_count": 5,
+    "skipped_case_count": 1,
+    "passed_case_count": 1,
+    "failed_case_count": 4,
+    "mean_recall_at_k": 0.06666666666666667,
+    "mean_mrr": 0.1,
+    "results": [
+      {
+        "case_id": "phase9_hybrid_retrieval_basic",
+        "question": "阶段 9 为什么要保留 vector_score、keyword_score、rrf_score 和 rerank_score？",
+        "case_type": "answerable",
+        "retrieved_count": 5,
+        "expected_source_count": 4,
+        "hit_count": 0,
+        "recall_at_k": 0.0,
+        "reciprocal_rank": 0.0,
+        "first_hit_rank": null,
+        "passed": false,
+        "hits": []
+      },
+      {
+        "case_id": "phase9_metadata_sources",
+        "question": "阶段 9 为什么要把 metadata 写入 ES 和 Milvus，并在 sources 中展示 title 和 section_path？",
+        "case_type": "answerable",
+        "retrieved_count": 5,
+        "expected_source_count": 4,
+        "hit_count": 0,
+        "recall_at_k": 0.0,
+        "reciprocal_rank": 0.0,
+        "first_hit_rank": null,
+        "passed": false,
+        "hits": []
+      },
+      {
+        "case_id": "phase9_lifespan_clients",
+        "question": "FastAPI lifespan 为什么适合管理 Milvus、ES 和 httpx client？",
+        "case_type": "answerable",
+        "retrieved_count": 5,
+        "expected_source_count": 3,
+        "hit_count": 1,
+        "recall_at_k": 0.3333333333333333,
+        "reciprocal_rank": 0.5,
+        "first_hit_rank": 2,
+        "passed": true,
+        "hits": [
+          {
+            "doc_id": "chunk_6fbad71a519bd92b",
+            "rank": 2,
+            "matched_by": [
+              "chunk_id"
+            ],
+            "score": 0.030798389007344232,
+            "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+            "section_path": [
+              "2. uvicorn 关闭 FastAPI 应用时执行",
+              "2. 为什么 lifespan 适合管理外部 client"
+            ]
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_stream_events",
+        "question": "阶段 9 的 stream event 协议为什么要区分 token、sources、done 和 error？",
+        "case_type": "answerable",
+        "retrieved_count": 5,
+        "expected_source_count": 4,
+        "hit_count": 0,
+        "recall_at_k": 0.0,
+        "reciprocal_rank": 0.0,
+        "first_hit_rank": null,
+        "passed": false,
+        "hits": []
+      },
+      {
+        "case_id": "phase9_fallback_policy",
+        "question": "RAG 链路中为什么需要 timeout、retry 和 fallback？",
+        "case_type": "answerable",
+        "retrieved_count": 5,
+        "expected_source_count": 3,
+        "hit_count": 0,
+        "recall_at_k": 0.0,
+        "reciprocal_rank": 0.0,
+        "first_hit_rank": null,
+        "passed": false,
+        "hits": []
+      }
+    ]
+  },
+  "generation_report": {
+    "case_count": 6,
+    "evaluated_case_count": 6,
+    "passed_case_count": 4,
+    "failed_case_count": 2,
+    "pass_rate": 0.6666666666666666,
+    "results": [
+      {
+        "case_id": "phase9_hybrid_retrieval_basic",
+        "question": "阶段 9 为什么要保留 vector_score、keyword_score、rrf_score 和 rerank_score？",
+        "case_type": "answerable",
+        "passed": true,
+        "answer_length": 2076,
+        "source_count": 5,
+        "checks": [
+          {
+            "name": "expected_keywords",
+            "passed": true,
+            "message": "回答覆盖了预期关键词",
+            "detail": {
+              "expected_keywords": [
+                "vector_score",
+                "keyword_score",
+                "rrf_score",
+                "rerank_score"
+              ],
+              "missing_keywords": []
+            }
+          },
+          {
+            "name": "source_presence",
+            "passed": true,
+            "message": "回答包含 sources",
+            "detail": {
+              "source_count": 5
+            }
+          },
+          {
+            "name": "source_citation",
+            "passed": true,
+            "message": "回答引用了 source id",
+            "detail": {
+              "source_ids": [
+                "chunk_d78fa2af247042db",
+                "chunk_432ca43648f041f8",
+                "chunk_071843e4720be7b2",
+                "chunk_3d67735cce7bc193",
+                "chunk_b09d7d785ef80d8a"
+              ],
+              "cited_source_ids": [
+                "chunk_d78fa2af247042db",
+                "chunk_432ca43648f041f8",
+                "chunk_071843e4720be7b2",
+                "chunk_3d67735cce7bc193",
+                "chunk_b09d7d785ef80d8a"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_metadata_sources",
+        "question": "阶段 9 为什么要把 metadata 写入 ES 和 Milvus，并在 sources 中展示 title 和 section_path？",
+        "case_type": "answerable",
+        "passed": true,
+        "answer_length": 1636,
+        "source_count": 5,
+        "checks": [
+          {
+            "name": "expected_keywords",
+            "passed": true,
+            "message": "回答覆盖了预期关键词",
+            "detail": {
+              "expected_keywords": [
+                "metadata",
+                "sources",
+                "title",
+                "section_path"
+              ],
+              "missing_keywords": []
+            }
+          },
+          {
+            "name": "source_presence",
+            "passed": true,
+            "message": "回答包含 sources",
+            "detail": {
+              "source_count": 5
+            }
+          },
+          {
+            "name": "source_citation",
+            "passed": true,
+            "message": "回答引用了 source id",
+            "detail": {
+              "source_ids": [
+                "chunk_d78fa2af247042db",
+                "chunk_187c2c92f1fa0cf8",
+                "chunk_071843e4720be7b2",
+                "chunk_432ca43648f041f8",
+                "chunk_b09d7d785ef80d8a"
+              ],
+              "cited_source_ids": [
+                "chunk_d78fa2af247042db",
+                "chunk_187c2c92f1fa0cf8",
+                "chunk_071843e4720be7b2",
+                "chunk_432ca43648f041f8",
+                "chunk_b09d7d785ef80d8a"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_lifespan_clients",
+        "question": "FastAPI lifespan 为什么适合管理 Milvus、ES 和 httpx client？",
+        "case_type": "answerable",
+        "passed": true,
+        "answer_length": 1588,
+        "source_count": 5,
+        "checks": [
+          {
+            "name": "expected_keywords",
+            "passed": true,
+            "message": "回答覆盖了预期关键词",
+            "detail": {
+              "expected_keywords": [
+                "lifespan",
+                "client",
+                "启动",
+                "关闭"
+              ],
+              "missing_keywords": []
+            }
+          },
+          {
+            "name": "source_presence",
+            "passed": true,
+            "message": "回答包含 sources",
+            "detail": {
+              "source_count": 5
+            }
+          },
+          {
+            "name": "source_citation",
+            "passed": true,
+            "message": "回答引用了 source id",
+            "detail": {
+              "source_ids": [
+                "chunk_b4ec4e20b59392f2",
+                "chunk_6fbad71a519bd92b",
+                "chunk_d78fa2af247042db",
+                "chunk_98d4820c74801e18",
+                "chunk_071843e4720be7b2"
+              ],
+              "cited_source_ids": [
+                "chunk_b4ec4e20b59392f2",
+                "chunk_6fbad71a519bd92b",
+                "chunk_d78fa2af247042db",
+                "chunk_98d4820c74801e18",
+                "chunk_071843e4720be7b2"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_stream_events",
+        "question": "阶段 9 的 stream event 协议为什么要区分 token、sources、done 和 error？",
+        "case_type": "answerable",
+        "passed": true,
+        "answer_length": 2304,
+        "source_count": 5,
+        "checks": [
+          {
+            "name": "expected_keywords",
+            "passed": true,
+            "message": "回答覆盖了预期关键词",
+            "detail": {
+              "expected_keywords": [
+                "token",
+                "sources",
+                "done",
+                "error"
+              ],
+              "missing_keywords": []
+            }
+          },
+          {
+            "name": "source_presence",
+            "passed": true,
+            "message": "回答包含 sources",
+            "detail": {
+              "source_count": 5
+            }
+          },
+          {
+            "name": "source_citation",
+            "passed": true,
+            "message": "回答引用了 source id",
+            "detail": {
+              "source_ids": [
+                "chunk_d78fa2af247042db",
+                "chunk_a1fa4d2e05b4a0ef",
+                "chunk_071843e4720be7b2",
+                "chunk_4d6adaf242dcbd83",
+                "chunk_b09d7d785ef80d8a"
+              ],
+              "cited_source_ids": [
+                "chunk_d78fa2af247042db",
+                "chunk_a1fa4d2e05b4a0ef",
+                "chunk_071843e4720be7b2",
+                "chunk_4d6adaf242dcbd83",
+                "chunk_b09d7d785ef80d8a"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_fallback_policy",
+        "question": "RAG 链路中为什么需要 timeout、retry 和 fallback？",
+        "case_type": "answerable",
+        "passed": false,
+        "answer_length": 1975,
+        "source_count": 5,
+        "checks": [
+          {
+            "name": "expected_keywords",
+            "passed": false,
+            "message": "回答缺少预期关键词",
+            "detail": {
+              "expected_keywords": [
+                "timeout",
+                "retry",
+                "fallback",
+                "外部服务"
+              ],
+              "missing_keywords": [
+                "外部服务"
+              ]
+            }
+          },
+          {
+            "name": "source_presence",
+            "passed": true,
+            "message": "回答包含 sources",
+            "detail": {
+              "source_count": 5
+            }
+          },
+          {
+            "name": "source_citation",
+            "passed": true,
+            "message": "回答引用了 source id",
+            "detail": {
+              "source_ids": [
+                "chunk_d78fa2af247042db",
+                "chunk_c62f6bc03854326e",
+                "chunk_b4ec4e20b59392f2",
+                "chunk_e02428a26f496a05",
+                "chunk_b09d7d785ef80d8a"
+              ],
+              "cited_source_ids": [
+                "chunk_d78fa2af247042db",
+                "chunk_c62f6bc03854326e",
+                "chunk_b4ec4e20b59392f2",
+                "chunk_e02428a26f496a05",
+                "chunk_b09d7d785ef80d8a"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "case_id": "no_answer_weather",
+        "question": "明天北京天气怎么样？",
+        "case_type": "no_answer",
+        "passed": false,
+        "answer_length": 1570,
+        "source_count": 5,
+        "checks": [
+          {
+            "name": "no_answer_refusal",
+            "passed": false,
+            "message": "无答案问题没有明确拒答",
+            "detail": {
+              "refusal_markers": [
+                "当前知识库中没有足够信息",
+                "没有足够信息",
+                "无法根据检索上下文"
+              ],
+              "matched_markers": []
+            }
+          },
+          {
+            "name": "forbidden_keywords",
+            "passed": true,
+            "message": "回答未出现禁止关键词",
+            "detail": {
+              "forbidden_keywords": [
+                "晴天",
+                "下雨",
+                "温度",
+                "摄氏度"
+              ],
+              "found_keywords": []
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "case_id": "phase9_hybrid_retrieval_basic",
+      "response": {
+        "query": "阶段 9 为什么要保留 vector_score、keyword_score、rrf_score 和 rerank_score？",
+        "answer": "根据检索到的上下文，回答问题：阶段 9 为什么要保留 vector_score、keyword_score、rrf_score 和 rerank_score？\n核心结论：混合检索会同时利用向量检索和关键词检索，再通过合并、去重、排序等步骤得到更可靠的上下文。\n\n参考上下文：\n【检索上下文】\n\n[文档 1]\nid: chunk_d78fa2af247042db\nsource: milvus\nscore: 0.016393\ncontent:\nES client 和 httpx client 都有明确关闭动作：\n\n```text\nawait AsyncElasticsearch.close()\nawait httpx.AsyncClient.aclose()\n```\n\nMilvus client 也有同步关闭动作：\n\n```text\nMilvusClient.close()\n```\n\n如果这些 client 分散在不同组件内部创建，应用关闭时很难统一执行关闭逻辑。\n\n[文档 2]\nid: chunk_432ca43648f041f8\nsource: elasticsearch\nscore: 0.016393\ncontent:\n阶段 9-1 之后，建议进入：\n\n```text\n阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score\n```\n\n9-2 的重点不是再讨论模型要不要扩展，而是把阶段 9-1 设计出来的字段真正接到各个环节：\n\n```text\nMilvus Retriever 写 vector_score\nElasticSearch Retriever 写 keyword_score\nRRF 写 rrf_score\nDashScope Reranker 写 rerank_score\n测试确保每个分数不会互相覆盖\n```\n\n然后再进入：\n\n```text\n阶段 9-3：记录 retrieval_sources 和多来源命中信息\n阶段 9-4：metadata 写入 ES / Milvus，并在 sources 中展示 title / section_path\n```\n\n---\n\n[文档 3]\nid: chunk_071843e4720be7b2\nsource: milvus\nscore: 0.016129\ncontent:\ncore=0.91,\n    source=\"milvus\",\n)\n```\n\n因为新增字段都有默认值。\n\n[文档 4]\nid: chunk_3d67735cce7bc193\nsource: elasticsearch\nscore: 0.016129\ncontent:\n阶段 9-1 已经完成了数据模型地基：\n\n```text\nRetrievedDoc 新增 scores\nScoreBreakdown 可以保存 vector_score / keyword_score / rrf_score / rerank_score\nMilvus Retriever 写入 vector_score\nElasticSearch Retriever 写入 keyword_score\nRRF 写入 rrf_score\nDashScope Reranker 写入 rerank_score\n```\n\n阶段 9-2 要解决的问题是：\n\n```text\n这些分数虽然已经写进内部模型，但还没有形成清晰、可验证、可调试的工程链路。\n```\n\n换句话说，9-1 解决的是：\n\n```text\n模型能不能装下这些分数。\n```\n\n9-2 要解决的是：\n\n```text\n这些分数是否真的能在 RAG 链路中一路保留下来，并且能被 API / 测试 / 日志清楚验证。\n```\n\n当前如果只看 `/rag/chat` 的 `sources`，仍然只能看到：\n\n```text\nid\nsource\nscore\ncontent_preview\n```\n\n其中 `score` 仍然是“当前最终展示分数”。如果启用了 rerank，它通常就是 `rerank_score`。\n\n但你还看不到：\n\n```text\nvector_score\nkeyword_score\nrrf_score\nrerank_score\n```\n\n所以阶段 9-2 的目标是：\n\n```text\n让非流式 sources 可以展示 score breakdown。\n让测试脚本可以验证 score breakdown。\n让内部链路继续保持低侵入。\n```\n\n---\n\n[文档 5]\nid: chunk_b09d7d785ef80d8a\nsource: milvus\nscore: 0.015873\ncontent:\n```\n\n当前 9-6 要做的事情，就是把外部 client 的创建放到 `yield` 之前，把外部 client 的关闭放到 `yield` 之后。\n\n---",
+        "sources": [
+          {
+            "id": "chunk_d78fa2af247042db",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "4.2 关闭逻辑不集中",
+            "section_path": [
+              "阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client",
+              "4. 当前系统存在什么局限",
+              "4.2 关闭逻辑不集中"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_d78fa2af247042db",
+              "title": "4.2 关闭逻辑不集中",
+              "section_path": [
+                "阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client",
+                "4. 当前系统存在什么局限",
+                "4.2 关闭逻辑不集中"
+              ],
+              "heading_level": 3,
+              "section_index": 12,
+              "chunk_index": 9
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": 0.10551363974809647,
+              "keyword_score": null,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "ES client 和 httpx client 都有明确关闭动作： ```text await AsyncElasticsearch.close() await httpx.AsyncClient.aclose() ``` Milvus..."
+          },
+          {
+            "id": "chunk_432ca43648f041f8",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "14. 下一阶段进入什么",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "14. 下一阶段进入什么"
+            ],
+            "metadata": {
+              "doc_id": "doc_75bbb336b6aeab47",
+              "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+              "document_type": "markdown",
+              "file_name": "9-1-数据模型重构.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_432ca43648f041f8",
+              "title": "14. 下一阶段进入什么",
+              "section_path": [
+                "阶段 9-1：数据模型重构",
+                "14. 下一阶段进入什么"
+              ],
+              "heading_level": 2,
+              "section_index": 64,
+              "chunk_index": 68
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 21.314524,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-1 之后，建议进入： ```text 阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score ``` 9-2 的重点不是再讨论模型要不要扩展，而是把阶段..."
+          },
+          {
+            "id": "chunk_071843e4720be7b2",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "7.1 修改 `src/fast_app/domain/rag_models.py`",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "7. 每个文件具体补什么代码",
+              "7.1 修改 `src/fast_app/domain/rag_models.py`"
+            ],
+            "metadata": {
+              "doc_id": "doc_75bbb336b6aeab47",
+              "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+              "document_type": "markdown",
+              "file_name": "9-1-数据模型重构.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_071843e4720be7b2",
+              "title": "7.1 修改 `src/fast_app/domain/rag_models.py`",
+              "section_path": [
+                "阶段 9-1：数据模型重构",
+                "7. 每个文件具体补什么代码",
+                "7.1 修改 `src/fast_app/domain/rag_models.py`"
+              ],
+              "heading_level": 3,
+              "section_index": 26,
+              "chunk_index": 30
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": 0.09193071722984314,
+              "keyword_score": null,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "core=0.91, source=\"milvus\", ) ``` 因为新增字段都有默认值。"
+          },
+          {
+            "id": "chunk_3d67735cce7bc193",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "1. 本阶段要解决什么问题",
+            "section_path": [
+              "阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score",
+              "1. 本阶段要解决什么问题"
+            ],
+            "metadata": {
+              "doc_id": "doc_82b478ada24d292c",
+              "source_path": "learning-docs/phase-9/9-2-保留多阶段分数.md",
+              "document_type": "markdown",
+              "file_name": "9-2-保留多阶段分数.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_3d67735cce7bc193",
+              "title": "1. 本阶段要解决什么问题",
+              "section_path": [
+                "阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score",
+                "1. 本阶段要解决什么问题"
+              ],
+              "heading_level": 2,
+              "section_index": 2,
+              "chunk_index": 1
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 20.04627,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-1 已经完成了数据模型地基： ```text RetrievedDoc 新增 scores ScoreBreakdown 可以保存 vector_score / keyword_score / rrf_score / rerank..."
+          },
+          {
+            "id": "chunk_b09d7d785ef80d8a",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "2. uvicorn 关闭 FastAPI 应用时执行",
+            "section_path": [
+              "2. uvicorn 关闭 FastAPI 应用时执行"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_b09d7d785ef80d8a",
+              "title": "2. uvicorn 关闭 FastAPI 应用时执行",
+              "section_path": [
+                "2. uvicorn 关闭 FastAPI 应用时执行"
+              ],
+              "heading_level": 1,
+              "section_index": 18,
+              "chunk_index": 14
+            },
+            "score": 0.015873015873015872,
+            "scores": {
+              "vector_score": 0.081603042781353,
+              "keyword_score": null,
+              "rrf_score": 0.015873015873015872,
+              "rerank_score": null
+            },
+            "content_preview": "``` 当前 9-6 要做的事情，就是把外部 client 的创建放到 `yield` 之前，把外部 client 的关闭放到 `yield` 之后。 ---"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "phase9_metadata_sources",
+      "response": {
+        "query": "阶段 9 为什么要把 metadata 写入 ES 和 Milvus，并在 sources 中展示 title 和 section_path？",
+        "answer": "根据检索到的上下文，回答问题：阶段 9 为什么要把 metadata 写入 ES 和 Milvus，并在 sources 中展示 title 和 section_path？\n核心结论：混合检索会同时利用向量检索和关键词检索，再通过合并、去重、排序等步骤得到更可靠的上下文。\n\n参考上下文：\n【检索上下文】\n\n[文档 1]\nid: chunk_d78fa2af247042db\nsource: milvus\nscore: 0.016393\ncontent:\nES client 和 httpx client 都有明确关闭动作：\n\n```text\nawait AsyncElasticsearch.close()\nawait httpx.AsyncClient.aclose()\n```\n\nMilvus client 也有同步关闭动作：\n\n```text\nMilvusClient.close()\n```\n\n如果这些 client 分散在不同组件内部创建，应用关闭时很难统一执行关闭逻辑。\n\n[文档 2]\nid: chunk_187c2c92f1fa0cf8\nsource: elasticsearch\nscore: 0.016393\ncontent:\n阶段 9-3 后，建议进入：\n\n```text\n阶段 9-4：metadata 写入 ES / Milvus，并在 sources 中展示 title / section_path\n```\n\n9-4 要解决的问题是：\n\n```text\nKnowledgeChunk.metadata 如何完整写入 Milvus / ES？\nMilvus / ES 检索结果如何把 title / section_path / metadata 带回 RetrievedDoc？\nRagSource 如何展示 title / section_path？\n```\n\n阶段 9-3 只解决：\n\n```text\n这条 chunk 被哪些召回源命中过。\n```\n\n---\n\n[文档 3]\nid: chunk_071843e4720be7b2\nsource: milvus\nscore: 0.016129\ncontent:\ncore=0.91,\n    source=\"milvus\",\n)\n```\n\n因为新增字段都有默认值。\n\n[文档 4]\nid: chunk_432ca43648f041f8\nsource: elasticsearch\nscore: 0.016129\ncontent:\n阶段 9-1 之后，建议进入：\n\n```text\n阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score\n```\n\n9-2 的重点不是再讨论模型要不要扩展，而是把阶段 9-1 设计出来的字段真正接到各个环节：\n\n```text\nMilvus Retriever 写 vector_score\nElasticSearch Retriever 写 keyword_score\nRRF 写 rrf_score\nDashScope Reranker 写 rerank_score\n测试确保每个分数不会互相覆盖\n```\n\n然后再进入：\n\n```text\n阶段 9-3：记录 retrieval_sources 和多来源命中信息\n阶段 9-4：metadata 写入 ES / Milvus，并在 sources 中展示 title / section_path\n```\n\n---\n\n[文档 5]\nid: chunk_b09d7d785ef80d8a\nsource: milvus\nscore: 0.015873\ncontent:\n```\n\n当前 9-6 要做的事情，就是把外部 client 的创建放到 `yield` 之前，把外部 client 的关闭放到 `yield` 之后。\n\n---",
+        "sources": [
+          {
+            "id": "chunk_d78fa2af247042db",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "4.2 关闭逻辑不集中",
+            "section_path": [
+              "阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client",
+              "4. 当前系统存在什么局限",
+              "4.2 关闭逻辑不集中"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_d78fa2af247042db",
+              "title": "4.2 关闭逻辑不集中",
+              "section_path": [
+                "阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client",
+                "4. 当前系统存在什么局限",
+                "4.2 关闭逻辑不集中"
+              ],
+              "heading_level": 3,
+              "section_index": 12,
+              "chunk_index": 9
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": 0.09410683810710907,
+              "keyword_score": null,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "ES client 和 httpx client 都有明确关闭动作： ```text await AsyncElasticsearch.close() await httpx.AsyncClient.aclose() ``` Milvus..."
+          },
+          {
+            "id": "chunk_187c2c92f1fa0cf8",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "13. 下一阶段进入什么",
+            "section_path": [
+              "阶段 9-3：记录 retrieval_sources 和多来源命中信息",
+              "13. 下一阶段进入什么"
+            ],
+            "metadata": {
+              "doc_id": "doc_deb13bec9577b743",
+              "source_path": "learning-docs/phase-9/9-3-记录retrieval_sources和多来源命中信息.md",
+              "document_type": "markdown",
+              "file_name": "9-3-记录retrieval_sources和多来源命中信息.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_187c2c92f1fa0cf8",
+              "title": "13. 下一阶段进入什么",
+              "section_path": [
+                "阶段 9-3：记录 retrieval_sources 和多来源命中信息",
+                "13. 下一阶段进入什么"
+              ],
+              "heading_level": 2,
+              "section_index": 42,
+              "chunk_index": 41
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 29.36626,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-3 后，建议进入： ```text 阶段 9-4：metadata 写入 ES / Milvus，并在 sources 中展示 title / section_path ``` 9-4 要解决的问题是： ```text Knowl..."
+          },
+          {
+            "id": "chunk_071843e4720be7b2",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "7.1 修改 `src/fast_app/domain/rag_models.py`",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "7. 每个文件具体补什么代码",
+              "7.1 修改 `src/fast_app/domain/rag_models.py`"
+            ],
+            "metadata": {
+              "doc_id": "doc_75bbb336b6aeab47",
+              "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+              "document_type": "markdown",
+              "file_name": "9-1-数据模型重构.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_071843e4720be7b2",
+              "title": "7.1 修改 `src/fast_app/domain/rag_models.py`",
+              "section_path": [
+                "阶段 9-1：数据模型重构",
+                "7. 每个文件具体补什么代码",
+                "7.1 修改 `src/fast_app/domain/rag_models.py`"
+              ],
+              "heading_level": 3,
+              "section_index": 26,
+              "chunk_index": 30
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": 0.07271397113800049,
+              "keyword_score": null,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "core=0.91, source=\"milvus\", ) ``` 因为新增字段都有默认值。"
+          },
+          {
+            "id": "chunk_432ca43648f041f8",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "14. 下一阶段进入什么",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "14. 下一阶段进入什么"
+            ],
+            "metadata": {
+              "doc_id": "doc_75bbb336b6aeab47",
+              "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+              "document_type": "markdown",
+              "file_name": "9-1-数据模型重构.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_432ca43648f041f8",
+              "title": "14. 下一阶段进入什么",
+              "section_path": [
+                "阶段 9-1：数据模型重构",
+                "14. 下一阶段进入什么"
+              ],
+              "heading_level": 2,
+              "section_index": 64,
+              "chunk_index": 68
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 23.845615,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-1 之后，建议进入： ```text 阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score ``` 9-2 的重点不是再讨论模型要不要扩展，而是把阶段..."
+          },
+          {
+            "id": "chunk_b09d7d785ef80d8a",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "2. uvicorn 关闭 FastAPI 应用时执行",
+            "section_path": [
+              "2. uvicorn 关闭 FastAPI 应用时执行"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_b09d7d785ef80d8a",
+              "title": "2. uvicorn 关闭 FastAPI 应用时执行",
+              "section_path": [
+                "2. uvicorn 关闭 FastAPI 应用时执行"
+              ],
+              "heading_level": 1,
+              "section_index": 18,
+              "chunk_index": 14
+            },
+            "score": 0.015873015873015872,
+            "scores": {
+              "vector_score": 0.06501532346010208,
+              "keyword_score": null,
+              "rrf_score": 0.015873015873015872,
+              "rerank_score": null
+            },
+            "content_preview": "``` 当前 9-6 要做的事情，就是把外部 client 的创建放到 `yield` 之前，把外部 client 的关闭放到 `yield` 之后。 ---"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "phase9_lifespan_clients",
+      "response": {
+        "query": "FastAPI lifespan 为什么适合管理 Milvus、ES 和 httpx client？",
+        "answer": "根据检索到的上下文，回答问题：FastAPI lifespan 为什么适合管理 Milvus、ES 和 httpx client？\n核心结论：混合检索会同时利用向量检索和关键词检索，再通过合并、去重、排序等步骤得到更可靠的上下文。\n\n参考上下文：\n【检索上下文】\n\n[文档 1]\nid: chunk_b4ec4e20b59392f2\nsource: elasticsearch\nscore: 0.031498\ncontent:\n修改后，外部 client 的生命周期变成：\n\n```text\nFastAPI 启动\n→ lifespan 创建 Milvus / ES / httpx client\n→ 多个请求复用这些 client\n→ FastAPI 关闭\n→ lifespan 统一关闭 client\n```\n\n这比每个请求都重新创建 client 更接近真实后端服务结构。\n\n[文档 2]\nid: chunk_6fbad71a519bd92b\nsource: elasticsearch\nscore: 0.030798\ncontent:\nMilvus、ElasticSearch、httpx 这类对象不是普通的临时变量。\n\n它们背后通常会持有：\n\n```text\n网络连接\n连接池\n认证信息\n超时配置\n底层 socket\n```\n\n如果每次请求都创建这些对象，就会出现：\n\n```text\n重复初始化\n连接复用差\n关闭时机不清晰\n异常时资源泄漏风险更高\n```\n\n而 lifespan 的特点刚好适合管理它们：\n\n```text\n应用启动时只创建一次。\n应用运行期间一直复用。\n应用关闭时统一释放。\n```\n\n对应到当前阶段：\n\n```text\nMilvusClient：应用级向量库 client\nAsyncElasticsearch：应用级关键词检索 client\nhttpx.AsyncClient：应用级 HTTP client\n```\n\n---\n\n[文档 3]\nid: chunk_d78fa2af247042db\nsource: milvus\nscore: 0.016393\ncontent:\nES client 和 httpx client 都有明确关闭动作：\n\n```text\nawait AsyncElasticsearch.close()\nawait httpx.AsyncClient.aclose()\n```\n\nMilvus client 也有同步关闭动作：\n\n```text\nMilvusClient.close()\n```\n\n如果这些 client 分散在不同组件内部创建，应用关闭时很难统一执行关闭逻辑。\n\n[文档 4]\nid: chunk_98d4820c74801e18\nsource: elasticsearch\nscore: 0.016393\ncontent:\n阶段 9-5 后，进入：\n\n```text\n阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client\n```\n\n9-6 要解决的问题是：\n\n```text\n当前 MilvusClient、AsyncElasticsearch、LLM / embedding 相关外部 client 的创建和关闭还比较分散。\n下一阶段要学习如何把外部 client 生命周期交给 FastAPI lifespan 管理，减少重复创建 client，并让连接关闭更可控。\n```\n\n---\n\n[文档 5]\nid: chunk_071843e4720be7b2\nsource: milvus\nscore: 0.016129\ncontent:\ncore=0.91,\n    source=\"milvus\",\n)\n```\n\n因为新增字段都有默认值。",
+        "sources": [
+          {
+            "id": "chunk_b4ec4e20b59392f2",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "title": "8.1 外部 client 从请求级创建变成应用级创建",
+            "section_path": [
+              "应用运行中",
+              "8. 本阶段修改会造成哪些影响",
+              "8.1 外部 client 从请求级创建变成应用级创建"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_b4ec4e20b59392f2",
+              "title": "8.1 外部 client 从请求级创建变成应用级创建",
+              "section_path": [
+                "应用运行中",
+                "8. 本阶段修改会造成哪些影响",
+                "8.1 外部 client 从请求级创建变成应用级创建"
+              ],
+              "heading_level": 3,
+              "section_index": 37,
+              "chunk_index": 43
+            },
+            "score": 0.03149801587301587,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 17.407297,
+              "rrf_score": 0.03149801587301587,
+              "rerank_score": null
+            },
+            "content_preview": "修改后，外部 client 的生命周期变成： ```text FastAPI 启动 → lifespan 创建 Milvus / ES / httpx client → 多个请求复用这些 client → FastAPI 关闭 → life..."
+          },
+          {
+            "id": "chunk_6fbad71a519bd92b",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "title": "2. 为什么 lifespan 适合管理外部 client",
+            "section_path": [
+              "2. uvicorn 关闭 FastAPI 应用时执行",
+              "2. 为什么 lifespan 适合管理外部 client"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_6fbad71a519bd92b",
+              "title": "2. 为什么 lifespan 适合管理外部 client",
+              "section_path": [
+                "2. uvicorn 关闭 FastAPI 应用时执行",
+                "2. 为什么 lifespan 适合管理外部 client"
+              ],
+              "heading_level": 3,
+              "section_index": 19,
+              "chunk_index": 15
+            },
+            "score": 0.030798389007344232,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 14.436841,
+              "rrf_score": 0.030798389007344232,
+              "rerank_score": null
+            },
+            "content_preview": "Milvus、ElasticSearch、httpx 这类对象不是普通的临时变量。 它们背后通常会持有： ```text 网络连接 连接池 认证信息 超时配置 底层 socket ``` 如果每次请求都创建这些对象，就会出现： ```tex..."
+          },
+          {
+            "id": "chunk_d78fa2af247042db",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "4.2 关闭逻辑不集中",
+            "section_path": [
+              "阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client",
+              "4. 当前系统存在什么局限",
+              "4.2 关闭逻辑不集中"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_d78fa2af247042db",
+              "title": "4.2 关闭逻辑不集中",
+              "section_path": [
+                "阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client",
+                "4. 当前系统存在什么局限",
+                "4.2 关闭逻辑不集中"
+              ],
+              "heading_level": 3,
+              "section_index": 12,
+              "chunk_index": 9
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": 0.10429678857326508,
+              "keyword_score": null,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "ES client 和 httpx client 都有明确关闭动作： ```text await AsyncElasticsearch.close() await httpx.AsyncClient.aclose() ``` Milvus..."
+          },
+          {
+            "id": "chunk_98d4820c74801e18",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "12. 下一阶段进入什么",
+            "section_path": [
+              "阶段 9-5：Milvus collection schema 与 ES index mapping 对齐",
+              "12. 下一阶段进入什么"
+            ],
+            "metadata": {
+              "doc_id": "doc_6594cb5dd30c2194",
+              "source_path": "learning-docs/phase-9/9-5-Milvus collection schema与ES index mapping对齐.md",
+              "document_type": "markdown",
+              "file_name": "9-5-Milvus collection schema与ES index mapping对齐.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_98d4820c74801e18",
+              "title": "12. 下一阶段进入什么",
+              "section_path": [
+                "阶段 9-5：Milvus collection schema 与 ES index mapping 对齐",
+                "12. 下一阶段进入什么"
+              ],
+              "heading_level": 2,
+              "section_index": 39,
+              "chunk_index": 37
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 20.431948,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-5 后，进入： ```text 阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client ``` 9-6 要解决的问题是： ```text 当前 MilvusClient、Asyn..."
+          },
+          {
+            "id": "chunk_071843e4720be7b2",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "7.1 修改 `src/fast_app/domain/rag_models.py`",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "7. 每个文件具体补什么代码",
+              "7.1 修改 `src/fast_app/domain/rag_models.py`"
+            ],
+            "metadata": {
+              "doc_id": "doc_75bbb336b6aeab47",
+              "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+              "document_type": "markdown",
+              "file_name": "9-1-数据模型重构.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_071843e4720be7b2",
+              "title": "7.1 修改 `src/fast_app/domain/rag_models.py`",
+              "section_path": [
+                "阶段 9-1：数据模型重构",
+                "7. 每个文件具体补什么代码",
+                "7.1 修改 `src/fast_app/domain/rag_models.py`"
+              ],
+              "heading_level": 3,
+              "section_index": 26,
+              "chunk_index": 30
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": 0.07731325179338455,
+              "keyword_score": null,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "core=0.91, source=\"milvus\", ) ``` 因为新增字段都有默认值。"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "phase9_stream_events",
+      "response": {
+        "query": "阶段 9 的 stream event 协议为什么要区分 token、sources、done 和 error？",
+        "answer": "根据检索到的上下文，回答问题：阶段 9 的 stream event 协议为什么要区分 token、sources、done 和 error？\n核心结论：混合检索会同时利用向量检索和关键词检索，再通过合并、去重、排序等步骤得到更可靠的上下文。\n\n参考上下文：\n【检索上下文】\n\n[文档 1]\nid: chunk_d78fa2af247042db\nsource: milvus\nscore: 0.016393\ncontent:\nES client 和 httpx client 都有明确关闭动作：\n\n```text\nawait AsyncElasticsearch.close()\nawait httpx.AsyncClient.aclose()\n```\n\nMilvus client 也有同步关闭动作：\n\n```text\nMilvusClient.close()\n```\n\n如果这些 client 分散在不同组件内部创建，应用关闭时很难统一执行关闭逻辑。\n\n[文档 2]\nid: chunk_a1fa4d2e05b4a0ef\nsource: elasticsearch\nscore: 0.016393\ncontent:\n阶段 9-9 要解决的是：\n\n```text\n当前流式接口只能持续返回 token，无法在同一条 SSE 流中结构化返回 sources、done、error 等事件。\n```\n\n现在普通 `/rag/chat` 接口可以返回：\n\n```text\nanswer\nsources\n```\n\n但是 `/rag/chat/stream` 当前只适合边生成边展示回答文本。\n\n它不能清晰表达：\n\n```text\n检索到了哪些 sources\n什么时候 token 开始返回\n什么时候流式输出正常结束\n错误 code 是什么\n错误 message 是什么\n```\n\n阶段 9-9 的目标是设计并实现一个结构化 stream event 协议：\n\n```text\ntoken event\nsources event\ndone event\nerror event\n```\n\n核心原则是：\n\n```text\n保留现有 pipeline.stream(req) token-only 协议\n新增 stream_events(req) 结构化事件协议\n保留现有 /rag/chat/stream 行为\n新增结构化 SSE endpoint\nClassic 和 LangGraph 行为对齐\n```\n\n[文档 3]\nid: chunk_071843e4720be7b2\nsource: milvus\nscore: 0.016129\ncontent:\ncore=0.91,\n    source=\"milvus\",\n)\n```\n\n因为新增字段都有默认值。\n\n[文档 4]\nid: chunk_4d6adaf242dcbd83\nsource: elasticsearch\nscore: 0.016129\ncontent:\n阶段 9-9 完成后，Classic 的结构化 stream 链路应该是：\n\n```mermaid\nflowchart TD\n    A[\"RagPipeline.stream_events\"] --> B[\"retrieve\"]\n    B --> C[\"rerank_with_fallback\"]\n    C --> D[\"yield sources event\"]\n    D --> E[\"build RagContext\"]\n    E --> F[\"llm_client.stream\"]\n    F --> G[\"yield token event\"]\n```\n\nLangGraph 的结构化 stream 链路应该是：\n\n```mermaid\nflowchart TD\n    A[\"LangGraphRagPipeline.stream_events\"] --> B[\"retrieve_node\"]\n    B --> C[\"rerank_node\"]\n    C --> D[\"yield sources event\"]\n    D --> E[\"build_context_node\"]\n    E --> F[\"llm_client.stream\"]\n    F --> G[\"yield token event\"]\n```\n\nAPI 层统一负责：\n\n```mermaid\nflowchart TD\n    A[\"RagStreamEvent\"] --> B[\"format_sse_event\"]\n    B --> C[\"event: sources / token\"]\n    C --> D[\"event: done / error\"]\n```\n\n这样可以保证：\n\n```text\nClassic 和 LangGraph 都能产生 sources event\nClassic 和 LangGraph 都能产生 token event\ndone / error 由 API 层统一表达\n现有 token-only stream 保持兼容\n```\n\n[文档 5]\nid: chunk_b09d7d785ef80d8a\nsource: milvus\nscore: 0.015873\ncontent:\n```\n\n当前 9-6 要做的事情，就是把外部 client 的创建放到 `yield` 之前，把外部 client 的关闭放到 `yield` 之后。\n\n---",
+        "sources": [
+          {
+            "id": "chunk_d78fa2af247042db",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "4.2 关闭逻辑不集中",
+            "section_path": [
+              "阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client",
+              "4. 当前系统存在什么局限",
+              "4.2 关闭逻辑不集中"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_d78fa2af247042db",
+              "title": "4.2 关闭逻辑不集中",
+              "section_path": [
+                "阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client",
+                "4. 当前系统存在什么局限",
+                "4.2 关闭逻辑不集中"
+              ],
+              "heading_level": 3,
+              "section_index": 12,
+              "chunk_index": 9
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": 0.09378249943256378,
+              "keyword_score": null,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "ES client 和 httpx client 都有明确关闭动作： ```text await AsyncElasticsearch.close() await httpx.AsyncClient.aclose() ``` Milvus..."
+          },
+          {
+            "id": "chunk_a1fa4d2e05b4a0ef",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "1. 本阶段要解决什么问题",
+            "section_path": [
+              "阶段 9-9：stream event 协议设计",
+              "1. 本阶段要解决什么问题"
+            ],
+            "metadata": {
+              "doc_id": "doc_1e5f1edc2c01027c",
+              "source_path": "learning-docs/phase-9/9-9-stream event协议设计.md",
+              "document_type": "markdown",
+              "file_name": "9-9-stream event协议设计.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_a1fa4d2e05b4a0ef",
+              "title": "1. 本阶段要解决什么问题",
+              "section_path": [
+                "阶段 9-9：stream event 协议设计",
+                "1. 本阶段要解决什么问题"
+              ],
+              "heading_level": 2,
+              "section_index": 2,
+              "chunk_index": 1
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 29.354006,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-9 要解决的是： ```text 当前流式接口只能持续返回 token，无法在同一条 SSE 流中结构化返回 sources、done、error 等事件。 ``` 现在普通 `/rag/chat` 接口可以返回： ```text..."
+          },
+          {
+            "id": "chunk_071843e4720be7b2",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "7.1 修改 `src/fast_app/domain/rag_models.py`",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "7. 每个文件具体补什么代码",
+              "7.1 修改 `src/fast_app/domain/rag_models.py`"
+            ],
+            "metadata": {
+              "doc_id": "doc_75bbb336b6aeab47",
+              "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+              "document_type": "markdown",
+              "file_name": "9-1-数据模型重构.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_071843e4720be7b2",
+              "title": "7.1 修改 `src/fast_app/domain/rag_models.py`",
+              "section_path": [
+                "阶段 9-1：数据模型重构",
+                "7. 每个文件具体补什么代码",
+                "7.1 修改 `src/fast_app/domain/rag_models.py`"
+              ],
+              "heading_level": 3,
+              "section_index": 26,
+              "chunk_index": 30
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": 0.06727854162454605,
+              "keyword_score": null,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "core=0.91, source=\"milvus\", ) ``` 因为新增字段都有默认值。"
+          },
+          {
+            "id": "chunk_4d6adaf242dcbd83",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "11. Classic / LangGraph / stream 的行为对齐",
+            "section_path": [
+              "阶段 9-9：stream event 协议设计",
+              "11. Classic / LangGraph / stream 的行为对齐"
+            ],
+            "metadata": {
+              "doc_id": "doc_1e5f1edc2c01027c",
+              "source_path": "learning-docs/phase-9/9-9-stream event协议设计.md",
+              "document_type": "markdown",
+              "file_name": "9-9-stream event协议设计.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_4d6adaf242dcbd83",
+              "title": "11. Classic / LangGraph / stream 的行为对齐",
+              "section_path": [
+                "阶段 9-9：stream event 协议设计",
+                "11. Classic / LangGraph / stream 的行为对齐"
+              ],
+              "heading_level": 2,
+              "section_index": 21,
+              "chunk_index": 32
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 24.387186,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-9 完成后，Classic 的结构化 stream 链路应该是： ```mermaid flowchart TD A[\"RagPipeline.stream_events\"] --> B[\"retrieve\"] B --> C[\"..."
+          },
+          {
+            "id": "chunk_b09d7d785ef80d8a",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "2. uvicorn 关闭 FastAPI 应用时执行",
+            "section_path": [
+              "2. uvicorn 关闭 FastAPI 应用时执行"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_b09d7d785ef80d8a",
+              "title": "2. uvicorn 关闭 FastAPI 应用时执行",
+              "section_path": [
+                "2. uvicorn 关闭 FastAPI 应用时执行"
+              ],
+              "heading_level": 1,
+              "section_index": 18,
+              "chunk_index": 14
+            },
+            "score": 0.015873015873015872,
+            "scores": {
+              "vector_score": 0.06361394375562668,
+              "keyword_score": null,
+              "rrf_score": 0.015873015873015872,
+              "rerank_score": null
+            },
+            "content_preview": "``` 当前 9-6 要做的事情，就是把外部 client 的创建放到 `yield` 之前，把外部 client 的关闭放到 `yield` 之后。 ---"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "phase9_fallback_policy",
+      "response": {
+        "query": "RAG 链路中为什么需要 timeout、retry 和 fallback？",
+        "answer": "根据检索到的上下文，回答问题：RAG 链路中为什么需要 timeout、retry 和 fallback？\n核心结论：混合检索会同时利用向量检索和关键词检索，再通过合并、去重、排序等步骤得到更可靠的上下文。\n\n参考上下文：\n【检索上下文】\n\n[文档 1]\nid: chunk_d78fa2af247042db\nsource: milvus\nscore: 0.016393\ncontent:\nES client 和 httpx client 都有明确关闭动作：\n\n```text\nawait AsyncElasticsearch.close()\nawait httpx.AsyncClient.aclose()\n```\n\nMilvus client 也有同步关闭动作：\n\n```text\nMilvusClient.close()\n```\n\n如果这些 client 分散在不同组件内部创建，应用关闭时很难统一执行关闭逻辑。\n\n[文档 2]\nid: chunk_c62f6bc03854326e\nsource: elasticsearch\nscore: 0.016393\ncontent:\n完成本阶段后，应满足：\n\n```text\nSettings 中有外部调用 timeout / retry 配置\nDashScope Rerank 使用配置化 timeout\nDashScope Rerank 对可重试 httpx 错误进行有限 retry\nES search 使用 request_timeout\nEmbedding 调用失败被包装成 ExternalServiceError\nClassic Pipeline 中 rerank 失败会 fallback 到召回结果\nLangGraph Pipeline 有 rerank node\nLangGraph stream 手动链路也执行 rerank fallback\nstream 仍然保持 token-only\nmock provider 下 classic 和 langgraph 都能跑通\n```\n\n[文档 3]\nid: chunk_b4ec4e20b59392f2\nsource: milvus\nscore: 0.016129\ncontent:\n修改后，外部 client 的生命周期变成：\n\n```text\nFastAPI 启动\n→ lifespan 创建 Milvus / ES / httpx client\n→ 多个请求复用这些 client\n→ FastAPI 关闭\n→ lifespan 统一关闭 client\n```\n\n这比每个请求都重新创建 client 更接近真实后端服务结构。\n\n[文档 4]\nid: chunk_e02428a26f496a05\nsource: elasticsearch\nscore: 0.016129\ncontent:\n阶段 9-10 要解决的是：\n\n```text\n让知识库数据不再只来自手写 demo chunks，而是可以从真实 Markdown 文件读取、切分、生成 metadata，并写入 Milvus 和 ElasticSearch。\n```\n\n当前 RAG 查询链路已经比较完整：\n\n```text\nFastAPI\nClassic Pipeline / LangGraph Pipeline\nMilvus 向量检索\nElasticSearch 关键词检索\nRRF\nRerank\nsources\nmetadata\nstream events\ntimeout / retry / fallback\n```\n\n但是写入链路仍然偏学习化：\n\n```text\n手写 demo chunks\n脚本里直接构造 KnowledgeChunk\n脚本里直接定义 ES mapping\n脚本里直接定义 Milvus schema\n脚本里直接写入 ES / Milvus\n```\n\n阶段 9-10 的目标是建立一个最小真实 ingestion 链路：\n\n```text\nMarkdown 文件\n→ Markdown 解析\n→ KnowledgeChunk\n→ Embedding\n→ Milvus 写入\n→ ElasticSearch 写入\n→ RAG 查询链路可检索\n```\n\n这一阶段是阶段 10 的入口，不追求完整 ingestion 平台。\n\n[文档 5]\nid: chunk_b09d7d785ef80d8a\nsource: milvus\nscore: 0.015873\ncontent:\n```\n\n当前 9-6 要做的事情，就是把外部 client 的创建放到 `yield` 之前，把外部 client 的关闭放到 `yield` 之后。\n\n---",
+        "sources": [
+          {
+            "id": "chunk_d78fa2af247042db",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "4.2 关闭逻辑不集中",
+            "section_path": [
+              "阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client",
+              "4. 当前系统存在什么局限",
+              "4.2 关闭逻辑不集中"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_d78fa2af247042db",
+              "title": "4.2 关闭逻辑不集中",
+              "section_path": [
+                "阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client",
+                "4. 当前系统存在什么局限",
+                "4.2 关闭逻辑不集中"
+              ],
+              "heading_level": 3,
+              "section_index": 12,
+              "chunk_index": 9
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": 0.0861307680606842,
+              "keyword_score": null,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "ES client 和 httpx client 都有明确关闭动作： ```text await AsyncElasticsearch.close() await httpx.AsyncClient.aclose() ``` Milvus..."
+          },
+          {
+            "id": "chunk_c62f6bc03854326e",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "21. 验收标准",
+            "section_path": [
+              "阶段 9-8：超时、重试、降级与 fallback",
+              "21. 验收标准"
+            ],
+            "metadata": {
+              "doc_id": "doc_4cdf502f9403a6b1",
+              "source_path": "learning-docs/phase-9/9-8-超时重试降级与fallback.md",
+              "document_type": "markdown",
+              "file_name": "9-8-超时重试降级与fallback.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_c62f6bc03854326e",
+              "title": "21. 验收标准",
+              "section_path": [
+                "阶段 9-8：超时、重试、降级与 fallback",
+                "21. 验收标准"
+              ],
+              "heading_level": 2,
+              "section_index": 31,
+              "chunk_index": 48
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 20.365892,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "完成本阶段后，应满足： ```text Settings 中有外部调用 timeout / retry 配置 DashScope Rerank 使用配置化 timeout DashScope Rerank 对可重试 httpx 错误进行有限..."
+          },
+          {
+            "id": "chunk_b4ec4e20b59392f2",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "8.1 外部 client 从请求级创建变成应用级创建",
+            "section_path": [
+              "应用运行中",
+              "8. 本阶段修改会造成哪些影响",
+              "8.1 外部 client 从请求级创建变成应用级创建"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_b4ec4e20b59392f2",
+              "title": "8.1 外部 client 从请求级创建变成应用级创建",
+              "section_path": [
+                "应用运行中",
+                "8. 本阶段修改会造成哪些影响",
+                "8.1 外部 client 从请求级创建变成应用级创建"
+              ],
+              "heading_level": 3,
+              "section_index": 37,
+              "chunk_index": 43
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": 0.08009201288223267,
+              "keyword_score": null,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "修改后，外部 client 的生命周期变成： ```text FastAPI 启动 → lifespan 创建 Milvus / ES / httpx client → 多个请求复用这些 client → FastAPI 关闭 → life..."
+          },
+          {
+            "id": "chunk_e02428a26f496a05",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "1. 本阶段要解决什么问题",
+            "section_path": [
+              "阶段 9-10：真实 Markdown ingestion 接入 Milvus / ES",
+              "1. 本阶段要解决什么问题"
+            ],
+            "metadata": {
+              "doc_id": "doc_59ecfc2bf36525a0",
+              "source_path": "learning-docs/phase-9/9-10-真实Markdown ingestion接入Milvus ES.md",
+              "document_type": "markdown",
+              "file_name": "9-10-真实Markdown ingestion接入Milvus ES.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_e02428a26f496a05",
+              "title": "1. 本阶段要解决什么问题",
+              "section_path": [
+                "阶段 9-10：真实 Markdown ingestion 接入 Milvus / ES",
+                "1. 本阶段要解决什么问题"
+              ],
+              "heading_level": 2,
+              "section_index": 2,
+              "chunk_index": 1
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 15.603544,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-10 要解决的是： ```text 让知识库数据不再只来自手写 demo chunks，而是可以从真实 Markdown 文件读取、切分、生成 metadata，并写入 Milvus 和 ElasticSearch。 ``` 当前..."
+          },
+          {
+            "id": "chunk_b09d7d785ef80d8a",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "2. uvicorn 关闭 FastAPI 应用时执行",
+            "section_path": [
+              "2. uvicorn 关闭 FastAPI 应用时执行"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_b09d7d785ef80d8a",
+              "title": "2. uvicorn 关闭 FastAPI 应用时执行",
+              "section_path": [
+                "2. uvicorn 关闭 FastAPI 应用时执行"
+              ],
+              "heading_level": 1,
+              "section_index": 18,
+              "chunk_index": 14
+            },
+            "score": 0.015873015873015872,
+            "scores": {
+              "vector_score": 0.07857347279787064,
+              "keyword_score": null,
+              "rrf_score": 0.015873015873015872,
+              "rerank_score": null
+            },
+            "content_preview": "``` 当前 9-6 要做的事情，就是把外部 client 的创建放到 `yield` 之前，把外部 client 的关闭放到 `yield` 之后。 ---"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "no_answer_weather",
+      "response": {
+        "query": "明天北京天气怎么样？",
+        "answer": "根据检索到的上下文，回答问题：明天北京天气怎么样？\n核心结论：混合检索会同时利用向量检索和关键词检索，再通过合并、去重、排序等步骤得到更可靠的上下文。\n\n参考上下文：\n【检索上下文】\n\n[文档 1]\nid: chunk_d78fa2af247042db\nsource: milvus\nscore: 0.016393\ncontent:\nES client 和 httpx client 都有明确关闭动作：\n\n```text\nawait AsyncElasticsearch.close()\nawait httpx.AsyncClient.aclose()\n```\n\nMilvus client 也有同步关闭动作：\n\n```text\nMilvusClient.close()\n```\n\n如果这些 client 分散在不同组件内部创建，应用关闭时很难统一执行关闭逻辑。\n\n[文档 2]\nid: chunk_b4ec4e20b59392f2\nsource: milvus\nscore: 0.016129\ncontent:\n修改后，外部 client 的生命周期变成：\n\n```text\nFastAPI 启动\n→ lifespan 创建 Milvus / ES / httpx client\n→ 多个请求复用这些 client\n→ FastAPI 关闭\n→ lifespan 统一关闭 client\n```\n\n这比每个请求都重新创建 client 更接近真实后端服务结构。\n\n[文档 3]\nid: chunk_b09d7d785ef80d8a\nsource: milvus\nscore: 0.015873\ncontent:\n```\n\n当前 9-6 要做的事情，就是把外部 client 的创建放到 `yield` 之前，把外部 client 的关闭放到 `yield` 之后。\n\n---\n\n[文档 4]\nid: chunk_f6d9918bf9cf9e75\nsource: milvus\nscore: 0.015625\ncontent:\n统一 client 后，后续阶段可以更自然地加入：\n\n```text\n统一 timeout\n统一 retry\n统一 fallback\n统一连接池参数\n统一 trace 日志\n```\n\n如果 client 仍然分散创建，9-8 的稳定性改造会变得更碎。\n\n---\n\n[文档 5]\nid: chunk_2a1a694dfb0f9ca2\nsource: milvus\nscore: 0.015385\ncontent:\nfunc: Callable[[], Awaitable[T]],\n    max_retries: int,\n    base_delay: float,\n    is_retryable: Callable[[Exception], bool],\n) -> T:\n    attempt = 0\n\n    while True:\n        try:\n            return await func()\n\n        except Exception as exc:\n            if isinstance(exc, httpx.TimeoutException):\n                wrapped_exc = ExternalServiceTimeoutError(\n                    f\"{operation_name} 调用超时: {exc}\"\n                )\n            else:\n                wrapped_exc = exc\n\n            shou",
+        "sources": [
+          {
+            "id": "chunk_d78fa2af247042db",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "4.2 关闭逻辑不集中",
+            "section_path": [
+              "阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client",
+              "4. 当前系统存在什么局限",
+              "4.2 关闭逻辑不集中"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_d78fa2af247042db",
+              "title": "4.2 关闭逻辑不集中",
+              "section_path": [
+                "阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client",
+                "4. 当前系统存在什么局限",
+                "4.2 关闭逻辑不集中"
+              ],
+              "heading_level": 3,
+              "section_index": 12,
+              "chunk_index": 9
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": 0.08754129707813263,
+              "keyword_score": null,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "ES client 和 httpx client 都有明确关闭动作： ```text await AsyncElasticsearch.close() await httpx.AsyncClient.aclose() ``` Milvus..."
+          },
+          {
+            "id": "chunk_b4ec4e20b59392f2",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "8.1 外部 client 从请求级创建变成应用级创建",
+            "section_path": [
+              "应用运行中",
+              "8. 本阶段修改会造成哪些影响",
+              "8.1 外部 client 从请求级创建变成应用级创建"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_b4ec4e20b59392f2",
+              "title": "8.1 外部 client 从请求级创建变成应用级创建",
+              "section_path": [
+                "应用运行中",
+                "8. 本阶段修改会造成哪些影响",
+                "8.1 外部 client 从请求级创建变成应用级创建"
+              ],
+              "heading_level": 3,
+              "section_index": 37,
+              "chunk_index": 43
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": 0.07887794822454453,
+              "keyword_score": null,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "修改后，外部 client 的生命周期变成： ```text FastAPI 启动 → lifespan 创建 Milvus / ES / httpx client → 多个请求复用这些 client → FastAPI 关闭 → life..."
+          },
+          {
+            "id": "chunk_b09d7d785ef80d8a",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "2. uvicorn 关闭 FastAPI 应用时执行",
+            "section_path": [
+              "2. uvicorn 关闭 FastAPI 应用时执行"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_b09d7d785ef80d8a",
+              "title": "2. uvicorn 关闭 FastAPI 应用时执行",
+              "section_path": [
+                "2. uvicorn 关闭 FastAPI 应用时执行"
+              ],
+              "heading_level": 1,
+              "section_index": 18,
+              "chunk_index": 14
+            },
+            "score": 0.015873015873015872,
+            "scores": {
+              "vector_score": 0.0785699337720871,
+              "keyword_score": null,
+              "rrf_score": 0.015873015873015872,
+              "rerank_score": null
+            },
+            "content_preview": "``` 当前 9-6 要做的事情，就是把外部 client 的创建放到 `yield` 之前，把外部 client 的关闭放到 `yield` 之后。 ---"
+          },
+          {
+            "id": "chunk_f6d9918bf9cf9e75",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "8.4 为 9-8 timeout / retry / fallback 做准备",
+            "section_path": [
+              "应用运行中",
+              "8. 本阶段修改会造成哪些影响",
+              "8.4 为 9-8 timeout / retry / fallback 做准备"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_f6d9918bf9cf9e75",
+              "title": "8.4 为 9-8 timeout / retry / fallback 做准备",
+              "section_path": [
+                "应用运行中",
+                "8. 本阶段修改会造成哪些影响",
+                "8.4 为 9-8 timeout / retry / fallback 做准备"
+              ],
+              "heading_level": 3,
+              "section_index": 40,
+              "chunk_index": 46
+            },
+            "score": 0.015625,
+            "scores": {
+              "vector_score": 0.07532444596290588,
+              "keyword_score": null,
+              "rrf_score": 0.015625,
+              "rerank_score": null
+            },
+            "content_preview": "统一 client 后，后续阶段可以更自然地加入： ```text 统一 timeout 统一 retry 统一 fallback 统一连接池参数 统一 trace 日志 ``` 如果 client 仍然分散创建，9-8 的稳定性改造会变得..."
+          },
+          {
+            "id": "chunk_2a1a694dfb0f9ca2",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "7. 新增 src/fast_app/services/external_call_policy.py",
+            "section_path": [
+              "阶段 9-8：超时、重试、降级与 fallback",
+              "7. 新增 src/fast_app/services/external_call_policy.py"
+            ],
+            "metadata": {
+              "doc_id": "doc_4cdf502f9403a6b1",
+              "source_path": "learning-docs/phase-9/9-8-超时重试降级与fallback.md",
+              "document_type": "markdown",
+              "file_name": "9-8-超时重试降级与fallback.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_2a1a694dfb0f9ca2",
+              "title": "7. 新增 src/fast_app/services/external_call_policy.py",
+              "section_path": [
+                "阶段 9-8：超时、重试、降级与 fallback",
+                "7. 新增 src/fast_app/services/external_call_policy.py"
+              ],
+              "heading_level": 2,
+              "section_index": 17,
+              "chunk_index": 16
+            },
+            "score": 0.015384615384615385,
+            "scores": {
+              "vector_score": 0.0741710439324379,
+              "keyword_score": null,
+              "rrf_score": 0.015384615384615385,
+              "rerank_score": null
+            },
+            "content_preview": "func: Callable[[], Awaitable[T]], max_retries: int, base_delay: float, is_retryable: Callable[[Exception], bool], ) -> T..."
+          }
+        ]
+      }
+    }
+  ]
+}

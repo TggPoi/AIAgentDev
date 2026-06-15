@@ -1,11 +1,11 @@
-from fast_app.components.retrievers.milvus_vector_retriever import MilvusVectorRetriever
+﻿from fast_app.components.retrievers.milvus_vector_retriever import MilvusVectorRetriever
 from fast_app.domain.rag_models import RetrievalFilters, RetrievalOptions, RetrievedDoc
-from fast_app.evaluation.eval_case_models import RagEvalCase, RagEvalDataset
-from fast_app.evaluation.retrieval_eval_models import (
+from fast_app.evaluation.cases.models import RagEvalCase, RagEvalDataset
+from fast_app.evaluation.retrieval.models import (
     RetrievalCaseResult,
     RetrievalDatasetReport,
 )
-from fast_app.evaluation.retrieval_metrics import (
+from fast_app.evaluation.retrieval.metrics import (
     evaluate_retrieval_case,
     evaluate_retrieval_dataset,
 )
@@ -95,3 +95,4 @@ async def evaluate_milvus_vector_dataset(
         cases=dataset.cases,
         retrieved_docs_by_case_id=retrieved_docs_by_case_id,
     )
+

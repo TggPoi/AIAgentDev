@@ -1,6 +1,6 @@
-from dataclasses import dataclass, field
+﻿from dataclasses import dataclass, field
 
-from fast_app.evaluation.offline_eval_models import OfflineRagEvalReport
+from fast_app.evaluation.pipeline.models import OfflineRagEvalReport
 
 
 @dataclass(frozen=True)
@@ -67,3 +67,4 @@ def check_offline_eval_thresholds(
         passed=all(check.passed for check in checks),
         checks=checks,
     )
+

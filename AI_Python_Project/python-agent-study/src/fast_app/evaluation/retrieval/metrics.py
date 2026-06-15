@@ -1,8 +1,8 @@
-from collections.abc import Mapping
+﻿from collections.abc import Mapping
 
 from fast_app.domain.rag_models import RetrievedDoc
-from fast_app.evaluation.eval_case_models import ExpectedSource, RagEvalCase
-from fast_app.evaluation.retrieval_eval_models import (
+from fast_app.evaluation.cases.models import ExpectedSource, RagEvalCase
+from fast_app.evaluation.retrieval.models import (
     RetrievalCaseResult,
     RetrievalDatasetReport,
     RetrievalHit,
@@ -244,3 +244,4 @@ def _safe_str(value: object) -> str | None:
         return None
 
     return str(value)
+

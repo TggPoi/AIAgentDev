@@ -1,24 +1,24 @@
-from fast_app.components.rerankers.base import BaseReranker
+﻿from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.retrievers.elasticsearch_keyword_retriever import (
     ElasticsearchKeywordRetriever,
 )
 from fast_app.components.retrievers.milvus_vector_retriever import MilvusVectorRetriever
 from fast_app.domain.rag_models import RetrievedDoc
-from fast_app.evaluation.elasticsearch_keyword_eval import (
+from fast_app.evaluation.retrieval.elasticsearch_keyword import (
     evaluate_elasticsearch_keyword_dataset,
     retrieve_elasticsearch_docs_for_case,
 )
-from fast_app.evaluation.eval_case_models import RagEvalCase, RagEvalDataset
-from fast_app.evaluation.milvus_vector_eval import (
+from fast_app.evaluation.cases.models import RagEvalCase, RagEvalDataset
+from fast_app.evaluation.retrieval.milvus_vector import (
     evaluate_milvus_vector_dataset,
     retrieve_milvus_docs_for_case,
 )
-from fast_app.evaluation.retrieval_comparison_models import (
+from fast_app.evaluation.retrieval.comparison_models import (
     HybridRetrievalComparisonReport,
     RetrievalVariantReport,
 )
-from fast_app.evaluation.retrieval_eval_models import RetrievalDatasetReport
-from fast_app.evaluation.retrieval_metrics import evaluate_retrieval_dataset
+from fast_app.evaluation.retrieval.models import RetrievalDatasetReport
+from fast_app.evaluation.retrieval.metrics import evaluate_retrieval_dataset
 from fast_app.services.retrieval_fusion import reciprocal_rank_fusion
 
 
@@ -189,3 +189,4 @@ async def compare_hybrid_retrieval_dataset(
             ),
         ],
     )
+

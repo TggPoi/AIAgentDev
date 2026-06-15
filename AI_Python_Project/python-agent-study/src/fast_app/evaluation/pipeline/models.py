@@ -1,7 +1,7 @@
-from dataclasses import dataclass, field
+﻿from dataclasses import dataclass, field
 
-from fast_app.evaluation.generation_eval_models import GenerationDatasetReport
-from fast_app.evaluation.retrieval_eval_models import RetrievalDatasetReport
+from fast_app.evaluation.generation.models import GenerationDatasetReport
+from fast_app.evaluation.retrieval.models import RetrievalDatasetReport
 from fast_app.schemas.rag_chat_schema import RagChatResponse
 
 
@@ -29,3 +29,4 @@ class OfflineRagEvalReport:
     retrieval_report: RetrievalDatasetReport
     generation_report: GenerationDatasetReport
     outputs: list[OfflineRagEvalCaseOutput] = field(default_factory=list)
+

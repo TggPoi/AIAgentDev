@@ -1,4 +1,4 @@
-from fast_app.evaluation.offline_eval_models import OfflineRagEvalReport
+﻿from fast_app.evaluation.pipeline.models import OfflineRagEvalReport
 
 
 def escape_markdown_table_cell(value: object) -> str:
@@ -130,3 +130,4 @@ def render_offline_eval_markdown(report: OfflineRagEvalReport) -> str:
     lines.extend(render_failed_generation_details(report))
 
     return "\n".join(lines).rstrip() + "\n"
+

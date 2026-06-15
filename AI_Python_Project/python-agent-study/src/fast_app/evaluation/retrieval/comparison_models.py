@@ -1,6 +1,6 @@
-from dataclasses import dataclass, field
+﻿from dataclasses import dataclass, field
 
-from fast_app.evaluation.retrieval_eval_models import RetrievalDatasetReport
+from fast_app.evaluation.retrieval.models import RetrievalDatasetReport
 
 
 @dataclass(frozen=True)
@@ -25,3 +25,4 @@ class HybridRetrievalComparisonReport:
 
     dataset_name: str
     variants: list[RetrievalVariantReport] = field(default_factory=list)
+
