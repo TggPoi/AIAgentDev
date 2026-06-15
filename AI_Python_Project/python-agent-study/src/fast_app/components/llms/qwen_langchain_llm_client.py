@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from time import perf_counter
 from typing import Any
 
 from langchain_core.messages import AIMessage
@@ -7,10 +8,9 @@ from langchain_openai import ChatOpenAI
 
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.core.config import Settings
-from fast_app.core.logging import get_logger
+from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RagContext
 from fast_app.services.exceptions import LLMCallError
-from fast_app.services.rag_pipeline_service import RagPipeline
 
 
 
@@ -54,6 +54,48 @@ RAG_HUMAN_PROMPT = """用户问题：
 请根据以上检索上下文回答用户问题。"""
 
 
+def get_response_metadata(response: Any) -> dict[str, Any]:
+    metadata = getattr(response, "response_metadata", None)
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def get_usage_metadata(response: Any) -> dict[str, Any]:
+    usage_metadata = getattr(response, "usage_metadata", None)
+
+    if isinstance(usage_metadata, dict):
+        return usage_metadata
+
+    response_metadata = get_response_metadata(response)
+    token_usage = response_metadata.get("token_usage")
+    return token_usage if isinstance(token_usage, dict) else {}
+
+
+def get_usage_int(usage: dict[str, Any], key: str) -> int | None:
+    fallback_keys = {
+        "prompt_tokens": "input_tokens",
+        "completion_tokens": "output_tokens",
+    }
+    value = usage.get(key)
+
+    if value is None:
+        value = usage.get(fallback_keys.get(key, ""))
+
+    if isinstance(value, bool):
+        return None
+
+    return int(value) if isinstance(value, int) else None
+
+
+def get_finish_reason(response: Any) -> str | None:
+    value = get_response_metadata(response).get("finish_reason")
+    return str(value) if value else None
+
+
+def get_response_model_name(response: Any) -> str | None:
+    value = get_response_metadata(response).get("model_name")
+    return str(value) if value else None
+
+
 class QwenLangChainLLMClient(BaseLLMClient):
     def __init__(self, settings: Settings):
         if not settings.openai_api_key:
@@ -84,11 +126,21 @@ class QwenLangChainLLMClient(BaseLLMClient):
 
 
     async def generate(self, query: str, context: RagContext) -> str:
+        start_time = perf_counter()
+
         try:
             logger.info(
-                "开始调用 qwen-plus: model=%s, query=%s",
-                self.settings.llm_model_name,
-                query,
+                "llm_generate %s",
+                format_log_fields(
+                    event="llm.generate.start",
+                    provider="qwen_langchain",
+                    model_name=self.settings.llm_model_name,
+                    operation="generate",
+                    query_length=len(query),
+                    context_doc_count=len(context.docs),
+                    context_length=len(context.context_text),
+                    timeout_seconds=self.settings.llm_timeout_seconds,
+                ),
             )
 
             response = await self.chain.ainvoke(
@@ -99,16 +151,50 @@ class QwenLangChainLLMClient(BaseLLMClient):
             )
 
             answer = self._extract_message_content(response)
+            usage = get_usage_metadata(response)
+            latency_ms = (perf_counter() - start_time) * 1000
 
-            logger.info("qwen-plus 调用完成: answer_length=%s", len(answer))
+            logger.info(
+                "llm_generate %s",
+                format_log_fields(
+                    event="llm.generate.finish",
+                    provider="qwen_langchain",
+                    model_name=self.settings.llm_model_name,
+                    operation="generate",
+                    answer_length=len(answer),
+                    latency_ms=round(latency_ms, 2),
+                    prompt_tokens=get_usage_int(usage, "prompt_tokens"),
+                    completion_tokens=get_usage_int(usage, "completion_tokens"),
+                    total_tokens=get_usage_int(usage, "total_tokens"),
+                    finish_reason=get_finish_reason(response),
+                    model_name_from_response=get_response_model_name(response),
+                    usage_available=bool(usage),
+                ),
+            )
 
             return answer
 
-        except LLMCallError:
-            raise
-
         except Exception as exc:
-            logger.exception("qwen-plus 调用失败")
+            latency_ms = (perf_counter() - start_time) * 1000
+            logger.exception(
+                "llm_generate %s",
+                format_log_fields(
+                    event="llm.generate.failed",
+                    provider="qwen_langchain",
+                    model_name=self.settings.llm_model_name,
+                    operation="generate",
+                    query_length=len(query),
+                    context_doc_count=len(context.docs),
+                    context_length=len(context.context_text),
+                    timeout_seconds=self.settings.llm_timeout_seconds,
+                    error_type=type(exc).__name__,
+                    latency_ms=round(latency_ms, 2),
+                ),
+            )
+
+            if isinstance(exc, LLMCallError):
+                raise
+
             raise LLMCallError(f"qwen-plus 调用失败: {exc}") from exc
 
 
@@ -117,11 +203,23 @@ class QwenLangChainLLMClient(BaseLLMClient):
         query: str,
         context: RagContext,
     ) -> AsyncGenerator[str, None]:
+        start_time = perf_counter()
+        chunk_count = 0
+        output_length = 0
+
         try:
             logger.info(
-                "开始流式调用 qwen-plus: model=%s, query=%s",
-                self.settings.llm_model_name,
-                query,
+                "llm_stream %s",
+                format_log_fields(
+                    event="llm.stream.start",
+                    provider="qwen_langchain",
+                    model_name=self.settings.llm_model_name,
+                    operation="stream",
+                    query_length=len(query),
+                    context_doc_count=len(context.docs),
+                    context_length=len(context.context_text),
+                    timeout_seconds=self.settings.llm_timeout_seconds,
+                ),
             )
 
             async for chunk in self.chain.astream(
@@ -133,14 +231,46 @@ class QwenLangChainLLMClient(BaseLLMClient):
                 content = getattr(chunk, "content", "")
 
                 if content:
-                    yield str(content)
+                    text = str(content)
+                    chunk_count += 1
+                    output_length += len(text)
+                    yield text
 
-            logger.info("qwen-plus 流式调用完成")
+            latency_ms = (perf_counter() - start_time) * 1000
+            logger.info(
+                "llm_stream %s",
+                format_log_fields(
+                    event="llm.stream.finish",
+                    provider="qwen_langchain",
+                    model_name=self.settings.llm_model_name,
+                    operation="stream",
+                    chunk_count=chunk_count,
+                    output_length=output_length,
+                    latency_ms=round(latency_ms, 2),
+                    usage_available=False,
+                    usage_reason="stream_usage_not_available",
+                ),
+            )
 
         # LangChain / qwen-plus 的底层异常属于组件内部细节。
         # RagPipeline 不应该知道具体 SDK 抛了什么异常。
         except Exception as exc:
-            logger.exception("qwen-plus 流式调用失败")
+            latency_ms = (perf_counter() - start_time) * 1000
+            logger.exception(
+                "llm_stream %s",
+                format_log_fields(
+                    event="llm.stream.failed",
+                    provider="qwen_langchain",
+                    model_name=self.settings.llm_model_name,
+                    operation="stream",
+                    query_length=len(query),
+                    context_doc_count=len(context.docs),
+                    context_length=len(context.context_text),
+                    timeout_seconds=self.settings.llm_timeout_seconds,
+                    error_type=type(exc).__name__,
+                    latency_ms=round(latency_ms, 2),
+                ),
+            )
             raise LLMCallError(f"qwen-plus 流式调用失败: {exc}") from exc
 
 
