@@ -121,6 +121,29 @@ RagEvalCase
 - `top_k` 是参与 Recall@K / MRR 的最终文档数量。
 - 当前阶段只评测 `answerable` 样例。
 
+## ElasticSearch 关键词召回评测
+
+阶段 11-5 增加 ElasticSearch 单路关键词召回评测。
+
+核心流程：
+
+```text
+RagEvalCase
+-> RetrievalOptions
+-> ElasticsearchKeywordRetriever.retrieve()
+-> RetrievedDoc list
+-> evaluate_retrieval_case()
+-> RetrievalCaseResult
+```
+
+注意：
+
+- `candidate_k` 是 ES 查询候选数。
+- `top_k` 是参与 Recall@K / MRR 的最终文档数量。
+- ES `_score` 只代表关键词检索相关性，不能直接和 Milvus vector score 比大小。
+- 当前 ES 查询主要 match `content` 字段。
+- 当前阶段只评测 `answerable` 样例。
+
 ## 本地校验
 
 ```powershell
