@@ -229,6 +229,26 @@ answer 是否引用了 sources 中的 id。
 
 它只基于 `RagEvalCase` 和 `RagChatResponse` 做可解释规则检查。
 
+## 离线 RAG 评测 Runner
+
+阶段 11-8 增加批量请求 pipeline 的离线评测入口。
+
+核心流程：
+
+```text
+RagEvalDataset
+-> RagChatRequest
+-> pipeline.run(req)
+-> RagChatResponse
+-> RetrievalDatasetReport
+-> GenerationDatasetReport
+-> OfflineRagEvalReport
+```
+
+当前 runner 只要求 pipeline 提供 `run(req)` 方法。
+
+因此 Classic Pipeline 和 LangGraph Pipeline 都可以复用。
+
 ## 本地校验
 
 ```powershell
