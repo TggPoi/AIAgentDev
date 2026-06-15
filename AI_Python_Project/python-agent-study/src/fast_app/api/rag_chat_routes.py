@@ -9,6 +9,7 @@ from fast_app.services.exceptions import ExternalServiceError, NoSearchResultErr
 from fast_app.services.rag_pipeline_service import RagPipeline
 
 from fast_app.core.logging import get_logger
+from fast_app.core.request_context import get_request_id, get_trace_id
 
 import json
 from fastapi.encoders import jsonable_encoder
@@ -28,7 +29,10 @@ async def rag_chat_endpoint(
     req: RagChatRequest,
     pipeline: RagPipeline = Depends(get_rag_pipeline),
 ) -> RagChatResponse:
-    return await pipeline.run(req)
+    response = await pipeline.run(req)
+    response.request_id = get_request_id()
+    response.trace_id = get_trace_id()
+    return response
 
 
 #token处理，放在API层面，保持pipeline的纯粹性

@@ -89,6 +89,14 @@ class RagSource(BaseModel):
     
 # 最终检索结果
 class RagChatResponse(BaseModel):
+    request_id: str | None = Field(
+        default=None,
+        description="本次请求的 request_id，用于和后端日志对齐",
+    )
+    trace_id: str | None = Field(
+        default=None,
+        description="本次请求的 trace_id，当前阶段默认与 request_id 相同",
+    )
     query: str
     answer: str
     sources: list[RagSource]

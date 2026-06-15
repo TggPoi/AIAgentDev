@@ -12,6 +12,8 @@ from fast_app.api.stream_routes import router as stream_router
 from fast_app.api.error_demo_routes import router as error_demo_router
 from fast_app.core.config import get_settings
 from fast_app.core.logging import get_logger, setup_logging
+from fast_app.core.request_context import REQUEST_ID_HEADER
+from fast_app.middlewares.request_id_middleware import RequestIdMiddleware
 
 from fast_app.core.exception_handlers import register_exception_handlers
 import httpx
@@ -84,7 +86,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[REQUEST_ID_HEADER],
 )
+app.add_middleware(RequestIdMiddleware)
 
 register_exception_handlers(app)
 
