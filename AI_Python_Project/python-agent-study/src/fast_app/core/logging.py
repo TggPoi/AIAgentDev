@@ -25,13 +25,27 @@ def _add_request_context_filter(root_logger: logging.Logger) -> None:
             handler.addFilter(RequestContextFilter())
 
 
+def _normalize_log_value(value: object) -> object:
+    if isinstance(value, set):
+        return sorted(value)
+
+    if isinstance(value, tuple):
+        return list(value)
+
+    return value
+
+
 def format_log_fields(**fields: object) -> str:
     parts: list[str] = []
 
     for key, value in fields.items():
+        value = _normalize_log_value(value)
+
         if value is None:
             normalized = "-"
         elif isinstance(value, str):
+            normalized = json.dumps(value, ensure_ascii=False)
+        elif isinstance(value, (list, dict)):
             normalized = json.dumps(value, ensure_ascii=False)
         else:
             normalized = str(value)

@@ -31,6 +31,11 @@ logger = get_logger(__name__)
 
 DEFAULT_SOURCE_PREVIEW_CHARS = 120
 
+# 日志里只记录前几个 doc.id。避免把完整 content 写进日志。
+def build_top_doc_ids(docs: list[RetrievedDoc], limit: int = 5) -> list[str]:
+    return [doc.id for doc in docs[:limit]]
+
+
 # 并发召回
 # 过滤文档
 # 合并去重
@@ -502,15 +507,59 @@ class RagPipeline:
         if not docs:
             return []
 
+        start_time = perf_counter()
+        rerank_top_k = min(self.settings.rerank_top_k, len(docs))
+
+        logger.info(
+            "rag_rerank %s",
+            format_log_fields(
+                event="rag.rerank.start",
+                pipeline_provider="classic",
+                candidate_count=len(docs),
+                top_k=rerank_top_k,
+                top_doc_ids=build_top_doc_ids(docs),
+            ),
+        )
+
         try:
-            return await self.reranker.rerank(
+            reranked_docs = await self.reranker.rerank(
                 query=query,
                 docs=docs,
-                top_k=min(self.settings.rerank_top_k, len(docs)),
+                top_k=rerank_top_k,
             )
+            latency_ms = (perf_counter() - start_time) * 1000
+            logger.info(
+                "rag_rerank %s",
+                format_log_fields(
+                    event="rag.rerank.finish",
+                    pipeline_provider="classic",
+                    candidate_count=len(docs),
+                    result_count=len(reranked_docs),
+                    top_k=rerank_top_k,
+                    latency_ms=round(latency_ms, 2),
+                    fallback=False,
+                    top_doc_ids=build_top_doc_ids(reranked_docs),
+                ),
+            )
+            return reranked_docs
         except ExternalServiceError as exc:
-            logger.warning("Rerank 失败，使用召回结果降级继续: %s", exc)
-            return docs[: self.settings.rerank_top_k]
+            fallback_docs = docs[: self.settings.rerank_top_k]
+            latency_ms = (perf_counter() - start_time) * 1000
+            logger.warning(
+                "rag_rerank %s",
+                format_log_fields(
+                    event="rag.rerank.fallback",
+                    pipeline_provider="classic",
+                    candidate_count=len(docs),
+                    result_count=len(fallback_docs),
+                    top_k=rerank_top_k,
+                    latency_ms=round(latency_ms, 2),
+                    fallback=True,
+                    error_type=type(exc).__name__,
+                    top_doc_ids=build_top_doc_ids(fallback_docs),
+                ),
+            )
+            return fallback_docs
 
     #非流式普通接口
     async def run(self, req: RagChatRequest) -> RagChatResponse:
@@ -650,92 +699,261 @@ class RagPipeline:
         options = build_retrieval_options(req)
 
         if req.mode == "vector":
-            logger.info("开始向量检索: query=%s", req.query)
-
-            docs = await self.vector_retriever.retrieve(req.query, options)
-            filtered_docs = filter_docs_by_score(docs, req.min_score)
-
             logger.info(
-                "向量检索完成: raw_count=%s, filtered_count=%s",
-                len(docs),
-                len(filtered_docs),
+                "rag_retrieval %s",
+                format_log_fields(
+                    event="rag.retrieval.vector.start",
+                    pipeline_provider="classic",
+                    retrieval_mode=req.mode,
+                    retriever="vector",
+                    query=req.query,
+                    top_k=req.top_k,
+                    candidate_k=options.candidate_k,
+                    min_score=req.min_score,
+                ),
             )
 
-            if len(filtered_docs) == 0:
-                logger.warning("向量检索无结果: min_score=%s", req.min_score)
-                raise NoSearchResultError(
-                    f"没有找到满足 min_score={req.min_score} 的向量检索结果"
+            start_time = perf_counter()
+            try:
+                docs = await self.vector_retriever.retrieve(req.query, options)
+                filtered_docs = filter_docs_by_score(docs, req.min_score)
+                returned_docs = filtered_docs[: req.top_k]
+                latency_ms = (perf_counter() - start_time) * 1000
+
+                logger.info(
+                    "rag_retrieval %s",
+                    format_log_fields(
+                        event="rag.retrieval.vector.finish",
+                        pipeline_provider="classic",
+                        retrieval_mode=req.mode,
+                        retriever="vector",
+                        query=req.query,
+                        top_k=req.top_k,
+                        candidate_k=options.candidate_k,
+                        min_score=req.min_score,
+                        raw_count=len(docs),
+                        filtered_count=len(filtered_docs),
+                        returned_count=len(returned_docs),
+                        latency_ms=round(latency_ms, 2),
+                        top_doc_ids=build_top_doc_ids(returned_docs),
+                    ),
                 )
 
-            return filtered_docs[: req.top_k]
+                if len(returned_docs) == 0:
+                    raise NoSearchResultError(
+                        f"没有找到满足 min_score={req.min_score} 的向量检索结果"
+                    )
+
+                return returned_docs
+            except Exception:
+                latency_ms = (perf_counter() - start_time) * 1000
+                logger.exception(
+                    "rag_retrieval %s",
+                    format_log_fields(
+                        event="rag.retrieval.vector.failed",
+                        pipeline_provider="classic",
+                        retrieval_mode=req.mode,
+                        retriever="vector",
+                        query=req.query,
+                        top_k=req.top_k,
+                        candidate_k=options.candidate_k,
+                        min_score=req.min_score,
+                        latency_ms=round(latency_ms, 2),
+                    ),
+                )
+                raise
 
         if req.mode == "keyword":
-            logger.info("开始关键词检索: query=%s", req.query)
-
-            docs = await self.keyword_retriever.retrieve(req.query, options)
-            filtered_docs = filter_docs_by_mode(docs, req.mode, req.min_score)
-
             logger.info(
-                "关键词检索完成: raw_count=%s, filtered_count=%s",
-                len(docs),
-                len(filtered_docs),
+                "rag_retrieval %s",
+                format_log_fields(
+                    event="rag.retrieval.keyword.start",
+                    pipeline_provider="classic",
+                    retrieval_mode=req.mode,
+                    retriever="keyword",
+                    query=req.query,
+                    top_k=req.top_k,
+                    candidate_k=options.candidate_k,
+                    min_score=req.min_score,
+                ),
             )
 
-            if len(filtered_docs) == 0:
-                logger.warning("关键词检索无结果: min_score=%s", req.min_score)
-                raise NoSearchResultError(
-                    f"没有找到满足 min_score={req.min_score} 的关键词检索结果"
+            start_time = perf_counter()
+            try:
+                docs = await self.keyword_retriever.retrieve(req.query, options)
+                filtered_docs = filter_docs_by_mode(docs, req.mode, req.min_score)
+                returned_docs = filtered_docs[: req.top_k]
+                latency_ms = (perf_counter() - start_time) * 1000
+
+                logger.info(
+                    "rag_retrieval %s",
+                    format_log_fields(
+                        event="rag.retrieval.keyword.finish",
+                        pipeline_provider="classic",
+                        retrieval_mode=req.mode,
+                        retriever="keyword",
+                        query=req.query,
+                        top_k=req.top_k,
+                        candidate_k=options.candidate_k,
+                        min_score=req.min_score,
+                        raw_count=len(docs),
+                        filtered_count=len(filtered_docs),
+                        returned_count=len(returned_docs),
+                        latency_ms=round(latency_ms, 2),
+                        top_doc_ids=build_top_doc_ids(returned_docs),
+                    ),
                 )
 
-            return filtered_docs[: req.top_k]
+                if len(returned_docs) == 0:
+                    raise NoSearchResultError(
+                        f"没有找到满足 min_score={req.min_score} 的关键词检索结果"
+                    )
 
-        # 开始混合检索模式
-        logger.info("开始混合检索: query=%s", req.query)
+                return returned_docs
+            except Exception:
+                latency_ms = (perf_counter() - start_time) * 1000
+                logger.exception(
+                    "rag_retrieval %s",
+                    format_log_fields(
+                        event="rag.retrieval.keyword.failed",
+                        pipeline_provider="classic",
+                        retrieval_mode=req.mode,
+                        retriever="keyword",
+                        query=req.query,
+                        top_k=req.top_k,
+                        candidate_k=options.candidate_k,
+                        min_score=req.min_score,
+                        latency_ms=round(latency_ms, 2),
+                    ),
+                )
+                raise
 
+        logger.info(
+            "rag_retrieval %s",
+            format_log_fields(
+                event="rag.retrieval.hybrid.start",
+                pipeline_provider="classic",
+                retrieval_mode=req.mode,
+                query=req.query,
+                top_k=req.top_k,
+                candidate_k=options.candidate_k,
+                min_score=req.min_score,
+            ),
+        )
+
+        async def retrieve_source(
+            retriever_name: str,
+            retriever: BaseRetriever,
+        ) -> list[RetrievedDoc] | Exception:
+            source_start_time = perf_counter()
+            try:
+                docs = await retriever.retrieve(req.query, options)
+                filtered_docs = filter_docs_by_mode(
+                    docs=docs,
+                    mode=req.mode,
+                    min_score=req.min_score,
+                )
+                latency_ms = (perf_counter() - source_start_time) * 1000
+                logger.info(
+                    "rag_retrieval %s",
+                    format_log_fields(
+                        event="rag.retrieval.source.finish",
+                        pipeline_provider="classic",
+                        retrieval_mode=req.mode,
+                        retriever=retriever_name,
+                        query=req.query,
+                        top_k=req.top_k,
+                        candidate_k=options.candidate_k,
+                        min_score=req.min_score,
+                        raw_count=len(docs),
+                        filtered_count=len(filtered_docs),
+                        returned_count=len(filtered_docs),
+                        latency_ms=round(latency_ms, 2),
+                        top_doc_ids=build_top_doc_ids(filtered_docs),
+                    ),
+                )
+                return filtered_docs
+            except Exception as exc:
+                latency_ms = (perf_counter() - source_start_time) * 1000
+                logger.warning(
+                    "rag_retrieval %s",
+                    format_log_fields(
+                        event="rag.retrieval.source.failed",
+                        pipeline_provider="classic",
+                        retrieval_mode=req.mode,
+                        retriever=retriever_name,
+                        query=req.query,
+                        top_k=req.top_k,
+                        candidate_k=options.candidate_k,
+                        min_score=req.min_score,
+                        latency_ms=round(latency_ms, 2),
+                        error_type=type(exc).__name__,
+                    ),
+                )
+                return exc
+
+        hybrid_start_time = perf_counter()
         results = await asyncio.gather(
-            self.vector_retriever.retrieve(req.query, options),
-            self.keyword_retriever.retrieve(req.query, options),
-            return_exceptions=True,
+            retrieve_source("vector", self.vector_retriever),
+            retrieve_source("keyword", self.keyword_retriever),
         )
 
         successful_doc_lists: list[list[RetrievedDoc]] = []
 
         for result in results:
             if isinstance(result, Exception):
-                logger.warning("召回源失败: %s", result)
                 continue
 
-            filtered_docs = filter_docs_by_mode(
-                docs=result,
-                mode=req.mode,
-                min_score=req.min_score,
-            )
-            successful_doc_lists.append(filtered_docs)
+            successful_doc_lists.append(result)
 
         if len(successful_doc_lists) == 0:
-            logger.error("混合检索失败: 所有召回源都失败")
+            latency_ms = (perf_counter() - hybrid_start_time) * 1000
+            logger.error(
+                "rag_retrieval %s",
+                format_log_fields(
+                    event="rag.retrieval.failed",
+                    pipeline_provider="classic",
+                    retrieval_mode=req.mode,
+                    query=req.query,
+                    top_k=req.top_k,
+                    candidate_k=options.candidate_k,
+                    min_score=req.min_score,
+                    latency_ms=round(latency_ms, 2),
+                    source_count=0,
+                ),
+            )
             raise ExternalServiceError("所有召回源都失败")
 
-        # 旧版本，直接通过id去重合并
-        # merged_docs = merge_docs_by_id(
-        #     doc_lists=successful_doc_lists,
-        #     top_k=req.top_k,
-        # )
-
-        # 新版本，使用RRF方案
+        input_doc_count = sum(len(docs) for docs in successful_doc_lists)
+        unique_doc_count = len(
+            {doc.id for docs in successful_doc_lists for doc in docs}
+        )
         merged_docs = reciprocal_rank_fusion(
             doc_lists=successful_doc_lists,
             top_k=req.top_k,
         )
+        latency_ms = (perf_counter() - hybrid_start_time) * 1000
 
         logger.info(
-            "混合检索合并完成: source_count=%s, merged_count=%s",
-            len(successful_doc_lists),
-            len(merged_docs),
+            "rag_retrieval %s",
+            format_log_fields(
+                event="rag.retrieval.rrf.finish",
+                pipeline_provider="classic",
+                retrieval_mode=req.mode,
+                query=req.query,
+                top_k=req.top_k,
+                candidate_k=options.candidate_k,
+                min_score=req.min_score,
+                source_count=len(successful_doc_lists),
+                input_doc_count=input_doc_count,
+                unique_doc_count=unique_doc_count,
+                output_doc_count=len(merged_docs),
+                latency_ms=round(latency_ms, 2),
+                top_doc_ids=build_top_doc_ids(merged_docs),
+            ),
         )
 
         if len(merged_docs) == 0:
-            logger.warning("混合检索无结果: min_score=%s", req.min_score)
             raise NoSearchResultError(
                 f"没有找到满足 min_score={req.min_score} 的混合检索结果"
             )

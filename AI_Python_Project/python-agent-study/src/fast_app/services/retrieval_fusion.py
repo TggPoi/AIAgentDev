@@ -1,7 +1,7 @@
 from dataclasses import replace
 
+from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RetrievedDoc
-from fast_app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -59,12 +59,21 @@ def reciprocal_rank_fusion(
             )
         )
 
-    # 打印处理后的分数
-    print("RRF scores:")
-    for doc_id, score in rrf_scores.items():
-        print(doc_id, score)
-
     # 按照rrf分数从高到低排序，并且截断
     fused_docs.sort(key=lambda doc: doc.score, reverse=True)
+    output_docs = fused_docs[:top_k]
 
-    return fused_docs[:top_k]
+    logger.info(
+        "rag_retrieval %s",
+        format_log_fields(
+            event="rag.retrieval.rrf.score",
+            input_doc_count=sum(len(docs) for docs in doc_lists),
+            unique_doc_count=len(rrf_scores),
+            output_doc_count=len(output_docs),
+            top_k=top_k,
+            rrf_k=k,
+            top_doc_ids=[doc.id for doc in output_docs],
+        ),
+    )
+
+    return output_docs
