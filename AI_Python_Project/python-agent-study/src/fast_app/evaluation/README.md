@@ -249,6 +249,27 @@ RagEvalDataset
 
 因此 Classic Pipeline 和 LangGraph Pipeline 都可以复用。
 
+## 评测报告输出
+
+阶段 11-9 增加 Markdown / JSON 报告输出。
+
+JSON 用于程序读取和后续自动对比。
+
+Markdown 用于人工阅读和排查失败 case。
+
+默认输出目录：
+
+```text
+reports/evaluation
+```
+
+文件名格式：
+
+```text
+{dataset_name}-{YYYYMMDD-HHMMSS}.json
+{dataset_name}-{YYYYMMDD-HHMMSS}.md
+```
+
 ## 本地校验
 
 ```powershell

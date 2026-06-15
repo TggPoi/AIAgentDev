@@ -1,0 +1,1693 @@
+{
+  "dataset_name": "stage11_rag_eval_cases",
+  "case_count": 6,
+  "response_count": 6,
+  "retrieval_report": {
+    "case_count": 6,
+    "evaluated_case_count": 5,
+    "skipped_case_count": 1,
+    "passed_case_count": 5,
+    "failed_case_count": 0,
+    "mean_recall_at_k": 1.0,
+    "mean_mrr": 0.5,
+    "results": [
+      {
+        "case_id": "phase9_hybrid_retrieval_basic",
+        "question": "阶段 9 为什么要保留 vector_score、keyword_score、rrf_score 和 rerank_score？",
+        "case_type": "answerable",
+        "retrieved_count": 5,
+        "expected_source_count": 1,
+        "hit_count": 1,
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 0.5,
+        "first_hit_rank": 2,
+        "passed": true,
+        "hits": [
+          {
+            "doc_id": "chunk_432ca43648f041f8",
+            "rank": 2,
+            "matched_by": [
+              "section_keywords"
+            ],
+            "score": 0.01639344262295082,
+            "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "14. 下一阶段进入什么"
+            ]
+          },
+          {
+            "doc_id": "chunk_3d67735cce7bc193",
+            "rank": 4,
+            "matched_by": [
+              "section_keywords"
+            ],
+            "score": 0.016129032258064516,
+            "source_path": "learning-docs/phase-9/9-2-保留多阶段分数.md",
+            "section_path": [
+              "阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score",
+              "1. 本阶段要解决什么问题"
+            ]
+          },
+          {
+            "doc_id": "chunk_0b4355f8ce3cdece",
+            "rank": 5,
+            "matched_by": [
+              "section_keywords"
+            ],
+            "score": 0.015873015873015872,
+            "source_path": "learning-docs/phase-9/9-2-保留多阶段分数.md",
+            "section_path": [
+              "阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score",
+              "12. 建议测试方式",
+              "12.3 测试非流式 hybrid"
+            ]
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_metadata_sources",
+        "question": "阶段 9 为什么要把 metadata 写入 ES 和 Milvus，并在 sources 中展示 title 和 section_path？",
+        "case_type": "answerable",
+        "retrieved_count": 5,
+        "expected_source_count": 1,
+        "hit_count": 1,
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 0.5,
+        "first_hit_rank": 2,
+        "passed": true,
+        "hits": [
+          {
+            "doc_id": "chunk_187c2c92f1fa0cf8",
+            "rank": 2,
+            "matched_by": [
+              "section_keywords"
+            ],
+            "score": 0.01639344262295082,
+            "source_path": "learning-docs/phase-9/9-3-记录retrieval_sources和多来源命中信息.md",
+            "section_path": [
+              "阶段 9-3：记录 retrieval_sources 和多来源命中信息",
+              "13. 下一阶段进入什么"
+            ]
+          },
+          {
+            "doc_id": "chunk_ffa6b354e74ea966",
+            "rank": 5,
+            "matched_by": [
+              "section_keywords"
+            ],
+            "score": 0.015873015873015872,
+            "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "4. 当前系统的核心局限",
+              "4.6 Classic / LangGraph / stream 行为需要同步规划"
+            ]
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_lifespan_clients",
+        "question": "FastAPI lifespan 为什么适合管理 Milvus、ES 和 httpx client？",
+        "case_type": "answerable",
+        "retrieved_count": 5,
+        "expected_source_count": 1,
+        "hit_count": 1,
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 0.5,
+        "first_hit_rank": 2,
+        "passed": true,
+        "hits": [
+          {
+            "doc_id": "chunk_98d4820c74801e18",
+            "rank": 2,
+            "matched_by": [
+              "section_keywords"
+            ],
+            "score": 0.01639344262295082,
+            "source_path": "learning-docs/phase-9/9-5-Milvus collection schema与ES index mapping对齐.md",
+            "section_path": [
+              "阶段 9-5：Milvus collection schema 与 ES index mapping 对齐",
+              "12. 下一阶段进入什么"
+            ]
+          },
+          {
+            "doc_id": "chunk_1c7de21f5203b102",
+            "rank": 4,
+            "matched_by": [
+              "section_keywords"
+            ],
+            "score": 0.016129032258064516,
+            "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+            "section_path": [
+              "阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client",
+              "1. 本阶段要解决什么问题"
+            ]
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_stream_events",
+        "question": "阶段 9 的 stream event 协议为什么要区分 token、sources、done 和 error？",
+        "case_type": "answerable",
+        "retrieved_count": 5,
+        "expected_source_count": 1,
+        "hit_count": 1,
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 0.5,
+        "first_hit_rank": 2,
+        "passed": true,
+        "hits": [
+          {
+            "doc_id": "chunk_a1fa4d2e05b4a0ef",
+            "rank": 2,
+            "matched_by": [
+              "section_keywords"
+            ],
+            "score": 0.01639344262295082,
+            "source_path": "learning-docs/phase-9/9-9-stream event协议设计.md",
+            "section_path": [
+              "阶段 9-9：stream event 协议设计",
+              "1. 本阶段要解决什么问题"
+            ]
+          },
+          {
+            "doc_id": "chunk_4d6adaf242dcbd83",
+            "rank": 4,
+            "matched_by": [
+              "section_keywords"
+            ],
+            "score": 0.016129032258064516,
+            "source_path": "learning-docs/phase-9/9-9-stream event协议设计.md",
+            "section_path": [
+              "阶段 9-9：stream event 协议设计",
+              "11. Classic / LangGraph / stream 的行为对齐"
+            ]
+          },
+          {
+            "doc_id": "chunk_6cf75131ea1faaac",
+            "rank": 5,
+            "matched_by": [
+              "section_keywords"
+            ],
+            "score": 0.015873015873015872,
+            "source_path": "learning-docs/phase-9/9-9-stream event协议设计.md",
+            "section_path": [
+              "阶段 9-9：stream event 协议设计",
+              "8. 修改 src/fast_app/services/langgraph_rag_pipeline_service.py"
+            ]
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_fallback_policy",
+        "question": "RAG 链路中为什么需要 timeout、retry 和 fallback？",
+        "case_type": "answerable",
+        "retrieved_count": 5,
+        "expected_source_count": 1,
+        "hit_count": 1,
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 0.5,
+        "first_hit_rank": 2,
+        "passed": true,
+        "hits": [
+          {
+            "doc_id": "chunk_c62f6bc03854326e",
+            "rank": 2,
+            "matched_by": [
+              "section_keywords"
+            ],
+            "score": 0.01639344262295082,
+            "source_path": "learning-docs/phase-9/9-8-超时重试降级与fallback.md",
+            "section_path": [
+              "阶段 9-8：超时、重试、降级与 fallback",
+              "21. 验收标准"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "generation_report": {
+    "case_count": 6,
+    "evaluated_case_count": 6,
+    "passed_case_count": 4,
+    "failed_case_count": 2,
+    "pass_rate": 0.6666666666666666,
+    "results": [
+      {
+        "case_id": "phase9_hybrid_retrieval_basic",
+        "question": "阶段 9 为什么要保留 vector_score、keyword_score、rrf_score 和 rerank_score？",
+        "case_type": "answerable",
+        "passed": true,
+        "answer_length": 773,
+        "source_count": 5,
+        "checks": [
+          {
+            "name": "expected_keywords",
+            "passed": true,
+            "message": "回答覆盖了预期关键词",
+            "detail": {
+              "expected_keywords": [
+                "vector_score",
+                "keyword_score",
+                "rrf_score",
+                "rerank_score"
+              ],
+              "missing_keywords": []
+            }
+          },
+          {
+            "name": "source_presence",
+            "passed": true,
+            "message": "回答包含 sources",
+            "detail": {
+              "source_count": 5
+            }
+          },
+          {
+            "name": "source_citation",
+            "passed": true,
+            "message": "回答引用了 source id",
+            "detail": {
+              "source_ids": [
+                "chunk_eb62a73c1d13584c",
+                "chunk_432ca43648f041f8",
+                "chunk_6b1c26acdeda2462",
+                "chunk_3d67735cce7bc193",
+                "chunk_0b4355f8ce3cdece"
+              ],
+              "cited_source_ids": [
+                "chunk_432ca43648f041f8",
+                "chunk_3d67735cce7bc193",
+                "chunk_0b4355f8ce3cdece"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_metadata_sources",
+        "question": "阶段 9 为什么要把 metadata 写入 ES 和 Milvus，并在 sources 中展示 title 和 section_path？",
+        "case_type": "answerable",
+        "passed": true,
+        "answer_length": 664,
+        "source_count": 5,
+        "checks": [
+          {
+            "name": "expected_keywords",
+            "passed": true,
+            "message": "回答覆盖了预期关键词",
+            "detail": {
+              "expected_keywords": [
+                "metadata",
+                "sources",
+                "title",
+                "section_path"
+              ],
+              "missing_keywords": []
+            }
+          },
+          {
+            "name": "source_presence",
+            "passed": true,
+            "message": "回答包含 sources",
+            "detail": {
+              "source_count": 5
+            }
+          },
+          {
+            "name": "source_citation",
+            "passed": true,
+            "message": "回答引用了 source id",
+            "detail": {
+              "source_ids": [
+                "chunk_3c10f97650357b56",
+                "chunk_187c2c92f1fa0cf8",
+                "chunk_a3bcae8345aeb697",
+                "chunk_432ca43648f041f8",
+                "chunk_ffa6b354e74ea966"
+              ],
+              "cited_source_ids": [
+                "chunk_3c10f97650357b56",
+                "chunk_187c2c92f1fa0cf8",
+                "chunk_432ca43648f041f8"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_lifespan_clients",
+        "question": "FastAPI lifespan 为什么适合管理 Milvus、ES 和 httpx client？",
+        "case_type": "answerable",
+        "passed": false,
+        "answer_length": 471,
+        "source_count": 5,
+        "checks": [
+          {
+            "name": "expected_keywords",
+            "passed": false,
+            "message": "回答缺少预期关键词",
+            "detail": {
+              "expected_keywords": [
+                "lifespan",
+                "client",
+                "启动",
+                "关闭"
+              ],
+              "missing_keywords": [
+                "启动"
+              ]
+            }
+          },
+          {
+            "name": "source_presence",
+            "passed": true,
+            "message": "回答包含 sources",
+            "detail": {
+              "source_count": 5
+            }
+          },
+          {
+            "name": "source_citation",
+            "passed": false,
+            "message": "回答没有引用 source id",
+            "detail": {
+              "source_ids": [
+                "chunk_06b0a096584a5ee5",
+                "chunk_98d4820c74801e18",
+                "chunk_79508fe4d0238d2c",
+                "chunk_1c7de21f5203b102",
+                "chunk_7e41b30d137db3de"
+              ],
+              "cited_source_ids": []
+            }
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_stream_events",
+        "question": "阶段 9 的 stream event 协议为什么要区分 token、sources、done 和 error？",
+        "case_type": "answerable",
+        "passed": true,
+        "answer_length": 558,
+        "source_count": 5,
+        "checks": [
+          {
+            "name": "expected_keywords",
+            "passed": true,
+            "message": "回答覆盖了预期关键词",
+            "detail": {
+              "expected_keywords": [
+                "token",
+                "sources",
+                "done",
+                "error"
+              ],
+              "missing_keywords": []
+            }
+          },
+          {
+            "name": "source_presence",
+            "passed": true,
+            "message": "回答包含 sources",
+            "detail": {
+              "source_count": 5
+            }
+          },
+          {
+            "name": "source_citation",
+            "passed": true,
+            "message": "回答引用了 source id",
+            "detail": {
+              "source_ids": [
+                "chunk_a491fb9eee7fb18e",
+                "chunk_a1fa4d2e05b4a0ef",
+                "chunk_f4d6a6bc7dda59fc",
+                "chunk_4d6adaf242dcbd83",
+                "chunk_6cf75131ea1faaac"
+              ],
+              "cited_source_ids": [
+                "chunk_a1fa4d2e05b4a0ef",
+                "chunk_4d6adaf242dcbd83"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_fallback_policy",
+        "question": "RAG 链路中为什么需要 timeout、retry 和 fallback？",
+        "case_type": "answerable",
+        "passed": false,
+        "answer_length": 652,
+        "source_count": 5,
+        "checks": [
+          {
+            "name": "expected_keywords",
+            "passed": false,
+            "message": "回答缺少预期关键词",
+            "detail": {
+              "expected_keywords": [
+                "timeout",
+                "retry",
+                "fallback",
+                "外部服务"
+              ],
+              "missing_keywords": [
+                "外部服务"
+              ]
+            }
+          },
+          {
+            "name": "source_presence",
+            "passed": true,
+            "message": "回答包含 sources",
+            "detail": {
+              "source_count": 5
+            }
+          },
+          {
+            "name": "source_citation",
+            "passed": true,
+            "message": "回答引用了 source id",
+            "detail": {
+              "source_ids": [
+                "chunk_4c8011b79163d473",
+                "chunk_c62f6bc03854326e",
+                "chunk_53860e694c84ef74",
+                "chunk_e02428a26f496a05",
+                "chunk_b36f7f40f72ac11a"
+              ],
+              "cited_source_ids": [
+                "chunk_c62f6bc03854326e",
+                "chunk_e02428a26f496a05"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "case_id": "no_answer_weather",
+        "question": "明天北京天气怎么样？",
+        "case_type": "no_answer",
+        "passed": true,
+        "answer_length": 19,
+        "source_count": 5,
+        "checks": [
+          {
+            "name": "no_answer_refusal",
+            "passed": true,
+            "message": "无答案问题已拒答",
+            "detail": {
+              "refusal_markers": [
+                "当前知识库中没有足够信息",
+                "没有足够信息",
+                "无法根据检索上下文"
+              ],
+              "matched_markers": [
+                "当前知识库中没有足够信息",
+                "没有足够信息"
+              ]
+            }
+          },
+          {
+            "name": "forbidden_keywords",
+            "passed": true,
+            "message": "回答未出现禁止关键词",
+            "detail": {
+              "forbidden_keywords": [
+                "晴天",
+                "下雨",
+                "温度",
+                "摄氏度"
+              ],
+              "found_keywords": []
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "case_id": "phase9_hybrid_retrieval_basic",
+      "response": {
+        "query": "阶段 9 为什么要保留 vector_score、keyword_score、rrf_score 和 rerank_score？",
+        "answer": "根据【检索上下文】，阶段 9（具体为阶段 9-2）保留 `vector_score`、`keyword_score`、`rrf_score` 和 `rerank_score` 的原因如下：\n\n1.  **构建可验证的工程链路**：阶段 9-1 仅完成了数据模型地基（确认模型能装下分数），阶段 9-2 需要解决这些分数是否真的能在 RAG 链路中一路保留下来，并且能被 API、测试、日志清楚验证 [chunk_3d67735cce7bc193]。\n2.  **展示 Score Breakdown**：当前的 `sources` 通常只显示最终展示分数，保留这些字段的目的是让非流式 sources 可以展示详细的 score breakdown [chunk_3d67735cce7bc193]。\n3.  **支持测试脚本验证**：需要通过保留这些字段，让测试脚本可以验证 score breakdown（例如检查 `scores.rrf_score` 或 `scores.rerank_score` 是否有值）[chunk_3d67735cce7bc193][chunk_0b4355f8ce3cdece]。\n4.  **明确分数来源与防覆盖**：不同组件负责写入特定分数（Milvus Retriever 写 `vector_score`，ElasticSearch Retriever 写 `keyword_score`，RRF 写 `rrf_score`，DashScope Reranker 写 `rerank_score`），需确保每个分数不会互相覆盖 [chunk_432ca43648f041f8]。\n5.  **保持低侵入性**：在实现上述功能时，让内部链路继续保持低侵入 [chunk_3d67735cce7bc193]。",
+        "sources": [
+          {
+            "id": "chunk_eb62a73c1d13584c",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "6. 新增 src/fast_app/domain/rag_stream_models.py",
+            "section_path": [
+              "阶段 9-9：stream event 协议设计",
+              "6. 新增 src/fast_app/domain/rag_stream_models.py"
+            ],
+            "metadata": {
+              "doc_id": "doc_1e5f1edc2c01027c",
+              "source_path": "learning-docs/phase-9/9-9-stream event协议设计.md",
+              "document_type": "markdown",
+              "file_name": "9-9-stream event协议设计.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_eb62a73c1d13584c",
+              "title": "6. 新增 src/fast_app/domain/rag_stream_models.py",
+              "section_path": [
+                "阶段 9-9：stream event 协议设计",
+                "6. 新增 src/fast_app/domain/rag_stream_models.py"
+              ],
+              "heading_level": 2,
+              "section_index": 15,
+              "chunk_index": 12
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": 0.9985427856445312,
+              "keyword_score": null,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "新增内部 stream event 模型： ```python from dataclasses import dataclass from typing import Any, Literal RagStreamEventName = L..."
+          },
+          {
+            "id": "chunk_432ca43648f041f8",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "14. 下一阶段进入什么",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "14. 下一阶段进入什么"
+            ],
+            "metadata": {
+              "doc_id": "doc_75bbb336b6aeab47",
+              "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+              "document_type": "markdown",
+              "file_name": "9-1-数据模型重构.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_432ca43648f041f8",
+              "title": "14. 下一阶段进入什么",
+              "section_path": [
+                "阶段 9-1：数据模型重构",
+                "14. 下一阶段进入什么"
+              ],
+              "heading_level": 2,
+              "section_index": 64,
+              "chunk_index": 68
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 21.314524,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-1 之后，建议进入： ```text 阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score ``` 9-2 的重点不是再讨论模型要不要扩展，而是把阶段..."
+          },
+          {
+            "id": "chunk_6b1c26acdeda2462",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "8. 新增 src/fast_app/ingestion/markdown_chunker.py",
+            "section_path": [
+              "阶段 9-10：真实 Markdown ingestion 接入 Milvus / ES",
+              "8. 新增 src/fast_app/ingestion/markdown_chunker.py"
+            ],
+            "metadata": {
+              "doc_id": "doc_59ecfc2bf36525a0",
+              "source_path": "learning-docs/phase-9/9-10-真实Markdown ingestion接入Milvus ES.md",
+              "document_type": "markdown",
+              "file_name": "9-10-真实Markdown ingestion接入Milvus ES.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_6b1c26acdeda2462",
+              "title": "8. 新增 src/fast_app/ingestion/markdown_chunker.py",
+              "section_path": [
+                "阶段 9-10：真实 Markdown ingestion 接入 Milvus / ES",
+                "8. 新增 src/fast_app/ingestion/markdown_chunker.py"
+              ],
+              "heading_level": 2,
+              "section_index": 17,
+              "chunk_index": 14
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": 0.9985426068305969,
+              "keyword_score": null,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "这个文件负责把 Markdown 文件切成 `KnowledgeChunk`。 建议新增： ```python import hashlib from pathlib import Path from fast_app.domain.kno..."
+          },
+          {
+            "id": "chunk_3d67735cce7bc193",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "1. 本阶段要解决什么问题",
+            "section_path": [
+              "阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score",
+              "1. 本阶段要解决什么问题"
+            ],
+            "metadata": {
+              "doc_id": "doc_82b478ada24d292c",
+              "source_path": "learning-docs/phase-9/9-2-保留多阶段分数.md",
+              "document_type": "markdown",
+              "file_name": "9-2-保留多阶段分数.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_3d67735cce7bc193",
+              "title": "1. 本阶段要解决什么问题",
+              "section_path": [
+                "阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score",
+                "1. 本阶段要解决什么问题"
+              ],
+              "heading_level": 2,
+              "section_index": 2,
+              "chunk_index": 1
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 20.04627,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-1 已经完成了数据模型地基： ```text RetrievedDoc 新增 scores ScoreBreakdown 可以保存 vector_score / keyword_score / rrf_score / rerank..."
+          },
+          {
+            "id": "chunk_0b4355f8ce3cdece",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "12.3 测试非流式 hybrid",
+            "section_path": [
+              "阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score",
+              "12. 建议测试方式",
+              "12.3 测试非流式 hybrid"
+            ],
+            "metadata": {
+              "doc_id": "doc_82b478ada24d292c",
+              "source_path": "learning-docs/phase-9/9-2-保留多阶段分数.md",
+              "document_type": "markdown",
+              "file_name": "9-2-保留多阶段分数.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_0b4355f8ce3cdece",
+              "title": "12.3 测试非流式 hybrid",
+              "section_path": [
+                "阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score",
+                "12. 建议测试方式",
+                "12.3 测试非流式 hybrid"
+              ],
+              "heading_level": 3,
+              "section_index": 45,
+              "chunk_index": 46
+            },
+            "score": 0.015873015873015872,
+            "scores": {
+              "vector_score": 0.9970887899398804,
+              "keyword_score": null,
+              "rrf_score": 0.015873015873015872,
+              "rerank_score": null
+            },
+            "content_preview": "```powershell $body = @{ query = \"什么是混合检索？\" mode = \"hybrid\" top_k = 5 min_score = 0 } | ConvertTo-Json -Compress curl.ex..."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "phase9_metadata_sources",
+      "response": {
+        "query": "阶段 9 为什么要把 metadata 写入 ES 和 Milvus，并在 sources 中展示 title 和 section_path？",
+        "answer": "根据【检索上下文】，阶段 9（具体为阶段 9-4）执行这些操作的原因和目标如下：\n\n1. **解决当前上下文信息展示不足的问题**\n   当前的 `RagContext` 目前只能展示一个 `score`，无法展示 `vector_score`、`keyword_score`、`rrf_score`、`rerank_score`、`retrieval_sources`、`title`、`section_path` 和 `metadata` 等信息。主要矛盾在于 `RetrievedDoc` 能否携带更完整的信息 [chunk_3c10f97650357b56]。\n\n2. **实现元数据与路径信息的完整存储与回溯**\n   阶段 9-4 明确要解决的问题包括：\n   - `KnowledgeChunk.metadata` 如何完整写入 Milvus / ES？\n   - Milvus / ES 检索结果如何把 `title` / `section_path` / `metadata` 带回 `RetrievedDoc`？\n   - `RagSource` 如何展示 `title` / `section_path`？ [chunk_187c2c92f1fa0cf8]\n\n3. **完善检索链路流程**\n   这是在完成分数记录（阶段 9-2）和多来源命中信息记录（阶段 9-3）之后，建议进入的后续步骤，旨在确保检索结果包含完整的 metadata 和来源路径信息 [chunk_432ca43648f041f8]。",
+        "sources": [
+          {
+            "id": "chunk_3c10f97650357b56",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "3.2 `RagContext` 当前已经是结构化上下文对象",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "3. 当前工程真实现状（可以不写入文档）",
+              "3.2 `RagContext` 当前已经是结构化上下文对象"
+            ],
+            "metadata": {
+              "doc_id": "doc_75bbb336b6aeab47",
+              "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+              "document_type": "markdown",
+              "file_name": "9-1-数据模型重构.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_3c10f97650357b56",
+              "title": "3.2 `RagContext` 当前已经是结构化上下文对象",
+              "section_path": [
+                "阶段 9-1：数据模型重构",
+                "3. 当前工程真实现状（可以不写入文档）",
+                "3.2 `RagContext` 当前已经是结构化上下文对象"
+              ],
+              "heading_level": 3,
+              "section_index": 6,
+              "chunk_index": 5
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": 0.9985593557357788,
+              "keyword_score": null,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "源码位置： ```text src/fast_app/domain/rag_models.py:18 src/fast_app/services/rag_context_builder.py:70 ``` 当前字段是： ```python..."
+          },
+          {
+            "id": "chunk_187c2c92f1fa0cf8",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "13. 下一阶段进入什么",
+            "section_path": [
+              "阶段 9-3：记录 retrieval_sources 和多来源命中信息",
+              "13. 下一阶段进入什么"
+            ],
+            "metadata": {
+              "doc_id": "doc_deb13bec9577b743",
+              "source_path": "learning-docs/phase-9/9-3-记录retrieval_sources和多来源命中信息.md",
+              "document_type": "markdown",
+              "file_name": "9-3-记录retrieval_sources和多来源命中信息.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_187c2c92f1fa0cf8",
+              "title": "13. 下一阶段进入什么",
+              "section_path": [
+                "阶段 9-3：记录 retrieval_sources 和多来源命中信息",
+                "13. 下一阶段进入什么"
+              ],
+              "heading_level": 2,
+              "section_index": 42,
+              "chunk_index": 41
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 29.36626,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-3 后，建议进入： ```text 阶段 9-4：metadata 写入 ES / Milvus，并在 sources 中展示 title / section_path ``` 9-4 要解决的问题是： ```text Knowl..."
+          },
+          {
+            "id": "chunk_a3bcae8345aeb697",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "9.3 组件验收",
+            "section_path": [
+              "应用运行中",
+              "9. 建议验收标准",
+              "9.3 组件验收"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_a3bcae8345aeb697",
+              "title": "9.3 组件验收",
+              "section_path": [
+                "应用运行中",
+                "9. 建议验收标准",
+                "9.3 组件验收"
+              ],
+              "heading_level": 3,
+              "section_index": 44,
+              "chunk_index": 49
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": 0.9971209168434143,
+              "keyword_score": null,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "三个组件应该支持外部注入 client： ```text MilvusVectorRetriever(..., client=milvus_client) ElasticsearchKeywordRetriever(..., client=..."
+          },
+          {
+            "id": "chunk_432ca43648f041f8",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "14. 下一阶段进入什么",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "14. 下一阶段进入什么"
+            ],
+            "metadata": {
+              "doc_id": "doc_75bbb336b6aeab47",
+              "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+              "document_type": "markdown",
+              "file_name": "9-1-数据模型重构.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_432ca43648f041f8",
+              "title": "14. 下一阶段进入什么",
+              "section_path": [
+                "阶段 9-1：数据模型重构",
+                "14. 下一阶段进入什么"
+              ],
+              "heading_level": 2,
+              "section_index": 64,
+              "chunk_index": 68
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 23.845615,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-1 之后，建议进入： ```text 阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score ``` 9-2 的重点不是再讨论模型要不要扩展，而是把阶段..."
+          },
+          {
+            "id": "chunk_ffa6b354e74ea966",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "4.6 Classic / LangGraph / stream 行为需要同步规划",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "4. 当前系统的核心局限",
+              "4.6 Classic / LangGraph / stream 行为需要同步规划"
+            ],
+            "metadata": {
+              "doc_id": "doc_75bbb336b6aeab47",
+              "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+              "document_type": "markdown",
+              "file_name": "9-1-数据模型重构.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_ffa6b354e74ea966",
+              "title": "4.6 Classic / LangGraph / stream 行为需要同步规划",
+              "section_path": [
+                "阶段 9-1：数据模型重构",
+                "4. 当前系统的核心局限",
+                "4.6 Classic / LangGraph / stream 行为需要同步规划"
+              ],
+              "heading_level": 3,
+              "section_index": 22,
+              "chunk_index": 21
+            },
+            "score": 0.015873015873015872,
+            "scores": {
+              "vector_score": 0.9971209168434143,
+              "keyword_score": null,
+              "rrf_score": 0.015873015873015872,
+              "rerank_score": null
+            },
+            "content_preview": "当前真实状态是： ```text Classic run：retrieve → rerank → context → generate → sources Classic stream：retrieve → context → stream..."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "phase9_lifespan_clients",
+      "response": {
+        "query": "FastAPI lifespan 为什么适合管理 Milvus、ES 和 httpx client？",
+        "answer": "根据【检索上下文】，FastAPI lifespan 适合管理 Milvus、ES 和 httpx client 的原因主要基于以下背景和目的：\n\n1.  **解决创建和关闭分散的问题**：当前 MilvusClient、AsyncElasticsearch 及相关外部 client 的创建和关闭状态比较分散 [文档 2][文档 4]。\n2.  **减少重复创建**：将外部 client 生命周期交给 FastAPI lifespan 管理，有助于减少重复创建 client [文档 2]。\n3.  **提升连接关闭的可控性**：使用该机制可以让连接的关闭过程更加可控 [文档 2]。\n4.  **规范外部资源管理**：这一阶段的重点是学习后端服务中外部连接资源应该如何管理，而非继续修改 RAG 算法或 stream 协议 [文档 4]。\n\n综上，上下文建议将 Milvus、ES 和 httpx client 的创建和关闭交给 FastAPI lifespan 管理，以实现对后端服务外部连接资源的统一管控 [文档 2][文档 4]。",
+        "sources": [
+          {
+            "id": "chunk_06b0a096584a5ee5",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "10.4 不展示 `retrieval_sources`",
+            "section_path": [
+              "阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score",
+              "10. 本阶段不会改变什么",
+              "10.4 不展示 `retrieval_sources`"
+            ],
+            "metadata": {
+              "doc_id": "doc_82b478ada24d292c",
+              "source_path": "learning-docs/phase-9/9-2-保留多阶段分数.md",
+              "document_type": "markdown",
+              "file_name": "9-2-保留多阶段分数.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_06b0a096584a5ee5",
+              "title": "10.4 不展示 `retrieval_sources`",
+              "section_path": [
+                "阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score",
+                "10. 本阶段不会改变什么",
+                "10.4 不展示 `retrieval_sources`"
+              ],
+              "heading_level": 3,
+              "section_index": 35,
+              "chunk_index": 38
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": 0.9971144795417786,
+              "keyword_score": null,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "`retrieval_sources` 暂时不进入 response。 原因： ```text 这是阶段 9-3 的主题。 ```"
+          },
+          {
+            "id": "chunk_98d4820c74801e18",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "12. 下一阶段进入什么",
+            "section_path": [
+              "阶段 9-5：Milvus collection schema 与 ES index mapping 对齐",
+              "12. 下一阶段进入什么"
+            ],
+            "metadata": {
+              "doc_id": "doc_6594cb5dd30c2194",
+              "source_path": "learning-docs/phase-9/9-5-Milvus collection schema与ES index mapping对齐.md",
+              "document_type": "markdown",
+              "file_name": "9-5-Milvus collection schema与ES index mapping对齐.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_98d4820c74801e18",
+              "title": "12. 下一阶段进入什么",
+              "section_path": [
+                "阶段 9-5：Milvus collection schema 与 ES index mapping 对齐",
+                "12. 下一阶段进入什么"
+              ],
+              "heading_level": 2,
+              "section_index": 39,
+              "chunk_index": 37
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 20.431948,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-5 后，进入： ```text 阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client ``` 9-6 要解决的问题是： ```text 当前 MilvusClient、Asyn..."
+          },
+          {
+            "id": "chunk_79508fe4d0238d2c",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "1. 本阶段要解决什么问题",
+            "section_path": [
+              "阶段 9-4：metadata 回流与 sources 展示",
+              "1. 本阶段要解决什么问题"
+            ],
+            "metadata": {
+              "doc_id": "doc_2067e191a46d3925",
+              "source_path": "learning-docs/phase-9/9-4-metadata写入与sources展示.md",
+              "document_type": "markdown",
+              "file_name": "9-4-metadata写入与sources展示.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_79508fe4d0238d2c",
+              "title": "1. 本阶段要解决什么问题",
+              "section_path": [
+                "阶段 9-4：metadata 回流与 sources 展示",
+                "1. 本阶段要解决什么问题"
+              ],
+              "heading_level": 2,
+              "section_index": 2,
+              "chunk_index": 1
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": 0.9971144795417786,
+              "keyword_score": null,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-1 到 9-3 已经完成了三件事： ```text 9-1：RetrievedDoc 可以保存 scores / retrieval_sources / title / metadata 9-2：/rag/chat sources..."
+          },
+          {
+            "id": "chunk_1c7de21f5203b102",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "1. 本阶段要解决什么问题",
+            "section_path": [
+              "阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client",
+              "1. 本阶段要解决什么问题"
+            ],
+            "metadata": {
+              "doc_id": "doc_a7b16381f8c3a660",
+              "source_path": "learning-docs/phase-9/9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "document_type": "markdown",
+              "file_name": "9-6-FastAPI lifespan管理Milvus ES httpx client.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_1c7de21f5203b102",
+              "title": "1. 本阶段要解决什么问题",
+              "section_path": [
+                "阶段 9-6：FastAPI lifespan 管理 Milvus / ES / httpx client",
+                "1. 本阶段要解决什么问题"
+              ],
+              "heading_level": 2,
+              "section_index": 2,
+              "chunk_index": 1
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 18.72926,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-5 已经让 Milvus collection schema 和 ES index mapping 能稳定保存 metadata。 现在查询链路已经涉及多个外部服务： ```text Milvus：向量检索 ElasticSear..."
+          },
+          {
+            "id": "chunk_7e41b30d137db3de",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "3.1 `RetrievedDoc` 是 dataclass，不是 Pydantic model",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "3. 当前工程真实现状（可以不写入文档）",
+              "3.1 `RetrievedDoc` 是 dataclass，不是 Pydantic model"
+            ],
+            "metadata": {
+              "doc_id": "doc_75bbb336b6aeab47",
+              "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+              "document_type": "markdown",
+              "file_name": "9-1-数据模型重构.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_7e41b30d137db3de",
+              "title": "3.1 `RetrievedDoc` 是 dataclass，不是 Pydantic model",
+              "section_path": [
+                "阶段 9-1：数据模型重构",
+                "3. 当前工程真实现状（可以不写入文档）",
+                "3.1 `RetrievedDoc` 是 dataclass，不是 Pydantic model"
+              ],
+              "heading_level": 3,
+              "section_index": 5,
+              "chunk_index": 4
+            },
+            "score": 0.015873015873015872,
+            "scores": {
+              "vector_score": 0.9971144795417786,
+              "keyword_score": null,
+              "rrf_score": 0.015873015873015872,
+              "rerank_score": null
+            },
+            "content_preview": "源码位置： ```text src/fast_app/domain/rag_models.py:10 ``` 当前定义是： ```python @dataclass class RetrievedDoc: id: str content:..."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "phase9_stream_events",
+      "response": {
+        "query": "阶段 9 的 stream event 协议为什么要区分 token、sources、done 和 error？",
+        "answer": "阶段 9 的 stream event 协议区分 token、sources、done 和 error 的主要原因如下：\n\n1.  **解决现有接口的局限性**：当前的 `/rag/chat/stream` 接口只能持续返回 token，无法在同一条 SSE 流中结构化返回 sources、done、error 等事件 [chunk_a1fa4d2e05b4a0ef]。\n2.  **清晰表达关键信息**：新协议旨在明确表达以下具体信息：\n    *   检索到了哪些 sources\n    *   什么时候 token 开始返回\n    *   什么时候流式输出正常结束\n    *   错误 code 是什么、错误 message 是什么 [chunk_a1fa4d2e05b4a0ef]。\n3.  **实现架构对齐与统一**：通过新增结构化 stream event 协议，可以保证 Classic 和 LangGraph 都能产生 sources event 和 token event，且 done / error 由 API 层统一表达，同时在保留现有 token-only 协议的基础上实现行为对齐 [chunk_a1fa4d2e05b4a0ef][chunk_4d6adaf242dcbd83]。",
+        "sources": [
+          {
+            "id": "chunk_a491fb9eee7fb18e",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "8.3  核心 chunk 函数",
+            "section_path": [
+              "H1",
+              "8.3  核心 chunk 函数"
+            ],
+            "metadata": {
+              "doc_id": "doc_59ecfc2bf36525a0",
+              "source_path": "learning-docs/phase-9/9-10-真实Markdown ingestion接入Milvus ES.md",
+              "document_type": "markdown",
+              "file_name": "9-10-真实Markdown ingestion接入Milvus ES.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_a491fb9eee7fb18e",
+              "title": "8.3  核心 chunk 函数",
+              "section_path": [
+                "H1",
+                "8.3  核心 chunk 函数"
+              ],
+              "heading_level": 2,
+              "section_index": 32,
+              "chunk_index": 36
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": 0.9971257448196411,
+              "keyword_score": null,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "source=source, title=section_path[-1], metadata={ \"section_path\": section_path, \"heading_level\": current_heading_level,..."
+          },
+          {
+            "id": "chunk_a1fa4d2e05b4a0ef",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "1. 本阶段要解决什么问题",
+            "section_path": [
+              "阶段 9-9：stream event 协议设计",
+              "1. 本阶段要解决什么问题"
+            ],
+            "metadata": {
+              "doc_id": "doc_1e5f1edc2c01027c",
+              "source_path": "learning-docs/phase-9/9-9-stream event协议设计.md",
+              "document_type": "markdown",
+              "file_name": "9-9-stream event协议设计.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_a1fa4d2e05b4a0ef",
+              "title": "1. 本阶段要解决什么问题",
+              "section_path": [
+                "阶段 9-9：stream event 协议设计",
+                "1. 本阶段要解决什么问题"
+              ],
+              "heading_level": 2,
+              "section_index": 2,
+              "chunk_index": 1
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 29.354006,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-9 要解决的是： ```text 当前流式接口只能持续返回 token，无法在同一条 SSE 流中结构化返回 sources、done、error 等事件。 ``` 现在普通 `/rag/chat` 接口可以返回： ```text..."
+          },
+          {
+            "id": "chunk_f4d6a6bc7dda59fc",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "2. 为什么现在要解决这个问题",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "2. 为什么现在要解决这个问题"
+            ],
+            "metadata": {
+              "doc_id": "doc_75bbb336b6aeab47",
+              "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+              "document_type": "markdown",
+              "file_name": "9-1-数据模型重构.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_f4d6a6bc7dda59fc",
+              "title": "2. 为什么现在要解决这个问题",
+              "section_path": [
+                "阶段 9-1：数据模型重构",
+                "2. 为什么现在要解决这个问题"
+              ],
+              "heading_level": 2,
+              "section_index": 3,
+              "chunk_index": 2
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": 0.9956940412521362,
+              "keyword_score": null,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 8 的重点是让 RAG 从“能跑”变成“效果更稳定”： ```text RRF 解决多路召回融合问题 min_score 策略避免误杀 ES / RRF 结果 RagContext 让上下文更结构化 Prompt 降低编造 sourc..."
+          },
+          {
+            "id": "chunk_4d6adaf242dcbd83",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "11. Classic / LangGraph / stream 的行为对齐",
+            "section_path": [
+              "阶段 9-9：stream event 协议设计",
+              "11. Classic / LangGraph / stream 的行为对齐"
+            ],
+            "metadata": {
+              "doc_id": "doc_1e5f1edc2c01027c",
+              "source_path": "learning-docs/phase-9/9-9-stream event协议设计.md",
+              "document_type": "markdown",
+              "file_name": "9-9-stream event协议设计.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_4d6adaf242dcbd83",
+              "title": "11. Classic / LangGraph / stream 的行为对齐",
+              "section_path": [
+                "阶段 9-9：stream event 协议设计",
+                "11. Classic / LangGraph / stream 的行为对齐"
+              ],
+              "heading_level": 2,
+              "section_index": 21,
+              "chunk_index": 32
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 24.387186,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-9 完成后，Classic 的结构化 stream 链路应该是： ```mermaid flowchart TD A[\"RagPipeline.stream_events\"] --> B[\"retrieve\"] B --> C[\"..."
+          },
+          {
+            "id": "chunk_6cf75131ea1faaac",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "8. 修改 src/fast_app/services/langgraph_rag_pipeline_service.py",
+            "section_path": [
+              "阶段 9-9：stream event 协议设计",
+              "8. 修改 src/fast_app/services/langgraph_rag_pipeline_service.py"
+            ],
+            "metadata": {
+              "doc_id": "doc_1e5f1edc2c01027c",
+              "source_path": "learning-docs/phase-9/9-9-stream event协议设计.md",
+              "document_type": "markdown",
+              "file_name": "9-9-stream event协议设计.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_6cf75131ea1faaac",
+              "title": "8. 修改 src/fast_app/services/langgraph_rag_pipeline_service.py",
+              "section_path": [
+                "阶段 9-9：stream event 协议设计",
+                "8. 修改 src/fast_app/services/langgraph_rag_pipeline_service.py"
+              ],
+              "heading_level": 2,
+              "section_index": 18,
+              "chunk_index": 18
+            },
+            "score": 0.015873015873015872,
+            "scores": {
+              "vector_score": 0.9956924915313721,
+              "keyword_score": null,
+              "rrf_score": 0.015873015873015872,
+              "rerank_score": null
+            },
+            "content_preview": "LangGraph Pipeline 也需要新增 `stream_events()`。 先补充导入： ```python from fast_app.domain.rag_stream_models import RagStreamEven..."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "phase9_fallback_policy",
+      "response": {
+        "query": "RAG 链路中为什么需要 timeout、retry 和 fallback？",
+        "answer": "根据检索上下文，RAG 链路中需要 timeout、retry 和 fallback 主要是为了满足外部调用配置、特定服务处理及异常容错的需求，具体场景如下：\n\n1.  **外部调用与超时控制**：\n    *   Settings 中需要有外部调用的 timeout / retry 配置 [chunk_c62f6bc03854326e]。\n    *   DashScope Rerank 使用配置化的 timeout [chunk_c62f6bc03854326e]。\n    *   ES search 使用 request_timeout [chunk_c62f6bc03854326e]。\n\n2.  **错误重试**：\n    *   DashScope Rerank 对可重试的 httpx 错误进行有限 retry [chunk_c62f6bc03854326e]。\n\n3.  **失败降级（Fallback）**：\n    *   Classic Pipeline 中 rerank 失败会 fallback 到召回结果 [chunk_c62f6bc03854326e]。\n    *   LangGraph stream 手动链路也执行 rerank fallback [chunk_c62f6bc03854326e]。\n\n此外，timeout / retry / fallback 被视为当前 RAG 查询链路完整性的重要组成部分 [chunk_e02428a26f496a05]。",
+        "sources": [
+          {
+            "id": "chunk_4c8011b79163d473",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "11.1 静态语法检查",
+            "section_path": [
+              "阶段 9-3：记录 retrieval_sources 和多来源命中信息",
+              "11. 建议测试方式",
+              "11.1 静态语法检查"
+            ],
+            "metadata": {
+              "doc_id": "doc_deb13bec9577b743",
+              "source_path": "learning-docs/phase-9/9-3-记录retrieval_sources和多来源命中信息.md",
+              "document_type": "markdown",
+              "file_name": "9-3-记录retrieval_sources和多来源命中信息.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_4c8011b79163d473",
+              "title": "11.1 静态语法检查",
+              "section_path": [
+                "阶段 9-3：记录 retrieval_sources 和多来源命中信息",
+                "11. 建议测试方式",
+                "11.1 静态语法检查"
+              ],
+              "heading_level": 3,
+              "section_index": 35,
+              "chunk_index": 34
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": 0.9970186352729797,
+              "keyword_score": null,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "```powershell $env:PYTHONPATH=\"src\" python -m py_compile ` src/fast_app/schemas/rag_chat_schema.py ` src/fast_app/servic..."
+          },
+          {
+            "id": "chunk_c62f6bc03854326e",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "21. 验收标准",
+            "section_path": [
+              "阶段 9-8：超时、重试、降级与 fallback",
+              "21. 验收标准"
+            ],
+            "metadata": {
+              "doc_id": "doc_4cdf502f9403a6b1",
+              "source_path": "learning-docs/phase-9/9-8-超时重试降级与fallback.md",
+              "document_type": "markdown",
+              "file_name": "9-8-超时重试降级与fallback.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_c62f6bc03854326e",
+              "title": "21. 验收标准",
+              "section_path": [
+                "阶段 9-8：超时、重试、降级与 fallback",
+                "21. 验收标准"
+              ],
+              "heading_level": 2,
+              "section_index": 31,
+              "chunk_index": 48
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 20.365892,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "完成本阶段后，应满足： ```text Settings 中有外部调用 timeout / retry 配置 DashScope Rerank 使用配置化 timeout DashScope Rerank 对可重试 httpx 错误进行有限..."
+          },
+          {
+            "id": "chunk_53860e694c84ef74",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "12.1 静态语法检查",
+            "section_path": [
+              "阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score",
+              "12. 建议测试方式",
+              "12.1 静态语法检查"
+            ],
+            "metadata": {
+              "doc_id": "doc_82b478ada24d292c",
+              "source_path": "learning-docs/phase-9/9-2-保留多阶段分数.md",
+              "document_type": "markdown",
+              "file_name": "9-2-保留多阶段分数.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_53860e694c84ef74",
+              "title": "12.1 静态语法检查",
+              "section_path": [
+                "阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score",
+                "12. 建议测试方式",
+                "12.1 静态语法检查"
+              ],
+              "heading_level": 3,
+              "section_index": 43,
+              "chunk_index": 44
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": 0.9970186352729797,
+              "keyword_score": null,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "```powershell $env:PYTHONPATH=\"src\" python -m py_compile ` src/fast_app/schemas/rag_chat_schema.py ` src/fast_app/servic..."
+          },
+          {
+            "id": "chunk_e02428a26f496a05",
+            "source": "elasticsearch",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "title": "1. 本阶段要解决什么问题",
+            "section_path": [
+              "阶段 9-10：真实 Markdown ingestion 接入 Milvus / ES",
+              "1. 本阶段要解决什么问题"
+            ],
+            "metadata": {
+              "doc_id": "doc_59ecfc2bf36525a0",
+              "source_path": "learning-docs/phase-9/9-10-真实Markdown ingestion接入Milvus ES.md",
+              "document_type": "markdown",
+              "file_name": "9-10-真实Markdown ingestion接入Milvus ES.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_e02428a26f496a05",
+              "title": "1. 本阶段要解决什么问题",
+              "section_path": [
+                "阶段 9-10：真实 Markdown ingestion 接入 Milvus / ES",
+                "1. 本阶段要解决什么问题"
+              ],
+              "heading_level": 2,
+              "section_index": 2,
+              "chunk_index": 1
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": 15.603544,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "阶段 9-10 要解决的是： ```text 让知识库数据不再只来自手写 demo chunks，而是可以从真实 Markdown 文件读取、切分、生成 metadata，并写入 Milvus 和 ElasticSearch。 ``` 当前..."
+          },
+          {
+            "id": "chunk_b36f7f40f72ac11a",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "3.10 LangGraph 当前没有真正接入 reranker",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "3. 当前工程真实现状（可以不写入文档）",
+              "3.10 LangGraph 当前没有真正接入 reranker"
+            ],
+            "metadata": {
+              "doc_id": "doc_75bbb336b6aeab47",
+              "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+              "document_type": "markdown",
+              "file_name": "9-1-数据模型重构.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_b36f7f40f72ac11a",
+              "title": "3.10 LangGraph 当前没有真正接入 reranker",
+              "section_path": [
+                "阶段 9-1：数据模型重构",
+                "3. 当前工程真实现状（可以不写入文档）",
+                "3.10 LangGraph 当前没有真正接入 reranker"
+              ],
+              "heading_level": 3,
+              "section_index": 14,
+              "chunk_index": 13
+            },
+            "score": 0.015873015873015872,
+            "scores": {
+              "vector_score": 0.9940474629402161,
+              "keyword_score": null,
+              "rrf_score": 0.015873015873015872,
+              "rerank_score": null
+            },
+            "content_preview": "源码位置： ```text src/fast_app/services/langgraph_rag_pipeline_service.py:46 src/fast_app/dependencies/rag_dependencies.py:1..."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "no_answer_weather",
+      "response": {
+        "query": "明天北京天气怎么样？",
+        "answer": "当前知识库中没有足够信息回答这个问题。",
+        "sources": [
+          {
+            "id": "chunk_b36f7f40f72ac11a",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "3.10 LangGraph 当前没有真正接入 reranker",
+            "section_path": [
+              "阶段 9-1：数据模型重构",
+              "3. 当前工程真实现状（可以不写入文档）",
+              "3.10 LangGraph 当前没有真正接入 reranker"
+            ],
+            "metadata": {
+              "doc_id": "doc_75bbb336b6aeab47",
+              "source_path": "learning-docs/phase-9/9-1-数据模型重构.md",
+              "document_type": "markdown",
+              "file_name": "9-1-数据模型重构.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_b36f7f40f72ac11a",
+              "title": "3.10 LangGraph 当前没有真正接入 reranker",
+              "section_path": [
+                "阶段 9-1：数据模型重构",
+                "3. 当前工程真实现状（可以不写入文档）",
+                "3.10 LangGraph 当前没有真正接入 reranker"
+              ],
+              "heading_level": 3,
+              "section_index": 14,
+              "chunk_index": 13
+            },
+            "score": 0.01639344262295082,
+            "scores": {
+              "vector_score": 1.0,
+              "keyword_score": null,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "content_preview": "源码位置： ```text src/fast_app/services/langgraph_rag_pipeline_service.py:46 src/fast_app/dependencies/rag_dependencies.py:1..."
+          },
+          {
+            "id": "chunk_0c588ccb4735c8be",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "8.3  核心 chunk 函数",
+            "section_path": [
+              "H1",
+              "8.3  核心 chunk 函数"
+            ],
+            "metadata": {
+              "doc_id": "doc_59ecfc2bf36525a0",
+              "source_path": "learning-docs/phase-9/9-10-真实Markdown ingestion接入Milvus ES.md",
+              "document_type": "markdown",
+              "file_name": "9-10-真实Markdown ingestion接入Milvus ES.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_0c588ccb4735c8be",
+              "title": "8.3  核心 chunk 函数",
+              "section_path": [
+                "H1",
+                "8.3  核心 chunk 函数"
+              ],
+              "heading_level": 2,
+              "section_index": 32,
+              "chunk_index": 37
+            },
+            "score": 0.016129032258064516,
+            "scores": {
+              "vector_score": 0.997017502784729,
+              "keyword_score": null,
+              "rrf_score": 0.016129032258064516,
+              "rerank_score": null
+            },
+            "content_preview": "urce_path\": document.source_path, }, ) ) for line in document.content.splitlines(): heading = parse_heading(line) if hea..."
+          },
+          {
+            "id": "chunk_a6a9c614d7afa448",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "8.3  核心 chunk 函数",
+            "section_path": [
+              "H1",
+              "8.3  核心 chunk 函数"
+            ],
+            "metadata": {
+              "doc_id": "doc_59ecfc2bf36525a0",
+              "source_path": "learning-docs/phase-9/9-10-真实Markdown ingestion接入Milvus ES.md",
+              "document_type": "markdown",
+              "file_name": "9-10-真实Markdown ingestion接入Milvus ES.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_a6a9c614d7afa448",
+              "title": "8.3  核心 chunk 函数",
+              "section_path": [
+                "H1",
+                "8.3  核心 chunk 函数"
+              ],
+              "heading_level": 2,
+              "section_index": 32,
+              "chunk_index": 40
+            },
+            "score": 0.015873015873015872,
+            "scores": {
+              "vector_score": 0.9955304861068726,
+              "keyword_score": null,
+              "rrf_score": 0.015873015873015872,
+              "rerank_score": null
+            },
+            "content_preview": "Markdown → KnowledgeChunk → Milvus / ES ``` 这条主线。"
+          },
+          {
+            "id": "chunk_5b229fa52d601279",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "11.2 Classic 非流式验收",
+            "section_path": [
+              "阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score",
+              "11. 建议验收标准",
+              "11.2 Classic 非流式验收"
+            ],
+            "metadata": {
+              "doc_id": "doc_82b478ada24d292c",
+              "source_path": "learning-docs/phase-9/9-2-保留多阶段分数.md",
+              "document_type": "markdown",
+              "file_name": "9-2-保留多阶段分数.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_5b229fa52d601279",
+              "title": "11.2 Classic 非流式验收",
+              "section_path": [
+                "阶段 9-2：保留 vector_score / keyword_score / rrf_score / rerank_score",
+                "11. 建议验收标准",
+                "11.2 Classic 非流式验收"
+              ],
+              "heading_level": 3,
+              "section_index": 39,
+              "chunk_index": 41
+            },
+            "score": 0.015625,
+            "scores": {
+              "vector_score": 0.9940463304519653,
+              "keyword_score": null,
+              "rrf_score": 0.015625,
+              "rerank_score": null
+            },
+            "content_preview": "调用 `/rag/chat` 后： ```text response.sources[0].scores 存在。 vector 模式下可以看到 vector_score。 keyword 模式下可以看到 keyword_score。 hyb..."
+          },
+          {
+            "id": "chunk_89918204742bf302",
+            "source": "milvus",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "title": "整行代码的逻辑",
+            "section_path": [
+              "或",
+              "为什么要用 `[:]` 而不是直接用 `heading_stack`？",
+              "整行代码的逻辑"
+            ],
+            "metadata": {
+              "doc_id": "doc_59ecfc2bf36525a0",
+              "source_path": "learning-docs/phase-9/9-10-真实Markdown ingestion接入Milvus ES.md",
+              "document_type": "markdown",
+              "file_name": "9-10-真实Markdown ingestion接入Milvus ES.md",
+              "file_extension": ".md",
+              "chunk_id": "chunk_89918204742bf302",
+              "title": "整行代码的逻辑",
+              "section_path": [
+                "或",
+                "为什么要用 `[:]` 而不是直接用 `heading_stack`？",
+                "整行代码的逻辑"
+              ],
+              "heading_level": 3,
+              "section_index": 40,
+              "chunk_index": 55
+            },
+            "score": 0.015384615384615385,
+            "scores": {
+              "vector_score": 0.9940463304519653,
+              "keyword_score": null,
+              "rrf_score": 0.015384615384615385,
+              "rerank_score": null
+            },
+            "content_preview": "ource_path\": document.source_path, } ``` 这些信息后续可以用于调试、过滤、展示来源。 ------ 真正扫描 Markdown 的地方是这里： ``` for line in document.con..."
+          }
+        ]
+      }
+    }
+  ]
+}

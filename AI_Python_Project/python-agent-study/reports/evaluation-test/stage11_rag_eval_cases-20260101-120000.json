@@ -1,0 +1,561 @@
+{
+  "dataset_name": "stage11_rag_eval_cases",
+  "case_count": 6,
+  "response_count": 6,
+  "retrieval_report": {
+    "case_count": 6,
+    "evaluated_case_count": 5,
+    "skipped_case_count": 1,
+    "passed_case_count": 1,
+    "failed_case_count": 4,
+    "mean_recall_at_k": 0.2,
+    "mean_mrr": 0.2,
+    "results": [
+      {
+        "case_id": "phase9_hybrid_retrieval_basic",
+        "question": "阶段 9 为什么要保留 vector_score、keyword_score、rrf_score 和 rerank_score？",
+        "case_type": "answerable",
+        "retrieved_count": 1,
+        "expected_source_count": 1,
+        "hit_count": 1,
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "first_hit_rank": 1,
+        "passed": true,
+        "hits": [
+          {
+            "doc_id": "demo_chunk",
+            "rank": 1,
+            "matched_by": [
+              "section_keywords"
+            ],
+            "score": 1.0,
+            "source_path": null,
+            "section_path": [
+              "score"
+            ]
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_metadata_sources",
+        "question": "阶段 9 为什么要把 metadata 写入 ES 和 Milvus，并在 sources 中展示 title 和 section_path？",
+        "case_type": "answerable",
+        "retrieved_count": 1,
+        "expected_source_count": 1,
+        "hit_count": 0,
+        "recall_at_k": 0.0,
+        "reciprocal_rank": 0.0,
+        "first_hit_rank": null,
+        "passed": false,
+        "hits": []
+      },
+      {
+        "case_id": "phase9_lifespan_clients",
+        "question": "FastAPI lifespan 为什么适合管理 Milvus、ES 和 httpx client？",
+        "case_type": "answerable",
+        "retrieved_count": 1,
+        "expected_source_count": 1,
+        "hit_count": 0,
+        "recall_at_k": 0.0,
+        "reciprocal_rank": 0.0,
+        "first_hit_rank": null,
+        "passed": false,
+        "hits": []
+      },
+      {
+        "case_id": "phase9_stream_events",
+        "question": "阶段 9 的 stream event 协议为什么要区分 token、sources、done 和 error？",
+        "case_type": "answerable",
+        "retrieved_count": 1,
+        "expected_source_count": 1,
+        "hit_count": 0,
+        "recall_at_k": 0.0,
+        "reciprocal_rank": 0.0,
+        "first_hit_rank": null,
+        "passed": false,
+        "hits": []
+      },
+      {
+        "case_id": "phase9_fallback_policy",
+        "question": "RAG 链路中为什么需要 timeout、retry 和 fallback？",
+        "case_type": "answerable",
+        "retrieved_count": 1,
+        "expected_source_count": 1,
+        "hit_count": 0,
+        "recall_at_k": 0.0,
+        "reciprocal_rank": 0.0,
+        "first_hit_rank": null,
+        "passed": false,
+        "hits": []
+      }
+    ]
+  },
+  "generation_report": {
+    "case_count": 6,
+    "evaluated_case_count": 6,
+    "passed_case_count": 1,
+    "failed_case_count": 5,
+    "pass_rate": 0.16666666666666666,
+    "results": [
+      {
+        "case_id": "phase9_hybrid_retrieval_basic",
+        "question": "阶段 9 为什么要保留 vector_score、keyword_score、rrf_score 和 rerank_score？",
+        "case_type": "answerable",
+        "passed": true,
+        "answer_length": 63,
+        "source_count": 1,
+        "checks": [
+          {
+            "name": "expected_keywords",
+            "passed": true,
+            "message": "回答覆盖了预期关键词",
+            "detail": {
+              "expected_keywords": [
+                "vector_score",
+                "keyword_score",
+                "rrf_score",
+                "rerank_score"
+              ],
+              "missing_keywords": []
+            }
+          },
+          {
+            "name": "source_presence",
+            "passed": true,
+            "message": "回答包含 sources",
+            "detail": {
+              "source_count": 1
+            }
+          },
+          {
+            "name": "source_citation",
+            "passed": true,
+            "message": "回答引用了 source id",
+            "detail": {
+              "source_ids": [
+                "demo_chunk"
+              ],
+              "cited_source_ids": [
+                "demo_chunk"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_metadata_sources",
+        "question": "阶段 9 为什么要把 metadata 写入 ES 和 Milvus，并在 sources 中展示 title 和 section_path？",
+        "case_type": "answerable",
+        "passed": false,
+        "answer_length": 63,
+        "source_count": 1,
+        "checks": [
+          {
+            "name": "expected_keywords",
+            "passed": false,
+            "message": "回答缺少预期关键词",
+            "detail": {
+              "expected_keywords": [
+                "metadata",
+                "sources",
+                "title",
+                "section_path"
+              ],
+              "missing_keywords": [
+                "metadata",
+                "sources",
+                "title",
+                "section_path"
+              ]
+            }
+          },
+          {
+            "name": "source_presence",
+            "passed": true,
+            "message": "回答包含 sources",
+            "detail": {
+              "source_count": 1
+            }
+          },
+          {
+            "name": "source_citation",
+            "passed": true,
+            "message": "回答引用了 source id",
+            "detail": {
+              "source_ids": [
+                "demo_chunk"
+              ],
+              "cited_source_ids": [
+                "demo_chunk"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_lifespan_clients",
+        "question": "FastAPI lifespan 为什么适合管理 Milvus、ES 和 httpx client？",
+        "case_type": "answerable",
+        "passed": false,
+        "answer_length": 63,
+        "source_count": 1,
+        "checks": [
+          {
+            "name": "expected_keywords",
+            "passed": false,
+            "message": "回答缺少预期关键词",
+            "detail": {
+              "expected_keywords": [
+                "lifespan",
+                "client",
+                "启动",
+                "关闭"
+              ],
+              "missing_keywords": [
+                "lifespan",
+                "client",
+                "启动",
+                "关闭"
+              ]
+            }
+          },
+          {
+            "name": "source_presence",
+            "passed": true,
+            "message": "回答包含 sources",
+            "detail": {
+              "source_count": 1
+            }
+          },
+          {
+            "name": "source_citation",
+            "passed": true,
+            "message": "回答引用了 source id",
+            "detail": {
+              "source_ids": [
+                "demo_chunk"
+              ],
+              "cited_source_ids": [
+                "demo_chunk"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_stream_events",
+        "question": "阶段 9 的 stream event 协议为什么要区分 token、sources、done 和 error？",
+        "case_type": "answerable",
+        "passed": false,
+        "answer_length": 63,
+        "source_count": 1,
+        "checks": [
+          {
+            "name": "expected_keywords",
+            "passed": false,
+            "message": "回答缺少预期关键词",
+            "detail": {
+              "expected_keywords": [
+                "token",
+                "sources",
+                "done",
+                "error"
+              ],
+              "missing_keywords": [
+                "token",
+                "sources",
+                "done",
+                "error"
+              ]
+            }
+          },
+          {
+            "name": "source_presence",
+            "passed": true,
+            "message": "回答包含 sources",
+            "detail": {
+              "source_count": 1
+            }
+          },
+          {
+            "name": "source_citation",
+            "passed": true,
+            "message": "回答引用了 source id",
+            "detail": {
+              "source_ids": [
+                "demo_chunk"
+              ],
+              "cited_source_ids": [
+                "demo_chunk"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "case_id": "phase9_fallback_policy",
+        "question": "RAG 链路中为什么需要 timeout、retry 和 fallback？",
+        "case_type": "answerable",
+        "passed": false,
+        "answer_length": 63,
+        "source_count": 1,
+        "checks": [
+          {
+            "name": "expected_keywords",
+            "passed": false,
+            "message": "回答缺少预期关键词",
+            "detail": {
+              "expected_keywords": [
+                "timeout",
+                "retry",
+                "fallback",
+                "外部服务"
+              ],
+              "missing_keywords": [
+                "timeout",
+                "retry",
+                "fallback",
+                "外部服务"
+              ]
+            }
+          },
+          {
+            "name": "source_presence",
+            "passed": true,
+            "message": "回答包含 sources",
+            "detail": {
+              "source_count": 1
+            }
+          },
+          {
+            "name": "source_citation",
+            "passed": true,
+            "message": "回答引用了 source id",
+            "detail": {
+              "source_ids": [
+                "demo_chunk"
+              ],
+              "cited_source_ids": [
+                "demo_chunk"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "case_id": "no_answer_weather",
+        "question": "明天北京天气怎么样？",
+        "case_type": "no_answer",
+        "passed": false,
+        "answer_length": 63,
+        "source_count": 1,
+        "checks": [
+          {
+            "name": "no_answer_refusal",
+            "passed": false,
+            "message": "无答案问题没有明确拒答",
+            "detail": {
+              "refusal_markers": [
+                "当前知识库中没有足够信息",
+                "没有足够信息",
+                "无法根据检索上下文"
+              ],
+              "matched_markers": []
+            }
+          },
+          {
+            "name": "forbidden_keywords",
+            "passed": true,
+            "message": "回答未出现禁止关键词",
+            "detail": {
+              "forbidden_keywords": [
+                "晴天",
+                "下雨",
+                "温度",
+                "摄氏度"
+              ],
+              "found_keywords": []
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "case_id": "phase9_hybrid_retrieval_basic",
+      "response": {
+        "query": "阶段 9 为什么要保留 vector_score、keyword_score、rrf_score 和 rerank_score？",
+        "answer": "vector_score keyword_score rrf_score rerank_score ?? demo_chunk",
+        "sources": [
+          {
+            "id": "demo_chunk",
+            "source": "mock",
+            "retrieval_sources": [
+              "mock"
+            ],
+            "title": "demo",
+            "section_path": [
+              "score"
+            ],
+            "metadata": {},
+            "score": 1.0,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "content_preview": "vector_score keyword_score rrf_score rerank_score"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "phase9_metadata_sources",
+      "response": {
+        "query": "阶段 9 为什么要把 metadata 写入 ES 和 Milvus，并在 sources 中展示 title 和 section_path？",
+        "answer": "vector_score keyword_score rrf_score rerank_score ?? demo_chunk",
+        "sources": [
+          {
+            "id": "demo_chunk",
+            "source": "mock",
+            "retrieval_sources": [
+              "mock"
+            ],
+            "title": "demo",
+            "section_path": [
+              "score"
+            ],
+            "metadata": {},
+            "score": 1.0,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "content_preview": "vector_score keyword_score rrf_score rerank_score"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "phase9_lifespan_clients",
+      "response": {
+        "query": "FastAPI lifespan 为什么适合管理 Milvus、ES 和 httpx client？",
+        "answer": "vector_score keyword_score rrf_score rerank_score ?? demo_chunk",
+        "sources": [
+          {
+            "id": "demo_chunk",
+            "source": "mock",
+            "retrieval_sources": [
+              "mock"
+            ],
+            "title": "demo",
+            "section_path": [
+              "score"
+            ],
+            "metadata": {},
+            "score": 1.0,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "content_preview": "vector_score keyword_score rrf_score rerank_score"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "phase9_stream_events",
+      "response": {
+        "query": "阶段 9 的 stream event 协议为什么要区分 token、sources、done 和 error？",
+        "answer": "vector_score keyword_score rrf_score rerank_score ?? demo_chunk",
+        "sources": [
+          {
+            "id": "demo_chunk",
+            "source": "mock",
+            "retrieval_sources": [
+              "mock"
+            ],
+            "title": "demo",
+            "section_path": [
+              "score"
+            ],
+            "metadata": {},
+            "score": 1.0,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "content_preview": "vector_score keyword_score rrf_score rerank_score"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "phase9_fallback_policy",
+      "response": {
+        "query": "RAG 链路中为什么需要 timeout、retry 和 fallback？",
+        "answer": "vector_score keyword_score rrf_score rerank_score ?? demo_chunk",
+        "sources": [
+          {
+            "id": "demo_chunk",
+            "source": "mock",
+            "retrieval_sources": [
+              "mock"
+            ],
+            "title": "demo",
+            "section_path": [
+              "score"
+            ],
+            "metadata": {},
+            "score": 1.0,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "content_preview": "vector_score keyword_score rrf_score rerank_score"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "no_answer_weather",
+      "response": {
+        "query": "明天北京天气怎么样？",
+        "answer": "vector_score keyword_score rrf_score rerank_score ?? demo_chunk",
+        "sources": [
+          {
+            "id": "demo_chunk",
+            "source": "mock",
+            "retrieval_sources": [
+              "mock"
+            ],
+            "title": "demo",
+            "section_path": [
+              "score"
+            ],
+            "metadata": {},
+            "score": 1.0,
+            "scores": {
+              "vector_score": null,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "content_preview": "vector_score keyword_score rrf_score rerank_score"
+          }
+        ]
+      }
+    }
+  ]
+}
