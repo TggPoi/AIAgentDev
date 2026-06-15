@@ -11,6 +11,7 @@ from elasticsearch import AsyncElasticsearch
 from pymilvus import MilvusClient
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
+from fast_app.components.embeddings.mock_embedding_client import MockEmbeddingClient
 from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingClient
 from fast_app.core.config import Settings, get_settings
 from fast_app.domain.knowledge_models import KnowledgeChunk, LoadedDocument
@@ -23,24 +24,6 @@ from fast_app.ingestion.document_loaders import (
 from fast_app.ingestion.markdown_ingestion_service import MarkdownIngestionService
 from fast_app.ingestion.ingestion_validation import validate_ingestion_result
 from fast_app.ingestion.rag_store_admin import StoreResetOptions, reset_rag_stores
-
-
-class MockEmbeddingClient(BaseEmbeddingClient):
-    # CLI 的 --mock-embeddings 会使用这个客户端。
-    # 它不调用外部 embedding 服务，只根据文本稳定生成固定维度向量。
-    # 这样可以在本地验证 ES / Milvus 写入链路，而不消耗真实模型调用。
-    def __init__(self, dim: int):
-        self.dim = dim
-
-    async def embed_query(self, text: str) -> list[float]:
-        return self._vector_for_text(text)
-
-    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return [self._vector_for_text(text) for text in texts]
-
-    def _vector_for_text(self, text: str) -> list[float]:
-        seed = sum(ord(char) for char in text) or 1
-        return [((seed + index) % 997) / 997 for index in range(self.dim)]
 
 
 def apply_arg_overrides(args: argparse.Namespace) -> None:

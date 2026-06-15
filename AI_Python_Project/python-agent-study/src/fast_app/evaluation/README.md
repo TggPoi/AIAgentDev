@@ -99,6 +99,28 @@ section_keywords
 
 `no_answer` 样例主要用于后续生成评测。
 
+## Milvus 向量召回评测
+
+阶段 11-4 增加 Milvus 单路向量召回评测。
+
+核心流程：
+
+```text
+RagEvalCase
+-> RetrievalOptions
+-> MilvusVectorRetriever.retrieve()
+-> RetrievedDoc list
+-> evaluate_retrieval_case()
+-> RetrievalCaseResult
+```
+
+注意：
+
+- 写入 Milvus 的 embedding 和评测查询的 embedding 必须一致。
+- `candidate_k` 是 Milvus 查询候选数。
+- `top_k` 是参与 Recall@K / MRR 的最终文档数量。
+- 当前阶段只评测 `answerable` 样例。
+
 ## 本地校验
 
 ```powershell
