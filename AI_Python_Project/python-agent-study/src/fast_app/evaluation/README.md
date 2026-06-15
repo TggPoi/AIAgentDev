@@ -189,6 +189,46 @@ failed_case_count
 - rerank 主要观察正确结果是否被排到更前。
 - rerank 不能找回没有进入候选集的文档。
 
+## 生成评测指标
+
+阶段 11-7 增加规则型生成评测。
+
+当前检查项：
+
+```text
+expected_keywords
+```
+
+answer 是否覆盖预期关键词。
+
+```text
+forbidden_keywords
+```
+
+answer 是否出现禁止关键词。
+
+```text
+no_answer_refusal
+```
+
+无答案问题是否明确拒答。
+
+```text
+source_presence
+```
+
+answerable 样例是否返回 sources。
+
+```text
+source_citation
+```
+
+answer 是否引用了 sources 中的 id。
+
+当前生成评测不调用 LLM-as-judge。
+
+它只基于 `RagEvalCase` 和 `RagChatResponse` 做可解释规则检查。
+
 ## 本地校验
 
 ```powershell
