@@ -4,6 +4,12 @@ from time import perf_counter
 
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
+from fast_app.core.config import Settings
+from fast_app.core.langsmith import (
+    build_rag_langsmith_step_metadata_from_state,
+    build_rag_langsmith_step_tags,
+    rag_langsmith_step_trace,
+)
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievalOptions, RetrievedDoc
 from fast_app.graph.rag_graph_state import GraphRagState
@@ -24,8 +30,79 @@ logger = get_logger(__name__)
 
 GraphNode = Callable[[GraphRagState], dict]
 
+def get_graph_operation(state: GraphRagState) -> str:
+    return state.get("operation", "run")
+
+
+def get_graph_step_index(operation: str, step_name: str) -> int:
+    if operation == "stream_events":
+        indexes = {
+            "retrieve": 1,
+            "rerank": 2,
+            "emit_sources": 3,
+            "build_context": 4,
+            "stream_generate": 5,
+            "generate": 5,
+        }
+        return indexes[step_name]
+
+    indexes = {
+        "retrieve": 1,
+        "rerank": 2,
+        "build_context": 3,
+        "generate": 4,
+        "stream_generate": 4,
+    }
+    return indexes[step_name]
+
+
+def build_graph_step_inputs(
+    state: GraphRagState,
+    **extra: object,
+) -> dict[str, object]:
+    return {
+        "query": state["query"],
+        "mode": state["mode"],
+        "top_k": state["top_k"],
+        "candidate_k": state.get("candidate_k"),
+        "min_score": state["min_score"],
+        "filters": state.get("filters", {}),
+        **extra,
+    }
+
+
+def graph_langsmith_step_trace(
+    settings: Settings,
+    state: GraphRagState,
+    step_name: str,
+    run_type: str,
+    inputs: dict[str, object],
+):
+    operation = get_graph_operation(state)
+    return rag_langsmith_step_trace(
+        settings=settings,
+        name=f"langgraph_rag_pipeline.{operation}.{step_name}",
+        run_type=run_type,
+        inputs=inputs,
+        metadata=build_rag_langsmith_step_metadata_from_state(
+            settings=settings,
+            state=state,
+            pipeline_provider="langgraph",
+            operation=operation,
+            step_name=step_name,
+            step_index=get_graph_step_index(operation, step_name),
+        ),
+        tags=build_rag_langsmith_step_tags(
+            settings=settings,
+            pipeline_provider="langgraph",
+            operation=operation,
+            step_name=step_name,
+        ),
+    )
+
 # 重排序节点 只处理 rerank 只接收和返回 docs
 def create_rerank_node(
+    settings: Settings,
     reranker: BaseReranker,
     rerank_top_k: int,
 ) -> Callable[[GraphRagState], object]:
@@ -33,62 +110,95 @@ def create_rerank_node(
     async def rerank_node(state: GraphRagState) -> dict[str, list[RetrievedDoc]]:
         docs = state["docs"]
 
-        if not docs:
-            return {"docs": []}
-
-        start_time = perf_counter()
-        top_k = min(rerank_top_k, len(docs))
-        logger.info(
-            "rag_rerank %s",
-            format_log_fields(
-                event="rag.rerank.start",
-                pipeline_provider="langgraph",
-                candidate_count=len(docs),
-                top_k=top_k,
+        with graph_langsmith_step_trace(
+            settings=settings,
+            state=state,
+            step_name="rerank",
+            run_type="chain",
+            inputs=build_graph_step_inputs(
+                state,
+                input_doc_count=len(docs),
                 top_doc_ids=build_top_doc_ids(docs),
             ),
-        )
+        ) as trace_run:
+            if not docs:
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "output_doc_count": 0,
+                            "top_doc_ids": [],
+                        }
+                    )
+                return {"docs": []}
 
-        try:
-            reranked_docs = await reranker.rerank(
-                query=state["query"],
-                docs=docs,
-                top_k=top_k,
-            )
-            latency_ms = (perf_counter() - start_time) * 1000
+            start_time = perf_counter()
+            top_k = min(rerank_top_k, len(docs))
             logger.info(
                 "rag_rerank %s",
                 format_log_fields(
-                    event="rag.rerank.finish",
+                    event="rag.rerank.start",
                     pipeline_provider="langgraph",
                     candidate_count=len(docs),
-                    result_count=len(reranked_docs),
                     top_k=top_k,
-                    latency_ms=round(latency_ms, 2),
-                    fallback=False,
-                    top_doc_ids=build_top_doc_ids(reranked_docs),
+                    top_doc_ids=build_top_doc_ids(docs),
                 ),
             )
-            return {"docs": reranked_docs}
 
-        except ExternalServiceError as exc:
-            fallback_docs = docs[:rerank_top_k]
-            latency_ms = (perf_counter() - start_time) * 1000
-            logger.warning(
-                "rag_rerank %s",
-                format_log_fields(
-                    event="rag.rerank.fallback",
-                    pipeline_provider="langgraph",
-                    candidate_count=len(docs),
-                    result_count=len(fallback_docs),
+            try:
+                reranked_docs = await reranker.rerank(
+                    query=state["query"],
+                    docs=docs,
                     top_k=top_k,
-                    latency_ms=round(latency_ms, 2),
-                    fallback=True,
-                    error_type=type(exc).__name__,
-                    top_doc_ids=build_top_doc_ids(fallback_docs),
-                ),
-            )
-            return {"docs": fallback_docs}
+                )
+                latency_ms = (perf_counter() - start_time) * 1000
+                logger.info(
+                    "rag_rerank %s",
+                    format_log_fields(
+                        event="rag.rerank.finish",
+                        pipeline_provider="langgraph",
+                        candidate_count=len(docs),
+                        result_count=len(reranked_docs),
+                        top_k=top_k,
+                        latency_ms=round(latency_ms, 2),
+                        fallback=False,
+                        top_doc_ids=build_top_doc_ids(reranked_docs),
+                    ),
+                )
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "output_doc_count": len(reranked_docs),
+                            "top_doc_ids": build_top_doc_ids(reranked_docs),
+                        }
+                    )
+                return {"docs": reranked_docs}
+
+            except ExternalServiceError as exc:
+                fallback_docs = docs[:rerank_top_k]
+                latency_ms = (perf_counter() - start_time) * 1000
+                logger.warning(
+                    "rag_rerank %s",
+                    format_log_fields(
+                        event="rag.rerank.fallback",
+                        pipeline_provider="langgraph",
+                        candidate_count=len(docs),
+                        result_count=len(fallback_docs),
+                        top_k=top_k,
+                        latency_ms=round(latency_ms, 2),
+                        fallback=True,
+                        error_type=type(exc).__name__,
+                        top_doc_ids=build_top_doc_ids(fallback_docs),
+                    ),
+                )
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "output_doc_count": len(fallback_docs),
+                            "top_doc_ids": build_top_doc_ids(fallback_docs),
+                            "fallback": True,
+                        }
+                    )
+                return {"docs": fallback_docs}
 
     return rerank_node
 
@@ -122,6 +232,7 @@ def build_graph_retrieval_options(state: GraphRagState) -> RetrievalOptions:
 
 # 这里的返回值使用模糊的Object 因为 精确标注会涉及 Awaitable / Mapping / Partial State 等类型，目前先用 object 代替，后续可以根据实际情况细化类型标注
 def create_retrieve_node(
+    settings: Settings,
     vector_retriever: BaseRetriever,
     keyword_retriever: BaseRetriever,
 ) -> Callable[[GraphRagState], object]:
@@ -396,10 +507,33 @@ def create_retrieve_node(
 
         return {"docs": merged_docs}
 
-    return retrieve_node
+    async def traced_retrieve_node(
+        state: GraphRagState,
+    ) -> dict[str, list[RetrievedDoc]]:
+        with graph_langsmith_step_trace(
+            settings=settings,
+            state=state,
+            step_name="retrieve",
+            run_type="retriever",
+            inputs=build_graph_step_inputs(state),
+        ) as trace_run:
+            result = await retrieve_node(state)
+            docs = result["docs"]
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "doc_count": len(docs),
+                        "top_doc_ids": build_top_doc_ids(docs),
+                    }
+                )
+            return result
+
+    return traced_retrieve_node
 
 
-def create_build_context_node() -> Callable[[GraphRagState], dict[str, RagContext]]:
+def create_build_context_node(
+    settings: Settings,
+) -> Callable[[GraphRagState], dict[str, RagContext]]:
 
     async def build_context_node(state: GraphRagState) -> dict[str, RagContext]:
         docs = state["docs"]
@@ -415,10 +549,37 @@ def create_build_context_node() -> Callable[[GraphRagState], dict[str, RagContex
 
         return {"context": context}
 
-    return build_context_node
+    async def traced_build_context_node(
+        state: GraphRagState,
+    ) -> dict[str, RagContext]:
+        docs = state["docs"]
+        with graph_langsmith_step_trace(
+            settings=settings,
+            state=state,
+            step_name="build_context",
+            run_type="chain",
+            inputs=build_graph_step_inputs(
+                state,
+                doc_count=len(docs),
+                top_doc_ids=build_top_doc_ids(docs),
+            ),
+        ) as trace_run:
+            result = await build_context_node(state)
+            context = result["context"]
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "context_doc_count": len(context.docs),
+                        "context_length": len(context.context_text),
+                    }
+                )
+            return result
+
+    return traced_build_context_node
 
 
 def create_generate_node(
+    settings: Settings,
     llm_client: BaseLLMClient,
 ) -> Callable[[GraphRagState], object]:
     
@@ -440,4 +601,30 @@ def create_generate_node(
 
         return {"answer": answer}
 
-    return generate_node
+    async def traced_generate_node(state: GraphRagState) -> dict[str, str]:
+        context = state["context"]
+        context_doc_count = len(context.docs) if context is not None else 0
+        context_length = len(context.context_text) if context is not None else 0
+        with graph_langsmith_step_trace(
+            settings=settings,
+            state=state,
+            step_name="generate",
+            run_type="chain",
+            inputs=build_graph_step_inputs(
+                state,
+                context_doc_count=context_doc_count,
+                context_length=context_length,
+            ),
+        ) as trace_run:
+            result = await generate_node(state)
+            answer = result["answer"]
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "answer_length": len(answer),
+                        "source_count": context_doc_count,
+                    }
+                )
+            return result
+
+    return traced_generate_node

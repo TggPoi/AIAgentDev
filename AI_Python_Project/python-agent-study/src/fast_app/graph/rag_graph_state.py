@@ -1,9 +1,10 @@
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 from fast_app.domain.rag_models import RagContext, RetrievedDoc
 
 
 RagMode = Literal["vector", "keyword", "hybrid"]
+GraphRagOperation = Literal["run", "stream", "stream_events"]
 
 
 class GraphRagState(TypedDict):
@@ -13,6 +14,7 @@ class GraphRagState(TypedDict):
     candidate_k: int | None
     min_score: float
     filters: dict[str, object]
+    operation: NotRequired[GraphRagOperation]
 
     docs: list[RetrievedDoc]
     context: RagContext | None

@@ -9,8 +9,11 @@ from fast_app.core.config import Settings
 from fast_app.core.langsmith import (
     build_rag_langsmith_inputs,
     build_rag_langsmith_metadata,
+    build_rag_langsmith_step_metadata,
+    build_rag_langsmith_step_tags,
     build_rag_langsmith_tags,
     rag_langsmith_trace,
+    rag_langsmith_step_trace,
 )
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RagContext, RetrievalOptions, RetrievedDoc, RagMode, RetrievalFilters
@@ -337,7 +340,7 @@ async def generate_answer_node(
 
     参数示例：
         query="什么是混合检索？"
-        context=RagContext(text="...", docs=[...])
+        context=RagContext(query="...", docs=[...], context_text="...")
     """
     # 模拟 LLM 调用
     await asyncio.sleep(1)
@@ -346,7 +349,7 @@ async def generate_answer_node(
         f"根据检索到的上下文，回答问题：{query}\n"
         f"核心结论：混合检索会同时利用向量检索和关键词检索，"
         f"再通过合并、去重、排序等步骤得到更可靠的上下文。\n\n"
-        f"参考上下文：\n{context.text}"
+        f"参考上下文：\n{context.context_text}"
     )
 
 
@@ -396,13 +399,13 @@ async def stream_answer_node(
 
     参数示例：
         query="什么是混合检索？"
-        context=RagContext(text="...", docs=[...])
+        context=RagContext(query="...", docs=[...], context_text="...")
     """
     answer = (
         f"根据检索到的上下文，回答问题：{query}\n"
         f"混合检索的核心是：同时使用向量检索和关键词检索，"
         f"然后合并、去重、排序，得到更稳定的结果。\n\n"
-        f"上下文摘要：{context.text}"
+        f"上下文摘要：{context.context_text}"
     )
 
     for char in answer:
@@ -521,6 +524,36 @@ class RagPipeline:
             ),
         )
 
+    def _langsmith_step_trace(
+        self,
+        req: RagChatRequest,
+        operation: str,
+        step_name: str,
+        step_index: int,
+        run_type: str,
+        inputs: dict[str, object],
+    ):
+        return rag_langsmith_step_trace(
+            settings=self.settings,
+            name=f"classic_rag_pipeline.{operation}.{step_name}",
+            run_type=run_type,
+            inputs=inputs,
+            metadata=build_rag_langsmith_step_metadata(
+                settings=self.settings,
+                req=req,
+                pipeline_provider="classic",
+                operation=operation,
+                step_name=step_name,
+                step_index=step_index,
+            ),
+            tags=build_rag_langsmith_step_tags(
+                settings=self.settings,
+                pipeline_provider="classic",
+                operation=operation,
+                step_name=step_name,
+            ),
+        )
+
     # 重排序模型报错时降级处理 rerank 是增强能力 增强能力失败时，不应该直接让普通问答接口失败
     async def rerank_with_fallback(
         self,
@@ -614,22 +647,102 @@ class RagPipeline:
                 "answer": None,
             }
             
-            docs = await self.retrieve(req)
-            docs = await self.rerank_with_fallback(req.query, docs)
+            with self._langsmith_step_trace(
+                req=req,
+                operation="run",
+                step_name="retrieve",
+                step_index=1,
+                run_type="retriever",
+                inputs={
+                    "query": req.query,
+                    "mode": req.mode,
+                    "top_k": req.top_k,
+                    "candidate_k": req.candidate_k,
+                    "min_score": req.min_score,
+                    "filters": req.filters.model_dump(),
+                },
+            ) as trace_run:
+                docs = await self.retrieve(req)
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "doc_count": len(docs),
+                            "top_doc_ids": build_top_doc_ids(docs),
+                        }
+                    )
+
+            with self._langsmith_step_trace(
+                req=req,
+                operation="run",
+                step_name="rerank",
+                step_index=2,
+                run_type="chain",
+                inputs={
+                    "query": req.query,
+                    "input_doc_count": len(docs),
+                    "top_doc_ids": build_top_doc_ids(docs),
+                },
+            ) as trace_run:
+                docs = await self.rerank_with_fallback(req.query, docs)
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "output_doc_count": len(docs),
+                            "top_doc_ids": build_top_doc_ids(docs),
+                        }
+                    )
 
             state["docs"] = docs
 
             logger.info("RAG 召回完成: docs_count=%s", len(docs))
 
-            context = build_rag_context(req.query, docs)
+            with self._langsmith_step_trace(
+                req=req,
+                operation="run",
+                step_name="build_context",
+                step_index=3,
+                run_type="chain",
+                inputs={
+                    "query": req.query,
+                    "doc_count": len(docs),
+                    "top_doc_ids": build_top_doc_ids(docs),
+                },
+            ) as trace_run:
+                context = build_rag_context(req.query, docs)
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "context_doc_count": len(context.docs),
+                            "context_length": len(context.context_text),
+                        }
+                    )
             state["context"] = context
 
             logger.info("RAG 上下文构造完成: context_docs_count=%s", len(context.docs))
 
-            answer = await self.llm_client.generate(
-                query=state["query"],
-                context=context,
-            )
+            with self._langsmith_step_trace(
+                req=req,
+                operation="run",
+                step_name="generate",
+                step_index=4,
+                run_type="chain",
+                inputs={
+                    "query": state["query"],
+                    "context_doc_count": len(context.docs),
+                    "context_length": len(context.context_text),
+                },
+            ) as trace_run:
+                answer = await self.llm_client.generate(
+                    query=state["query"],
+                    context=context,
+                )
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "answer_length": len(answer),
+                            "source_count": len(context.docs),
+                        }
+                    )
             state["answer"] = answer
 
             logger.info("RAG 回答生成完成: answer_length=%s", len(answer))
@@ -696,21 +809,101 @@ class RagPipeline:
             req.min_score,
         )
 
-        docs = await self.retrieve(req)
+        with self._langsmith_step_trace(
+            req=req,
+            operation="stream",
+            step_name="retrieve",
+            step_index=1,
+            run_type="retriever",
+            inputs={
+                "query": req.query,
+                "mode": req.mode,
+                "top_k": req.top_k,
+                "candidate_k": req.candidate_k,
+                "min_score": req.min_score,
+                "filters": req.filters.model_dump(),
+            },
+        ) as trace_run:
+            docs = await self.retrieve(req)
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "doc_count": len(docs),
+                        "top_doc_ids": build_top_doc_ids(docs),
+                    }
+                )
 
-        docs = await self.rerank_with_fallback(req.query, docs)
+        with self._langsmith_step_trace(
+            req=req,
+            operation="stream",
+            step_name="rerank",
+            step_index=2,
+            run_type="chain",
+            inputs={
+                "query": req.query,
+                "input_doc_count": len(docs),
+                "top_doc_ids": build_top_doc_ids(docs),
+            },
+        ) as trace_run:
+            docs = await self.rerank_with_fallback(req.query, docs)
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "output_doc_count": len(docs),
+                        "top_doc_ids": build_top_doc_ids(docs),
+                    }
+                )
 
         logger.info("RAG Stream 召回完成: docs_count=%s", len(docs))
 
-        context = build_rag_context(req.query, docs)
+        with self._langsmith_step_trace(
+            req=req,
+            operation="stream",
+            step_name="build_context",
+            step_index=3,
+            run_type="chain",
+            inputs={
+                "query": req.query,
+                "doc_count": len(docs),
+                "top_doc_ids": build_top_doc_ids(docs),
+            },
+        ) as trace_run:
+            context = build_rag_context(req.query, docs)
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "context_doc_count": len(context.docs),
+                        "context_length": len(context.context_text),
+                    }
+                )
 
         logger.info("RAG Stream 上下文构造完成: context_docs_count=%s", len(context.docs))
 
         token_count = 0
 
-        async for token in self.llm_client.stream(req.query, context):
-            token_count += 1
-            yield token
+        with self._langsmith_step_trace(
+            req=req,
+            operation="stream",
+            step_name="stream_generate",
+            step_index=4,
+            run_type="chain",
+            inputs={
+                "query": req.query,
+                "context_doc_count": len(context.docs),
+                "context_length": len(context.context_text),
+            },
+        ) as trace_run:
+            async for token in self.llm_client.stream(req.query, context):
+                token_count += 1
+                yield token
+
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "token_count": token_count,
+                        "source_count": len(context.docs),
+                    }
+                )
 
         logger.info("RAG Stream 输出完成: token_count=%s", token_count)
 
@@ -1016,28 +1209,129 @@ class RagPipeline:
             req.min_score,
         )
 
-        docs = await self.retrieve(req)
-        docs = await self.rerank_with_fallback(req.query, docs)
+        with self._langsmith_step_trace(
+            req=req,
+            operation="stream_events",
+            step_name="retrieve",
+            step_index=1,
+            run_type="retriever",
+            inputs={
+                "query": req.query,
+                "mode": req.mode,
+                "top_k": req.top_k,
+                "candidate_k": req.candidate_k,
+                "min_score": req.min_score,
+                "filters": req.filters.model_dump(),
+            },
+        ) as trace_run:
+            docs = await self.retrieve(req)
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "doc_count": len(docs),
+                        "top_doc_ids": build_top_doc_ids(docs),
+                    }
+                )
+
+        with self._langsmith_step_trace(
+            req=req,
+            operation="stream_events",
+            step_name="rerank",
+            step_index=2,
+            run_type="chain",
+            inputs={
+                "query": req.query,
+                "input_doc_count": len(docs),
+                "top_doc_ids": build_top_doc_ids(docs),
+            },
+        ) as trace_run:
+            docs = await self.rerank_with_fallback(req.query, docs)
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "output_doc_count": len(docs),
+                        "top_doc_ids": build_top_doc_ids(docs),
+                    }
+                )
+
+        with self._langsmith_step_trace(
+            req=req,
+            operation="stream_events",
+            step_name="emit_sources",
+            step_index=3,
+            run_type="chain",
+            inputs={
+                "doc_count": len(docs),
+                "top_doc_ids": build_top_doc_ids(docs),
+            },
+        ) as trace_run:
+            sources = docs_to_sources(docs)
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "source_count": len(sources),
+                        "top_source_ids": [source.id for source in sources[:5]],
+                    }
+                )
 
         yield RagStreamEvent(
             event="sources",
             data={
-                "sources": docs_to_sources(docs),
+                "sources": sources,
             },
         )
 
-        context = build_rag_context(req.query, docs)
+        with self._langsmith_step_trace(
+            req=req,
+            operation="stream_events",
+            step_name="build_context",
+            step_index=4,
+            run_type="chain",
+            inputs={
+                "query": req.query,
+                "doc_count": len(docs),
+                "top_doc_ids": build_top_doc_ids(docs),
+            },
+        ) as trace_run:
+            context = build_rag_context(req.query, docs)
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "context_doc_count": len(context.docs),
+                        "context_length": len(context.context_text),
+                    }
+                )
 
         token_count = 0
 
-        async for token in self.llm_client.stream(req.query, context):
-            token_count += 1
-            yield RagStreamEvent(
-                event="token",
-                data={
-                    "token": token,
-                },
-            )
+        with self._langsmith_step_trace(
+            req=req,
+            operation="stream_events",
+            step_name="stream_generate",
+            step_index=5,
+            run_type="chain",
+            inputs={
+                "query": req.query,
+                "context_doc_count": len(context.docs),
+                "context_length": len(context.context_text),
+            },
+        ) as trace_run:
+            async for token in self.llm_client.stream(req.query, context):
+                token_count += 1
+                yield RagStreamEvent(
+                    event="token",
+                    data={
+                        "token": token,
+                    },
+                )
+
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "token_count": token_count,
+                        "source_count": len(context.docs),
+                    }
+                )
 
         logger.info(
             "RAG Stream Events 输出完成: token_count=%s",

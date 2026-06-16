@@ -9,8 +9,11 @@ from fast_app.core.config import Settings
 from fast_app.core.langsmith import (
     build_rag_langsmith_inputs,
     build_rag_langsmith_metadata,
+    build_rag_langsmith_step_metadata,
+    build_rag_langsmith_step_tags,
     build_rag_langsmith_tags,
     rag_langsmith_trace,
+    rag_langsmith_step_trace,
 )
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.graph.rag_graph_builder import build_rag_graph
@@ -48,12 +51,14 @@ class LangGraphRagPipeline:
         self.llm_client = llm_client
         self.reranker = reranker
         self.rerank_node = create_rerank_node(
+            settings=settings,
             reranker=reranker,
             rerank_top_k=settings.rerank_top_k,
         )
         
         # `build_rag_graph(...)` 不在每次 `run()` 里调用，而是在构造 pipeline 时调用。因为 graph 结构是固定的。每次请求变化的是 initial_state。
         self.graph = build_rag_graph(
+            settings=settings,
             vector_retriever=vector_retriever,
             keyword_retriever=keyword_retriever,
             llm_client=llm_client,
@@ -62,10 +67,11 @@ class LangGraphRagPipeline:
         )
 
         self.retrieve_node = create_retrieve_node(
+            settings=settings,
             vector_retriever=vector_retriever,
             keyword_retriever=keyword_retriever,
         )
-        self.build_context_node = create_build_context_node()
+        self.build_context_node = create_build_context_node(settings=settings)
 
     # 构造langsmith 追踪
     def _langsmith_trace(self, req: RagChatRequest, operation: str):
@@ -82,6 +88,36 @@ class LangGraphRagPipeline:
                 settings=self.settings,
                 pipeline_provider="langgraph",
                 operation=operation,
+            ),
+        )
+
+    def _langsmith_step_trace(
+        self,
+        req: RagChatRequest,
+        operation: str,
+        step_name: str,
+        step_index: int,
+        run_type: str,
+        inputs: dict[str, object],
+    ):
+        return rag_langsmith_step_trace(
+            settings=self.settings,
+            name=f"langgraph_rag_pipeline.{operation}.{step_name}",
+            run_type=run_type,
+            inputs=inputs,
+            metadata=build_rag_langsmith_step_metadata(
+                settings=self.settings,
+                req=req,
+                pipeline_provider="langgraph",
+                operation=operation,
+                step_name=step_name,
+                step_index=step_index,
+            ),
+            tags=build_rag_langsmith_step_tags(
+                settings=self.settings,
+                pipeline_provider="langgraph",
+                operation=operation,
+                step_name=step_name,
             ),
         )
 
@@ -107,7 +143,7 @@ class LangGraphRagPipeline:
         )
 
         try:
-            initial_state = self._build_initial_state(req)
+            initial_state = self._build_initial_state(req, operation="run")
 
             final_state = await self.graph.ainvoke(initial_state)
 
@@ -160,7 +196,11 @@ class LangGraphRagPipeline:
         )
     
 
-    def _build_initial_state(self, req: RagChatRequest) -> GraphRagState:
+    def _build_initial_state(
+        self,
+        req: RagChatRequest,
+        operation: str,
+    ) -> GraphRagState:
         return {
             "query": req.query,
             "mode": req.mode,
@@ -168,6 +208,7 @@ class LangGraphRagPipeline:
             "candidate_k": req.candidate_k,
             "min_score": req.min_score,
             "filters": req.filters.model_dump(),
+            "operation": operation,
             "docs": [],
             "context": None,
             "answer": None,
@@ -194,7 +235,7 @@ class LangGraphRagPipeline:
             req.min_score,
         )
 
-        state = self._build_initial_state(req)
+        state = self._build_initial_state(req, operation="stream")
 
         retrieve_update = await self.retrieve_node(state)
         state.update(retrieve_update)
@@ -212,12 +253,32 @@ class LangGraphRagPipeline:
 
         token_count = 0
 
-        async for token in self.llm_client.stream(
-            query=req.query,
-            context=context,
-        ):
-            token_count += 1
-            yield token
+        with self._langsmith_step_trace(
+            req=req,
+            operation="stream",
+            step_name="stream_generate",
+            step_index=4,
+            run_type="chain",
+            inputs={
+                "query": req.query,
+                "context_doc_count": len(context.docs),
+                "context_length": len(context.context_text),
+            },
+        ) as trace_run:
+            async for token in self.llm_client.stream(
+                query=req.query,
+                context=context,
+            ):
+                token_count += 1
+                yield token
+
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "token_count": token_count,
+                        "source_count": len(context.docs),
+                    }
+                )
 
         logger.info(
             "LangGraph RAG Stream Pipeline 执行完成: token_count=%s",
@@ -245,7 +306,7 @@ class LangGraphRagPipeline:
             req.min_score,
         )
 
-        state = self._build_initial_state(req)
+        state = self._build_initial_state(req, operation="stream_events")
 
         retrieve_update = await self.retrieve_node(state)
         state.update(retrieve_update)
@@ -255,10 +316,30 @@ class LangGraphRagPipeline:
 
         docs = state["docs"]
 
+        with self._langsmith_step_trace(
+            req=req,
+            operation="stream_events",
+            step_name="emit_sources",
+            step_index=3,
+            run_type="chain",
+            inputs={
+                "doc_count": len(docs),
+                "top_doc_ids": [doc.id for doc in docs[:5]],
+            },
+        ) as trace_run:
+            sources = docs_to_sources(docs)
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "source_count": len(sources),
+                        "top_source_ids": [source.id for source in sources[:5]],
+                    }
+                )
+
         yield RagStreamEvent(
             event="sources",
             data={
-                "sources": docs_to_sources(docs),
+                "sources": sources,
             },
         )
 
@@ -272,17 +353,37 @@ class LangGraphRagPipeline:
 
         token_count = 0
 
-        async for token in self.llm_client.stream(
-            query=req.query,
-            context=context,
-        ):
-            token_count += 1
-            yield RagStreamEvent(
-                event="token",
-                data={
-                    "token": token,
-                },
-            )
+        with self._langsmith_step_trace(
+            req=req,
+            operation="stream_events",
+            step_name="stream_generate",
+            step_index=5,
+            run_type="chain",
+            inputs={
+                "query": req.query,
+                "context_doc_count": len(context.docs),
+                "context_length": len(context.context_text),
+            },
+        ) as trace_run:
+            async for token in self.llm_client.stream(
+                query=req.query,
+                context=context,
+            ):
+                token_count += 1
+                yield RagStreamEvent(
+                    event="token",
+                    data={
+                        "token": token,
+                    },
+                )
+
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "token_count": token_count,
+                        "source_count": len(context.docs),
+                    }
+                )
 
         logger.info(
             "LangGraph RAG Stream Events Pipeline 执行完成: token_count=%s",
