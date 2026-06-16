@@ -47,11 +47,17 @@ PHASE9_LANGSMITH_SCENARIOS = [
 ]
 
 
-def build_headers(request_id: str | None = None) -> dict[str, str]:
+def build_headers(
+    request_id: str | None = None,
+    debug_trace_token: str | None = None,
+) -> dict[str, str]:
     headers: dict[str, str] = {}
 
     if request_id:
         headers["X-Request-ID"] = request_id
+
+    if debug_trace_token:
+        headers["X-Debug-Trace-Token"] = debug_trace_token
 
     return headers
 
@@ -161,6 +167,45 @@ def assert_sources_have_metadata(body: dict[str, object]) -> None:
         raise AssertionError("expected source.metadata to be object")
 
 
+def assert_debug_trace_response(body: dict[str, object]) -> None:
+    status = body.get("status")
+    if status not in {"success", "failed"}:
+        raise AssertionError(f"expected debug status success/failed, got {status}")
+
+    request = body.get("request")
+    if not isinstance(request, dict):
+        raise AssertionError("expected debug response.request to be object")
+
+    runtime = body.get("runtime")
+    if not isinstance(runtime, dict):
+        raise AssertionError("expected debug response.runtime to be object")
+
+    if "pipeline_provider" not in runtime:
+        raise AssertionError("expected runtime.pipeline_provider")
+
+    if status == "success":
+        sources = body.get("sources")
+        if not isinstance(sources, list):
+            raise AssertionError("expected success debug response.sources to be list")
+
+        source_count = body.get("source_count")
+        if not isinstance(source_count, int):
+            raise AssertionError("expected success debug response.source_count to be int")
+
+        answer_length = body.get("answer_length")
+        if not isinstance(answer_length, int):
+            raise AssertionError("expected success debug response.answer_length to be int")
+
+    if status == "failed":
+        error = body.get("error")
+        if not isinstance(error, dict):
+            raise AssertionError("expected failed debug response.error to be object")
+
+        for field_name in ["code", "message", "error_category", "error_type"]:
+            if field_name not in error:
+                raise AssertionError(f"expected error.{field_name}")
+
+
 def assert_sources_match_filters(
     body: dict[str, object],
     source_path: str | None,
@@ -238,6 +283,71 @@ def test_normal_chat(
         )
 
     resp.raise_for_status()
+
+
+def test_debug_trace(
+    base_url: str,
+    payload: dict[str, object],
+    debug_trace_token: str,
+    request_id: str | None = None,
+) -> None:
+    """测试内部 debug trace 接口。"""
+    url = f"{base_url}/debug/rag/trace"
+    headers = build_headers(
+        request_id=request_id,
+        debug_trace_token=debug_trace_token,
+    )
+
+    print("\n========== POST /debug/rag/trace ==========")
+    if request_id:
+        print(f"request_id: {request_id}")
+    print("request:")
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+    resp = requests.post(url, json=payload, headers=headers, timeout=90)
+
+    print(f"\nstatus: {resp.status_code}")
+    print("response:")
+    print_response_json(resp)
+
+    resp.raise_for_status()
+
+    body = resp.json()
+    assert_debug_trace_response(body)
+
+
+def test_debug_trace_error(
+    base_url: str,
+    payload: dict[str, object],
+    debug_trace_token: str,
+    request_id: str | None = None,
+) -> None:
+    """测试 debug trace 接口在业务失败时仍返回 debug 快照。"""
+    url = f"{base_url}/debug/rag/trace"
+    headers = build_headers(
+        request_id=request_id,
+        debug_trace_token=debug_trace_token,
+    )
+
+    print("\n========== POST /debug/rag/trace error ==========")
+    if request_id:
+        print(f"request_id: {request_id}")
+    print("request:")
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+    resp = requests.post(url, json=payload, headers=headers, timeout=90)
+
+    print(f"\nstatus: {resp.status_code}")
+    print("response:")
+    print_response_json(resp)
+
+    resp.raise_for_status()
+
+    body = resp.json()
+    assert_debug_trace_response(body)
+
+    if body.get("status") != "failed":
+        raise AssertionError(f"expected debug status failed, got {body.get('status')}")
 
 
 def test_normal_chat_error(
@@ -560,6 +670,21 @@ def parse_args() -> argparse.Namespace:
         help="跳过异常场景测试",
     )
     parser.add_argument(
+        "--debug-trace-only",
+        action="store_true",
+        help="只测试内部 debug trace 接口 /debug/rag/trace",
+    )
+    parser.add_argument(
+        "--debug-trace-error",
+        action="store_true",
+        help="测试内部 debug trace 接口的失败快照",
+    )
+    parser.add_argument(
+        "--debug-trace-token",
+        default=None,
+        help="写入 X-Debug-Trace-Token 请求头；需要与 DEBUG_TRACE_TOKEN 一致",
+    )
+    parser.add_argument(
         "--request-id",
         default=None,
         help="写入 X-Request-ID 请求头；用于和后端日志 / LangSmith metadata 对齐",
@@ -620,6 +745,31 @@ def main() -> int:
     try:
         if args.phase9_langsmith_suite:
             test_phase9_langsmith_suite(args, base_url)
+            return 0
+
+        if args.debug_trace_only:
+            if not args.debug_trace_token:
+                raise AssertionError(
+                    "使用 --debug-trace-only 时必须传入 --debug-trace-token"
+                )
+
+            debug_payload = error_payload if args.debug_trace_error else payload
+            debug_request_id = args.request_id or f"debug-trace-{uuid4().hex[:8]}"
+
+            if args.debug_trace_error:
+                test_debug_trace_error(
+                    base_url=base_url,
+                    payload=debug_payload,
+                    debug_trace_token=args.debug_trace_token,
+                    request_id=debug_request_id,
+                )
+            else:
+                test_debug_trace(
+                    base_url=base_url,
+                    payload=debug_payload,
+                    debug_trace_token=args.debug_trace_token,
+                    request_id=debug_request_id,
+                )
             return 0
 
         if args.structured_stream_only:

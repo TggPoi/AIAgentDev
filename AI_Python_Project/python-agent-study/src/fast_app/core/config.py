@@ -15,7 +15,12 @@ class Settings(BaseSettings):
 
     app_name: str = Field(default="Python Agent Study", alias="APP_NAME")
     app_env: str = Field(default="dev", alias="APP_ENV")
+
+    # 开发使用的debug接口配置
     debug: bool = Field(default=True, alias="DEBUG")
+    debug_trace_enabled: bool = Field(default=False, alias="DEBUG_TRACE_ENABLED")
+    debug_trace_token: str = Field(default="", alias="DEBUG_TRACE_TOKEN")
+    debug_trace_max_sources: int = Field(default=5, alias="DEBUG_TRACE_MAX_SOURCES")
 
     rag_default_top_k: int = Field(default=5, alias="RAG_DEFAULT_TOP_K")
     rag_default_min_score: float = Field(default=0.0, alias="RAG_DEFAULT_MIN_SCORE")
