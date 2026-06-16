@@ -21,6 +21,8 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         incoming_request_id = request.headers.get(REQUEST_ID_HEADER)
         request_id = incoming_request_id or uuid4().hex
         trace_id = request_id
+        request.state.request_id = request_id
+        request.state.trace_id = trace_id
 
         request_id_token, trace_id_token = set_request_context(
             request_id=request_id,
@@ -44,15 +46,16 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
                 ),
             )
             return response
-        except Exception:
+        except Exception as exc:
             latency_ms = (perf_counter() - start_time) * 1000
-            logger.exception(
+            logger.error(
                 "http_request %s",
                 format_log_fields(
                     event="http.request.failed",
                     method=request.method,
                     path=request.url.path,
                     latency_ms=round(latency_ms, 2),
+                    error_type=type(exc).__name__,
                 ),
             )
             raise

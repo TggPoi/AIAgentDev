@@ -4,9 +4,13 @@ from time import perf_counter
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from fast_app.core.error_responses import (
+    build_app_error_response_content,
+    build_internal_error_response_content,
+)
 from fast_app.dependencies.rag_dependencies import get_rag_pipeline
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
-from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
+from fast_app.services.exceptions import AppServiceError
 from fast_app.services.rag_pipeline_service import RagPipeline
 
 from fast_app.core.logging import format_log_fields, get_logger
@@ -45,7 +49,7 @@ async def rag_chat_endpoint(
 
     try:
         response = await pipeline.run(req)
-    except Exception:
+    except Exception as exc:
         latency_ms = (perf_counter() - start_time) * 1000
         logger.exception(
             "rag_chat_request %s",
@@ -57,6 +61,7 @@ async def rag_chat_endpoint(
                 candidate_k=req.candidate_k,
                 min_score=req.min_score,
                 latency_ms=round(latency_ms, 2),
+                error_type=type(exc).__name__,
             ),
         )
         raise
@@ -94,23 +99,17 @@ async def rag_chat_sse_event_generator(
 
         yield "event: done\ndata: [DONE]\n\n"
 
-    except NoSearchResultError as e:
-        yield (
-            "event: error\n"
-            f"data: NO_SEARCH_RESULT: {str(e)}\n\n"
-        )
-
-    except ExternalServiceError as e:
-        yield (
-            "event: error\n"
-            f"data: EXTERNAL_SERVICE_ERROR: {str(e)}\n\n"
+    except AppServiceError as exc:
+        yield format_sse_event(
+            event="error",
+            data=build_app_error_response_content(exc),
         )
 
     except Exception:
         logger.exception("RAG SSE 流式输出发生未知异常")
-        yield (
-            "event: error\n"
-            "data: INTERNAL_SERVER_ERROR: 服务器内部错误\n\n"
+        yield format_sse_event(
+            event="error",
+            data=build_internal_error_response_content(),
         )
 
 
@@ -154,32 +153,17 @@ async def rag_chat_structured_sse_event_generator(
             },
         )
 
-    except NoSearchResultError as e:
+    except AppServiceError as exc:
         yield format_sse_event(
             event="error",
-            data={
-                "code": "NO_SEARCH_RESULT",
-                "message": str(e),
-            },
-        )
-
-    except ExternalServiceError as e:
-        yield format_sse_event(
-            event="error",
-            data={
-                "code": "EXTERNAL_SERVICE_ERROR",
-                "message": str(e),
-            },
+            data=build_app_error_response_content(exc),
         )
 
     except Exception:
         logger.exception("RAG 结构化 SSE 流式输出发生未知异常")
         yield format_sse_event(
             event="error",
-            data={
-                "code": "INTERNAL_SERVER_ERROR",
-                "message": "服务器内部错误",
-            },
+            data=build_internal_error_response_content(),
         )
 
 

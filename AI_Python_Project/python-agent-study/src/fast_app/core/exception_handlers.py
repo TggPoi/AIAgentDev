@@ -1,57 +1,93 @@
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from fast_app.core.logging import get_logger
-
-from fast_app.services.exceptions import (
-    AppServiceError,
-    ExternalServiceError,
-    LLMCallError,
-    NoSearchResultError,
+from fast_app.core.error_responses import (
+    build_app_error_response_content,
+    build_error_response_content,
+    build_http_error_response_content,
+    build_internal_error_response_content,
 )
+from fast_app.core.logging import format_log_fields, get_logger
+from fast_app.services.exceptions import AppServiceError
 
 
 logger = get_logger(__name__)
 
 
+def get_request_ids_from_request(request: Request) -> tuple[str | None, str | None]:
+    return (
+        getattr(request.state, "request_id", None),
+        getattr(request.state, "trace_id", None),
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
-    
-    @app.exception_handler(NoSearchResultError)
-    async def handle_no_search_result_error(
+
+    @app.exception_handler(RequestValidationError)
+    async def handle_request_validation_error(
         request: Request,
-        exc: NoSearchResultError,
+        exc: RequestValidationError,
     ) -> JSONResponse:
+        request_id, trace_id = get_request_ids_from_request(request)
         logger.warning(
-            "没有检索结果: path=%s, message=%s",
-            request.url.path,
-            str(exc),
+            "http_error %s",
+            format_log_fields(
+                event="http.error",
+                error_category="user_error",
+                error_code="REQUEST_VALIDATION_ERROR",
+                path=request.url.path,
+                method=request.method,
+                status_code=422,
+                error_type=type(exc).__name__,
+                validation_error_count=len(exc.errors()),
+            ),
         )
 
         return JSONResponse(
-            status_code=404,
-            content={
-                "code": "NO_SEARCH_RESULT",
-                "message": str(exc),
-            },
+            status_code=422,
+            content=build_error_response_content(
+                code="REQUEST_VALIDATION_ERROR",
+                message="请求参数不合法",
+                error_category="user_error",
+                request_id=request_id,
+                trace_id=trace_id,
+            ),
         )
 
-    @app.exception_handler(ExternalServiceError)
-    async def handle_external_service_error(
+    @app.exception_handler(StarletteHTTPException)
+    async def handle_http_exception(
         request: Request,
-        exc: ExternalServiceError,
+        exc: StarletteHTTPException,
     ) -> JSONResponse:
-        logger.error(
-            "外部服务异常: path=%s, message=%s",
-            request.url.path,
-            str(exc),
+        request_id, trace_id = get_request_ids_from_request(request)
+        error_category = "user_error" if exc.status_code < 500 else "system_error"
+        log_method = logger.warning if error_category == "user_error" else logger.error
+        message = str(exc.detail) if exc.detail else "请求处理失败"
+
+        log_method(
+            "http_error %s",
+            format_log_fields(
+                event="http.error",
+                error_category=error_category,
+                error_code=f"HTTP_{exc.status_code}",
+                path=request.url.path,
+                method=request.method,
+                status_code=exc.status_code,
+                error_type=type(exc).__name__,
+                message=message,
+            ),
         )
 
         return JSONResponse(
-            status_code=503,
-            content={
-                "code": "EXTERNAL_SERVICE_ERROR",
-                "message": str(exc),
-            },
+            status_code=exc.status_code,
+            content=build_http_error_response_content(
+                status_code=exc.status_code,
+                message=message,
+                request_id=request_id,
+                trace_id=trace_id,
+            ),
         )
 
     @app.exception_handler(AppServiceError)
@@ -59,55 +95,58 @@ def register_exception_handlers(app: FastAPI) -> None:
         request: Request,
         exc: AppServiceError,
     ) -> JSONResponse:
-        logger.error(
-            "业务异常: path=%s, message=%s",
-            request.url.path,
-            str(exc),
+        request_id, trace_id = get_request_ids_from_request(request)
+        log_method = logger.warning
+
+        if exc.error_category == "external_service_error":
+            log_method = logger.error
+
+        log_method(
+            "http_error %s",
+            format_log_fields(
+                event="http.error",
+                error_category=exc.error_category,
+                error_code=exc.error_code,
+                path=request.url.path,
+                method=request.method,
+                status_code=exc.status_code,
+                error_type=type(exc).__name__,
+                message=str(exc),
+            ),
         )
 
         return JSONResponse(
-            status_code=400,
-            content={
-                "code": "APP_SERVICE_ERROR",
-                "message": str(exc),
-            },
+            status_code=exc.status_code,
+            content=build_app_error_response_content(
+                exc,
+                request_id=request_id,
+                trace_id=trace_id,
+            ),
         )
-
-
-    @app.exception_handler(LLMCallError)
-    async def handle_llm_call_error(
-        request: Request,
-        exc: LLMCallError,
-    ) -> JSONResponse:
-        logger.error(
-            "大模型调用异常: path=%s, message=%s",
-            request.url.path,
-            str(exc),
-        )
-
-        return JSONResponse(
-            status_code=503,
-            content={
-                "code": "LLM_CALL_ERROR",
-                "message": str(exc),
-            },
-        )
-
 
     @app.exception_handler(Exception)
     async def handle_unexpected_error(
         request: Request,
         exc: Exception,
     ) -> JSONResponse:
+        request_id, trace_id = get_request_ids_from_request(request)
         logger.exception(
-            "未知服务端异常: path=%s",
-            request.url.path,
+            "http_error %s",
+            format_log_fields(
+                event="http.error",
+                error_category="system_error",
+                error_code="INTERNAL_SERVER_ERROR",
+                path=request.url.path,
+                method=request.method,
+                status_code=500,
+                error_type=type(exc).__name__,
+            ),
         )
 
         return JSONResponse(
             status_code=500,
-            content={
-                "code": "INTERNAL_SERVER_ERROR",
-                "message": "服务器内部错误",
-            },
+            content=build_internal_error_response_content(
+                request_id=request_id,
+                trace_id=trace_id,
+            ),
         )
