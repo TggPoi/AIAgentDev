@@ -3,6 +3,8 @@ from collections.abc import AsyncGenerator
 from time import perf_counter
 
 from fast_app.components.llms.base import BaseLLMClient
+from fast_app.core.config import Settings
+from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RagContext
 
@@ -11,6 +13,9 @@ logger = get_logger(__name__)
 
 
 class MockLLMClient(BaseLLMClient):
+    def __init__(self, settings: Settings):
+        self.settings = settings
+
     async def generate(self, query: str, context: RagContext) -> str:
         start_time = perf_counter()
 
@@ -51,6 +56,17 @@ class MockLLMClient(BaseLLMClient):
                     usage_reason="mock_llm",
                 ),
             )
+            log_slow_operation(
+                logger=logger,
+                event="llm.generate.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_llm_threshold_ms,
+                slow_component="llm",
+                provider="mock",
+                model_name="mock",
+                operation="generate",
+                answer_length=len(answer),
+            )
 
             return answer
 
@@ -69,6 +85,18 @@ class MockLLMClient(BaseLLMClient):
                     error_type=type(exc).__name__,
                     latency_ms=round(latency_ms, 2),
                 ),
+            )
+            log_slow_operation(
+                logger=logger,
+                event="llm.generate.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_llm_threshold_ms,
+                slow_component="llm",
+                provider="mock",
+                model_name="mock",
+                operation="generate",
+                status="failed",
+                error_type=type(exc).__name__,
             )
             raise
 
@@ -123,6 +151,18 @@ class MockLLMClient(BaseLLMClient):
                     usage_reason="mock_llm",
                 ),
             )
+            log_slow_operation(
+                logger=logger,
+                event="llm.stream.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_llm_threshold_ms,
+                slow_component="llm",
+                provider="mock",
+                model_name="mock",
+                operation="stream",
+                chunk_count=chunk_count,
+                output_length=output_length,
+            )
 
         except Exception as exc:
             latency_ms = (perf_counter() - start_time) * 1000
@@ -139,5 +179,17 @@ class MockLLMClient(BaseLLMClient):
                     error_type=type(exc).__name__,
                     latency_ms=round(latency_ms, 2),
                 ),
+            )
+            log_slow_operation(
+                logger=logger,
+                event="llm.stream.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_llm_threshold_ms,
+                slow_component="llm",
+                provider="mock",
+                model_name="mock",
+                operation="stream",
+                status="failed",
+                error_type=type(exc).__name__,
             )
             raise

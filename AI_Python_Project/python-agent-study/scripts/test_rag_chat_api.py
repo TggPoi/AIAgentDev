@@ -183,6 +183,10 @@ def assert_debug_trace_response(body: dict[str, object]) -> None:
     if "pipeline_provider" not in runtime:
         raise AssertionError("expected runtime.pipeline_provider")
 
+    latency_ms = body.get("latency_ms")
+    if not isinstance(latency_ms, (int, float)):
+        raise AssertionError("expected debug response.latency_ms to be number")
+
     if status == "success":
         sources = body.get("sources")
         if not isinstance(sources, list):

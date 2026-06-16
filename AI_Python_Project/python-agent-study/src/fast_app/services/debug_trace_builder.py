@@ -39,6 +39,7 @@ def build_debug_success_response(
     settings: Settings,
     req: RagChatRequest,
     response: RagChatResponse,
+    latency_ms: float | None = None,
 ) -> RagDebugTraceResponse:
     max_sources = max(0, settings.debug_trace_max_sources)
     sources = [
@@ -62,6 +63,7 @@ def build_debug_success_response(
         trace_id=response.trace_id,
         request=build_debug_request_snapshot(req),
         runtime=build_debug_runtime_snapshot(settings),
+        latency_ms=latency_ms,
         answer_length=len(response.answer),
         source_count=len(response.sources),
         sources=sources,
@@ -73,6 +75,7 @@ def build_debug_error_response(
     req: RagChatRequest,
     error_content: dict[str, Any],
     error_type: str,
+    latency_ms: float | None = None,
 ) -> RagDebugTraceResponse:
     return RagDebugTraceResponse(
         status="failed",
@@ -80,6 +83,7 @@ def build_debug_error_response(
         trace_id=_get_optional_str(error_content, "trace_id"),
         request=build_debug_request_snapshot(req),
         runtime=build_debug_runtime_snapshot(settings),
+        latency_ms=latency_ms,
         source_count=0,
         error=DebugTraceErrorSnapshot(
             code=str(error_content["code"]),

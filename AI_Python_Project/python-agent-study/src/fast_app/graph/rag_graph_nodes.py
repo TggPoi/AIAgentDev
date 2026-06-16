@@ -10,6 +10,7 @@ from fast_app.core.langsmith import (
     build_rag_langsmith_step_tags,
     rag_langsmith_step_trace,
 )
+from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievalOptions, RetrievedDoc
 from fast_app.graph.rag_graph_state import GraphRagState
@@ -171,6 +172,18 @@ def create_rerank_node(
                             "top_doc_ids": build_top_doc_ids(reranked_docs),
                         }
                     )
+                log_slow_operation(
+                    logger=logger,
+                    event="rag.rerank.slow",
+                    latency_ms=latency_ms,
+                    threshold_ms=settings.slow_rerank_threshold_ms,
+                    slow_component="rerank",
+                    pipeline_provider="langgraph",
+                    candidate_count=len(docs),
+                    result_count=len(reranked_docs),
+                    top_k=top_k,
+                    fallback=False,
+                )
                 return {"docs": reranked_docs}
 
             except ExternalServiceError as exc:
@@ -198,6 +211,19 @@ def create_rerank_node(
                             "fallback": True,
                         }
                     )
+                log_slow_operation(
+                    logger=logger,
+                    event="rag.rerank.slow",
+                    latency_ms=latency_ms,
+                    threshold_ms=settings.slow_rerank_threshold_ms,
+                    slow_component="rerank",
+                    pipeline_provider="langgraph",
+                    candidate_count=len(docs),
+                    result_count=len(fallback_docs),
+                    top_k=top_k,
+                    fallback=True,
+                    error_type=type(exc).__name__,
+                )
                 return {"docs": fallback_docs}
 
     return rerank_node
@@ -285,6 +311,19 @@ def create_retrieve_node(
                         top_doc_ids=build_top_doc_ids(returned_docs),
                     ),
                 )
+                log_slow_operation(
+                    logger=logger,
+                    event="rag.retrieval.slow",
+                    latency_ms=latency_ms,
+                    threshold_ms=settings.slow_retrieval_threshold_ms,
+                    slow_component="retrieval",
+                    pipeline_provider="langgraph",
+                    retrieval_mode=mode,
+                    retriever="vector",
+                    top_k=top_k,
+                    candidate_k=options.candidate_k,
+                    returned_count=len(returned_docs),
+                )
 
                 if len(returned_docs) == 0:
                     raise NoSearchResultError(
@@ -349,6 +388,19 @@ def create_retrieve_node(
                         latency_ms=round(latency_ms, 2),
                         top_doc_ids=build_top_doc_ids(returned_docs),
                     ),
+                )
+                log_slow_operation(
+                    logger=logger,
+                    event="rag.retrieval.slow",
+                    latency_ms=latency_ms,
+                    threshold_ms=settings.slow_retrieval_threshold_ms,
+                    slow_component="retrieval",
+                    pipeline_provider="langgraph",
+                    retrieval_mode=mode,
+                    retriever="keyword",
+                    top_k=top_k,
+                    candidate_k=options.candidate_k,
+                    returned_count=len(returned_docs),
                 )
 
                 if len(returned_docs) == 0:
@@ -498,6 +550,22 @@ def create_retrieve_node(
                 latency_ms=round(latency_ms, 2),
                 top_doc_ids=build_top_doc_ids(merged_docs),
             ),
+        )
+        log_slow_operation(
+            logger=logger,
+            event="rag.retrieval.slow",
+            latency_ms=latency_ms,
+            threshold_ms=settings.slow_retrieval_threshold_ms,
+            slow_component="retrieval",
+            pipeline_provider="langgraph",
+            retrieval_mode=mode,
+            retriever="hybrid",
+            top_k=top_k,
+            candidate_k=options.candidate_k,
+            source_count=len(successful_doc_lists),
+            input_doc_count=input_doc_count,
+            unique_doc_count=unique_doc_count,
+            output_doc_count=len(merged_docs),
         )
 
         if len(merged_docs) == 0:

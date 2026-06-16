@@ -6,6 +6,7 @@ from pymilvus import MilvusClient
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
+from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.services.exceptions import ExternalServiceError
 from fast_app.domain.rag_models import RetrievalFilters, RetrievalOptions, RetrievedDoc, ScoreBreakdown
@@ -186,6 +187,20 @@ class MilvusVectorRetriever(BaseRetriever):
                     top_doc_ids=build_top_doc_ids(docs),
                 ),
             )
+            log_slow_operation(
+                logger=logger,
+                event="milvus.search.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_retrieval_threshold_ms,
+                slow_component="milvus",
+                collection_name=self.settings.milvus_collection_name,
+                limit=options.candidate_k,
+                filter_expr=filter_expr,
+                output_field_count=len(output_fields),
+                hit_count=count_milvus_hits(results),
+                doc_count=len(docs),
+                skipped_hit_count=convert_result.skipped_hit_count,
+            )
 
             return docs
 
@@ -206,6 +221,19 @@ class MilvusVectorRetriever(BaseRetriever):
                     error_type=type(exc).__name__,
                     latency_ms=round(latency_ms, 2),
                 ),
+            )
+            log_slow_operation(
+                logger=logger,
+                event="milvus.search.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_retrieval_threshold_ms,
+                slow_component="milvus",
+                collection_name=self.settings.milvus_collection_name,
+                limit=options.candidate_k,
+                filter_expr=filter_expr,
+                output_field_count=len(output_fields),
+                status="failed",
+                error_type=type(exc).__name__,
             )
             raise ExternalServiceError(f"Milvus 向量检索失败: {exc}") from exc
 

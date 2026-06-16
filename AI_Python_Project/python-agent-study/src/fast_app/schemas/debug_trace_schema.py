@@ -50,6 +50,7 @@ class RagDebugTraceResponse(BaseModel):
     trace_id: str | None
     request: DebugTraceRequestSnapshot
     runtime: DebugTraceRuntimeSnapshot
+    latency_ms: float | None = None
     answer_length: int | None = None
     source_count: int = 0
     sources: list[DebugTraceSourceSnapshot] = Field(default_factory=list)

@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # BaseSettings 读取环境变量
@@ -21,6 +21,26 @@ class Settings(BaseSettings):
     debug_trace_enabled: bool = Field(default=False, alias="DEBUG_TRACE_ENABLED")
     debug_trace_token: str = Field(default="", alias="DEBUG_TRACE_TOKEN")
     debug_trace_max_sources: int = Field(default=5, alias="DEBUG_TRACE_MAX_SOURCES")
+    slow_http_request_threshold_ms: float = Field(
+        default=3000.0,
+        alias="SLOW_HTTP_REQUEST_THRESHOLD_MS",
+    )
+    slow_rag_pipeline_threshold_ms: float = Field(
+        default=5000.0,
+        alias="SLOW_RAG_PIPELINE_THRESHOLD_MS",
+    )
+    slow_retrieval_threshold_ms: float = Field(
+        default=2000.0,
+        alias="SLOW_RETRIEVAL_THRESHOLD_MS",
+    )
+    slow_rerank_threshold_ms: float = Field(
+        default=2000.0,
+        alias="SLOW_RERANK_THRESHOLD_MS",
+    )
+    slow_llm_threshold_ms: float = Field(
+        default=5000.0,
+        alias="SLOW_LLM_THRESHOLD_MS",
+    )
 
     rag_default_top_k: int = Field(default=5, alias="RAG_DEFAULT_TOP_K")
     rag_default_min_score: float = Field(default=0.0, alias="RAG_DEFAULT_MIN_SCORE")
@@ -162,6 +182,39 @@ class Settings(BaseSettings):
     )
     # ingestion 的基础配置 end
 
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug_mode(cls, value: object) -> object:
+        if isinstance(value, bool):
+            return value
+
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+
+            if normalized in {
+                "true",
+                "1",
+                "yes",
+                "on",
+                "debug",
+                "dev",
+                "development",
+            }:
+                return True
+
+            if normalized in {
+                "false",
+                "0",
+                "no",
+                "off",
+                "release",
+                "prod",
+                "production",
+            }:
+                return False
+
+        return value
 
     @property
     def cors_origins(self) -> list[str]:

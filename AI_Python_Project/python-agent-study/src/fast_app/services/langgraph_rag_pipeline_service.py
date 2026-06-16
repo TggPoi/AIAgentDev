@@ -15,6 +15,7 @@ from fast_app.core.langsmith import (
     rag_langsmith_trace,
     rag_langsmith_step_trace,
 )
+from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.graph.rag_graph_builder import build_rag_graph
 from fast_app.graph.rag_graph_state import GraphRagState
@@ -155,7 +156,7 @@ class LangGraphRagPipeline:
                 len(docs),
                 len(answer),
             )
-        except Exception:
+        except Exception as exc:
             latency_ms = (perf_counter() - start_time) * 1000
             logger.exception(
                 "rag_pipeline %s",
@@ -169,6 +170,19 @@ class LangGraphRagPipeline:
                     min_score=req.min_score,
                     latency_ms=round(latency_ms, 2),
                 ),
+            )
+            log_slow_operation(
+                logger=logger,
+                event="rag.pipeline.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_rag_pipeline_threshold_ms,
+                slow_component="pipeline",
+                pipeline_provider="langgraph",
+                status="failed",
+                query=req.query,
+                mode=req.mode,
+                top_k=req.top_k,
+                error_type=type(exc).__name__,
             )
             raise
 
@@ -187,6 +201,20 @@ class LangGraphRagPipeline:
                 source_count=len(docs),
                 answer_length=len(answer),
             ),
+        )
+        log_slow_operation(
+            logger=logger,
+            event="rag.pipeline.slow",
+            latency_ms=latency_ms,
+            threshold_ms=self.settings.slow_rag_pipeline_threshold_ms,
+            slow_component="pipeline",
+            pipeline_provider="langgraph",
+            status="success",
+            query=req.query,
+            mode=req.mode,
+            top_k=req.top_k,
+            source_count=len(docs),
+            answer_length=len(answer),
         )
 
         return RagChatResponse(
@@ -227,6 +255,7 @@ class LangGraphRagPipeline:
         self,
         req: RagChatRequest,
     ) -> AsyncGenerator[str, None]:
+        start_time = perf_counter()
         logger.info(
             "开始执行 LangGraph RAG Stream Pipeline: query=%s, mode=%s, top_k=%s, min_score=%s",
             req.query,
@@ -284,6 +313,19 @@ class LangGraphRagPipeline:
             "LangGraph RAG Stream Pipeline 执行完成: token_count=%s",
             token_count,
         )
+        latency_ms = (perf_counter() - start_time) * 1000
+        log_slow_operation(
+            logger=logger,
+            event="rag.stream.slow",
+            latency_ms=latency_ms,
+            threshold_ms=self.settings.slow_rag_pipeline_threshold_ms,
+            slow_component="pipeline_stream",
+            pipeline_provider="langgraph",
+            query=req.query,
+            mode=req.mode,
+            top_k=req.top_k,
+            token_count=token_count,
+        )
 
     # 流式事件的接口，事件包括：sources（检索结果）和token（生成的回答token）
     async def stream_events(
@@ -298,6 +340,7 @@ class LangGraphRagPipeline:
         self,
         req: RagChatRequest,
     ) -> AsyncGenerator[RagStreamEvent, None]:
+        start_time = perf_counter()
         logger.info(
             "开始执行 LangGraph RAG Stream Events Pipeline: query=%s, mode=%s, top_k=%s, min_score=%s",
             req.query,
@@ -388,4 +431,18 @@ class LangGraphRagPipeline:
         logger.info(
             "LangGraph RAG Stream Events Pipeline 执行完成: token_count=%s",
             token_count,
+        )
+        latency_ms = (perf_counter() - start_time) * 1000
+        log_slow_operation(
+            logger=logger,
+            event="rag.stream_events.slow",
+            latency_ms=latency_ms,
+            threshold_ms=self.settings.slow_rag_pipeline_threshold_ms,
+            slow_component="pipeline_stream_events",
+            pipeline_provider="langgraph",
+            query=req.query,
+            mode=req.mode,
+            top_k=req.top_k,
+            token_count=token_count,
+            source_count=len(context.docs),
         )

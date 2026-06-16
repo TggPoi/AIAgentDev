@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.core.config import Settings
+from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RagContext
 from fast_app.services.exceptions import LLMCallError
@@ -171,6 +172,20 @@ class QwenLangChainLLMClient(BaseLLMClient):
                     usage_available=bool(usage),
                 ),
             )
+            log_slow_operation(
+                logger=logger,
+                event="llm.generate.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_llm_threshold_ms,
+                slow_component="llm",
+                provider="qwen_langchain",
+                model_name=self.settings.llm_model_name,
+                operation="generate",
+                answer_length=len(answer),
+                prompt_tokens=get_usage_int(usage, "prompt_tokens"),
+                completion_tokens=get_usage_int(usage, "completion_tokens"),
+                total_tokens=get_usage_int(usage, "total_tokens"),
+            )
 
             return answer
 
@@ -190,6 +205,18 @@ class QwenLangChainLLMClient(BaseLLMClient):
                     error_type=type(exc).__name__,
                     latency_ms=round(latency_ms, 2),
                 ),
+            )
+            log_slow_operation(
+                logger=logger,
+                event="llm.generate.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_llm_threshold_ms,
+                slow_component="llm",
+                provider="qwen_langchain",
+                model_name=self.settings.llm_model_name,
+                operation="generate",
+                status="failed",
+                error_type=type(exc).__name__,
             )
 
             if isinstance(exc, LLMCallError):
@@ -251,6 +278,18 @@ class QwenLangChainLLMClient(BaseLLMClient):
                     usage_reason="stream_usage_not_available",
                 ),
             )
+            log_slow_operation(
+                logger=logger,
+                event="llm.stream.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_llm_threshold_ms,
+                slow_component="llm",
+                provider="qwen_langchain",
+                model_name=self.settings.llm_model_name,
+                operation="stream",
+                chunk_count=chunk_count,
+                output_length=output_length,
+            )
 
         # LangChain / qwen-plus 的底层异常属于组件内部细节。
         # RagPipeline 不应该知道具体 SDK 抛了什么异常。
@@ -270,6 +309,18 @@ class QwenLangChainLLMClient(BaseLLMClient):
                     error_type=type(exc).__name__,
                     latency_ms=round(latency_ms, 2),
                 ),
+            )
+            log_slow_operation(
+                logger=logger,
+                event="llm.stream.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_llm_threshold_ms,
+                slow_component="llm",
+                provider="qwen_langchain",
+                model_name=self.settings.llm_model_name,
+                operation="stream",
+                status="failed",
+                error_type=type(exc).__name__,
             )
             raise LLMCallError(f"qwen-plus 流式调用失败: {exc}") from exc
 

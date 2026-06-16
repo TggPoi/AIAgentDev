@@ -6,6 +6,7 @@ from elasticsearch import AsyncElasticsearch
 
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
+from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RetrievalFilters, RetrievalOptions, RetrievedDoc, ScoreBreakdown
 from fast_app.ingestion.rag_store_schema import (
@@ -167,6 +168,22 @@ class ElasticsearchKeywordRetriever(BaseRetriever):
                     top_doc_ids=build_top_doc_ids(docs),
                 ),
             )
+            log_slow_operation(
+                logger=logger,
+                event="elasticsearch.search.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_retrieval_threshold_ms,
+                slow_component="elasticsearch",
+                index_name=self.settings.elasticsearch_index_name,
+                size=options.candidate_k,
+                filter_count=len(filter_clauses),
+                has_filter=bool(filter_clauses),
+                hit_count=len(get_es_hits(response)),
+                total_value=total_value,
+                total_relation=total_relation,
+                doc_count=len(docs),
+                skipped_hit_count=convert_result.skipped_hit_count,
+            )
 
             return docs
 
@@ -185,6 +202,19 @@ class ElasticsearchKeywordRetriever(BaseRetriever):
                     error_type=type(exc).__name__,
                     latency_ms=round(latency_ms, 2),
                 ),
+            )
+            log_slow_operation(
+                logger=logger,
+                event="elasticsearch.search.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_retrieval_threshold_ms,
+                slow_component="elasticsearch",
+                index_name=self.settings.elasticsearch_index_name,
+                size=options.candidate_k,
+                filter_count=len(filter_clauses),
+                has_filter=bool(filter_clauses),
+                status="failed",
+                error_type=type(exc).__name__,
             )
             raise ExternalServiceError(f"ElasticSearch 关键词检索失败: {exc}") from exc
 

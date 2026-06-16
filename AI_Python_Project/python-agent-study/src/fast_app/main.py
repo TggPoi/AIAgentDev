@@ -91,7 +91,10 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=[REQUEST_ID_HEADER],
 )
-app.add_middleware(RequestIdMiddleware)
+app.add_middleware(
+    RequestIdMiddleware,
+    slow_http_request_threshold_ms=settings.slow_http_request_threshold_ms,
+)
 
 register_exception_handlers(app)
 

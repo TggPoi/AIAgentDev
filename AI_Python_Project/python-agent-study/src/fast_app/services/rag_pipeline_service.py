@@ -15,6 +15,7 @@ from fast_app.core.langsmith import (
     rag_langsmith_trace,
     rag_langsmith_step_trace,
 )
+from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RagContext, RetrievalOptions, RetrievedDoc, RagMode, RetrievalFilters
 from fast_app.graph.rag_state import RagState
@@ -597,6 +598,18 @@ class RagPipeline:
                     top_doc_ids=build_top_doc_ids(reranked_docs),
                 ),
             )
+            log_slow_operation(
+                logger=logger,
+                event="rag.rerank.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_rerank_threshold_ms,
+                slow_component="rerank",
+                pipeline_provider="classic",
+                candidate_count=len(docs),
+                result_count=len(reranked_docs),
+                top_k=rerank_top_k,
+                fallback=False,
+            )
             return reranked_docs
         except ExternalServiceError as exc:
             fallback_docs = docs[: self.settings.rerank_top_k]
@@ -614,6 +627,19 @@ class RagPipeline:
                     error_type=type(exc).__name__,
                     top_doc_ids=build_top_doc_ids(fallback_docs),
                 ),
+            )
+            log_slow_operation(
+                logger=logger,
+                event="rag.rerank.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_rerank_threshold_ms,
+                slow_component="rerank",
+                pipeline_provider="classic",
+                candidate_count=len(docs),
+                result_count=len(fallback_docs),
+                top_k=rerank_top_k,
+                fallback=True,
+                error_type=type(exc).__name__,
             )
             return fallback_docs
 
@@ -746,7 +772,7 @@ class RagPipeline:
             state["answer"] = answer
 
             logger.info("RAG 回答生成完成: answer_length=%s", len(answer))
-        except Exception:
+        except Exception as exc:
             latency_ms = (perf_counter() - start_time) * 1000
             logger.exception(
                 "rag_pipeline %s",
@@ -760,6 +786,19 @@ class RagPipeline:
                     min_score=req.min_score,
                     latency_ms=round(latency_ms, 2),
                 ),
+            )
+            log_slow_operation(
+                logger=logger,
+                event="rag.pipeline.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_rag_pipeline_threshold_ms,
+                slow_component="pipeline",
+                pipeline_provider="classic",
+                status="failed",
+                query=req.query,
+                mode=req.mode,
+                top_k=req.top_k,
+                error_type=type(exc).__name__,
             )
             raise
 
@@ -778,6 +817,20 @@ class RagPipeline:
                 source_count=len(docs),
                 answer_length=len(answer),
             ),
+        )
+        log_slow_operation(
+            logger=logger,
+            event="rag.pipeline.slow",
+            latency_ms=latency_ms,
+            threshold_ms=self.settings.slow_rag_pipeline_threshold_ms,
+            slow_component="pipeline",
+            pipeline_provider="classic",
+            status="success",
+            query=req.query,
+            mode=req.mode,
+            top_k=req.top_k,
+            source_count=len(docs),
+            answer_length=len(answer),
         )
 
         return RagChatResponse(
@@ -966,6 +1019,19 @@ class RagPipeline:
                         top_doc_ids=build_top_doc_ids(returned_docs),
                     ),
                 )
+                log_slow_operation(
+                    logger=logger,
+                    event="rag.retrieval.slow",
+                    latency_ms=latency_ms,
+                    threshold_ms=self.settings.slow_retrieval_threshold_ms,
+                    slow_component="retrieval",
+                    pipeline_provider="classic",
+                    retrieval_mode=req.mode,
+                    retriever="vector",
+                    top_k=req.top_k,
+                    candidate_k=options.candidate_k,
+                    returned_count=len(returned_docs),
+                )
 
                 if len(returned_docs) == 0:
                     raise NoSearchResultError(
@@ -1030,6 +1096,19 @@ class RagPipeline:
                         latency_ms=round(latency_ms, 2),
                         top_doc_ids=build_top_doc_ids(returned_docs),
                     ),
+                )
+                log_slow_operation(
+                    logger=logger,
+                    event="rag.retrieval.slow",
+                    latency_ms=latency_ms,
+                    threshold_ms=self.settings.slow_retrieval_threshold_ms,
+                    slow_component="retrieval",
+                    pipeline_provider="classic",
+                    retrieval_mode=req.mode,
+                    retriever="keyword",
+                    top_k=req.top_k,
+                    candidate_k=options.candidate_k,
+                    returned_count=len(returned_docs),
                 )
 
                 if len(returned_docs) == 0:
@@ -1179,6 +1258,22 @@ class RagPipeline:
                 latency_ms=round(latency_ms, 2),
                 top_doc_ids=build_top_doc_ids(merged_docs),
             ),
+        )
+        log_slow_operation(
+            logger=logger,
+            event="rag.retrieval.slow",
+            latency_ms=latency_ms,
+            threshold_ms=self.settings.slow_retrieval_threshold_ms,
+            slow_component="retrieval",
+            pipeline_provider="classic",
+            retrieval_mode=req.mode,
+            retriever="hybrid",
+            top_k=req.top_k,
+            candidate_k=options.candidate_k,
+            source_count=len(successful_doc_lists),
+            input_doc_count=input_doc_count,
+            unique_doc_count=unique_doc_count,
+            output_doc_count=len(merged_docs),
         )
 
         if len(merged_docs) == 0:

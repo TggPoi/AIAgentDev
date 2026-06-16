@@ -32,7 +32,7 @@ def get_llm_client(
     provider = settings.llm_provider.lower().strip()
 
     if provider == "mock":
-        return MockLLMClient()
+        return MockLLMClient(settings=settings)
 
     if provider == "qwen":
         return QwenLangChainLLMClient(settings=settings)
