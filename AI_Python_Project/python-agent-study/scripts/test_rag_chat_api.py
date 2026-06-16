@@ -1,9 +1,59 @@
 import argparse
 import json
 import sys
+from dataclasses import dataclass
+from uuid import uuid4
 from collections.abc import Iterator
 
 import requests
+
+
+@dataclass(frozen=True)
+class RagChatScenario:
+    name: str
+    query: str
+    mode: str
+    top_k: int = 5
+    candidate_k: int | None = 8
+    min_score: float = 0.0
+
+
+PHASE9_LANGSMITH_SCENARIOS = [
+    RagChatScenario(
+        name="phase9-model-refactor",
+        query="阶段 9 为什么要重构 RetrievedDoc 和 RagSource 数据模型？",
+        mode="hybrid",
+    ),
+    RagChatScenario(
+        name="phase9-score-breakdown",
+        query="阶段 9 如何保留 vector_score keyword_score rrf_score rerank_score？",
+        mode="hybrid",
+    ),
+    RagChatScenario(
+        name="phase9-retrieval-sources",
+        query="阶段 9 为什么要记录 retrieval_sources 和多来源命中信息？",
+        mode="hybrid",
+    ),
+    RagChatScenario(
+        name="phase9-metadata-sources",
+        query="阶段 9 为什么要把 metadata 写入 ES 和 Milvus，并在 sources 中展示 title 和 section_path？",
+        mode="hybrid",
+    ),
+    RagChatScenario(
+        name="phase9-stream-events",
+        query="阶段 9 stream event 协议设计包含哪些事件？",
+        mode="hybrid",
+    ),
+]
+
+
+def build_headers(request_id: str | None = None) -> dict[str, str]:
+    headers: dict[str, str] = {}
+
+    if request_id:
+        headers["X-Request-ID"] = request_id
+
+    return headers
 
 
 def build_payload(args: argparse.Namespace) -> dict[str, object]:
@@ -25,6 +75,20 @@ def build_payload(args: argparse.Namespace) -> dict[str, object]:
         filters["section_path"] = args.section_path
     if filters:
         payload["filters"] = filters
+
+    return payload
+
+
+def build_scenario_payload(scenario: RagChatScenario) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "query": scenario.query,
+        "mode": scenario.mode,
+        "top_k": scenario.top_k,
+        "min_score": scenario.min_score,
+    }
+
+    if scenario.candidate_k is not None:
+        payload["candidate_k"] = scenario.candidate_k
 
     return payload
 
@@ -137,15 +201,22 @@ def assert_sources_match_filters(
                 )
 
 
-def test_normal_chat(base_url: str, payload: dict[str, object]) -> None:
+def test_normal_chat(
+    base_url: str,
+    payload: dict[str, object],
+    request_id: str | None = None,
+) -> None:
     """测试非流式 RAG 聊天接口。"""
     url = f"{base_url}/rag/chat"
+    headers = build_headers(request_id)
 
     print("========== POST /rag/chat ==========")
+    if request_id:
+        print(f"request_id: {request_id}")
     print("request:")
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
-    resp = requests.post(url, json=payload, timeout=30)
+    resp = requests.post(url, json=payload, headers=headers, timeout=60)
 
     print(f"\nstatus: {resp.status_code}")
     print("response:")
@@ -169,15 +240,22 @@ def test_normal_chat(base_url: str, payload: dict[str, object]) -> None:
     resp.raise_for_status()
 
 
-def test_normal_chat_error(base_url: str, payload: dict[str, object]) -> None:
+def test_normal_chat_error(
+    base_url: str,
+    payload: dict[str, object],
+    request_id: str | None = None,
+) -> None:
     """测试非流式接口被全局异常处理器转换后的 JSON 错误响应。"""
     url = f"{base_url}/rag/chat"
+    headers = build_headers(request_id)
 
     print("\n========== POST /rag/chat error ==========")
+    if request_id:
+        print(f"request_id: {request_id}")
     print("request:")
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
-    resp = requests.post(url, json=payload, timeout=30)
+    resp = requests.post(url, json=payload, headers=headers, timeout=60)
 
     print(f"\nstatus: {resp.status_code}")
     print("response:")
@@ -202,14 +280,27 @@ def iter_sse_lines(resp: requests.Response) -> Iterator[str]:
             yield line
 
 
-def test_stream_chat(base_url: str, payload: dict[str, object]) -> None:
+def test_stream_chat(
+    base_url: str,
+    payload: dict[str, object],
+    request_id: str | None = None,
+) -> None:
     """测试流式 RAG 聊天接口，并实时打印 data token。"""
     url = f"{base_url}/rag/chat/stream"
+    headers = build_headers(request_id)
 
     print("\n========== POST /rag/chat/stream ==========")
+    if request_id:
+        print(f"request_id: {request_id}")
     print("stream output:")
 
-    with requests.post(url, json=payload, stream=True, timeout=60) as resp:
+    with requests.post(
+        url,
+        json=payload,
+        headers=headers,
+        stream=True,
+        timeout=90,
+    ) as resp:
         print(f"status: {resp.status_code}\n")
         resp.raise_for_status()
 
@@ -251,11 +342,18 @@ def parse_sse_json_data(data: str) -> dict[str, object]:
     return value
 
 
-def test_structured_stream_chat(base_url: str, payload: dict[str, object]) -> None:
+def test_structured_stream_chat(
+    base_url: str,
+    payload: dict[str, object],
+    request_id: str | None = None,
+) -> None:
     """测试结构化流式 RAG 聊天接口。"""
     url = f"{base_url}/rag/chat/stream/events"
+    headers = build_headers(request_id)
 
     print("\n========== POST /rag/chat/stream/events ==========")
+    if request_id:
+        print(f"request_id: {request_id}")
     print("structured stream output:")
 
     saw_sources = False
@@ -263,7 +361,13 @@ def test_structured_stream_chat(base_url: str, payload: dict[str, object]) -> No
     saw_done = False
     token_preview: list[str] = []
 
-    with requests.post(url, json=payload, stream=True, timeout=60) as resp:
+    with requests.post(
+        url,
+        json=payload,
+        headers=headers,
+        stream=True,
+        timeout=90,
+    ) as resp:
         print(f"status: {resp.status_code}\n")
         resp.raise_for_status()
 
@@ -335,14 +439,27 @@ def test_structured_stream_chat(base_url: str, payload: dict[str, object]) -> No
     print("".join(token_preview))
 
 
-def test_stream_chat_error(base_url: str, payload: dict[str, object]) -> None:
+def test_stream_chat_error(
+    base_url: str,
+    payload: dict[str, object],
+    request_id: str | None = None,
+) -> None:
     """测试流式接口在异常时返回 SSE error event。"""
     url = f"{base_url}/rag/chat/stream"
+    headers = build_headers(request_id)
 
     print("\n========== POST /rag/chat/stream error ==========")
+    if request_id:
+        print(f"request_id: {request_id}")
     print("stream output:")
 
-    with requests.post(url, json=payload, stream=True, timeout=60) as resp:
+    with requests.post(
+        url,
+        json=payload,
+        headers=headers,
+        stream=True,
+        timeout=90,
+    ) as resp:
         print(f"status: {resp.status_code}\n")
         resp.raise_for_status()
 
@@ -384,7 +501,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--query",
-        default="什么是混合检索？",
+        default="阶段 9 为什么要进行 RAG 数据模型重构？",
         help="测试问题",
     )
     parser.add_argument(
@@ -442,7 +559,56 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="跳过异常场景测试",
     )
+    parser.add_argument(
+        "--request-id",
+        default=None,
+        help="写入 X-Request-ID 请求头；用于和后端日志 / LangSmith metadata 对齐",
+    )
+    parser.add_argument(
+        "--request-id-prefix",
+        default="langsmith-phase9",
+        help="批量场景生成 X-Request-ID 时使用的前缀",
+    )
+    parser.add_argument(
+        "--phase9-langsmith-suite",
+        action="store_true",
+        help="运行一组基于 learning-docs/phase-9 数据的 RAG 问题，方便在 LangSmith 中观察 trace",
+    )
+    parser.add_argument(
+        "--suite-structured-stream",
+        action="store_true",
+        help="phase9 LangSmith suite 额外测试 /rag/chat/stream/events",
+    )
     return parser.parse_args()
+
+
+def test_phase9_langsmith_suite(args: argparse.Namespace, base_url: str) -> None:
+    suite_id = uuid4().hex[:8]
+
+    print("========== phase9 LangSmith suite ==========")
+    print(f"suite_id: {suite_id}")
+    print(
+        "提示：如果服务端 LANGSMITH_TRACING=true，下面每个 request_id "
+        "都会写入 LangSmith metadata。"
+    )
+
+    for index, scenario in enumerate(PHASE9_LANGSMITH_SCENARIOS, start=1):
+        request_id = f"{args.request_id_prefix}-{suite_id}-{index:02d}-{scenario.name}"
+        payload = build_scenario_payload(scenario)
+
+        print(f"\n========== scenario {index}: {scenario.name} ==========")
+        test_normal_chat(
+            base_url=base_url,
+            payload=payload,
+            request_id=request_id,
+        )
+
+        if args.suite_structured_stream:
+            test_structured_stream_chat(
+                base_url=base_url,
+                payload=payload,
+                request_id=f"{request_id}-stream-events",
+            )
 
 
 def main() -> int:
@@ -452,17 +618,31 @@ def main() -> int:
     error_payload = build_no_result_payload(args)
 
     try:
+        if args.phase9_langsmith_suite:
+            test_phase9_langsmith_suite(args, base_url)
+            return 0
+
         if args.structured_stream_only:
-            test_structured_stream_chat(base_url, payload)
+            test_structured_stream_chat(base_url, payload, args.request_id)
             return 0
 
         if not args.stream_only:
-            test_normal_chat(base_url, payload)
+            test_normal_chat(base_url, payload, args.request_id)
 
-        test_stream_chat(base_url, payload)
+        stream_request_id = (
+            f"{args.request_id}-stream"
+            if args.request_id
+            else None
+        )
+        test_stream_chat(base_url, payload, stream_request_id)
 
         if not args.skip_structured_stream:
-            test_structured_stream_chat(base_url, payload)
+            structured_request_id = (
+                f"{args.request_id}-stream-events"
+                if args.request_id
+                else None
+            )
+            test_structured_stream_chat(base_url, payload, structured_request_id)
 
         # if not args.skip_errors:
         #     if not args.stream_only:

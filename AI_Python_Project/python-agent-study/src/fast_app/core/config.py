@@ -49,6 +49,19 @@ class Settings(BaseSettings):
 
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
+    # LangSmith tracing 配置。默认关闭，避免本地开发或测试时意外向远端写入 trace。
+    langsmith_tracing: bool = Field(default=False, alias="LANGSMITH_TRACING")
+    langsmith_api_key: str = Field(default="", alias="LANGSMITH_API_KEY")
+    langsmith_endpoint: str = Field(
+        default="https://api.smith.langchain.com",
+        alias="LANGSMITH_ENDPOINT",
+    )
+    langsmith_project: str = Field(
+        default="python-agent-study",
+        alias="LANGSMITH_PROJECT",
+    )
+    langsmith_tags: str = Field(default="", alias="LANGSMITH_TAGS")
+
     cors_allow_origins: str = Field(
         default="http://localhost:5173,http://127.0.0.1:5173",
         alias="CORS_ALLOW_ORIGINS",
@@ -151,6 +164,14 @@ class Settings(BaseSettings):
             origin.strip()
             for origin in self.cors_allow_origins.split(",")
             if origin.strip()
+        ]
+
+    @property
+    def langsmith_tag_list(self) -> list[str]:
+        return [
+            tag.strip()
+            for tag in self.langsmith_tags.split(",")
+            if tag.strip()
         ]
     
 

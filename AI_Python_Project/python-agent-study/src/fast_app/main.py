@@ -11,6 +11,7 @@ from fast_app.api.rag_routes import router as rag_router
 from fast_app.api.stream_routes import router as stream_router
 from fast_app.api.error_demo_routes import router as error_demo_router
 from fast_app.core.config import get_settings
+from fast_app.core.langsmith import configure_langsmith
 from fast_app.core.logging import get_logger, setup_logging
 from fast_app.core.request_context import REQUEST_ID_HEADER
 from fast_app.middlewares.request_id_middleware import RequestIdMiddleware
@@ -29,6 +30,7 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     setup_logging(settings)
+    configure_langsmith(settings)
 
     logger.info("应用启动: app_name=%s, env=%s", settings.app_name, settings.app_env)
 

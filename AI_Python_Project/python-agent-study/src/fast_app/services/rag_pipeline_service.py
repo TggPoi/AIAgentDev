@@ -6,6 +6,12 @@ from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
 
 from fast_app.core.config import Settings
+from fast_app.core.langsmith import (
+    build_rag_langsmith_inputs,
+    build_rag_langsmith_metadata,
+    build_rag_langsmith_tags,
+    rag_langsmith_trace,
+)
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RagContext, RetrievalOptions, RetrievedDoc, RagMode, RetrievalFilters
 from fast_app.graph.rag_state import RagState
@@ -498,6 +504,23 @@ class RagPipeline:
         self.llm_client = llm_client
         self.reranker = reranker
 
+    def _langsmith_trace(self, req: RagChatRequest, operation: str):
+        return rag_langsmith_trace(
+            settings=self.settings,
+            name=f"classic_rag_pipeline.{operation}",
+            inputs=build_rag_langsmith_inputs(req),
+            metadata=build_rag_langsmith_metadata(
+                settings=self.settings,
+                req=req,
+                pipeline_provider="classic",
+            ),
+            tags=build_rag_langsmith_tags(
+                settings=self.settings,
+                pipeline_provider="classic",
+                operation=operation,
+            ),
+        )
+
     # 重排序模型报错时降级处理 rerank 是增强能力 增强能力失败时，不应该直接让普通问答接口失败
     async def rerank_with_fallback(
         self,
@@ -563,6 +586,10 @@ class RagPipeline:
 
     #非流式普通接口
     async def run(self, req: RagChatRequest) -> RagChatResponse:
+        with self._langsmith_trace(req, "run"):
+            return await self._run(req)
+
+    async def _run(self, req: RagChatRequest) -> RagChatResponse:
         """执行一次完整的非流式 RAG 请求。"""
 
         start_time = perf_counter()
@@ -648,6 +675,14 @@ class RagPipeline:
 
     # 流式接口，只以异步生成器形式流式返回 token，未实现stream event
     async def stream(
+        self,
+        req: RagChatRequest,
+    ) -> AsyncGenerator[str, None]:
+        with self._langsmith_trace(req, "stream"):
+            async for token in self._stream(req):
+                yield token
+
+    async def _stream(
         self,
         req: RagChatRequest,
     ) -> AsyncGenerator[str, None]:
@@ -962,6 +997,14 @@ class RagPipeline:
 
     # 流式事件接口
     async def stream_events(
+        self,
+        req: RagChatRequest,
+    ) -> AsyncGenerator[RagStreamEvent, None]:
+        with self._langsmith_trace(req, "stream_events"):
+            async for event in self._stream_events(req):
+                yield event
+
+    async def _stream_events(
         self,
         req: RagChatRequest,
     ) -> AsyncGenerator[RagStreamEvent, None]:

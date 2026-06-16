@@ -6,6 +6,12 @@ from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
+from fast_app.core.langsmith import (
+    build_rag_langsmith_inputs,
+    build_rag_langsmith_metadata,
+    build_rag_langsmith_tags,
+    rag_langsmith_trace,
+)
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.graph.rag_graph_builder import build_rag_graph
 from fast_app.graph.rag_graph_state import GraphRagState
@@ -61,9 +67,31 @@ class LangGraphRagPipeline:
         )
         self.build_context_node = create_build_context_node()
 
+    # 构造langsmith 追踪
+    def _langsmith_trace(self, req: RagChatRequest, operation: str):
+        return rag_langsmith_trace(
+            settings=self.settings,
+            name=f"langgraph_rag_pipeline.{operation}",
+            inputs=build_rag_langsmith_inputs(req),
+            metadata=build_rag_langsmith_metadata(
+                settings=self.settings,
+                req=req,
+                pipeline_provider="langgraph",
+            ),
+            tags=build_rag_langsmith_tags(
+                settings=self.settings,
+                pipeline_provider="langgraph",
+                operation=operation,
+            ),
+        )
+
 
 
     async def run(self, req: RagChatRequest) -> RagChatResponse:
+        with self._langsmith_trace(req, "run"):
+            return await self._run(req)
+
+    async def _run(self, req: RagChatRequest) -> RagChatResponse:
         start_time = perf_counter()
         logger.info(
             "rag_pipeline %s",
@@ -150,6 +178,14 @@ class LangGraphRagPipeline:
         self,
         req: RagChatRequest,
     ) -> AsyncGenerator[str, None]:
+        with self._langsmith_trace(req, "stream"):
+            async for token in self._stream(req):
+                yield token
+
+    async def _stream(
+        self,
+        req: RagChatRequest,
+    ) -> AsyncGenerator[str, None]:
         logger.info(
             "开始执行 LangGraph RAG Stream Pipeline: query=%s, mode=%s, top_k=%s, min_score=%s",
             req.query,
@@ -190,6 +226,14 @@ class LangGraphRagPipeline:
 
     # 流式事件的接口，事件包括：sources（检索结果）和token（生成的回答token）
     async def stream_events(
+        self,
+        req: RagChatRequest,
+    ) -> AsyncGenerator[RagStreamEvent, None]:
+        with self._langsmith_trace(req, "stream_events"):
+            async for event in self._stream_events(req):
+                yield event
+
+    async def _stream_events(
         self,
         req: RagChatRequest,
     ) -> AsyncGenerator[RagStreamEvent, None]:

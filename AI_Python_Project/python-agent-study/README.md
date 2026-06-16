@@ -58,7 +58,7 @@ python scripts/test_rag_chat_api.py --stream-only
 已启动程序并运行测试脚本，正常情况和异常情况都通过。
 
 
-2026年6月12日：
+2026年6月12日：========================
 已更新 [scripts/test_rag_chat_api.py](d:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/test_rag_chat_api.py)。
 
 现在脚本支持新增参数：
@@ -145,3 +145,45 @@ status: 200
 event: error
 data: NO_SEARCH_RESULT: 没有找到满足 min_score=1.0 的混合检索结果
 ```
+
+
+2026年6月16日：========================
+已更新 [scripts/test_rag_chat_api.py](d:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/test_rag_chat_api.py:12)。
+
+主要改动：
+
+- 新增阶段 9 LangSmith 批量测试场景 `--phase9-langsmith-suite`
+- 每次请求都会自动带 `X-Request-ID`，方便在 LangSmith metadata 和本地日志中对齐
+- 新增 `--request-id`，可以给单次测试指定固定 request_id
+- 新增 `--request-id-prefix`，批量场景会生成类似：
+  `langsmith-phase9-xxxxxx-01-phase9-model-refactor`
+- 支持批量场景额外测试结构化流式接口：`--suite-structured-stream`
+- 默认 query 改成更贴合当前数据的阶段 9 问题
+
+已验证：
+
+```text
+py_compile 通过
+--help 输出正常
+```
+
+你可以这样运行阶段 9 LangSmith 批量测试：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\test_rag_chat_api.py --phase9-langsmith-suite
+```
+
+如果还想让 `/rag/chat/stream/events` 也产生 LangSmith trace：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\test_rag_chat_api.py --phase9-langsmith-suite --suite-structured-stream
+```
+
+前提是服务端启动时已经开启：
+
+```env
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=你的 key
+```
+
+并且要重启 `uvicorn`，让服务端重新读取 `.env`。
