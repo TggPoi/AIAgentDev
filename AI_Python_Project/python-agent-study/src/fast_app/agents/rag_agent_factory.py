@@ -7,7 +7,7 @@ from fast_app.core.config import Settings
 from fast_app.graph.rag_graph_builder import build_rag_graph
 
 
-RagAgentAssemblyMode = Literal["explicit_graph", "prebuilt_agent"]
+RagAgentAssemblyMode = Literal["explicit_graph", "create_agent"]
 
 
 def build_explicit_rag_agent(
@@ -44,4 +44,4 @@ def build_rag_agent(
             reranker=reranker,
         )
 
-    raise ValueError("prebuilt_agent assembly is planned for a later phase.")
+    raise ValueError("create_agent assembly is planned for a later phase.")
