@@ -17,8 +17,12 @@ from fast_app.core.langsmith import (
 )
 from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
-from fast_app.graph.rag_graph_builder import build_rag_graph
-from fast_app.graph.rag_graph_state import GraphRagState
+from fast_app.agents.rag_agent_factory import build_rag_agent
+from fast_app.graph.rag_graph_state import (
+    GraphRagOperation,
+    GraphRagState,
+    build_graph_initial_state,
+)
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
 
 from fast_app.services.rag_pipeline_service import docs_to_sources
@@ -57,14 +61,14 @@ class LangGraphRagPipeline:
             rerank_top_k=settings.rerank_top_k,
         )
         
-        # `build_rag_graph(...)` 不在每次 `run()` 里调用，而是在构造 pipeline 时调用。因为 graph 结构是固定的。每次请求变化的是 initial_state。
-        self.graph = build_rag_graph(
+        # Graph 结构是固定的，所以只在构造 pipeline 时装配一次。每次请求变化的是 initial_state。
+        self.graph = build_rag_agent(
             settings=settings,
             vector_retriever=vector_retriever,
             keyword_retriever=keyword_retriever,
             llm_client=llm_client,
             reranker=reranker,
-            rerank_top_k=settings.rerank_top_k,
+            mode="explicit_graph", #设置使用graph还是 create Agent[未实现]模式
         )
 
         self.retrieve_node = create_retrieve_node(
@@ -227,20 +231,12 @@ class LangGraphRagPipeline:
     def _build_initial_state(
         self,
         req: RagChatRequest,
-        operation: str,
+        operation: GraphRagOperation,
     ) -> GraphRagState:
-        return {
-            "query": req.query,
-            "mode": req.mode,
-            "top_k": req.top_k,
-            "candidate_k": req.candidate_k,
-            "min_score": req.min_score,
-            "filters": req.filters.model_dump(),
-            "operation": operation,
-            "docs": [],
-            "context": None,
-            "answer": None,
-        }
+        return build_graph_initial_state(
+            req=req,
+            operation=operation,
+        )
     
     # 只产生token的流式接口
     async def stream(
