@@ -3,6 +3,7 @@ from collections.abc import Iterable
 from typing import Protocol
 
 from fast_app.agents.mcp_tool_contracts import (
+    McpStdioServerConfig,
     McpToolCallRequest,
     McpToolCallResult,
     McpToolInfo,
@@ -43,6 +44,8 @@ async def _maybe_await(value: object) -> object:
     return value
 
 
+# 兼容 dict 和对象属性如果 value 是 dict，就用 value[name] 取。如果 value 是对象，就用 getattr(value, name) 取。
+# 都取不到，就返回 default。
 def _get_field(value: object, *names: str, default: object = None) -> object:
     """从 dict 或对象属性中读取字段。
 
@@ -70,6 +73,26 @@ def _as_dict(value: object) -> dict[str, object]:
     return {}
 
 
+# MCP SDK 返回的工具可能长这样：
+# {
+#     "tools": [
+#         {
+#             "name": "search",
+#             "description": "search something",
+#             "inputSchema": {...}
+#         }
+#     ]
+# }
+# 也可能是对象：
+# ListToolsResult(
+#     tools=[
+#         Tool(
+#             name="search",
+#             description="search something",
+#             input_schema={...}
+#         )
+#     ]
+# )
 def _normalize_tools(raw_result: object) -> list[McpToolInfo]:
     """把 MCP list_tools 原始结果转换成工程内部的 McpToolInfo 列表。
 
@@ -85,6 +108,7 @@ def _normalize_tools(raw_result: object) -> list[McpToolInfo]:
         raise ExternalServiceError("MCP list_tools 返回格式不正确")
 
     tools: list[McpToolInfo] = []
+
     for raw_tool in raw_tools:
         # 没有名称的工具无法被后续 adapter 或 Agent 稳定调用，直接跳过。
         name = _get_field(raw_tool, "name", default="")
@@ -154,7 +178,7 @@ def _normalize_tool_result(
         raw_result=raw_result,
     )
 
-
+# MCP client boundary 把 MCP SDK 返回值转换成内部模型
 class McpClientBoundary:
     """MCP client 的薄边界。
 
@@ -240,6 +264,132 @@ class McpClientBoundary:
             "mcp_client %s",
             format_log_fields(
                 event="mcp.call_tool.finish",
+                tool_name=result.tool_name,
+                is_error=result.is_error,
+                content_length=len(result.content),
+            ),
+        )
+        return result
+
+
+class McpStdioClientBoundary(McpClientBoundary):
+    """MCP client boundary backed by a real stdio MCP server.
+
+    The first version opens a short-lived MCP session for each operation. This
+    keeps lifecycle handling explicit and avoids leaking subprocesses while the
+    project is still learning the MCP integration boundary.
+    """
+
+    def __init__(
+        self,
+        server_config: McpStdioServerConfig,
+        allowed_tool_names: set[str] | None = None,
+    ):
+        # session=None ：每次 list_tools 或 call_tool 时，临时启动一个 MCP stdio session。用完之后关闭
+        # 生命周期清晰，不容易泄漏子进程。但是每次调用都要重新启动 MCP server，性能可能差一些。
+        super().__init__(session=None, allowed_tool_names=allowed_tool_names)
+        self.server_config = server_config
+
+    # 打开真实 MCP stdio session
+    # 懒加载 MCP SDK 只有真正使用 stdio boundary 时才导入
+    async def _with_session(self):
+        """Open and initialize a real MCP stdio session."""
+        try:
+            from mcp import ClientSession, StdioServerParameters
+            from mcp.client.stdio import stdio_client
+        except ImportError as exc:
+            raise ExternalServiceError(
+                "MCP SDK 未安装，请先安装 mcp==1.28.0"
+            ) from exc
+
+        server_params = StdioServerParameters(
+            command=self.server_config.command,
+            args=self.server_config.args,
+            env=self.server_config.env,
+        )
+
+        # 自定义异步上下文管理器
+        class _SessionContext:
+            # 进入 async with 时：启动 MCP server，创建 session，初始化 session。
+            async def __aenter__(context_self):
+                context_self.stdio_context = stdio_client(server_params)
+                # read_stream: 从 MCP server 读数据
+                # write_stream: 向 MCP server 写数据
+                read_stream, write_stream = await context_self.stdio_context.__aenter__()
+                context_self.session_context = ClientSession(
+                    read_stream,
+                    write_stream,
+                )
+                session = await context_self.session_context.__aenter__()
+
+                # 调用 session.initialize() 完成 MCP 初始化握手
+                await session.initialize()
+                return session
+
+            # 离开 async with 时：关闭 session，关闭 stdio 连接，释放子进程资源。
+            async def __aexit__(context_self, exc_type, exc, tb):
+                # 关闭 ClientSession
+                await context_self.session_context.__aexit__(exc_type, exc, tb)
+                # 关闭 stdio_client 上下文
+                await context_self.stdio_context.__aexit__(exc_type, exc, tb)
+
+        return _SessionContext()
+
+
+    # 真实列出 MCP server 工具
+    async def list_tools(self) -> list[McpToolInfo]:
+        """List tools from a real stdio MCP server."""
+
+        # async with await 等价于：
+        # session_context = await self._with_session()
+        # async with session_context as session:
+        async with await self._with_session() as session:
+
+            raw_result = await session.list_tools()
+            tools = _normalize_tools(raw_result)
+
+        if self.allowed_tool_names is not None:
+            tools = [tool for tool in tools if tool.name in self.allowed_tool_names]
+
+        logger.info(
+            "mcp_client %s",
+            format_log_fields(
+                event="mcp.stdio.list_tools.finish",
+                command=self.server_config.command,
+                tool_count=len(tools),
+                tool_names=[tool.name for tool in tools],
+            ),
+        )
+        return tools
+
+    async def call_tool(
+        self,
+        request: McpToolCallRequest,
+    ) -> McpToolCallResult:
+        """Call a tool on a real stdio MCP server."""
+        self._ensure_allowed(request.tool_name)
+
+        logger.info(
+            "mcp_client %s",
+            format_log_fields(
+                event="mcp.stdio.call_tool.start",
+                command=self.server_config.command,
+                tool_name=request.tool_name,
+                argument_keys=sorted(request.arguments.keys()),
+            ),
+        )
+
+        async with await self._with_session() as session:
+            raw_result = await session.call_tool(
+                request.tool_name,
+                request.arguments,
+            )
+            result = _normalize_tool_result(request.tool_name, raw_result)
+
+        logger.info(
+            "mcp_client %s",
+            format_log_fields(
+                event="mcp.stdio.call_tool.finish",
                 tool_name=result.tool_name,
                 is_error=result.is_error,
                 content_length=len(result.content),
