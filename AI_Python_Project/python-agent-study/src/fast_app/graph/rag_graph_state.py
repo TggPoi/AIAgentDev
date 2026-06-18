@@ -23,6 +23,9 @@ class GraphRagState(TypedDict):
     need_retrieval: bool | None
     route: GraphRagRoute | None
     route_reason: str | None
+    tool_name: str | None
+    tool_result_count: int | None
+    tool_error: str | None
 
     # 节点执行结果：后续节点通过这些字段读取上游产物。
     docs: list[RetrievedDoc]
@@ -45,6 +48,9 @@ def build_graph_initial_state(
         "need_retrieval": None,
         "route": None,
         "route_reason": None,
+        "tool_name": None,
+        "tool_result_count": None,
+        "tool_error": None,
         "docs": [],
         "context": None,
         "answer": None,

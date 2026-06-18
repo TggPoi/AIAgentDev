@@ -1,7 +1,10 @@
-import asyncio
 from collections.abc import Callable
 from time import perf_counter
 
+from fast_app.agents.rag_agent_tools import (
+    KNOWLEDGE_RETRIEVAL_TOOL_NAME,
+    retrieve_knowledge_docs,
+)
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
@@ -12,16 +15,13 @@ from fast_app.core.langsmith import (
 )
 from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
-from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievalOptions, RetrievedDoc
+from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievedDoc
 from fast_app.graph.rag_graph_state import GraphRagRoute, GraphRagState
-from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
+from fast_app.services.exceptions import ExternalServiceError
 from fast_app.services.rag_pipeline_service import (
     build_top_doc_ids,
     build_rag_context,
-    filter_docs_by_mode,
-    filter_docs_by_score,
 )
-from fast_app.services.retrieval_fusion import reciprocal_rank_fusion
 
 from fast_app.components.rerankers.base import BaseReranker
 
@@ -376,7 +376,7 @@ def create_rerank_node(
     return rerank_node
 
 # 构造检索过滤条件
-def build_graph_retrieval_options(state: GraphRagState) -> RetrievalOptions:
+def build_graph_retrieval_filters(state: GraphRagState) -> RetrievalFilters:
     raw_filters = state.get("filters", {})
     filters = raw_filters if isinstance(raw_filters, dict) else {}
     # 提取过滤器中的参数
@@ -388,16 +388,10 @@ def build_graph_retrieval_options(state: GraphRagState) -> RetrievalOptions:
     )
 
     source_path = filters.get("source_path")
-    top_k = state["top_k"]
-    candidate_k = max(state.get("candidate_k") or top_k, top_k)
 
-    return RetrievalOptions(
-        top_k=top_k,
-        candidate_k=candidate_k,
-        filters=RetrievalFilters(
-            source_path=str(source_path) if source_path else None,
-            section_path=section_path,
-        ),
+    return RetrievalFilters(
+        source_path=str(source_path) if source_path else None,
+        section_path=section_path,
     )
 
 # Node Factory **如果直接在 node 里 new，vector_retriever = MockVectorRetriever() **就破坏了阶段 4-7 的可替换组件设计。
@@ -411,332 +405,60 @@ def create_retrieve_node(
 ) -> Callable[[GraphRagState], object]:
     
     # 构造node需要的 partial<State> update
-    async def retrieve_node(state: GraphRagState) -> dict[str, list[RetrievedDoc]]:
-        query = state["query"]
-        mode = state["mode"]
-        top_k = state["top_k"]
-        min_score = state["min_score"]
-        options = build_graph_retrieval_options(state)
-
-        if mode == "vector":
-            logger.info(
-                "rag_retrieval %s",
-                format_log_fields(
-                    event="rag.retrieval.vector.start",
-                    pipeline_provider="langgraph",
-                    retrieval_mode=mode,
-                    retriever="vector",
-                    query=query,
-                    top_k=top_k,
-                    candidate_k=options.candidate_k,
-                    min_score=min_score,
-                ),
-            )
-
-            start_time = perf_counter()
-            try:
-                docs = await vector_retriever.retrieve(query, options)
-                filtered_docs = filter_docs_by_score(docs, min_score)
-                returned_docs = filtered_docs[:top_k]
-                latency_ms = (perf_counter() - start_time) * 1000
-
-                logger.info(
-                    "rag_retrieval %s",
-                    format_log_fields(
-                        event="rag.retrieval.vector.finish",
-                        pipeline_provider="langgraph",
-                        retrieval_mode=mode,
-                        retriever="vector",
-                        query=query,
-                        top_k=top_k,
-                        candidate_k=options.candidate_k,
-                        min_score=min_score,
-                        raw_count=len(docs),
-                        filtered_count=len(filtered_docs),
-                        returned_count=len(returned_docs),
-                        latency_ms=round(latency_ms, 2),
-                        top_doc_ids=build_top_doc_ids(returned_docs),
-                    ),
-                )
-                log_slow_operation(
-                    logger=logger,
-                    event="rag.retrieval.slow",
-                    latency_ms=latency_ms,
-                    threshold_ms=settings.slow_retrieval_threshold_ms,
-                    slow_component="retrieval",
-                    pipeline_provider="langgraph",
-                    retrieval_mode=mode,
-                    retriever="vector",
-                    top_k=top_k,
-                    candidate_k=options.candidate_k,
-                    returned_count=len(returned_docs),
-                )
-
-                if len(returned_docs) == 0:
-                    raise NoSearchResultError(
-                        f"没有找到满足 min_score={min_score} 的向量检索结果"
-                    )
-
-                return {"docs": returned_docs}
-            except Exception:
-                latency_ms = (perf_counter() - start_time) * 1000
-                logger.exception(
-                    "rag_retrieval %s",
-                    format_log_fields(
-                        event="rag.retrieval.vector.failed",
-                        pipeline_provider="langgraph",
-                        retrieval_mode=mode,
-                        retriever="vector",
-                        query=query,
-                        top_k=top_k,
-                        candidate_k=options.candidate_k,
-                        min_score=min_score,
-                        latency_ms=round(latency_ms, 2),
-                    ),
-                )
-                raise
-
-        if mode == "keyword":
-            logger.info(
-                "rag_retrieval %s",
-                format_log_fields(
-                    event="rag.retrieval.keyword.start",
-                    pipeline_provider="langgraph",
-                    retrieval_mode=mode,
-                    retriever="keyword",
-                    query=query,
-                    top_k=top_k,
-                    candidate_k=options.candidate_k,
-                    min_score=min_score,
-                ),
-            )
-
-            start_time = perf_counter()
-            try:
-                docs = await keyword_retriever.retrieve(query, options)
-                filtered_docs = filter_docs_by_mode(docs, mode, min_score)
-                returned_docs = filtered_docs[:top_k]
-                latency_ms = (perf_counter() - start_time) * 1000
-
-                logger.info(
-                    "rag_retrieval %s",
-                    format_log_fields(
-                        event="rag.retrieval.keyword.finish",
-                        pipeline_provider="langgraph",
-                        retrieval_mode=mode,
-                        retriever="keyword",
-                        query=query,
-                        top_k=top_k,
-                        candidate_k=options.candidate_k,
-                        min_score=min_score,
-                        raw_count=len(docs),
-                        filtered_count=len(filtered_docs),
-                        returned_count=len(returned_docs),
-                        latency_ms=round(latency_ms, 2),
-                        top_doc_ids=build_top_doc_ids(returned_docs),
-                    ),
-                )
-                log_slow_operation(
-                    logger=logger,
-                    event="rag.retrieval.slow",
-                    latency_ms=latency_ms,
-                    threshold_ms=settings.slow_retrieval_threshold_ms,
-                    slow_component="retrieval",
-                    pipeline_provider="langgraph",
-                    retrieval_mode=mode,
-                    retriever="keyword",
-                    top_k=top_k,
-                    candidate_k=options.candidate_k,
-                    returned_count=len(returned_docs),
-                )
-
-                if len(returned_docs) == 0:
-                    raise NoSearchResultError(
-                        f"没有找到满足 min_score={min_score} 的关键词检索结果"
-                    )
-
-                return {"docs": returned_docs}
-            except Exception:
-                latency_ms = (perf_counter() - start_time) * 1000
-                logger.exception(
-                    "rag_retrieval %s",
-                    format_log_fields(
-                        event="rag.retrieval.keyword.failed",
-                        pipeline_provider="langgraph",
-                        retrieval_mode=mode,
-                        retriever="keyword",
-                        query=query,
-                        top_k=top_k,
-                        candidate_k=options.candidate_k,
-                        min_score=min_score,
-                        latency_ms=round(latency_ms, 2),
-                    ),
-                )
-                raise
-
-        logger.info(
-            "rag_retrieval %s",
-            format_log_fields(
-                event="rag.retrieval.hybrid.start",
-                pipeline_provider="langgraph",
-                retrieval_mode=mode,
-                query=query,
-                top_k=top_k,
-                candidate_k=options.candidate_k,
-                min_score=min_score,
-            ),
-        )
-
-        async def retrieve_source(
-            retriever_name: str,
-            retriever: BaseRetriever,
-        ) -> list[RetrievedDoc] | Exception:
-            source_start_time = perf_counter()
-            try:
-                docs = await retriever.retrieve(query, options)
-                filtered_docs = filter_docs_by_mode(
-                    docs=docs,
-                    mode=mode,
-                    min_score=min_score,
-                )
-                latency_ms = (perf_counter() - source_start_time) * 1000
-                logger.info(
-                    "rag_retrieval %s",
-                    format_log_fields(
-                        event="rag.retrieval.source.finish",
-                        pipeline_provider="langgraph",
-                        retrieval_mode=mode,
-                        retriever=retriever_name,
-                        query=query,
-                        top_k=top_k,
-                        candidate_k=options.candidate_k,
-                        min_score=min_score,
-                        raw_count=len(docs),
-                        filtered_count=len(filtered_docs),
-                        returned_count=len(filtered_docs),
-                        latency_ms=round(latency_ms, 2),
-                        top_doc_ids=build_top_doc_ids(filtered_docs),
-                    ),
-                )
-                return filtered_docs
-            except Exception as exc:
-                latency_ms = (perf_counter() - source_start_time) * 1000
-                logger.warning(
-                    "rag_retrieval %s",
-                    format_log_fields(
-                        event="rag.retrieval.source.failed",
-                        pipeline_provider="langgraph",
-                        retrieval_mode=mode,
-                        retriever=retriever_name,
-                        query=query,
-                        top_k=top_k,
-                        candidate_k=options.candidate_k,
-                        min_score=min_score,
-                        latency_ms=round(latency_ms, 2),
-                        error_type=type(exc).__name__,
-                    ),
-                )
-                return exc
-
-        hybrid_start_time = perf_counter()
-        results = await asyncio.gather(
-            retrieve_source("vector", vector_retriever),
-            retrieve_source("keyword", keyword_retriever),
-        )
-
-        successful_doc_lists: list[list[RetrievedDoc]] = []
-
-        for result in results:
-            if isinstance(result, Exception):
-                continue
-
-            successful_doc_lists.append(result)
-
-        if len(successful_doc_lists) == 0:
-            latency_ms = (perf_counter() - hybrid_start_time) * 1000
-            logger.error(
-                "rag_retrieval %s",
-                format_log_fields(
-                    event="rag.retrieval.failed",
-                    pipeline_provider="langgraph",
-                    retrieval_mode=mode,
-                    query=query,
-                    top_k=top_k,
-                    candidate_k=options.candidate_k,
-                    min_score=min_score,
-                    latency_ms=round(latency_ms, 2),
-                    source_count=0,
-                ),
-            )
-            raise ExternalServiceError("所有召回源都失败")
-
-        input_doc_count = sum(len(docs) for docs in successful_doc_lists)
-        unique_doc_count = len(
-            {doc.id for docs in successful_doc_lists for doc in docs}
-        )
-        merged_docs = reciprocal_rank_fusion(
-            doc_lists=successful_doc_lists,
-            top_k=top_k,
-        )
-        latency_ms = (perf_counter() - hybrid_start_time) * 1000
-
-        logger.info(
-            "rag_retrieval %s",
-            format_log_fields(
-                event="rag.retrieval.rrf.finish",
-                pipeline_provider="langgraph",
-                retrieval_mode=mode,
-                query=query,
-                top_k=top_k,
-                candidate_k=options.candidate_k,
-                min_score=min_score,
-                source_count=len(successful_doc_lists),
-                input_doc_count=input_doc_count,
-                unique_doc_count=unique_doc_count,
-                output_doc_count=len(merged_docs),
-                latency_ms=round(latency_ms, 2),
-                top_doc_ids=build_top_doc_ids(merged_docs),
-            ),
-        )
-        log_slow_operation(
-            logger=logger,
-            event="rag.retrieval.slow",
-            latency_ms=latency_ms,
-            threshold_ms=settings.slow_retrieval_threshold_ms,
-            slow_component="retrieval",
+    async def retrieve_node(state: GraphRagState) -> dict[str, object]:
+        # 调用检索的封装逻辑
+        docs = await retrieve_knowledge_docs(
+            settings=settings,
+            vector_retriever=vector_retriever,
+            keyword_retriever=keyword_retriever,
+            query=state["query"],
+            mode=state["mode"],
+            top_k=state["top_k"],
+            candidate_k=state.get("candidate_k"),
+            min_score=state["min_score"],
+            filters=build_graph_retrieval_filters(state),
             pipeline_provider="langgraph",
-            retrieval_mode=mode,
-            retriever="hybrid",
-            top_k=top_k,
-            candidate_k=options.candidate_k,
-            source_count=len(successful_doc_lists),
-            input_doc_count=input_doc_count,
-            unique_doc_count=unique_doc_count,
-            output_doc_count=len(merged_docs),
         )
 
-        if len(merged_docs) == 0:
-            raise NoSearchResultError(
-                f"没有找到满足 min_score={min_score} 的混合检索结果"
-            )
-
-        return {"docs": merged_docs}
+        return {
+            "docs": docs,
+            "tool_name": KNOWLEDGE_RETRIEVAL_TOOL_NAME,
+            "tool_result_count": len(docs),
+            "tool_error": None,
+        }
 
     async def traced_retrieve_node(
         state: GraphRagState,
-    ) -> dict[str, list[RetrievedDoc]]:
+    ) -> dict[str, object]:
         with graph_langsmith_step_trace(
             settings=settings,
             state=state,
             step_name="retrieve",
             run_type="retriever",
-            inputs=build_graph_step_inputs(state),
+            inputs=build_graph_step_inputs(
+                state,
+                tool_name=KNOWLEDGE_RETRIEVAL_TOOL_NAME,
+            ),
         ) as trace_run:
-            result = await retrieve_node(state)
+            try:
+                result = await retrieve_node(state)
+            except Exception as exc:
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "tool_name": KNOWLEDGE_RETRIEVAL_TOOL_NAME,
+                            "tool_error": type(exc).__name__,
+                        }
+                    )
+                raise
+
             docs = result["docs"]
             if trace_run is not None:
                 trace_run.add_outputs(
                     {
+                        "tool_name": result["tool_name"],
+                        "tool_result_count": result["tool_result_count"],
+                        "tool_error": result["tool_error"],
                         "doc_count": len(docs),
                         "top_doc_ids": build_top_doc_ids(docs),
                     }
