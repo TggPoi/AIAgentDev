@@ -30,7 +30,7 @@ KnowledgeRetrievalMode = Literal["vector", "keyword", "hybrid"]
 # Agent调用的工具名称
 KNOWLEDGE_RETRIEVAL_TOOL_NAME = "knowledge_retrieval"
 
-# 文档检索
+# 文档检索tool调用的结构化 输入对象格式
 class KnowledgeRetrievalToolInput(BaseModel):
     query: str = Field(description="用户问题或改写后的检索 query")
     mode: KnowledgeRetrievalMode = Field(
