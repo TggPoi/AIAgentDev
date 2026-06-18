@@ -13,7 +13,7 @@ from fast_app.core.langsmith import (
 from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievalOptions, RetrievedDoc
-from fast_app.graph.rag_graph_state import GraphRagState
+from fast_app.graph.rag_graph_state import GraphRagRoute, GraphRagState
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
 from fast_app.services.rag_pipeline_service import (
     build_top_doc_ids,
@@ -31,6 +31,36 @@ logger = get_logger(__name__)
 
 GraphNode = Callable[[GraphRagState], dict]
 
+DIRECT_ANSWER_TEXT = (
+    "你好，我是一个 RAG Agent 后端示例。"
+    "当问题需要知识库信息时，我会执行检索、重排序、构造上下文并生成回答；"
+    "如果只是问候、感谢或询问系统能力，我会直接回答。"
+)
+# 通过规则过滤可以直接回答的query
+DIRECT_QUERY_EXACT_MATCHES = {
+    "你好",
+    "您好",
+    "hi",
+    "hello",
+    "hey",
+    "谢谢",
+    "感谢",
+    "thanks",
+    "thankyou",
+    "你是谁",
+    "你能做什么",
+    "你可以做什么",
+    "你会做什么",
+}
+
+DIRECT_QUERY_PATTERNS = (
+    "你能帮我做什么",
+    "你可以帮我做什么",
+    "你的能力",
+    "有什么能力",
+    "介绍一下你自己",
+)
+
 def get_graph_operation(state: GraphRagState) -> str:
     return state.get("operation", "run")
 
@@ -38,21 +68,25 @@ def get_graph_operation(state: GraphRagState) -> str:
 def get_graph_step_index(operation: str, step_name: str) -> int:
     if operation == "stream_events":
         indexes = {
-            "retrieve": 1,
-            "rerank": 2,
-            "emit_sources": 3,
-            "build_context": 4,
-            "stream_generate": 5,
-            "generate": 5,
+            "route_query": 1,
+            "retrieve": 2,
+            "direct_answer": 2,
+            "rerank": 3,
+            "emit_sources": 4,
+            "build_context": 5,
+            "stream_generate": 6,
+            "generate": 6,
         }
         return indexes[step_name]
 
     indexes = {
-        "retrieve": 1,
-        "rerank": 2,
-        "build_context": 3,
-        "generate": 4,
-        "stream_generate": 4,
+        "route_query": 1,
+        "retrieve": 2,
+        "direct_answer": 2,
+        "rerank": 3,
+        "build_context": 4,
+        "generate": 5,
+        "stream_generate": 5,
     }
     return indexes[step_name]
 
@@ -100,6 +134,119 @@ def graph_langsmith_step_trace(
             step_name=step_name,
         ),
     )
+
+
+def normalize_route_query(query: str) -> str:
+    return "".join(query.lower().split()).strip("，。！？!?.,;；：:")
+
+# 通过固定的规则过滤当前query能不能直接回答
+def should_retrieve_for_query(query: str) -> tuple[bool, str]:
+    normalized_query = normalize_route_query(query)
+
+    if not normalized_query:
+        return False, "empty_query_direct_answer"
+
+    if normalized_query in DIRECT_QUERY_EXACT_MATCHES:
+        return False, "matched_direct_query_exact"
+
+    for pattern in DIRECT_QUERY_PATTERNS:
+        if pattern in normalized_query:
+            return False, "matched_direct_query_pattern"
+
+    return True, "default_retrieve"
+
+
+def route_from_state(state: GraphRagState) -> GraphRagRoute:
+    route = state.get("route")
+    if route in ("retrieve", "direct_answer"):
+        return route
+
+    return "retrieve"
+
+
+def create_route_query_node(
+    settings: Settings,
+) -> Callable[[GraphRagState], dict[str, object]]:
+
+    async def route_query_node(state: GraphRagState) -> dict[str, object]:
+        query = state["query"]
+
+        with graph_langsmith_step_trace(
+            settings=settings,
+            state=state,
+            step_name="route_query",
+            run_type="chain",
+            inputs=build_graph_step_inputs(state),
+        ) as trace_run:
+            need_retrieval, route_reason = should_retrieve_for_query(query)
+            route: GraphRagRoute = "retrieve" if need_retrieval else "direct_answer"
+
+            logger.info(
+                "rag_route %s",
+                format_log_fields(
+                    event="rag.route_query.finish",
+                    pipeline_provider="langgraph",
+                    query=query,
+                    route=route,
+                    need_retrieval=need_retrieval,
+                    route_reason=route_reason,
+                ),
+            )
+
+            result = {
+                "need_retrieval": need_retrieval,
+                "route": route,
+                "route_reason": route_reason,
+            }
+
+            if trace_run is not None:
+                trace_run.add_outputs(result)
+
+            return result
+
+    return route_query_node
+
+# 返回固定能力说明，不调用llm回答
+def create_direct_answer_node(
+    settings: Settings,
+) -> Callable[[GraphRagState], dict[str, str]]:
+
+    async def direct_answer_node(state: GraphRagState) -> dict[str, str]:
+        with graph_langsmith_step_trace(
+            settings=settings,
+            state=state,
+            step_name="direct_answer",
+            run_type="chain",
+            inputs=build_graph_step_inputs(
+                state,
+                route=state.get("route"),
+                route_reason=state.get("route_reason"),
+            ),
+        ) as trace_run:
+            logger.info(
+                "rag_direct_answer %s",
+                format_log_fields(
+                    event="rag.direct_answer.finish",
+                    pipeline_provider="langgraph",
+                    query=state["query"],
+                    answer_length=len(DIRECT_ANSWER_TEXT),
+                    route_reason=state.get("route_reason"),
+                ),
+            )
+
+            result = {"answer": DIRECT_ANSWER_TEXT}
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "answer_length": len(DIRECT_ANSWER_TEXT),
+                        "source_count": 0,
+                    }
+                )
+
+            return result
+
+    return direct_answer_node
+
 
 # 重排序节点 只处理 rerank 只接收和返回 docs
 def create_rerank_node(

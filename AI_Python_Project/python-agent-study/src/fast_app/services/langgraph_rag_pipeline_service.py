@@ -29,8 +29,10 @@ from fast_app.services.rag_pipeline_service import docs_to_sources
 
 from fast_app.graph.rag_graph_nodes import (
     create_build_context_node,
+    create_direct_answer_node,
     create_retrieve_node,
     create_rerank_node,
+    create_route_query_node,
 )
 from fast_app.services.exceptions import ExternalServiceError
 
@@ -77,6 +79,8 @@ class LangGraphRagPipeline:
             keyword_retriever=keyword_retriever,
         )
         self.build_context_node = create_build_context_node(settings=settings)
+        self.route_query_node = create_route_query_node(settings=settings)
+        self.direct_answer_node = create_direct_answer_node(settings=settings)
 
     # 构造langsmith 追踪
     def _langsmith_trace(self, req: RagChatRequest, operation: str):
@@ -262,6 +266,40 @@ class LangGraphRagPipeline:
 
         state = self._build_initial_state(req, operation="stream")
 
+        route_update = await self.route_query_node(state)
+        state.update(route_update)
+
+        if state.get("route") == "direct_answer":
+            direct_answer_update = await self.direct_answer_node(state)
+            state.update(direct_answer_update)
+
+            answer = state.get("answer") or ""
+            token_count = 0
+            for token in answer:
+                token_count += 1
+                yield token
+
+            logger.info(
+                "LangGraph RAG Stream Pipeline 直接回答完成: token_count=%s",
+                token_count,
+            )
+            latency_ms = (perf_counter() - start_time) * 1000
+            log_slow_operation(
+                logger=logger,
+                event="rag.stream.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_rag_pipeline_threshold_ms,
+                slow_component="pipeline_stream",
+                pipeline_provider="langgraph",
+                query=req.query,
+                mode=req.mode,
+                top_k=req.top_k,
+                token_count=token_count,
+                route=state.get("route"),
+                route_reason=state.get("route_reason"),
+            )
+            return
+
         retrieve_update = await self.retrieve_node(state)
         state.update(retrieve_update)
 
@@ -282,7 +320,7 @@ class LangGraphRagPipeline:
             req=req,
             operation="stream",
             step_name="stream_generate",
-            step_index=4,
+            step_index=5,
             run_type="chain",
             inputs={
                 "query": req.query,
@@ -347,6 +385,75 @@ class LangGraphRagPipeline:
 
         state = self._build_initial_state(req, operation="stream_events")
 
+        route_update = await self.route_query_node(state)
+        state.update(route_update)
+
+        if state.get("route") == "direct_answer":
+            direct_answer_update = await self.direct_answer_node(state)
+            state.update(direct_answer_update)
+
+            with self._langsmith_step_trace(
+                req=req,
+                operation="stream_events",
+                step_name="emit_sources",
+                step_index=4,
+                run_type="chain",
+                inputs={
+                    "doc_count": 0,
+                    "top_doc_ids": [],
+                    "route": state.get("route"),
+                    "route_reason": state.get("route_reason"),
+                },
+            ) as trace_run:
+                sources = []
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "source_count": 0,
+                            "top_source_ids": [],
+                        }
+                    )
+
+            yield RagStreamEvent(
+                event="sources",
+                data={
+                    "sources": sources,
+                },
+            )
+
+            answer = state.get("answer") or ""
+            token_count = 0
+            for token in answer:
+                token_count += 1
+                yield RagStreamEvent(
+                    event="token",
+                    data={
+                        "token": token,
+                    },
+                )
+
+            logger.info(
+                "LangGraph RAG Stream Events Pipeline 直接回答完成: token_count=%s",
+                token_count,
+            )
+            latency_ms = (perf_counter() - start_time) * 1000
+            log_slow_operation(
+                logger=logger,
+                event="rag.stream_events.slow",
+                latency_ms=latency_ms,
+                threshold_ms=self.settings.slow_rag_pipeline_threshold_ms,
+                slow_component="pipeline_stream_events",
+                pipeline_provider="langgraph",
+                query=req.query,
+                mode=req.mode,
+                top_k=req.top_k,
+                token_count=token_count,
+                source_count=0,
+                route=state.get("route"),
+                route_reason=state.get("route_reason"),
+            )
+            return
+
         retrieve_update = await self.retrieve_node(state)
         state.update(retrieve_update)
 
@@ -359,7 +466,7 @@ class LangGraphRagPipeline:
             req=req,
             operation="stream_events",
             step_name="emit_sources",
-            step_index=3,
+            step_index=4,
             run_type="chain",
             inputs={
                 "doc_count": len(docs),
@@ -396,7 +503,7 @@ class LangGraphRagPipeline:
             req=req,
             operation="stream_events",
             step_name="stream_generate",
-            step_index=5,
+            step_index=6,
             run_type="chain",
             inputs={
                 "query": req.query,

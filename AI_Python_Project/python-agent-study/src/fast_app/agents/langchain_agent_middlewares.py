@@ -39,7 +39,7 @@ def build_agent_limit_middlewares() -> list[AgentMiddleware]:
         ),
     ]
 
-
+# 和自己实现装饰器是相同的作用
 @wrap_model_call(name="log_agent_model_call")
 def log_agent_model_call(request, handler):
     """Log model-call boundaries for create_agent based agents."""
