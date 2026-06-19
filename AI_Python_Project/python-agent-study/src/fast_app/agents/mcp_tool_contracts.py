@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 
+# 对接MCP SDK 的原始对象
+
 # MCP SDK 的原始返回对象不应该扩散到 Graph state、API schema 或业务服务里。
 # 当前工程需要一个自己的稳定 contract，后续 SDK 版本变化时只改 boundary 层。
 

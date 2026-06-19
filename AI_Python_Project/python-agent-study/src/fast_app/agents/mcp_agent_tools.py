@@ -9,6 +9,8 @@ from fast_app.agents.mcp_tool_contracts import McpToolCallRequest, McpToolInfo
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.services.exceptions import ExternalServiceError
 
+# MCP tool，参数，转换为当前系统的内部业务对象
+
 # 负责把 `McpToolInfo.input_schema` 转成 Pydantic args schema
 # 负责把 MCP tool 包装成 LangChain `StructuredTool`
 

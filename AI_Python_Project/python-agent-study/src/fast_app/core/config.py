@@ -104,6 +104,15 @@ class Settings(BaseSettings):
 
     rag_pipeline_provider: str = Field(default="classic", alias="RAG_PIPELINE_PROVIDER")
 
+    # Agent Loop 循环次数配置
+    agent_max_steps: int = Field(default=6, ge=1, le=50, alias="AGENT_MAX_STEPS")
+    agent_max_tool_calls: int = Field(
+        default=4,
+        ge=0,
+        le=50,
+        alias="AGENT_MAX_TOOL_CALLS",
+    )
+
     #嵌入模型配置
     embedding_provider: str = Field(default="qwen", alias="EMBEDDING_PROVIDER")
     embedding_model_name: str = Field(

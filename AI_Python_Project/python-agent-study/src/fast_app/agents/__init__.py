@@ -1,5 +1,13 @@
 """Agent assembly helpers for the FastAPI RAG project."""
 
+from fast_app.agents.agent_loop_control import (
+    AgentLoopDecision,
+    AgentLoopLimits,
+    AgentLoopSnapshot,
+    AgentLoopTerminationReason,
+    build_agent_loop_limits_from_settings,
+    should_continue_agent_loop,
+)
 from fast_app.agents.langchain_agent_middlewares import (
     build_agent_limit_middlewares,
     build_agent_safety_middlewares,
@@ -29,6 +37,10 @@ from fast_app.agents.rag_agent_tools import (
 
 
 __all__ = [
+    "AgentLoopDecision",
+    "AgentLoopLimits",
+    "AgentLoopSnapshot",
+    "AgentLoopTerminationReason",
     "KNOWLEDGE_RETRIEVAL_TOOL_NAME",
     "KnowledgeRetrievalToolInput",
     "MCP_TOOL_NAME_PREFIX",
@@ -41,6 +53,7 @@ __all__ = [
     "build_agent_limit_middlewares",
     "build_agent_safety_middlewares",
     "build_default_create_agent_middlewares",
+    "build_agent_loop_limits_from_settings",
     "build_knowledge_retrieval_tool",
     "build_mcp_agent_tool",
     "build_mcp_agent_tool_name",
@@ -48,4 +61,5 @@ __all__ = [
     "build_mcp_tool_args_schema",
     "log_agent_model_call",
     "retrieve_knowledge_docs",
+    "should_continue_agent_loop",
 ]
