@@ -27,6 +27,8 @@ FastAPI API
 
 ## 当前架构
 
+更完整的作品架构图见：[阶段 20-2 架构图](learning-docs/phase-20/20-2-架构图-API-Pipeline-Components-Storage-External-Services.md)。
+
 ```mermaid
 flowchart TD
     A["Client"] --> B["FastAPI"]
@@ -167,6 +169,8 @@ curl.exe "http://127.0.0.1:8000/health"
 
 ## RAG 接口
 
+完整接口说明见：[阶段 20-3 接口文档](learning-docs/phase-20/20-3-接口文档整理.md)。
+
 非流式问答：
 
 ```powershell
@@ -268,6 +272,8 @@ $env:PYTHONPATH="src"
 ```
 
 ## 测试和评测
+
+完整测试和评测说明见：[阶段 20-5 测试和评测手册](learning-docs/phase-20/20-5-测试和评测手册.md)。
 
 API 冒烟测试：
 
@@ -402,7 +408,7 @@ Agent 每一步为什么这么走
 优先级建议：
 
 ```text
-1. 阶段 20：继续补齐架构图、接口文档、启动手册、评测说明、设计决策记录
+1. 阶段 20：继续补齐启动手册、评测说明、设计决策记录和最终演示流程
 2. 阶段 14：多轮对话与记忆的最小作品版
 3. 阶段 15：基础权限和工具安全边界
 4. 阶段 16：展示级 Docker Compose 与配置收口
