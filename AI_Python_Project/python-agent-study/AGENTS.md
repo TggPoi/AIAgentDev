@@ -12,9 +12,7 @@ Before doing project work, read these files in order:
 4. `学习路线优先级.md`
 5. `总学习路线_归档参考.md`
 
-`总学习路线_归档参考.md` is archived reference only. Do not use it to decide the current next step.
-
-Do not restart from stage 9-1. Use `当前学习进度.md` and `路线执行索引.md` to determine the current stage.
+`总学习路线_归档参考.md` is archived reference only.
 
 Do not replace the explicit LangGraph RAG pipeline with `create_agent()` unless the user explicitly asks and a design review has been completed.
 

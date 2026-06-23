@@ -1,189 +1,410 @@
-测试脚本使用方式：
+# Python Agent Study
 
-运行前先启动 FastAPI 服务：
+基于 FastAPI + LangGraph 的可评测、可观察、可控 RAG Agent 后端学习项目。
+
+这个项目不是单纯的 RAG demo，而是围绕一个可以写进简历、可以在面试中讲清楚、可以本地运行和评测的后端作品逐步演进出来的工程。当前主线是：
+
+```text
+FastAPI API
+-> RAG / LangGraph / RAG Agent provider
+-> Milvus 向量检索 + ElasticSearch 关键词检索
+-> RRF 融合 + rerank
+-> LLM 生成
+-> sources / scores / trace / eval
+```
+
+## 核心能力
+
+- FastAPI 后端接口：普通问答、token-only SSE、结构化 SSE。
+- 三条可切换执行路线：`classic`、`langgraph`、`rag_agent`。
+- 混合检索：Milvus 向量检索 + ElasticSearch 关键词检索 + RRF 融合。
+- 精排：支持 DashScope `qwen3-rerank`，并带 fallback。
+- 结果可解释：返回 sources、metadata、retrieval_sources、score breakdown。
+- 知识库构建：Markdown / Text ingestion，支持 dry-run、validate、真实写入和重建。
+- 离线评测：检索指标、生成指标、Markdown / JSON 报告。
+- 可观测性：request_id、trace_id、结构化日志、debug trace、LangSmith。
+- Agent 工程化：条件边、工具节点、MCP adapter、循环控制、错误策略、RAG Agent 最小闭环。
+
+## 当前架构
+
+```mermaid
+flowchart TD
+    A["Client"] --> B["FastAPI"]
+    B --> C["/rag/chat"]
+    B --> D["/rag/chat/stream"]
+    B --> E["/rag/chat/stream/events"]
+    C --> F["get_rag_pipeline"]
+    D --> F
+    E --> F
+    F --> G["classic"]
+    F --> H["langgraph"]
+    F --> I["rag_agent"]
+    G --> J["RagPipeline"]
+    H --> K["LangGraphRagPipeline"]
+    I --> L["RagAgentPipeline"]
+    J --> M["Retriever / Reranker / LLM"]
+    K --> M
+    L --> M
+    M --> N["Milvus / ElasticSearch / DashScope"]
+```
+
+## 三条执行路线
+
+通过 `RAG_PIPELINE_PROVIDER` 切换：
+
+```text
+classic    普通函数链 RAG，适合作为稳定基线
+langgraph  显式 LangGraph RAG 状态机，适合观察节点与条件边
+rag_agent  显式 LangGraph RAG Agent，当前作品主线
+```
+
+`create_agent` 当前是对照路线：项目已经有 middleware 准备层，但没有替换当前显式 LangGraph RAG Agent 主线。
+
+## RAG Agent 主线
+
+`rag_agent` provider 的核心流程：
+
+```mermaid
+flowchart TD
+    A["START"] --> B["plan_next_action"]
+    B --> C["check_loop_limits"]
+    C --> D["direct_answer"]
+    C --> E["call_knowledge_retrieval"]
+    C --> F["final_error_answer"]
+    E --> G["rerank"]
+    E --> H["fail_request"]
+    G --> I["build_context"]
+    I --> J["generate_answer"]
+    D --> K["END"]
+    F --> K
+    H --> K
+    J --> K
+```
+
+这条路线用显式状态记录：
+
+```text
+route
+route_reason
+final_reason
+step_count
+tool_call_count
+loop_decision
+error_decision
+tool_name
+tool_error
+docs
+context
+answer
+```
+
+它的定位是：把 RAG 从固定链路推进到可控 Agent 决策链路，同时保留 sources、trace、eval 和 stream 协议。
+
+## 目录结构
+
+```text
+src/fast_app
+  api              HTTP 接口与 SSE 包装
+  dependencies     FastAPI Depends 与 provider 装配
+  services         RAG pipeline、RAG Agent pipeline、debug trace
+  graph            LangGraph state、nodes、builder
+  agents           Agent tools、middleware、MCP adapter、loop/error policy
+  components       LLM、Embedding、Retriever、Reranker 封装
+  ingestion        Markdown/Text ingestion 工程化链路
+  evaluation       RAG 离线评测体系
+  core             Settings、日志、trace、异常处理
+  schemas          HTTP 请求响应模型
+  domain           内部业务模型
+```
+
+## 环境准备
+
+推荐使用项目虚拟环境：
+
+```powershell
+.\.venv\Scripts\python.exe --version
+```
+
+安装依赖：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+关键依赖版本以 `requirements.txt` 为准，当前包括：
+
+```text
+fastapi==0.136.1
+uvicorn==0.47.0
+langchain==1.3.2
+langgraph==1.2.2
+langsmith==0.8.6
+elasticsearch==8.17.0
+pymilvus==3.0.0
+mcp==1.28.0
+```
+
+## 本地启动
+
+Mock 模式启动 `rag_agent` 主线：
 
 ```powershell
 $env:PYTHONPATH="src"
-python -m uvicorn fast_app.main:app --reload
+$env:RAG_PIPELINE_PROVIDER="rag_agent"
+$env:LLM_PROVIDER="mock"
+$env:VECTOR_RETRIEVER_PROVIDER="mock"
+$env:KEYWORD_RETRIEVER_PROVIDER="mock"
+$env:RERANKER_PROVIDER="mock"
+
+.\.venv\Scripts\uvicorn.exe fast_app.main:app --reload
 ```
 
-另开一个终端运行测试脚本：
+健康检查：
 
 ```powershell
-python scripts/test_rag_chat_api.py
+curl.exe "http://127.0.0.1:8000/health"
 ```
 
-它会依次测试：
+## RAG 接口
 
-- `POST /rag/chat`：打印完整 JSON 响应
-- `POST /rag/chat/stream`：实时打印 SSE 流式输出效果
-
-也可以只看流式输出：
+非流式问答：
 
 ```powershell
-python scripts/test_rag_chat_api.py --stream-only
+$body = @{
+  query = "什么是混合检索？"
+  mode = "hybrid"
+  top_k = 5
+  min_score = 0
+} | ConvertTo-Json -Compress
+
+curl.exe -X POST "http://127.0.0.1:8000/rag/chat" `
+  -H "Content-Type: application/json" `
+  --data-raw $body
 ```
 
-可自定义参数：
+token-only SSE：
 
 ```powershell
-python scripts/test_rag_chat_api.py --query "RAG 是什么？" --mode hybrid --top-k 3 --min-score 0.8
+curl.exe -N -X POST "http://127.0.0.1:8000/rag/chat/stream" `
+  -H "Content-Type: application/json" `
+  --data-raw $body
 ```
 
-已更新 [test_rag_chat_api.py](d:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/test_rag_chat_api.py)，现在默认会测试 4 种情况：
-
-- `/rag/chat` 正常响应：期望 `200`
-- `/rag/chat/stream` 正常流式响应：期望 `200` + `[DONE]`
-- `/rag/chat` 异常响应：使用 `min_score=1.0` 触发 `NoSearchResultError`，期望全局异常处理器返回 `404`
-- `/rag/chat/stream` 异常响应：使用 `min_score=1.0` 触发 SSE `event: error`
-
-运行方式不变：
+结构化 SSE：
 
 ```powershell
-python scripts/test_rag_chat_api.py
+curl.exe -N -X POST "http://127.0.0.1:8000/rag/chat/stream/events" `
+  -H "Content-Type: application/json" `
+  --data-raw $body
 ```
 
-如果只想测试正常情况，不跑异常用例：
-
-```powershell
-python scripts/test_rag_chat_api.py --skip-errors
-```
-
-如果只测试流式接口，包括流式异常：
-
-```powershell
-python scripts/test_rag_chat_api.py --stream-only
-```
-
-已启动程序并运行测试脚本，正常情况和异常情况都通过。
-
-
-2026年6月12日：========================
-已更新 [scripts/test_rag_chat_api.py](d:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/test_rag_chat_api.py)。
-
-现在脚本支持新增参数：
-
-```powershell
-.\.venv\Scripts\python.exe scripts\test_rag_chat_api.py `
-  --mode hybrid `
-  --top-k 3 `
-  --candidate-k 10 `
-  --source-path "src/app/demo_docs/rag_intro.md" `
-  --section-path "RAG 基础"
-```
-
-也可以重复传多个章节过滤值：
-
-```powershell
-.\.venv\Scripts\python.exe scripts\test_rag_chat_api.py `
-  --mode hybrid `
-  --top-k 3 `
-  --candidate-k 10 `
-  --section-path "RAG 基础" `
-  --section-path "混合检索"
-```
-
-这次改动包括：
-
-- `--candidate-k`：写入请求体的 `candidate_k`
-- `--source-path`：写入 `filters.source_path`
-- `--section-path`：写入 `filters.section_path`，支持重复传参
-- 普通 `/rag/chat` 和流式 `/rag/chat/stream` 会共用同一份 payload
-- 如果传了 filters，普通接口返回后会检查 `sources[*].metadata` 是否符合过滤条件
-
-已验证：
-
-```powershell
-.\.venv\Scripts\python.exe -m py_compile scripts\test_rag_chat_api.py
-```
-
-语法检查通过。
-
-
-执行结果包含 4 个用例：
+当前协议边界：
 
 ```text
-POST /rag/chat
-status: 200
+pipeline.stream(req) 只产出 token。
+API 层负责包装 SSE。
+sources 走 stream_events()。
+done / error 由 API 层包装。
 ```
 
-普通接口正常返回了回答和 sources。
+## 切换 Provider
 
-```text
-POST /rag/chat/stream
-status: 200
-```
-
-流式接口正常输出，并最终返回：
-
-```text
-[done] [DONE]
-```
-
-异常测试：
-
-```text
-POST /rag/chat error
-status: 404
-```
-
-全局异常处理器返回：
-
-```json
-{
-  "code": "NO_SEARCH_RESULT",
-  "message": "没有找到满足 min_score=1.0 的混合检索结果"
-}
-```
-
-流式异常测试：
-
-```text
-POST /rag/chat/stream error
-status: 200
-
-event: error
-data: NO_SEARCH_RESULT: 没有找到满足 min_score=1.0 的混合检索结果
-```
-
-
-2026年6月16日：========================
-已更新 [scripts/test_rag_chat_api.py](d:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/test_rag_chat_api.py:12)。
-
-主要改动：
-
-- 新增阶段 9 LangSmith 批量测试场景 `--phase9-langsmith-suite`
-- 每次请求都会自动带 `X-Request-ID`，方便在 LangSmith metadata 和本地日志中对齐
-- 新增 `--request-id`，可以给单次测试指定固定 request_id
-- 新增 `--request-id-prefix`，批量场景会生成类似：
-  `langsmith-phase9-xxxxxx-01-phase9-model-refactor`
-- 支持批量场景额外测试结构化流式接口：`--suite-structured-stream`
-- 默认 query 改成更贴合当前数据的阶段 9 问题
-
-已验证：
-
-```text
-py_compile 通过
---help 输出正常
-```
-
-你可以这样运行阶段 9 LangSmith 批量测试：
+Classic Pipeline：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\test_rag_chat_api.py --phase9-langsmith-suite
+$env:RAG_PIPELINE_PROVIDER="classic"
 ```
 
-如果还想让 `/rag/chat/stream/events` 也产生 LangSmith trace：
+显式 LangGraph Pipeline：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\test_rag_chat_api.py --phase9-langsmith-suite --suite-structured-stream
+$env:RAG_PIPELINE_PROVIDER="langgraph"
 ```
 
-前提是服务端启动时已经开启：
+显式 LangGraph RAG Agent：
 
-```env
-LANGSMITH_TRACING=true
-LANGSMITH_API_KEY=你的 key
+```powershell
+$env:RAG_PIPELINE_PROVIDER="rag_agent"
 ```
 
-并且要重启 `uvicorn`，让服务端重新读取 `.env`。
+## 知识库 Ingestion
+
+只读取和切分，不写入外部存储：
+
+```powershell
+$env:PYTHONPATH="src"
+.\.venv\Scripts\python.exe -m fast_app.ingestion.cli dry-run `
+  --knowledge-base-dir "knowledge-base" `
+  --sample-size 3
+```
+
+校验本地文档和 chunk metadata：
+
+```powershell
+$env:PYTHONPATH="src"
+.\.venv\Scripts\python.exe -m fast_app.ingestion.cli validate `
+  --knowledge-base-dir "knowledge-base"
+```
+
+真实写入 ES / Milvus：
+
+```powershell
+$env:PYTHONPATH="src"
+.\.venv\Scripts\python.exe -m fast_app.ingestion.cli ingest `
+  --knowledge-base-dir "knowledge-base" `
+  --write-mode replace_docs `
+  --yes `
+  --no-es-auth
+```
+
+重建 ES / Milvus 结构是危险操作，需要显式确认：
+
+```powershell
+$env:PYTHONPATH="src"
+.\.venv\Scripts\python.exe -m fast_app.ingestion.cli reset-stores `
+  --target both `
+  --yes `
+  --no-es-auth
+```
+
+## 测试和评测
+
+API 冒烟测试：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\test_rag_chat_api.py
+```
+
+RAG Agent 专用测试：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\test_rag_chat_api.py --rag-agent-suite
+```
+
+结构化流测试：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\test_rag_chat_api.py --structured-stream-only
+```
+
+MCP tool adapter 测试：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\test_mcp_tool_adapter.py
+```
+
+离线 RAG 评测：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_real_offline_rag_eval.py
+```
+
+评测报告输出到：
+
+```text
+reports/
+```
+
+## Debug Trace
+
+开启内部 debug trace：
+
+```powershell
+$env:DEBUG_TRACE_ENABLED="true"
+$env:DEBUG_TRACE_TOKEN="local-debug-token"
+```
+
+请求：
+
+```powershell
+$body = @{
+  query = "什么是混合检索？"
+  mode = "hybrid"
+  top_k = 5
+  min_score = 0
+} | ConvertTo-Json -Compress
+
+curl.exe -X POST "http://127.0.0.1:8000/debug/rag/trace" `
+  -H "Content-Type: application/json" `
+  -H "X-Debug-Trace-Token: local-debug-token" `
+  --data-raw $body
+```
+
+debug trace 是内部调试接口，不应该直接暴露给公网用户。
+
+## LangSmith
+
+开启 LangSmith：
+
+```powershell
+$env:LANGSMITH_TRACING="true"
+$env:LANGSMITH_API_KEY="你的 key"
+$env:LANGSMITH_PROJECT="python-agent-study"
+```
+
+服务启动后，RAG pipeline、LangGraph pipeline、RAG Agent pipeline 会写入对应 trace metadata 和 tags。
+
+## 关键设计决策
+
+### 保留三条 Provider
+
+`classic`、`langgraph`、`rag_agent` 同时保留，不是为了堆功能，而是为了形成清晰对照：
+
+```text
+classic    验证基础 RAG 链路
+langgraph  验证 RAG 状态机
+rag_agent  展示 Agent 决策、工具调用、循环控制和错误分支
+```
+
+### 不用 create_agent 替换主线
+
+`create_agent` 当前用于学习官方 Agent 工厂和 middleware。项目主线保留显式 LangGraph RAG Agent，因为它更适合展示：
+
+```text
+状态字段
+条件边
+工具调用
+错误分支
+sources
+scores
+trace
+stream 协议
+```
+
+### stream 保持 token-only
+
+`pipeline.stream()` 不返回 dict、sources 或 event。结构化信息统一走 `stream_events()`。
+
+### eval 和 trace 是作品的一部分
+
+项目不只追求“接口能返回答案”，还需要能证明：
+
+```text
+检索是否命中
+回答是否引用来源
+参数调整是否带来质量变化
+Agent 每一步为什么这么走
+失败时错误如何被分类
+```
+
+## 已知局限
+
+- `create_agent` 尚未作为 provider 接入 `/rag/chat`。
+- 阶段 13-10 人工确认节点已后置，后续出现高风险工具时再补。
+- 阶段 12-12 日志脱敏和生产安全边界暂时跳过，生产化前需要补。
+- 阶段 14 多轮对话与记忆尚未实现。
+- 阶段 15 权限、安全与接口治理尚未实现。
+- 阶段 16 Docker Compose / `.env.example` / 部署说明尚未收口。
+- 阶段 17-19 暂时作为后续演进，不阻塞当前作品成型。
+
+## 后续路线
+
+优先级建议：
+
+```text
+1. 阶段 20：继续补齐架构图、接口文档、启动手册、评测说明、设计决策记录
+2. 阶段 14：多轮对话与记忆的最小作品版
+3. 阶段 15：基础权限和工具安全边界
+4. 阶段 16：展示级 Docker Compose 与配置收口
+5. 阶段 17-19：后续演进
+```

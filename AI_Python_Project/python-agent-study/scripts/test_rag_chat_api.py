@@ -46,6 +46,18 @@ PHASE9_LANGSMITH_SCENARIOS = [
     ),
 ]
 
+RAG_AGENT_RETRIEVAL_SCENARIO = RagChatScenario(
+    name="rag-agent-retrieval",
+    query="什么是混合检索？",
+    mode="hybrid",
+)
+
+RAG_AGENT_DIRECT_SCENARIO = RagChatScenario(
+    name="rag-agent-direct-answer",
+    query="你好",
+    mode="hybrid",
+)
+
 
 def build_headers(
     request_id: str | None = None,
@@ -165,6 +177,26 @@ def assert_sources_have_metadata(body: dict[str, object]) -> None:
     metadata = first_source.get("metadata")
     if not isinstance(metadata, dict):
         raise AssertionError("expected source.metadata to be object")
+
+
+def assert_sources_empty(body: dict[str, object]) -> None:
+    sources = body.get("sources")
+
+    if not isinstance(sources, list):
+        raise AssertionError("expected sources to be list")
+
+    if sources:
+        raise AssertionError(f"expected empty sources, got {len(sources)}")
+
+
+def assert_answer_contains(body: dict[str, object], expected_text: str) -> None:
+    answer = body.get("answer")
+
+    if not isinstance(answer, str):
+        raise AssertionError("expected answer to be string")
+
+    if expected_text not in answer:
+        raise AssertionError(f"expected answer to contain {expected_text!r}")
 
 
 def assert_debug_trace_response(body: dict[str, object]) -> None:
@@ -387,6 +419,35 @@ def test_normal_chat_error(
         raise AssertionError(f"expected code NO_SEARCH_RESULT, got {body.get('code')}")
 
 
+def test_rag_agent_final_answer_chat(
+    base_url: str,
+    payload: dict[str, object],
+    expected_answer_text: str,
+    request_id: str | None = None,
+) -> None:
+    """测试 RAG Agent 在不检索或可解释错误时返回 200 + 空 sources。"""
+    url = f"{base_url}/rag/chat"
+    headers = build_headers(request_id)
+
+    print("\n========== POST /rag/chat rag_agent final answer ==========")
+    if request_id:
+        print(f"request_id: {request_id}")
+    print("request:")
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+    resp = requests.post(url, json=payload, headers=headers, timeout=60)
+
+    print(f"\nstatus: {resp.status_code}")
+    print("response:")
+    print_response_json(resp)
+
+    resp.raise_for_status()
+
+    body = resp.json()
+    assert_sources_empty(body)
+    assert_answer_contains(body, expected_answer_text)
+
+
 def iter_sse_lines(resp: requests.Response) -> Iterator[str]:
     """逐行读取 SSE 响应，过滤掉空行。"""
     for line in resp.iter_lines(decode_unicode=True):
@@ -522,6 +583,87 @@ def test_structured_stream_chat(
                         source_path=source_path if isinstance(source_path, str) else None,
                         section_path=section_path if isinstance(section_path, list) else [],
                     )
+
+            elif current_event == "token":
+                saw_token = True
+                token = body.get("token")
+                if not isinstance(token, str):
+                    raise AssertionError("expected token event data.token to be string")
+                if len(token_preview) < 20:
+                    token_preview.append(token)
+
+            elif current_event == "done":
+                saw_done = True
+                if body.get("status") != "done":
+                    raise AssertionError(
+                        f"expected done status, got {body.get('status')}"
+                    )
+                break
+
+            elif current_event == "error":
+                raise AssertionError(f"unexpected structured stream error: {body}")
+
+    if not saw_sources:
+        raise AssertionError("expected sources event")
+    if not saw_token:
+        raise AssertionError("expected token event")
+    if not saw_done:
+        raise AssertionError("expected done event")
+
+    print("\nstructured token preview:")
+    print("".join(token_preview))
+
+
+def test_structured_stream_empty_sources_chat(
+    base_url: str,
+    payload: dict[str, object],
+    request_id: str | None = None,
+) -> None:
+    """测试 RAG Agent 直接回答/错误回答路径的 sources=[] 结构化流。"""
+    url = f"{base_url}/rag/chat/stream/events"
+    headers = build_headers(request_id)
+
+    print("\n========== POST /rag/chat/stream/events rag_agent empty sources ==========")
+    if request_id:
+        print(f"request_id: {request_id}")
+    print("structured stream output:")
+
+    saw_sources = False
+    saw_token = False
+    saw_done = False
+    token_preview: list[str] = []
+
+    with requests.post(
+        url,
+        json=payload,
+        headers=headers,
+        stream=True,
+        timeout=90,
+    ) as resp:
+        print(f"status: {resp.status_code}\n")
+        resp.raise_for_status()
+
+        current_event = "message"
+
+        for line in iter_sse_lines(resp):
+            print(line)
+
+            if line.startswith("event:"):
+                current_event = line.removeprefix("event:").strip()
+                continue
+
+            if not line.startswith("data:"):
+                continue
+
+            data = line.removeprefix("data:")
+            if data.startswith(" "):
+                data = data[1:]
+
+            body = parse_sse_json_data(data)
+
+            if current_event == "sources":
+                saw_sources = True
+                assert_sources_empty(body)
 
             elif current_event == "token":
                 saw_token = True
@@ -704,6 +846,14 @@ def parse_args() -> argparse.Namespace:
         help="运行一组基于 learning-docs/phase-9 数据的 RAG 问题，方便在 LangSmith 中观察 trace",
     )
     parser.add_argument(
+        "--rag-agent-suite",
+        action="store_true",
+        help=(
+            "运行 13-11 RAG Agent 专用测试集；"
+            "请先用 RAG_PIPELINE_PROVIDER=rag_agent 启动服务"
+        ),
+    )
+    parser.add_argument(
         "--suite-structured-stream",
         action="store_true",
         help="phase9 LangSmith suite 额外测试 /rag/chat/stream/events",
@@ -740,6 +890,70 @@ def test_phase9_langsmith_suite(args: argparse.Namespace, base_url: str) -> None
             )
 
 
+def test_rag_agent_suite(args: argparse.Namespace, base_url: str) -> None:
+    """专门测试 RAG_PIPELINE_PROVIDER=rag_agent 这条执行线路。"""
+    suite_id = uuid4().hex[:8]
+    request_prefix = args.request_id or f"rag-agent-{suite_id}"
+
+    retrieval_payload = build_scenario_payload(RAG_AGENT_RETRIEVAL_SCENARIO)
+    direct_payload = build_scenario_payload(RAG_AGENT_DIRECT_SCENARIO)
+    no_result_payload = {
+        **retrieval_payload,
+        "mode": "vector",
+        "min_score": 1.0,
+    }
+
+    print("========== rag_agent provider suite ==========")
+    print(f"suite_id: {suite_id}")
+    print(
+        "前置条件：服务端需要用 RAG_PIPELINE_PROVIDER=rag_agent 启动；"
+        "否则这里测试的是当前服务实际配置的 provider。"
+    )
+
+    print("\n========== rag_agent retrieval path ==========")
+    test_normal_chat(
+        base_url=base_url,
+        payload=retrieval_payload,
+        request_id=f"{request_prefix}-retrieval",
+    )
+    test_stream_chat(
+        base_url=base_url,
+        payload=retrieval_payload,
+        request_id=f"{request_prefix}-retrieval-stream",
+    )
+    test_structured_stream_chat(
+        base_url=base_url,
+        payload=retrieval_payload,
+        request_id=f"{request_prefix}-retrieval-stream-events",
+    )
+
+    print("\n========== rag_agent direct answer path ==========")
+    test_rag_agent_final_answer_chat(
+        base_url=base_url,
+        payload=direct_payload,
+        expected_answer_text="RAG Agent",
+        request_id=f"{request_prefix}-direct",
+    )
+    test_structured_stream_empty_sources_chat(
+        base_url=base_url,
+        payload=direct_payload,
+        request_id=f"{request_prefix}-direct-stream-events",
+    )
+
+    print("\n========== rag_agent no search result final answer path ==========")
+    test_rag_agent_final_answer_chat(
+        base_url=base_url,
+        payload=no_result_payload,
+        expected_answer_text="没有在当前知识库中找到足够相关的资料",
+        request_id=f"{request_prefix}-no-result",
+    )
+    test_structured_stream_empty_sources_chat(
+        base_url=base_url,
+        payload=no_result_payload,
+        request_id=f"{request_prefix}-no-result-stream-events",
+    )
+
+
 def main() -> int:
     args = parse_args()
     base_url = args.base_url.rstrip("/")
@@ -749,6 +963,10 @@ def main() -> int:
     try:
         if args.phase9_langsmith_suite:
             test_phase9_langsmith_suite(args, base_url)
+            return 0
+
+        if args.rag_agent_suite:
+            test_rag_agent_suite(args, base_url)
             return 0
 
         if args.debug_trace_only:

@@ -9,6 +9,7 @@ from fast_app.components.retrievers.mock_vector_retriever import MockVectorRetri
 from fast_app.core.config import Settings, get_settings
 from fast_app.services.exceptions import AppServiceError
 from fast_app.services.langgraph_rag_pipeline_service import LangGraphRagPipeline
+from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
 from fast_app.services.rag_pipeline_service import RagPipeline
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
@@ -145,6 +146,17 @@ def get_rag_pipeline(
 
     if provider == "langgraph":
         return LangGraphRagPipeline(
+            settings=settings,
+            vector_retriever=vector_retriever,
+            keyword_retriever=keyword_retriever,
+            llm_client=llm_client,
+            reranker=reranker,
+        )
+
+    # 13-11 新增的第三条执行路线。
+    # 它复用同一组 retriever / reranker / llm 依赖，但进入独立的 RAG Agent graph。
+    if provider == "rag_agent":
+        return RagAgentPipeline(
             settings=settings,
             vector_retriever=vector_retriever,
             keyword_retriever=keyword_retriever,
