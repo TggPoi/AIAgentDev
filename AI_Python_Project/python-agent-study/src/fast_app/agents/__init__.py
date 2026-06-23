@@ -1,5 +1,12 @@
 """Agent assembly helpers for the FastAPI RAG project."""
 
+from fast_app.agents.agent_error_policy import (
+    AgentErrorAction,
+    AgentErrorDecision,
+    AgentErrorKind,
+    build_agent_error_answer,
+    classify_agent_error,
+)
 from fast_app.agents.agent_loop_control import (
     AgentLoopDecision,
     AgentLoopLimits,
@@ -54,6 +61,9 @@ from fast_app.agents.web_search_tools import (
 
 
 __all__ = [
+    "AgentErrorAction",
+    "AgentErrorDecision",
+    "AgentErrorKind",
     "AgentLoopDecision",
     "AgentLoopLimits",
     "AgentLoopSnapshot",
@@ -74,6 +84,7 @@ __all__ = [
     "WebSearchResult",
     "WebSearchToolInput",
     "build_agent_limit_middlewares",
+    "build_agent_error_answer",
     "build_agent_safety_middlewares",
     "build_default_create_agent_middlewares",
     "build_agent_loop_limits_from_settings",
@@ -85,6 +96,7 @@ __all__ = [
     "build_mcp_tool_args_schema",
     "build_web_search_tool",
     "calculate_basic_ops",
+    "classify_agent_error",
     "evaluate_safe_expression",
     "log_agent_model_call",
     "normalize_web_search_results",
