@@ -113,6 +113,35 @@ class Settings(BaseSettings):
         alias="AGENT_MAX_TOOL_CALLS",
     )
 
+    # 博查 网络搜索api
+    bocha_api_key: str = Field(default="", alias="BOCHA_API_KEY")
+    bocha_web_search_url: str = Field(
+        default="https://api.bochaai.com/v1/web-search",
+        alias="BOCHA_WEB_SEARCH_URL",
+    )
+    bocha_web_search_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        alias="BOCHA_WEB_SEARCH_TIMEOUT_SECONDS",
+    )
+
+    # 计算工具配置：可选 CALCULATOR_MODE-简单四则运算  CALCULATOR_MAX_EXPRESSION_LENGTH-解析表达式
+    calculator_mode: str = Field(
+        default="safe_expression",
+        alias="CALCULATOR_MODE",
+    )
+    calculator_max_expression_length: int = Field(
+        default=120,
+        ge=1,
+        le=1000,
+        alias="CALCULATOR_MAX_EXPRESSION_LENGTH",
+    )
+    calculator_max_abs_value: float = Field(
+        default=1_000_000_000,
+        gt=0,
+        alias="CALCULATOR_MAX_ABS_VALUE",
+    )
+
     #嵌入模型配置
     embedding_provider: str = Field(default="qwen", alias="EMBEDDING_PROVIDER")
     embedding_model_name: str = Field(
@@ -190,6 +219,18 @@ class Settings(BaseSettings):
         alias="MARKDOWN_CHUNK_MIN_CHARS",
     )
     # ingestion 的基础配置 end
+
+    @field_validator("calculator_mode", mode="before")
+    @classmethod
+    def normalize_calculator_mode(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip().lower()
+        if normalized not in {"basic_ops", "safe_expression"}:
+            raise ValueError("CALCULATOR_MODE 只支持 basic_ops 或 safe_expression")
+
+        return normalized
 
 
     @field_validator("debug", mode="before")

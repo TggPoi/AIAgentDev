@@ -8,6 +8,14 @@ from fast_app.agents.agent_loop_control import (
     build_agent_loop_limits_from_settings,
     should_continue_agent_loop,
 )
+from fast_app.agents.calculator_tools import (
+    CALCULATOR_TOOL_NAME,
+    CalculatorBasicOpsInput,
+    CalculatorExpressionInput,
+    build_calculator_tool,
+    calculate_basic_ops,
+    evaluate_safe_expression,
+)
 from fast_app.agents.langchain_agent_middlewares import (
     build_agent_limit_middlewares,
     build_agent_safety_middlewares,
@@ -34,6 +42,15 @@ from fast_app.agents.rag_agent_tools import (
     build_knowledge_retrieval_tool,
     retrieve_knowledge_docs,
 )
+from fast_app.agents.web_search_tools import (
+    WEB_SEARCH_TOOL_NAME,
+    WebSearchResult,
+    WebSearchToolInput,
+    build_web_search_tool,
+    normalize_web_search_results,
+    search_web_with_bocha,
+    summarize_web_search_results,
+)
 
 
 __all__ = [
@@ -41,6 +58,9 @@ __all__ = [
     "AgentLoopLimits",
     "AgentLoopSnapshot",
     "AgentLoopTerminationReason",
+    "CALCULATOR_TOOL_NAME",
+    "CalculatorBasicOpsInput",
+    "CalculatorExpressionInput",
     "KNOWLEDGE_RETRIEVAL_TOOL_NAME",
     "KnowledgeRetrievalToolInput",
     "MCP_TOOL_NAME_PREFIX",
@@ -50,16 +70,26 @@ __all__ = [
     "McpToolCallRequest",
     "McpToolCallResult",
     "McpToolInfo",
+    "WEB_SEARCH_TOOL_NAME",
+    "WebSearchResult",
+    "WebSearchToolInput",
     "build_agent_limit_middlewares",
     "build_agent_safety_middlewares",
     "build_default_create_agent_middlewares",
     "build_agent_loop_limits_from_settings",
+    "build_calculator_tool",
     "build_knowledge_retrieval_tool",
     "build_mcp_agent_tool",
     "build_mcp_agent_tool_name",
     "build_mcp_agent_tools",
     "build_mcp_tool_args_schema",
+    "build_web_search_tool",
+    "calculate_basic_ops",
+    "evaluate_safe_expression",
     "log_agent_model_call",
+    "normalize_web_search_results",
     "retrieve_knowledge_docs",
+    "search_web_with_bocha",
     "should_continue_agent_loop",
+    "summarize_web_search_results",
 ]
