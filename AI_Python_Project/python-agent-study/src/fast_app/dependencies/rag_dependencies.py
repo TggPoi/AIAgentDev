@@ -9,6 +9,11 @@ from fast_app.components.retrievers.mock_vector_retriever import MockVectorRetri
 from fast_app.core.config import Settings, get_settings
 from fast_app.services.exceptions import AppServiceError
 from fast_app.services.langgraph_rag_pipeline_service import LangGraphRagPipeline
+from fast_app.services.conversation_memory import (
+    ConversationMemoryStore,
+    InMemoryConversationMemoryStore,
+    RedisConversationMemoryStore,
+)
 from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
 from fast_app.services.rag_pipeline_service import RagPipeline
 
@@ -121,6 +126,36 @@ def get_reranker(
 
     raise AppServiceError(
         f"不支持的 RERANKER_PROVIDER: {settings.reranker_provider}"
+    )
+
+# 内存记忆配置
+def get_conversation_memory_store(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> ConversationMemoryStore:
+    provider = settings.memory_store_provider.lower().strip()
+
+    if provider == "in_memory":
+        store = getattr(request.app.state, "conversation_memory_store", None)
+        if store is None:
+            store = InMemoryConversationMemoryStore()
+            request.app.state.conversation_memory_store = store
+
+        return store
+
+    if provider == "redis":
+        redis_client = getattr(request.app.state, "redis_client", None)
+        if redis_client is None:
+            raise AppServiceError("Redis client 尚未初始化，无法使用 Redis 会话记忆")
+
+        return RedisConversationMemoryStore(
+            redis_client=redis_client,
+            ttl_seconds=settings.memory_ttl_seconds,
+            max_messages=settings.memory_max_messages,
+        )
+
+    raise AppServiceError(
+        f"不支持的 MEMORY_STORE_PROVIDER: {settings.memory_store_provider}"
     )
 
 

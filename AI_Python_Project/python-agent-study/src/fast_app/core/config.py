@@ -113,6 +113,27 @@ class Settings(BaseSettings):
         alias="AGENT_MAX_TOOL_CALLS",
     )
 
+    # 多轮对话短期记忆配置。默认仍使用内存实现，避免本地开发强依赖 Redis。
+    memory_store_provider: str = Field(
+        default="in_memory",
+        alias="MEMORY_STORE_PROVIDER",
+    )
+    redis_url: str = Field(
+        default="redis://127.0.0.1:6379/0",
+        alias="REDIS_URL",
+    )
+    memory_ttl_seconds: int = Field(
+        default=3600,
+        ge=60,
+        alias="MEMORY_TTL_SECONDS",
+    )
+    memory_max_messages: int = Field(
+        default=20,
+        ge=1,
+        le=200,
+        alias="MEMORY_MAX_MESSAGES",
+    )
+
     # 博查 网络搜索api
     bocha_api_key: str = Field(default="", alias="BOCHA_API_KEY")
     bocha_web_search_url: str = Field(
@@ -229,6 +250,18 @@ class Settings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in {"basic_ops", "safe_expression"}:
             raise ValueError("CALCULATOR_MODE 只支持 basic_ops 或 safe_expression")
+
+        return normalized
+
+    @field_validator("memory_store_provider", mode="before")
+    @classmethod
+    def normalize_memory_store_provider(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip().lower()
+        if normalized not in {"in_memory", "redis"}:
+            raise ValueError("MEMORY_STORE_PROVIDER 只支持 in_memory 或 redis")
 
         return normalized
 

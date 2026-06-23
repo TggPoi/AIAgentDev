@@ -2,6 +2,8 @@ from collections import defaultdict
 from typing import Protocol
 import asyncio
 
+from redis.asyncio import Redis
+
 from fast_app.domain.conversation_models import ConversationMessage
 
 
@@ -55,7 +57,56 @@ class InMemoryConversationMemoryStore:
             return list(messages[-limit:])
 
 
+class RedisConversationMemoryStore:
+    """Redis 版短期会话消息存储。
+
+    每个 conversation 使用一个 Redis List 保存消息 JSON：
+    conversation:{conversation_id}:messages
+    """
+
+    def __init__(
+        self,
+        redis_client: Redis,
+        ttl_seconds: int,
+        max_messages: int,
+    ) -> None:
+        self.redis_client = redis_client
+        self.ttl_seconds = ttl_seconds
+        self.max_messages = max_messages
+
+    def _messages_key(self, conversation_id: str) -> str:
+        return f"conversation:{conversation_id}:messages"
+
+    async def append_message(self, message: ConversationMessage) -> None:
+        key = self._messages_key(message.conversation_id)
+        payload = message.model_dump_json()
+
+        pipeline = self.redis_client.pipeline()
+        pipeline.rpush(key, payload)
+        pipeline.ltrim(key, -self.max_messages, -1)
+        pipeline.expire(key, self.ttl_seconds)
+        await pipeline.execute()
+
+    async def list_recent_messages(
+        self,
+        conversation_id: str,
+        limit: int,
+    ) -> list[ConversationMessage]:
+        if limit <= 0:
+            return []
+
+        key = self._messages_key(conversation_id)
+        effective_limit = min(limit, self.max_messages)
+        raw_items = await self.redis_client.lrange(key, -effective_limit, -1)
+
+        return [
+            ConversationMessage.model_validate_json(raw_item)
+            for raw_item in raw_items
+        ]
+
+
 __all__ = [
     "ConversationMemoryStore",
     "InMemoryConversationMemoryStore",
+    "RedisConversationMemoryStore",
 ]

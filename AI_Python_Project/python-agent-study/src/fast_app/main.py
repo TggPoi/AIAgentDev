@@ -21,6 +21,7 @@ from fast_app.core.exception_handlers import register_exception_handlers
 import httpx
 from elasticsearch import AsyncElasticsearch
 from pymilvus import MilvusClient
+from redis.asyncio import Redis
 
 from fast_app.components.retrievers.milvus_vector_retriever import build_milvus_uri
 
@@ -56,6 +57,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         logger.info("Rerank httpx client 已创建")
 
+    if settings.memory_store_provider.lower().strip() == "redis":
+        app.state.redis_client = Redis.from_url(
+            settings.redis_url,
+            decode_responses=True,
+        )
+        logger.info("Redis client 已创建")
+
     try:
         yield
     finally:
@@ -73,6 +81,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if rerank_http_client is not None:
             await rerank_http_client.aclose()
             logger.info("Rerank httpx client 已关闭")
+
+        redis_client = getattr(app.state, "redis_client", None)
+        if redis_client is not None:
+            await redis_client.aclose()
+            logger.info("Redis client 已关闭")
 
         logger.info("应用关闭")
 
