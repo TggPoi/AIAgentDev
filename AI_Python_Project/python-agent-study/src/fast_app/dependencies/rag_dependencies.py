@@ -1,4 +1,7 @@
-from fastapi import Depends
+from collections.abc import AsyncGenerator
+
+from fastapi import Depends, Request
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.llms.mock_llm_client import MockLLMClient
@@ -14,6 +17,7 @@ from fast_app.services.conversation_memory import (
     InMemoryConversationMemoryStore,
     RedisConversationMemoryStore,
 )
+from fast_app.services.conversation_repository import PostgresConversationRepository
 from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
 from fast_app.services.rag_pipeline_service import RagPipeline
 
@@ -27,10 +31,6 @@ from fast_app.components.retrievers.milvus_vector_retriever import MilvusVectorR
 from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.rerankers.dashscope_reranker import DashScopeReranker
 from fast_app.components.rerankers.mock_reranker import MockReranker
-
-from fastapi import Depends, Request
-
-
 
 def get_llm_client(
     settings: Settings = Depends(get_settings),
@@ -157,6 +157,29 @@ def get_conversation_memory_store(
     raise AppServiceError(
         f"不支持的 MEMORY_STORE_PROVIDER: {settings.memory_store_provider}"
     )
+
+
+async def get_db_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
+    """为一次请求打开一个数据库 Session，并在请求结束后自动关闭。"""
+
+    session_factory = getattr(request.app.state, "db_session_factory", None)
+    if session_factory is None:
+        raise AppServiceError("数据库 Session 工厂尚未初始化")
+
+    async with session_factory() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+
+
+def get_conversation_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> PostgresConversationRepository:
+    """提供 Conversation 持久化仓储，后续 API 可以按需注入。"""
+
+    return PostgresConversationRepository(session=session)
 
 
 

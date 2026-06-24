@@ -134,6 +134,23 @@ class Settings(BaseSettings):
         alias="MEMORY_MAX_MESSAGES",
     )
 
+    # PostgreSQL 持久化配置。这里默认只创建异步 Engine，不会在应用启动时立刻发起连接。
+    database_url: str = Field(
+        default="postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/python_agent_study",
+        alias="DATABASE_URL",
+    )
+    database_echo: bool = Field(default=False, alias="DATABASE_ECHO")
+    database_pool_size: int = Field(
+        default=5,
+        ge=1,
+        alias="DATABASE_POOL_SIZE",
+    )
+    database_max_overflow: int = Field(
+        default=10,
+        ge=0,
+        alias="DATABASE_MAX_OVERFLOW",
+    )
+
     # 博查 网络搜索api
     bocha_api_key: str = Field(default="", alias="BOCHA_API_KEY")
     bocha_web_search_url: str = Field(

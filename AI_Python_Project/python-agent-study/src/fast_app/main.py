@@ -24,6 +24,7 @@ from pymilvus import MilvusClient
 from redis.asyncio import Redis
 
 from fast_app.components.retrievers.milvus_vector_retriever import build_milvus_uri
+from fast_app.db.session import create_database_engine, create_session_factory
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -64,6 +65,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         logger.info("Redis client 已创建")
 
+    app.state.db_engine = create_database_engine(settings)
+    app.state.db_session_factory = create_session_factory(app.state.db_engine)
+    logger.info("PostgreSQL async engine 已创建")
+
     try:
         yield
     finally:
@@ -86,6 +91,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if redis_client is not None:
             await redis_client.aclose()
             logger.info("Redis client 已关闭")
+
+        db_engine = getattr(app.state, "db_engine", None)
+        if db_engine is not None:
+            await db_engine.dispose()
+            logger.info("PostgreSQL async engine 已关闭")
 
         logger.info("应用关闭")
 
