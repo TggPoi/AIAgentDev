@@ -51,6 +51,7 @@ def get_rag_agent_step_index(operation: str, step_name: str) -> int:
     # LangSmith trace 中保留稳定 index，后续排查时可以按顺序复盘 Agent 链路。
     if operation == "stream_events":
         indexes = {
+            "query_rewrite": 0,
             "plan_next_action": 1,
             "check_loop_limits": 2,
             "direct_answer": 3,
@@ -66,6 +67,7 @@ def get_rag_agent_step_index(operation: str, step_name: str) -> int:
         return indexes[step_name]
 
     indexes = {
+        "query_rewrite": 0,
         "plan_next_action": 1,
         "check_loop_limits": 2,
         "direct_answer": 3,
@@ -87,7 +89,11 @@ def build_rag_agent_step_inputs(
     # 所有节点统一用这个 helper 构造 trace inputs，避免每个节点各自拼字段。
     # extra 用于追加当前节点独有的信息，例如 tool_name、doc_count、error_kind。
     return {
+        "session_id": state.get("session_id"),
+        "original_query": state.get("original_query"),
         "query": state["query"],
+        "rewritten_query": state.get("rewritten_query"),
+        "query_rewrite_reason": state.get("query_rewrite_reason"),
         "mode": state["mode"],
         "top_k": state["top_k"],
         "candidate_k": state.get("candidate_k"),

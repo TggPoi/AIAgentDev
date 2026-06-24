@@ -17,6 +17,7 @@ from fast_app.domain.conversation_models import ConversationMessage, Conversatio
 from fast_app.domain.rag_stream_models import RagStreamEvent
 from fast_app.graph.rag_agent_builder import build_rag_agent_graph
 from fast_app.graph.rag_agent_nodes import (
+    build_rag_agent_step_inputs,
     create_agent_build_context_node,
     create_agent_error_answer_node,
     create_agent_fail_request_node,
@@ -133,41 +134,87 @@ class RagAgentPipeline:
 
         state = self._build_initial_state(req=req, operation=operation)
 
-        if req.session_id is None:
-            state["query_rewrite_reason"] = "session_id_empty"
-            return state
-
-        if self.conversation_memory_store is None or self.query_rewriter is None:
-            state["query_rewrite_reason"] = "memory_or_rewriter_unavailable"
-            return state
-
-        history_window = await load_recent_history_window(
-            store=self.conversation_memory_store,
-            conversation_id=req.session_id,
-            max_turns=self.settings.memory_history_max_turns,
-        )
-        rewrite_result = await self.query_rewriter.rewrite(
-            query=req.query,
-            history_window=history_window,
-        )
-
-        state["history_window_text"] = history_window.formatted_text
-        state["rewritten_query"] = rewrite_result.rewritten_query
-        state["query_rewrite_reason"] = rewrite_result.reason
-        state["query"] = rewrite_result.rewritten_query
-
-        logger.info(
-            "rag_agent_query_rewrite %s",
-            format_log_fields(
-                event="rag_agent.query_rewrite.applied",
-                session_id=req.session_id,
-                original_query=rewrite_result.original_query,
-                rewritten_query=rewrite_result.rewritten_query,
-                used_history=rewrite_result.used_history,
-                reason=rewrite_result.reason,
-                history_message_count=len(history_window.messages),
+        with rag_agent_langsmith_step_trace(
+            settings=self.settings,
+            state=state,
+            step_name="query_rewrite",
+            run_type="chain",
+            inputs=build_rag_agent_step_inputs(
+                state,
+                max_history_turns=self.settings.memory_history_max_turns,
+                query_rewrite_enabled=self.settings.query_rewrite_enabled,
             ),
-        )
+        ) as trace_run:
+            if req.session_id is None:
+                state["query_rewrite_reason"] = "session_id_empty"
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "original_query": req.query,
+                            "rewritten_query": req.query,
+                            "effective_query": state["query"],
+                            "used_history": False,
+                            "query_rewrite_reason": state["query_rewrite_reason"],
+                            "history_message_count": 0,
+                        }
+                    )
+                return state
+
+            if self.conversation_memory_store is None or self.query_rewriter is None:
+                state["query_rewrite_reason"] = "memory_or_rewriter_unavailable"
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "original_query": req.query,
+                            "rewritten_query": req.query,
+                            "effective_query": state["query"],
+                            "used_history": False,
+                            "query_rewrite_reason": state["query_rewrite_reason"],
+                            "history_message_count": 0,
+                        }
+                    )
+                return state
+
+            history_window = await load_recent_history_window(
+                store=self.conversation_memory_store,
+                conversation_id=req.session_id,
+                max_turns=self.settings.memory_history_max_turns,
+            )
+            rewrite_result = await self.query_rewriter.rewrite(
+                query=req.query,
+                history_window=history_window,
+            )
+
+            state["history_window_text"] = history_window.formatted_text
+            state["rewritten_query"] = rewrite_result.rewritten_query
+            state["query_rewrite_reason"] = rewrite_result.reason
+            state["query"] = rewrite_result.rewritten_query
+
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "original_query": rewrite_result.original_query,
+                        "rewritten_query": rewrite_result.rewritten_query,
+                        "effective_query": state["query"],
+                        "used_history": rewrite_result.used_history,
+                        "query_rewrite_reason": rewrite_result.reason,
+                        "history_message_count": len(history_window.messages),
+                        "history_window_chars": len(history_window.formatted_text),
+                    }
+                )
+
+            logger.info(
+                "rag_agent_query_rewrite %s",
+                format_log_fields(
+                    event="rag_agent.query_rewrite.applied",
+                    session_id=req.session_id,
+                    original_query=rewrite_result.original_query,
+                    rewritten_query=rewrite_result.rewritten_query,
+                    used_history=rewrite_result.used_history,
+                    reason=rewrite_result.reason,
+                    history_message_count=len(history_window.messages),
+                ),
+            )
 
         return state
 
