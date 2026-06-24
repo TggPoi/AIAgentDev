@@ -133,6 +133,14 @@ class Settings(BaseSettings):
         le=200,
         alias="MEMORY_MAX_MESSAGES",
     )
+    # 历史窗口配置：控制后续多轮逻辑最多参考最近几轮对话。
+    # 它和 MEMORY_MAX_MESSAGES 不同，后者是 Redis list 的存储上限。
+    memory_history_max_turns: int = Field(
+        default=3,
+        ge=0,
+        le=20,
+        alias="MEMORY_HISTORY_MAX_TURNS",
+    )
 
     # PostgreSQL 持久化配置。这里默认只创建异步 Engine，不会在应用启动时立刻发起连接。
     database_url: str = Field(

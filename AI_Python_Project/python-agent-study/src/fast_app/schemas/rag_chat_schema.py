@@ -14,6 +14,13 @@ class RagChatRequest(BaseModel):
     # 禁止客户端传入未声明字段
     model_config = ConfigDict(extra="forbid")
 
+    session_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="多轮对话会话 ID；为空时按单轮请求处理",
+    )
+
     # 用户问题
     query: str = Field(
         min_length=1,
@@ -62,6 +69,18 @@ class RagChatRequest(BaseModel):
 
         if normalized == "":
             raise ValueError("query 不能只包含空白字符")
+
+        return normalized
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_session_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        normalized = value.strip()
+        if normalized == "":
+            raise ValueError("session_id 不能只包含空白字符")
 
         return normalized
 
