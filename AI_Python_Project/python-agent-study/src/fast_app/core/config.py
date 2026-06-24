@@ -141,6 +141,20 @@ class Settings(BaseSettings):
         le=20,
         alias="MEMORY_HISTORY_MAX_TURNS",
     )
+    query_rewrite_enabled: bool = Field(
+        default=True,
+        alias="QUERY_REWRITE_ENABLED",
+    )
+    query_rewrite_model_name: str = Field(
+        default="",
+        alias="QUERY_REWRITE_MODEL_NAME",
+    )
+    query_rewrite_temperature: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=2.0,
+        alias="QUERY_REWRITE_TEMPERATURE",
+    )
 
     # PostgreSQL 持久化配置。这里默认只创建异步 Engine，不会在应用启动时立刻发起连接。
     database_url: str = Field(

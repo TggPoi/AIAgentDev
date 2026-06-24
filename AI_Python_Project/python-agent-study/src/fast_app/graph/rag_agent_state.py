@@ -21,7 +21,12 @@ RagAgentRoute = Literal[
 class RagAgentState(TypedDict):
     # 用户请求输入：来自 RagChatRequest，是 Agent graph 的起点。
     # 这组字段保持和普通 RAG 请求一致，方便复用已有检索、rerank 和 response 转换逻辑。
+    session_id: str | None
+    original_query: str
     query: str
+    rewritten_query: str | None
+    history_window_text: str | None
+    query_rewrite_reason: str | None
     mode: RagAgentMode
     top_k: int
     candidate_k: int | None
@@ -58,7 +63,12 @@ def build_rag_agent_initial_state(
     # LangGraph 要求每次请求都从一份新的 state 开始，避免跨请求共享 docs/context/answer。
     # 这里集中初始化所有字段，比在各个 node 里临时补默认值更容易排查状态流转。
     return {
+        "session_id": req.session_id,
+        "original_query": req.query,
         "query": req.query,
+        "rewritten_query": None,
+        "history_window_text": None,
+        "query_rewrite_reason": None,
         "mode": req.mode,
         "top_k": req.top_k,
         "candidate_k": req.candidate_k,

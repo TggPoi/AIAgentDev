@@ -18,6 +18,7 @@ from fast_app.services.conversation_memory import (
     RedisConversationMemoryStore,
 )
 from fast_app.services.conversation_repository import PostgresConversationRepository
+from fast_app.services.query_rewrite import ConversationQueryRewriter
 from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
 from fast_app.services.rag_pipeline_service import RagPipeline
 
@@ -185,6 +186,7 @@ def get_conversation_repository(
 
 # 这里先不写返回类型，因为RagPipeline LangGraphRagPipeline这两个类目前没有共同的显式基类。
 def get_rag_pipeline(
+    request: Request,
     settings: Settings = Depends(get_settings),
     vector_retriever: BaseRetriever = Depends(get_vector_retriever),
     keyword_retriever: BaseRetriever = Depends(get_keyword_retriever),
@@ -214,12 +216,18 @@ def get_rag_pipeline(
     # 13-11 新增的第三条执行路线。
     # 它复用同一组 retriever / reranker / llm 依赖，但进入独立的 RAG Agent graph。
     if provider == "rag_agent":
+        conversation_memory_store = get_conversation_memory_store(
+            request=request,
+            settings=settings,
+        )
         return RagAgentPipeline(
             settings=settings,
             vector_retriever=vector_retriever,
             keyword_retriever=keyword_retriever,
             llm_client=llm_client,
             reranker=reranker,
+            conversation_memory_store=conversation_memory_store,
+            query_rewriter=ConversationQueryRewriter.from_settings(settings),
         )
 
     raise AppServiceError(
