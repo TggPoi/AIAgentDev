@@ -38,6 +38,7 @@ from fast_app.graph.rag_agent_state import (
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
 from fast_app.services.conversation_history import load_recent_history_window
 from fast_app.services.conversation_memory import ConversationMemoryStore
+from fast_app.services.conversation_persistence import ConversationPersistenceService
 from fast_app.services.exceptions import ExternalServiceError
 from fast_app.services.query_rewrite import ConversationQueryRewriter
 from fast_app.services.rag_pipeline_service import docs_to_sources
@@ -58,6 +59,7 @@ class RagAgentPipeline:
         reranker: BaseReranker,
         conversation_memory_store: ConversationMemoryStore | None = None,
         query_rewriter: ConversationQueryRewriter | None = None,
+        conversation_persistence: ConversationPersistenceService | None = None,
     ):
         # 保存底层组件引用，方便非流式 graph 和流式手写路径复用同一批依赖。
         self.settings = settings
@@ -67,6 +69,7 @@ class RagAgentPipeline:
         self.reranker = reranker
         self.conversation_memory_store = conversation_memory_store
         self.query_rewriter = query_rewriter
+        self.conversation_persistence = conversation_persistence
         # run() 使用 compiled graph，完整展示 LangGraph Agent 状态机。
         self.graph = build_rag_agent_graph(
             settings=settings,
@@ -273,6 +276,58 @@ class RagAgentPipeline:
                 ),
             )
 
+    async def _persist_conversation_turn_for_run(
+        self,
+        req: RagChatRequest,
+        state: RagAgentState,
+        answer: str,
+        source_count: int,
+    ) -> None:
+        """把非流式 /rag/chat 的当前轮持久化到 PostgreSQL。"""
+
+        if req.session_id is None or self.conversation_persistence is None:
+            return
+
+        metadata = {
+            "pipeline_provider": "rag_agent",
+            "operation": "run",
+            "original_query": state.get("original_query") or req.query,
+            "effective_query": state.get("query"),
+            "rewritten_query": state.get("rewritten_query"),
+            "query_rewrite_reason": state.get("query_rewrite_reason"),
+            "source_count": source_count,
+            "final_reason": state.get("final_reason"),
+        }
+
+        try:
+            await self.conversation_persistence.save_turn(
+                conversation_id=req.session_id,
+                user_content=state.get("original_query") or req.query,
+                assistant_content=answer,
+                metadata=metadata,
+            )
+            logger.info(
+                "rag_agent_persistence %s",
+                format_log_fields(
+                    event="rag_agent.persistence.turn_saved",
+                    session_id=req.session_id,
+                    operation="run",
+                    source_count=source_count,
+                    query_rewrite_reason=state.get("query_rewrite_reason"),
+                ),
+            )
+        except Exception as exc:
+            logger.exception(
+                "rag_agent_persistence %s",
+                format_log_fields(
+                    event="rag_agent.persistence.turn_save_failed",
+                    session_id=req.session_id,
+                    operation="run",
+                    error_type=type(exc).__name__,
+                ),
+            )
+            raise
+
     async def run(self, req: RagChatRequest) -> RagChatResponse:
         # 非流式入口可以直接运行 compiled graph，最后把 final_state 转成 API response。
         with self._langsmith_trace(req, "run"):
@@ -299,7 +354,17 @@ class RagAgentPipeline:
             final_state = await self.graph.ainvoke(initial_state)
             answer = final_state.get("answer") or ""
             docs = final_state.get("docs") or []
+
+            # redis写入
             await self._save_conversation_turn(
+                req=req,
+                state=final_state,
+                answer=answer,
+                source_count=len(docs),
+            )
+
+            # postgreSQL写入
+            await self._persist_conversation_turn_for_run(
                 req=req,
                 state=final_state,
                 answer=answer,

@@ -167,6 +167,67 @@ $env:RERANKER_PROVIDER="mock"
 curl.exe "http://127.0.0.1:8000/health"
 ```
 
+## 多轮对话与 Redis 观察
+
+`rag_agent` provider 支持通过 `session_id` 保留最近对话窗口。Redis 负责短期会话消息，PostgreSQL 负责持久化完整 user / assistant 消息。
+
+启动多轮链路时，建议确认 `.env` 至少包含：
+
+```text
+RAG_PIPELINE_PROVIDER=rag_agent
+MEMORY_STORE_PROVIDER=redis
+QUERY_REWRITE_ENABLED=true
+```
+
+交互式测试：
+
+```powershell
+$env:PYTHONPATH="src"
+
+.\.venv\Scripts\python.exe scripts\test_multiturn_rag_agent_terminal.py `
+  --base-url "http://127.0.0.1:8000" `
+  --session-id "demo-session-14-11" `
+  --mode "hybrid" `
+  --top-k 3
+```
+
+Redis Insight 如果是桌面版，连接当前工程 Redis：
+
+```text
+Host: 127.0.0.1
+Port: 6379
+Database: 0
+Username: 留空
+Password: 留空
+TLS: 关闭
+```
+
+如果 Redis Insight 运行在 Docker 容器里，`127.0.0.1` 会指向 Redis Insight 容器自身。此时优先使用：
+
+```text
+Host: host.docker.internal
+Port: 6379
+Database: 0
+Username: 留空
+Password: 留空
+TLS: 关闭
+```
+
+如果 Redis 和 Redis Insight 在同一个 Docker Compose 网络里，也可以把 Host 填成 Redis 服务名，例如：
+
+```text
+Host: redis
+Port: 6379
+```
+
+连接成功后搜索当前会话 key：
+
+```text
+conversation:demo-session-14-11:messages
+```
+
+其中 `demo-session-14-11` 对应测试脚本里的 `--session-id`。正常情况下，第一轮对话后 Redis list 中有 2 条消息，第二轮后有 4 条消息。
+
 ## RAG 接口
 
 完整接口说明见：[阶段 20-3 接口文档](learning-docs/phase-20/20-3-接口文档整理.md)。
@@ -398,7 +459,7 @@ Agent 每一步为什么这么走
 - `create_agent` 尚未作为 provider 接入 `/rag/chat`。
 - 阶段 13-10 人工确认节点已后置，后续出现高风险工具时再补。
 - 阶段 12-12 日志脱敏和生产安全边界暂时跳过，生产化前需要补。
-- 阶段 14 多轮对话与记忆尚未实现。
+- 阶段 14 多轮对话最小链路已接入非流式 `/rag/chat`；流式接口的 PostgreSQL 持久化仍待后续阶段补齐。
 - 阶段 15 权限、安全与接口治理尚未实现。
 - 阶段 16 Docker Compose / `.env.example` / 部署说明尚未收口。
 - 阶段 17-19 暂时作为后续演进，不阻塞当前作品成型。

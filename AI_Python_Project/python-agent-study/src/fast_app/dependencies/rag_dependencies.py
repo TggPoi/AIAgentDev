@@ -18,6 +18,7 @@ from fast_app.services.conversation_memory import (
     RedisConversationMemoryStore,
 )
 from fast_app.services.conversation_repository import PostgresConversationRepository
+from fast_app.services.conversation_persistence import ConversationPersistenceService
 from fast_app.services.query_rewrite import ConversationQueryRewriter
 from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
 from fast_app.services.rag_pipeline_service import RagPipeline
@@ -183,6 +184,14 @@ def get_conversation_repository(
     return PostgresConversationRepository(session=session)
 
 
+def get_conversation_persistence_service(
+    repository: PostgresConversationRepository = Depends(get_conversation_repository),
+) -> ConversationPersistenceService:
+    """提供 PostgreSQL 会话持久化服务。"""
+
+    return ConversationPersistenceService(repository=repository)
+
+
 
 # 这里先不写返回类型，因为RagPipeline LangGraphRagPipeline这两个类目前没有共同的显式基类。
 def get_rag_pipeline(
@@ -192,6 +201,9 @@ def get_rag_pipeline(
     keyword_retriever: BaseRetriever = Depends(get_keyword_retriever),
     llm_client: BaseLLMClient = Depends(get_llm_client),
     reranker: BaseReranker = Depends(get_reranker),
+    conversation_persistence: ConversationPersistenceService = Depends(
+        get_conversation_persistence_service
+    ),
 ):
     provider = settings.rag_pipeline_provider.lower().strip()
 
@@ -228,6 +240,7 @@ def get_rag_pipeline(
             reranker=reranker,
             conversation_memory_store=conversation_memory_store,
             query_rewriter=ConversationQueryRewriter.from_settings(settings),
+            conversation_persistence=conversation_persistence,
         )
 
     raise AppServiceError(

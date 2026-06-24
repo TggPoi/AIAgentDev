@@ -43,6 +43,37 @@ class PostgresConversationRepository:
         self._session.add(_message_to_table(message))
         await self._session.commit()
 
+    async def save_conversation_turn(
+        self,
+        conversation: Conversation,
+        messages: list[ConversationMessage],
+    ) -> None:
+        """在一个事务里保存会话容器和当前轮消息。
+
+        一轮对话通常包含 user / assistant 两条消息。这里统一 commit，避免
+        conversation 已写入但 assistant message 写入失败这类半成功状态。
+        """
+
+        existing = await self._session.get(ConversationTable, conversation.id)
+        if existing is None:
+            self._session.add(_conversation_to_table(conversation))
+        else:
+            existing.user_id = conversation.user_id
+            existing.updated_at = conversation.updated_at
+            existing.metadata_json = {
+                **(existing.metadata_json or {}),
+                **conversation.metadata,
+            }
+
+        for message in messages:
+            self._session.add(_message_to_table(message))
+
+        try:
+            await self._session.commit()
+        except Exception:
+            await self._session.rollback()
+            raise
+
     async def list_messages(
         self,
         conversation_id: str,
