@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func, text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -37,6 +37,10 @@ class ConversationTable(Base):
     )
 
     messages: Mapped[list[ConversationMessageTable]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+    )
+    summaries: Mapped[list[ConversationSummaryTable]] = relationship(
         back_populates="conversation",
         cascade="all, delete-orphan",
     )
@@ -76,5 +80,70 @@ class ConversationMessageTable(Base):
             "idx_conversation_messages_conversation_created_at",
             "conversation_id",
             "created_at",
+        ),
+    )
+
+
+class ConversationSummaryTable(Base):
+    """conversation_summaries 表：保存窗口外历史的可追溯摘要版本。"""
+
+    __tablename__ = "conversation_summaries"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(
+        String(128),
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    summary_text: Mapped[str] = mapped_column(Text, nullable=False)
+    structured_summary_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_message_ids_json: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
+    source_message_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    )
+    covered_until_message_id: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+
+    conversation: Mapped[ConversationTable] = relationship(
+        back_populates="summaries",
+    )
+
+    __table_args__ = (
+        Index(
+            "idx_conversation_summaries_conversation_version",
+            "conversation_id",
+            "version",
         ),
     )

@@ -4,12 +4,17 @@
 """
 
 from fast_app.db.base import Base
-from fast_app.db.conversation_tables import ConversationMessageTable, ConversationTable
+from fast_app.db.conversation_tables import (
+    ConversationMessageTable,
+    ConversationSummaryTable,
+    ConversationTable,
+)
 from fast_app.db.session import create_database_engine, create_session_factory
 
 __all__ = [
     "Base",
     "ConversationMessageTable",
+    "ConversationSummaryTable",
     "ConversationTable",
     "create_database_engine",
     "create_session_factory",

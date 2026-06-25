@@ -1,11 +1,17 @@
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fast_app.db.conversation_tables import ConversationMessageTable, ConversationTable
+from fast_app.db.conversation_tables import (
+    ConversationMessageTable,
+    ConversationSummaryTable,
+    ConversationTable,
+)
 from fast_app.domain.conversation_models import (
     Conversation,
     ConversationMessage,
     ConversationRole,
+    ConversationStructuredSummary,
+    ConversationSummary,
 )
 
 
@@ -108,6 +114,69 @@ class PostgresConversationRepository:
 
         return _table_to_conversation(row)
 
+    async def append_summary(self, summary: ConversationSummary) -> None:
+        """追加一个新的会话摘要版本。
+
+        摘要不覆盖旧版本，便于追溯“某个 summary 是从哪些消息压缩出来的”。
+        """
+
+        self._session.add(_summary_to_table(summary))
+        await self._session.commit()
+
+    async def get_latest_summary(
+        self,
+        conversation_id: str,
+    ) -> ConversationSummary | None:
+        """读取某个会话最新版本的 summary。"""
+
+        stmt: Select[tuple[ConversationSummaryTable]] = (
+            select(ConversationSummaryTable)
+            .where(ConversationSummaryTable.conversation_id == conversation_id)
+            .order_by(
+                ConversationSummaryTable.version.desc(),
+                ConversationSummaryTable.created_at.desc(),
+                ConversationSummaryTable.id.desc(),
+            )
+            .limit(1)
+        )
+        row = await self._session.scalar(stmt)
+        if row is None:
+            return None
+
+        return _table_to_summary(row)
+
+    async def list_messages_after_summary(
+        self,
+        conversation_id: str,
+        after_message_id: str | None,
+        limit: int,
+    ) -> list[ConversationMessage]:
+        """读取 latest summary 之后还没有被摘要覆盖的消息。
+
+        本阶段按创建时间在 Python 侧定位 after_message_id，逻辑更直观，
+        数据量也符合学习项目当前的会话规模。
+        """
+
+        if limit <= 0:
+            return []
+
+        stmt: Select[tuple[ConversationMessageTable]] = (
+            select(ConversationMessageTable)
+            .where(ConversationMessageTable.conversation_id == conversation_id)
+            .order_by(
+                ConversationMessageTable.created_at.asc(),
+                ConversationMessageTable.id.asc(),
+            )
+        )
+        rows = list((await self._session.scalars(stmt)).all())
+        if after_message_id is not None:
+            for index, row in enumerate(rows):
+                if row.id == after_message_id:
+                    rows = rows[index + 1 :]
+                    break
+
+        return [_table_to_message(row) for row in rows[:limit]]
+
 
 def _conversation_to_table(conversation: Conversation) -> ConversationTable:
     """把领域模型转换成 ORM 表对象。"""
@@ -155,6 +224,44 @@ def _table_to_message(row: ConversationMessageTable) -> ConversationMessage:
         role=ConversationRole(row.role),
         content=row.content,
         created_at=row.created_at,
+        metadata=row.metadata_json,
+    )
+
+
+def _summary_to_table(summary: ConversationSummary) -> ConversationSummaryTable:
+    """把 summary 领域模型转换成 ORM 表对象。"""
+
+    return ConversationSummaryTable(
+        id=summary.id,
+        conversation_id=summary.conversation_id,
+        summary_text=summary.summary_text,
+        structured_summary_json=summary.structured_summary.model_dump(),
+        version=summary.version,
+        source_message_ids_json=summary.source_message_ids,
+        source_message_count=summary.source_message_count,
+        covered_until_message_id=summary.covered_until_message_id,
+        created_at=summary.created_at,
+        updated_at=summary.updated_at,
+        metadata_json=summary.metadata,
+    )
+
+
+def _table_to_summary(row: ConversationSummaryTable) -> ConversationSummary:
+    """把 ORM summary 记录还原成领域模型。"""
+
+    return ConversationSummary(
+        id=row.id,
+        conversation_id=row.conversation_id,
+        summary_text=row.summary_text,
+        structured_summary=ConversationStructuredSummary.model_validate(
+            row.structured_summary_json or {}
+        ),
+        version=row.version,
+        source_message_ids=list(row.source_message_ids_json or []),
+        source_message_count=row.source_message_count,
+        covered_until_message_id=row.covered_until_message_id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
         metadata=row.metadata_json,
     )
 

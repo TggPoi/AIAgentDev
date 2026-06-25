@@ -19,6 +19,7 @@ from fast_app.services.conversation_memory import (
 )
 from fast_app.services.conversation_repository import PostgresConversationRepository
 from fast_app.services.conversation_persistence import ConversationPersistenceService
+from fast_app.services.conversation_summary import ConversationSummaryService
 from fast_app.services.query_rewrite import ConversationQueryRewriter
 from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
 from fast_app.services.rag_pipeline_service import RagPipeline
@@ -232,6 +233,10 @@ def get_rag_pipeline(
             request=request,
             settings=settings,
         )
+        conversation_summary_service = ConversationSummaryService.from_settings(
+            settings=settings,
+            repository=conversation_persistence.repository,
+        )
         return RagAgentPipeline(
             settings=settings,
             vector_retriever=vector_retriever,
@@ -241,6 +246,7 @@ def get_rag_pipeline(
             conversation_memory_store=conversation_memory_store,
             query_rewriter=ConversationQueryRewriter.from_settings(settings),
             conversation_persistence=conversation_persistence,
+            conversation_summary_service=conversation_summary_service,
         )
 
     raise AppServiceError(

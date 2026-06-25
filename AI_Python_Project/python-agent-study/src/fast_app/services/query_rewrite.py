@@ -7,7 +7,11 @@ from pydantic import BaseModel
 
 from fast_app.core.config import Settings
 from fast_app.core.logging import format_log_fields, get_logger
-from fast_app.services.conversation_history import ConversationHistoryWindow
+from fast_app.services.conversation_history import (
+    ConversationHistoryWindow,
+    ConversationMemoryContext,
+    build_conversation_memory_context,
+)
 
 
 logger = get_logger(__name__)
@@ -26,13 +30,18 @@ QUERY_REWRITE_SYSTEM_PROMPT = """你是一个多轮 RAG 检索问题改写助手
 """
 
 
-QUERY_REWRITE_HUMAN_PROMPT = """【最近对话历史】
-{history}
+QUERY_REWRITE_HUMAN_PROMPT = """【会话记忆上下文】
+{memory_context}
 
 【当前用户问题】
 {query}
 
-请输出一个可以独立用于知识库检索的问题。"""
+请输出一个可以独立用于知识库检索的问题。
+
+注意：
+1. 最近对话优先于会话摘要。
+2. 会话摘要只用于补充窗口外的目标、约束、决策和明确偏好。
+3. 如果当前问题已经独立清楚，请原样返回。"""
 
 
 class QueryRewriteResult(BaseModel):
@@ -41,6 +50,8 @@ class QueryRewriteResult(BaseModel):
     original_query: str
     rewritten_query: str
     used_history: bool
+    used_summary: bool = False
+    summary_version: int | None = None
     reason: str
 
 
@@ -88,14 +99,21 @@ class ConversationQueryRewriter:
     async def rewrite(
         self,
         query: str,
-        history_window: ConversationHistoryWindow | None,
+        history_window: ConversationHistoryWindow | None = None,
+        memory_context: ConversationMemoryContext | None = None,
     ) -> QueryRewriteResult:
         """结合历史窗口把当前追问改写成独立检索 query。"""
 
         if not self.settings.query_rewrite_enabled:
             return _fallback_result(query, "query_rewrite_disabled")
 
-        if history_window is None or not history_window.formatted_text.strip():
+        if memory_context is None and history_window is not None:
+            memory_context = build_conversation_memory_context(
+                conversation_id=history_window.conversation_id,
+                recent_window=history_window,
+            )
+
+        if memory_context is None or not memory_context.formatted_text.strip():
             return _fallback_result(query, "history_window_empty")
 
         if self.chain is None:
@@ -104,7 +122,7 @@ class ConversationQueryRewriter:
         try:
             response = await self.chain.ainvoke(
                 {
-                    "history": history_window.formatted_text,
+                    "memory_context": memory_context.formatted_text,
                     "query": query,
                 }
             )
@@ -115,7 +133,13 @@ class ConversationQueryRewriter:
                 return _fallback_result(query, "query_rewrite_empty_response")
 
             used_history = rewritten_query != query
-            reason = "rewritten_with_history" if used_history else "kept_original_query"
+            used_summary = memory_context.summary_text is not None
+            if used_history and used_summary:
+                reason = "rewritten_with_summary_and_history"
+            elif used_history:
+                reason = "rewritten_with_history"
+            else:
+                reason = "kept_original_query"
             logger.info(
                 "query_rewrite %s",
                 format_log_fields(
@@ -123,7 +147,9 @@ class ConversationQueryRewriter:
                     original_query=query,
                     rewritten_query=rewritten_query,
                     used_history=used_history,
-                    history_message_count=len(history_window.messages),
+                    used_summary=used_summary,
+                    summary_version=memory_context.summary_version,
+                    history_message_count=len(memory_context.recent_window.messages),
                     reason=reason,
                 ),
             )
@@ -132,6 +158,8 @@ class ConversationQueryRewriter:
                 original_query=query,
                 rewritten_query=rewritten_query,
                 used_history=used_history,
+                used_summary=used_summary,
+                summary_version=memory_context.summary_version,
                 reason=reason,
             )
 

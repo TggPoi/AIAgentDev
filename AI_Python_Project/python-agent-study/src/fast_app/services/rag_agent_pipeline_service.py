@@ -36,9 +36,13 @@ from fast_app.graph.rag_agent_state import (
     build_rag_agent_initial_state,
 )
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
-from fast_app.services.conversation_history import load_recent_history_window
+from fast_app.services.conversation_history import (
+    build_conversation_memory_context,
+    load_recent_history_window,
+)
 from fast_app.services.conversation_memory import ConversationMemoryStore
 from fast_app.services.conversation_persistence import ConversationPersistenceService
+from fast_app.services.conversation_summary import ConversationSummaryService
 from fast_app.services.exceptions import ExternalServiceError
 from fast_app.services.query_rewrite import ConversationQueryRewriter
 from fast_app.services.rag_pipeline_service import docs_to_sources
@@ -60,6 +64,7 @@ class RagAgentPipeline:
         conversation_memory_store: ConversationMemoryStore | None = None,
         query_rewriter: ConversationQueryRewriter | None = None,
         conversation_persistence: ConversationPersistenceService | None = None,
+        conversation_summary_service: ConversationSummaryService | None = None,
     ):
         # 保存底层组件引用，方便非流式 graph 和流式手写路径复用同一批依赖。
         self.settings = settings
@@ -70,6 +75,7 @@ class RagAgentPipeline:
         self.conversation_memory_store = conversation_memory_store
         self.query_rewriter = query_rewriter
         self.conversation_persistence = conversation_persistence
+        self.conversation_summary_service = conversation_summary_service
         # run() 使用 compiled graph，完整展示 LangGraph Agent 状态机。
         self.graph = build_rag_agent_graph(
             settings=settings,
@@ -146,6 +152,7 @@ class RagAgentPipeline:
                 state,
                 max_history_turns=self.settings.memory_history_max_turns,
                 query_rewrite_enabled=self.settings.query_rewrite_enabled,
+                summary_memory_enabled=self.settings.summary_memory_enabled,
             ),
         ) as trace_run:
             if req.session_id is None:
@@ -159,6 +166,9 @@ class RagAgentPipeline:
                             "used_history": False,
                             "query_rewrite_reason": state["query_rewrite_reason"],
                             "history_message_count": 0,
+                            "summary_used": False,
+                            "summary_version": None,
+                            "summary_source_message_count": 0,
                         }
                     )
                 return state
@@ -174,6 +184,9 @@ class RagAgentPipeline:
                             "used_history": False,
                             "query_rewrite_reason": state["query_rewrite_reason"],
                             "history_message_count": 0,
+                            "summary_used": False,
+                            "summary_version": None,
+                            "summary_source_message_count": 0,
                         }
                     )
                 return state
@@ -183,12 +196,42 @@ class RagAgentPipeline:
                 conversation_id=req.session_id,
                 max_turns=self.settings.memory_history_max_turns,
             )
+
+            # 获取summary上下文
+            summary = None
+            if self.conversation_summary_service is not None:
+                summary = await self.conversation_summary_service.maybe_update_summary(
+                    conversation_id=req.session_id,
+                    recent_window=history_window,
+                )
+                memory_context = self.conversation_summary_service.build_memory_context(
+                    conversation_id=req.session_id,
+                    recent_window=history_window,
+                    summary=summary,
+                )
+
+            else:
+                memory_context = build_conversation_memory_context(
+                    conversation_id=req.session_id,
+                    recent_window=history_window,
+                )
+
+            # 将上下文用于 query rewrite
             rewrite_result = await self.query_rewriter.rewrite(
                 query=req.query,
-                history_window=history_window,
+                memory_context=memory_context,
             )
 
             state["history_window_text"] = history_window.formatted_text
+            state["summary_text"] = memory_context.summary_text
+            state["summary_used"] = memory_context.summary_text is not None
+            state["summary_version"] = memory_context.summary_version
+            state["summary_source_message_count"] = (
+                memory_context.summary_source_message_count
+            )
+            state["summary_source_message_ids"] = (
+                memory_context.summary_source_message_ids
+            )
             state["rewritten_query"] = rewrite_result.rewritten_query
             state["query_rewrite_reason"] = rewrite_result.reason
             state["query"] = rewrite_result.rewritten_query
@@ -203,6 +246,11 @@ class RagAgentPipeline:
                         "query_rewrite_reason": rewrite_result.reason,
                         "history_message_count": len(history_window.messages),
                         "history_window_chars": len(history_window.formatted_text),
+                        "summary_used": state["summary_used"],
+                        "summary_version": state["summary_version"],
+                        "summary_source_message_count": state[
+                            "summary_source_message_count"
+                        ],
                     }
                 )
 
@@ -214,6 +262,8 @@ class RagAgentPipeline:
                     original_query=rewrite_result.original_query,
                     rewritten_query=rewrite_result.rewritten_query,
                     used_history=rewrite_result.used_history,
+                    used_summary=state["summary_used"],
+                    summary_version=state["summary_version"],
                     reason=rewrite_result.reason,
                     history_message_count=len(history_window.messages),
                 ),
@@ -237,6 +287,12 @@ class RagAgentPipeline:
             "rewritten_query": state.get("rewritten_query"),
             "query_rewrite_reason": state.get("query_rewrite_reason"),
             "source_count": source_count,
+            "summary_used": state.get("summary_used", False),
+            "summary_version": state.get("summary_version"),
+            "summary_source_message_count": state.get(
+                "summary_source_message_count",
+                0,
+            ),
         }
 
         try:
@@ -264,6 +320,8 @@ class RagAgentPipeline:
                     answer_length=len(answer),
                     source_count=source_count,
                     query_rewrite_reason=state.get("query_rewrite_reason"),
+                    summary_used=state.get("summary_used", False),
+                    summary_version=state.get("summary_version"),
                 ),
             )
         except Exception as exc:
@@ -297,6 +355,12 @@ class RagAgentPipeline:
             "query_rewrite_reason": state.get("query_rewrite_reason"),
             "source_count": source_count,
             "final_reason": state.get("final_reason"),
+            "summary_used": state.get("summary_used", False),
+            "summary_version": state.get("summary_version"),
+            "summary_source_message_count": state.get(
+                "summary_source_message_count",
+                0,
+            ),
         }
 
         try:
@@ -314,6 +378,8 @@ class RagAgentPipeline:
                     operation="run",
                     source_count=source_count,
                     query_rewrite_reason=state.get("query_rewrite_reason"),
+                    summary_used=state.get("summary_used", False),
+                    summary_version=state.get("summary_version"),
                 ),
             )
         except Exception as exc:
@@ -416,6 +482,8 @@ class RagAgentPipeline:
                 original_query=final_state.get("original_query"),
                 rewritten_query=final_state.get("rewritten_query"),
                 query_rewrite_reason=final_state.get("query_rewrite_reason"),
+                summary_used=final_state.get("summary_used", False),
+                summary_version=final_state.get("summary_version"),
                 latency_ms=round(latency_ms, 2),
                 source_count=len(docs),
                 answer_length=len(answer),

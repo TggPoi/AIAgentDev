@@ -27,6 +27,11 @@ class RagAgentState(TypedDict):
     rewritten_query: str | None
     history_window_text: str | None
     query_rewrite_reason: str | None
+    summary_text: str | None
+    summary_used: bool
+    summary_version: int | None
+    summary_source_message_count: int
+    summary_source_message_ids: list[str]
     mode: RagAgentMode
     top_k: int
     candidate_k: int | None
@@ -69,6 +74,11 @@ def build_rag_agent_initial_state(
         "rewritten_query": None,
         "history_window_text": None,
         "query_rewrite_reason": None,
+        "summary_text": None,
+        "summary_used": False,
+        "summary_version": None,
+        "summary_source_message_count": 0,
+        "summary_source_message_ids": [],
         "mode": req.mode,
         "top_k": req.top_k,
         "candidate_k": req.candidate_k,

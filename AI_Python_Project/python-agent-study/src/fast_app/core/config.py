@@ -155,6 +155,26 @@ class Settings(BaseSettings):
         le=2.0,
         alias="QUERY_REWRITE_TEMPERATURE",
     )
+    # Summary memory 是窗口外旧消息的摘要派生视图，默认关闭，避免影响已跑通的多轮主链路。
+    summary_memory_enabled: bool = Field(
+        default=False,
+        alias="SUMMARY_MEMORY_ENABLED",
+    )
+    summary_memory_trigger_messages: int = Field(
+        default=12,
+        ge=4,
+        alias="SUMMARY_MEMORY_TRIGGER_MESSAGES",
+    )
+    summary_memory_model_name: str = Field(
+        default="",
+        alias="SUMMARY_MEMORY_MODEL_NAME",
+    )
+    summary_memory_temperature: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=2.0,
+        alias="SUMMARY_MEMORY_TEMPERATURE",
+    )
 
     # PostgreSQL 持久化配置。这里默认只创建异步 Engine，不会在应用启动时立刻发起连接。
     database_url: str = Field(

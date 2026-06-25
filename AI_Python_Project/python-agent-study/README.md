@@ -24,6 +24,7 @@ FastAPI API
 - 离线评测：检索指标、生成指标、Markdown / JSON 报告。
 - 可观测性：request_id、trace_id、结构化日志、debug trace、LangSmith。
 - Agent 工程化：条件边、工具节点、MCP adapter、循环控制、错误策略、RAG Agent 最小闭环。
+- 多轮记忆：Redis 最近窗口、PostgreSQL 消息持久化、可追溯 ConversationSummary 摘要压缩。
 
 ## 当前架构
 
@@ -170,6 +171,7 @@ curl.exe "http://127.0.0.1:8000/health"
 ## 多轮对话与 Redis 观察
 
 `rag_agent` provider 支持通过 `session_id` 保留最近对话窗口。Redis 负责短期会话消息，PostgreSQL 负责持久化完整 user / assistant 消息。
+启用 `SUMMARY_MEMORY_ENABLED=true` 后，系统还会把窗口外旧消息压缩成带版本和来源 message id 的 `ConversationSummary`，供 query rewrite 使用。
 
 启动多轮链路时，建议确认 `.env` 至少包含：
 
