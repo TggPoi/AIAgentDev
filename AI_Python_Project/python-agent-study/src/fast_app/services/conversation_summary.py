@@ -100,16 +100,10 @@ class ConversationSummaryService:
             self.json_mode_chain = None
 
         else:
-            # 优先使用 tool/function calling 让模型按 schema 产出结构化结果。
-            # 这比“prompt 里要求 JSON”更硬：LangChain 会解析并校验成 SummaryModelOutput。
-            self.structured_chain = self.prompt | model.with_structured_output(
-                SummaryModelOutput,
-                method="function_calling",
-                include_raw=True,
-            )
-
-            # DashScope / OpenAI-compatible provider 的结构化能力可能存在差异。
-            # 如果 function_calling 不可用，再退到 JSON mode + Pydantic 校验。
+            # 阿里云 Qwen structured output 对应 OpenAI-compatible 的 JSON mode：
+            # 请求里设置 response_format={"type": "json_object"}，再由 Pydantic 校验字段。
+            # 不优先使用 function_calling，避免 DashScope 返回 BadRequestError。
+            self.structured_chain = None
             self.json_mode_chain = self.prompt | model.with_structured_output(
                 SummaryModelOutput,
                 method="json_mode",
@@ -298,27 +292,10 @@ class ConversationSummaryService:
         """优先使用结构化输出生成 summary，最后才退回文本 JSON 解析。
 
         这里保留三级策略：
-        1. function_calling：最接近“强约束 schema 输出”。
-        2. json_mode：至少要求模型输出合法 JSON，再由 Pydantic 校验字段。
-        3. 普通文本链：兼容不支持结构化输出的 provider，但仅作为兜底。
+        1. json_mode：要求模型输出合法 JSON，再由 Pydantic 校验字段。
+        2. 普通文本链：兼容不支持结构化输出的 provider，但仅作为兜底。
         """
 
-        if self.structured_chain is not None:
-            try:
-                response = await self.structured_chain.ainvoke(inputs)
-
-                return _coerce_summary_output(response)
-            except Exception as exc:
-                logger.warning(
-                    "conversation_summary %s",
-                    format_log_fields(
-                        event="conversation_summary.structured_output_failed",
-                        method="function_calling",
-                        error_type=type(exc).__name__,
-                    ),
-                )
-
-        # 当前模型不支持structured_chain，降级为json_mode_chain
         if self.json_mode_chain is not None:
             try:
                 response = await self.json_mode_chain.ainvoke(inputs)
