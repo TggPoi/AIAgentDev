@@ -10,12 +10,18 @@ from fast_app.components.retrievers.mock_keyword_retriever import MockKeywordRet
 from fast_app.components.retrievers.mock_vector_retriever import MockVectorRetriever
 from fast_app.core.config import Settings, get_settings
 from fast_app.domain.conversation_models import ConversationMessage, ConversationRole
+from fast_app.domain.user_context import CurrentUserContext
 from fast_app.schemas.rag_chat_schema import RagChatRequest
 from fast_app.services.conversation_history import (
     ConversationHistoryWindow,
     format_history_messages,
 )
 from fast_app.services.conversation_memory import InMemoryConversationMemoryStore
+from fast_app.services.conversation_scope import (
+    get_request_external_session_id,
+    get_request_user_id,
+    scope_rag_chat_request,
+)
 from fast_app.services.query_rewrite import ConversationQueryRewriter
 from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
 
@@ -99,6 +105,45 @@ def build_pipeline(
         conversation_memory_store=store,
         query_rewriter=ConversationQueryRewriter.from_settings(settings),
         conversation_persistence=cast(Any, persistence),
+    )
+
+
+def assert_conversation_scope_builder() -> None:
+    req = RagChatRequest(
+        session_id="same-session",
+        query=FIRST_TURN_QUERY,
+        mode="hybrid",
+        top_k=3,
+    )
+    alice_req = scope_rag_chat_request(
+        req=req,
+        user=CurrentUserContext(user_id="alice", auth_source="demo_header"),
+    )
+    bob_req = scope_rag_chat_request(
+        req=req,
+        user=CurrentUserContext(user_id="bob", auth_source="demo_header"),
+    )
+
+    print(f"scope_alice_session_id={alice_req.session_id}")
+    print(f"scope_bob_session_id={bob_req.session_id}")
+    print(f"scope_user_id={get_request_user_id(alice_req)}")
+    print(f"scope_external_session_id={get_request_external_session_id(alice_req)}")
+
+    require(
+        alice_req.session_id != bob_req.session_id,
+        "expected same external session_id to produce different scoped ids per user",
+    )
+    require(
+        get_request_user_id(alice_req) == "alice",
+        "expected scoped request to preserve internal user_id",
+    )
+    require(
+        get_request_external_session_id(alice_req) == "same-session",
+        "expected scoped request to preserve external session_id for traceability",
+    )
+    require(
+        "user_id" not in alice_req.model_dump(),
+        "expected user_id to stay out of public request model fields",
     )
 
 
@@ -286,6 +331,8 @@ def parse_args() -> argparse.Namespace:
 async def main_async() -> None:
     args = parse_args()
     settings = get_settings()
+
+    assert_conversation_scope_builder()
 
     await assert_real_query_rewrite(
         settings=settings,

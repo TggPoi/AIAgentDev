@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
 
 RetrievalMode = Literal["vector", "keyword", "hybrid"]
@@ -13,6 +13,10 @@ class RagRetrievalFilters(BaseModel):
 class RagChatRequest(BaseModel):
     # 禁止客户端传入未声明字段
     model_config = ConfigDict(extra="forbid")
+    # 这两个字段只给服务端内部使用，不会进入 OpenAPI schema，也不能由请求体传入。
+    # 阶段 14-9 用它承载认证层解析出的用户上下文，避免把 user_id 暴露成客户端可伪造字段。
+    _current_user_id: str | None = PrivateAttr(default=None)
+    _external_session_id: str | None = PrivateAttr(default=None)
 
     session_id: str | None = Field(
         default=None,

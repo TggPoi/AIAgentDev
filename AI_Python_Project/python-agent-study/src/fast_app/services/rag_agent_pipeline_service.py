@@ -42,6 +42,10 @@ from fast_app.services.conversation_history import (
 )
 from fast_app.services.conversation_memory import ConversationMemoryStore
 from fast_app.services.conversation_persistence import ConversationPersistenceService
+from fast_app.services.conversation_scope import (
+    get_request_external_session_id,
+    get_request_user_id,
+)
 from fast_app.services.conversation_summary import ConversationSummaryService
 from fast_app.services.exceptions import ExternalServiceError
 from fast_app.services.query_rewrite import ConversationQueryRewriter
@@ -284,6 +288,9 @@ class RagAgentPipeline:
             return
 
         metadata = {
+            "user_id": get_request_user_id(req),
+            "external_session_id": get_request_external_session_id(req),
+            "scoped_session_id": req.session_id,
             "rewritten_query": state.get("rewritten_query"),
             "query_rewrite_reason": state.get("query_rewrite_reason"),
             "source_count": source_count,
@@ -316,7 +323,9 @@ class RagAgentPipeline:
                 "rag_agent_memory %s",
                 format_log_fields(
                     event="rag_agent.memory.turn_saved",
+                    user_id=get_request_user_id(req),
                     session_id=req.session_id,
+                    external_session_id=get_request_external_session_id(req),
                     answer_length=len(answer),
                     source_count=source_count,
                     query_rewrite_reason=state.get("query_rewrite_reason"),
@@ -329,7 +338,9 @@ class RagAgentPipeline:
                 "rag_agent_memory %s",
                 format_log_fields(
                     event="rag_agent.memory.turn_save_failed",
+                    user_id=get_request_user_id(req),
                     session_id=req.session_id,
+                    external_session_id=get_request_external_session_id(req),
                     error_type=type(exc).__name__,
                 ),
             )
@@ -356,6 +367,9 @@ class RagAgentPipeline:
         metadata = {
             "pipeline_provider": "rag_agent",
             "operation": operation,
+            "user_id": get_request_user_id(req),
+            "external_session_id": get_request_external_session_id(req),
+            "scoped_session_id": req.session_id,
             "original_query": state.get("original_query") or req.query,
             "effective_query": state.get("query"),
             "rewritten_query": state.get("rewritten_query"),
@@ -376,12 +390,15 @@ class RagAgentPipeline:
                 user_content=state.get("original_query") or req.query,
                 assistant_content=answer,
                 metadata=metadata,
+                user_id=get_request_user_id(req),
             )
             logger.info(
                 "rag_agent_persistence %s",
                 format_log_fields(
                     event="rag_agent.persistence.turn_saved",
+                    user_id=get_request_user_id(req),
                     session_id=req.session_id,
+                    external_session_id=get_request_external_session_id(req),
                     operation=operation,
                     source_count=source_count,
                     query_rewrite_reason=state.get("query_rewrite_reason"),
@@ -394,7 +411,9 @@ class RagAgentPipeline:
                 "rag_agent_persistence %s",
                 format_log_fields(
                     event="rag_agent.persistence.turn_save_failed",
+                    user_id=get_request_user_id(req),
                     session_id=req.session_id,
+                    external_session_id=get_request_external_session_id(req),
                     operation=operation,
                     error_type=type(exc).__name__,
                 ),

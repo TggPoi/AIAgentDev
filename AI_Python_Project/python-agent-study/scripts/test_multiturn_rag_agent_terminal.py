@@ -18,6 +18,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Conversation session_id. Defaults to a generated value.",
     )
+    # 支持 --user-id 测试隔离。
+    parser.add_argument(
+        "--user-id",
+        default="anonymous",
+        help="Value sent as X-Demo-User-Id for phase 14-9 user/session isolation.",
+    )
     parser.add_argument(
         "--mode",
         default="hybrid",
@@ -64,6 +70,7 @@ def print_source_summary(body: dict[str, object]) -> None:
 
 def request_rag_chat(
     base_url: str,
+    user_id: str,
     session_id: str,
     query: str,
     mode: str,
@@ -81,6 +88,7 @@ def request_rag_chat(
     response = requests.post(
         f"{base_url.rstrip('/')}/rag/chat",
         json=payload,
+        headers={"X-Demo-User-Id": user_id},
         timeout=timeout_seconds,
     )
     response.raise_for_status()
@@ -92,6 +100,7 @@ def main() -> int:
     session_id = args.session_id or f"terminal-14-11-{uuid4().hex[:8]}"
 
     print(f"base_url={args.base_url.rstrip('/')}")
+    print(f"user_id={args.user_id}")
     print(f"session_id={session_id}")
     print("输入问题后按 Enter；输入 exit 或 quit 结束。")
 
@@ -106,6 +115,7 @@ def main() -> int:
         try:
             body = request_rag_chat(
                 base_url=args.base_url,
+                user_id=args.user_id,
                 session_id=session_id,
                 query=query,
                 mode=args.mode,

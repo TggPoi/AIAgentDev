@@ -9,8 +9,14 @@ from fast_app.core.error_responses import (
     build_internal_error_response_content,
 )
 from fast_app.dependencies.rag_dependencies import get_rag_pipeline
+from fast_app.dependencies.user_context import get_current_user_context
+from fast_app.domain.user_context import CurrentUserContext
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
 from fast_app.services.exceptions import AppServiceError
+from fast_app.services.conversation_scope import (
+    get_request_external_session_id,
+    scope_rag_chat_request,
+)
 from fast_app.services.rag_pipeline_service import RagPipeline
 
 from fast_app.core.logging import format_log_fields, get_logger
@@ -32,13 +38,20 @@ router = APIRouter(prefix="/rag", tags=["rag-chat"])
 @router.post("/chat", response_model=RagChatResponse)
 async def rag_chat_endpoint(
     req: RagChatRequest,
+    user: CurrentUserContext = Depends(get_current_user_context),
     pipeline: RagPipeline = Depends(get_rag_pipeline),
 ) -> RagChatResponse:
     start_time = perf_counter()
+    # 生成 scoped conversation id
+    scoped_req = scope_rag_chat_request(req=req, user=user)
     logger.info(
         "rag_chat_request %s",
         format_log_fields(
             event="rag.chat.request.start",
+            user_id=user.user_id,
+            auth_source=user.auth_source,
+            session_id=scoped_req.session_id,
+            external_session_id=get_request_external_session_id(scoped_req),
             query=req.query,
             mode=req.mode,
             top_k=req.top_k,
@@ -48,13 +61,17 @@ async def rag_chat_endpoint(
     )
 
     try:
-        response = await pipeline.run(req)
+        response = await pipeline.run(scoped_req)
     except Exception as exc:
         latency_ms = (perf_counter() - start_time) * 1000
         logger.exception(
             "rag_chat_request %s",
             format_log_fields(
                 event="rag.chat.request.failed",
+                user_id=user.user_id,
+                auth_source=user.auth_source,
+                session_id=scoped_req.session_id,
+                external_session_id=get_request_external_session_id(scoped_req),
                 query=req.query,
                 mode=req.mode,
                 top_k=req.top_k,
@@ -74,6 +91,10 @@ async def rag_chat_endpoint(
         "rag_chat_request %s",
         format_log_fields(
             event="rag.chat.request.finish",
+            user_id=user.user_id,
+            auth_source=user.auth_source,
+            session_id=scoped_req.session_id,
+            external_session_id=get_request_external_session_id(scoped_req),
             query=req.query,
             mode=req.mode,
             top_k=req.top_k,
@@ -118,10 +139,12 @@ async def rag_chat_sse_event_generator(
 @router.post("/chat/stream")
 async def rag_chat_stream_endpoint(
     req: RagChatRequest,
+    user: CurrentUserContext = Depends(get_current_user_context),
     pipeline: RagPipeline = Depends(get_rag_pipeline),
 ) -> StreamingResponse:
+    scoped_req = scope_rag_chat_request(req=req, user=user)
     return StreamingResponse(
-        rag_chat_sse_event_generator(req, pipeline),
+        rag_chat_sse_event_generator(scoped_req, pipeline),
         media_type="text/event-stream",
     )
 
@@ -170,9 +193,11 @@ async def rag_chat_structured_sse_event_generator(
 @router.post("/chat/stream/events")
 async def rag_chat_stream_events_endpoint(
     req: RagChatRequest,
+    user: CurrentUserContext = Depends(get_current_user_context),
     pipeline: RagPipeline = Depends(get_rag_pipeline),
 ) -> StreamingResponse:
+    scoped_req = scope_rag_chat_request(req=req, user=user)
     return StreamingResponse(
-        rag_chat_structured_sse_event_generator(req, pipeline),
+        rag_chat_structured_sse_event_generator(scoped_req, pipeline),
         media_type="text/event-stream",
     )

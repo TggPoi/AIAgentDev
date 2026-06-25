@@ -105,10 +105,57 @@ class PostgresConversationRepository:
 
         return [_table_to_message(row) for row in rows]
 
+    async def list_messages_for_user(
+        self,
+        conversation_id: str,
+        user_id: str,
+        limit: int,
+        offset: int = 0,
+    ) -> list[ConversationMessage]:
+        """按 user_id + conversation_id 读取消息，避免裸 session_id 越权。"""
+
+        if limit <= 0:
+            return []
+
+        stmt: Select[tuple[ConversationMessageTable]] = (
+            select(ConversationMessageTable)
+            .join(ConversationTable)
+            .where(
+                ConversationMessageTable.conversation_id == conversation_id,
+                ConversationTable.user_id == user_id,
+            )
+            .order_by(
+                ConversationMessageTable.created_at.asc(),
+                ConversationMessageTable.id.asc(),
+            )
+            .offset(max(offset, 0))
+            .limit(limit)
+        )
+        rows = (await self._session.scalars(stmt)).all()
+
+        return [_table_to_message(row) for row in rows]
+
     async def get_conversation(self, conversation_id: str) -> Conversation | None:
         """按 ID 读取会话容器；不存在时返回 None。"""
 
         row = await self._session.get(ConversationTable, conversation_id)
+        if row is None:
+            return None
+
+        return _table_to_conversation(row)
+
+    async def get_conversation_for_user(
+        self,
+        conversation_id: str,
+        user_id: str,
+    ) -> Conversation | None:
+        """按 user_id + conversation_id 读取会话容器。"""
+
+        stmt: Select[tuple[ConversationTable]] = select(ConversationTable).where(
+            ConversationTable.id == conversation_id,
+            ConversationTable.user_id == user_id,
+        )
+        row = await self._session.scalar(stmt)
         if row is None:
             return None
 
