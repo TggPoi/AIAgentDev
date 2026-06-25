@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import sys
+from typing import Any, cast
 from uuid import uuid4
 
 from fast_app.components.llms.mock_llm_client import MockLLMClient
@@ -23,6 +24,31 @@ FIRST_TURN_QUERY = "什么是混合检索？"
 FIRST_TURN_ANSWER = "混合检索会结合向量检索和关键词检索。"
 SECOND_TURN_QUERY = "它和只用向量检索有什么区别？"
 EXPECTED_TOPIC = "混合检索"
+
+
+class RecordingConversationPersistence:
+    """Record save_turn calls without requiring a real PostgreSQL connection."""
+
+    def __init__(self) -> None:
+        self.saved_turns: list[dict[str, Any]] = []
+
+    async def save_turn(
+        self,
+        conversation_id: str,
+        user_content: str,
+        assistant_content: str,
+        metadata: dict[str, object],
+        user_id: str | None = None,
+    ) -> None:
+        self.saved_turns.append(
+            {
+                "conversation_id": conversation_id,
+                "user_content": user_content,
+                "assistant_content": assistant_content,
+                "metadata": metadata,
+                "user_id": user_id,
+            }
+        )
 
 
 def print_field(name: str, value: object) -> None:
@@ -60,6 +86,7 @@ def build_history_window() -> ConversationHistoryWindow:
 def build_pipeline(
     settings: Settings,
     store: InMemoryConversationMemoryStore,
+    persistence: RecordingConversationPersistence | None = None,
 ) -> RagAgentPipeline:
     """Build an in-process RAG Agent pipeline focused on memory/rewrite behavior."""
 
@@ -71,6 +98,7 @@ def build_pipeline(
         reranker=MockReranker(),
         conversation_memory_store=store,
         query_rewriter=ConversationQueryRewriter.from_settings(settings),
+        conversation_persistence=cast(Any, persistence),
     )
 
 
@@ -152,7 +180,8 @@ async def assert_multiturn_run(settings: Settings, timeout_seconds: float) -> No
 
 async def assert_stream_contracts(settings: Settings, timeout_seconds: float) -> None:
     store = InMemoryConversationMemoryStore()
-    pipeline = build_pipeline(settings=settings, store=store)
+    persistence = RecordingConversationPersistence()
+    pipeline = build_pipeline(settings=settings, store=store, persistence=persistence)
     session_id = f"verify-14-10-stream-{uuid4().hex[:8]}"
 
     await pipeline.run(
@@ -176,9 +205,11 @@ async def assert_stream_contracts(settings: Settings, timeout_seconds: float) ->
             token_items.append(token)
 
     messages_after_stream = await store.list_recent_messages(session_id, 10)
+    stream_saved_turn = persistence.saved_turns[-1]
     print(f"stream_item_type_all_str={all(isinstance(item, str) for item in token_items)}")
     print(f"stream_token_count={len(token_items)}")
     print(f"messages_after_stream={len(messages_after_stream)}")
+    print(f"stream_persistence_operation={stream_saved_turn['metadata'].get('operation')}")
 
     require(token_items, "expected stream to produce tokens")
     require(
@@ -188,6 +219,10 @@ async def assert_stream_contracts(settings: Settings, timeout_seconds: float) ->
     require(
         len(messages_after_stream) == 4,
         "expected stream turn to save messages after completion",
+    )
+    require(
+        stream_saved_turn["metadata"].get("operation") == "stream",
+        "expected stream turn to be persisted with operation=stream",
     )
 
     event_names: list[str] = []
@@ -202,10 +237,15 @@ async def assert_stream_contracts(settings: Settings, timeout_seconds: float) ->
             event_names.append(event.event)
 
     messages_after_stream_events = await store.list_recent_messages(session_id, 20)
+    stream_events_saved_turn = persistence.saved_turns[-1]
     print(f"stream_events_first={event_names[0] if event_names else '<none>'}")
     print(f"stream_events_has_token={'token' in event_names}")
     print(f"stream_events_count={len(event_names)}")
     print(f"messages_after_stream_events={len(messages_after_stream_events)}")
+    print(
+        "stream_events_persistence_operation="
+        f"{stream_events_saved_turn['metadata'].get('operation')}"
+    )
 
     require(event_names, "expected stream_events to produce events")
     require(event_names[0] == "sources", "expected first stream_events event to be sources")
@@ -213,6 +253,10 @@ async def assert_stream_contracts(settings: Settings, timeout_seconds: float) ->
     require(
         len(messages_after_stream_events) == 6,
         "expected stream_events turn to save messages after completion",
+    )
+    require(
+        stream_events_saved_turn["metadata"].get("operation") == "stream_events",
+        "expected stream_events turn to be persisted with operation=stream_events",
     )
 
 

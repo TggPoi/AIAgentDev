@@ -334,21 +334,28 @@ class RagAgentPipeline:
                 ),
             )
 
-    async def _persist_conversation_turn_for_run(
+    async def _persist_conversation_turn(
         self,
         req: RagChatRequest,
         state: RagAgentState,
         answer: str,
         source_count: int,
+        operation: RagAgentOperation,
+        raise_on_error: bool,
     ) -> None:
-        """把非流式 /rag/chat 的当前轮持久化到 PostgreSQL。"""
+        """把当前轮 user / assistant 消息持久化到 PostgreSQL。
+
+        非流式 run 在响应返回前完成持久化，失败时继续抛错。
+        流式入口通常已经把 token 发给客户端，持久化失败只记录日志，避免破坏
+        已经完成的 token-only / stream_events SSE 协议。
+        """
 
         if req.session_id is None or self.conversation_persistence is None:
             return
 
         metadata = {
             "pipeline_provider": "rag_agent",
-            "operation": "run",
+            "operation": operation,
             "original_query": state.get("original_query") or req.query,
             "effective_query": state.get("query"),
             "rewritten_query": state.get("rewritten_query"),
@@ -375,7 +382,7 @@ class RagAgentPipeline:
                 format_log_fields(
                     event="rag_agent.persistence.turn_saved",
                     session_id=req.session_id,
-                    operation="run",
+                    operation=operation,
                     source_count=source_count,
                     query_rewrite_reason=state.get("query_rewrite_reason"),
                     summary_used=state.get("summary_used", False),
@@ -388,11 +395,12 @@ class RagAgentPipeline:
                 format_log_fields(
                     event="rag_agent.persistence.turn_save_failed",
                     session_id=req.session_id,
-                    operation="run",
+                    operation=operation,
                     error_type=type(exc).__name__,
                 ),
             )
-            raise
+            if raise_on_error:
+                raise
 
     async def run(self, req: RagChatRequest) -> RagChatResponse:
         # 非流式入口可以直接运行 compiled graph，最后把 final_state 转成 API response。
@@ -430,11 +438,13 @@ class RagAgentPipeline:
             )
 
             # postgreSQL写入
-            await self._persist_conversation_turn_for_run(
+            await self._persist_conversation_turn(
                 req=req,
                 state=final_state,
                 answer=answer,
                 source_count=len(docs),
+                operation="run",
+                raise_on_error=True,
             )
         except Exception as exc:
             latency_ms = (perf_counter() - start_time) * 1000
@@ -595,6 +605,14 @@ class RagAgentPipeline:
                 answer=answer,
                 source_count=len(state.get("docs") or []),
             )
+            await self._persist_conversation_turn(
+                req=req,
+                state=state,
+                answer=answer,
+                source_count=len(state.get("docs") or []),
+                operation="stream",
+                raise_on_error=False,
+            )
 
             latency_ms = (perf_counter() - start_time) * 1000
             log_slow_operation(
@@ -649,11 +667,20 @@ class RagAgentPipeline:
                     }
                 )
 
+        answer = "".join(answer_parts)
         await self._save_conversation_turn(
             req=req,
             state=state,
-            answer="".join(answer_parts),
+            answer=answer,
             source_count=len(context.docs),
+        )
+        await self._persist_conversation_turn(
+            req=req,
+            state=state,
+            answer=answer,
+            source_count=len(context.docs),
+            operation="stream",
+            raise_on_error=False,
         )
 
         latency_ms = (perf_counter() - start_time) * 1000
@@ -730,6 +757,14 @@ class RagAgentPipeline:
                 state=state,
                 answer=answer,
                 source_count=0,
+            )
+            await self._persist_conversation_turn(
+                req=req,
+                state=state,
+                answer=answer,
+                source_count=0,
+                operation="stream_events",
+                raise_on_error=False,
             )
 
             latency_ms = (perf_counter() - start_time) * 1000
@@ -819,11 +854,20 @@ class RagAgentPipeline:
                     }
                 )
 
+        answer = "".join(answer_parts)
         await self._save_conversation_turn(
             req=req,
             state=state,
-            answer="".join(answer_parts),
+            answer=answer,
             source_count=len(context.docs),
+        )
+        await self._persist_conversation_turn(
+            req=req,
+            state=state,
+            answer=answer,
+            source_count=len(context.docs),
+            operation="stream_events",
+            raise_on_error=False,
         )
 
         latency_ms = (perf_counter() - start_time) * 1000
