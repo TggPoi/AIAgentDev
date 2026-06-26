@@ -7,6 +7,8 @@ from collections.abc import Iterator
 
 import requests
 
+AUTH_HEADERS: dict[str, str] = {}
+
 
 @dataclass(frozen=True)
 class RagChatScenario:
@@ -63,13 +65,28 @@ def build_headers(
     request_id: str | None = None,
     debug_trace_token: str | None = None,
 ) -> dict[str, str]:
-    headers: dict[str, str] = {}
+    headers: dict[str, str] = dict(AUTH_HEADERS)
 
     if request_id:
         headers["X-Request-ID"] = request_id
 
     if debug_trace_token:
         headers["X-Debug-Trace-Token"] = debug_trace_token
+
+    return headers
+
+
+def build_auth_headers(args: argparse.Namespace) -> dict[str, str]:
+    headers: dict[str, str] = {}
+
+    if args.api_key:
+        headers["X-API-Key"] = args.api_key
+
+    if args.bearer_token:
+        headers["Authorization"] = f"Bearer {args.bearer_token}"
+
+    if args.demo_user_id:
+        headers["X-Demo-User-Id"] = args.demo_user_id
 
     return headers
 
@@ -836,6 +853,21 @@ def parse_args() -> argparse.Namespace:
         help="写入 X-Request-ID 请求头；用于和后端日志 / LangSmith metadata 对齐",
     )
     parser.add_argument(
+        "--api-key",
+        default=None,
+        help="写入 X-API-Key 请求头；服务端 AUTH_ENABLED=true 时使用",
+    )
+    parser.add_argument(
+        "--bearer-token",
+        default=None,
+        help="写入 Authorization: Bearer 请求头；服务端 AUTH_ENABLED=true 时使用",
+    )
+    parser.add_argument(
+        "--demo-user-id",
+        default=None,
+        help="写入 X-Demo-User-Id 请求头；仅用于本地演示或兼容阶段 14-9",
+    )
+    parser.add_argument(
         "--request-id-prefix",
         default="langsmith-phase9",
         help="批量场景生成 X-Request-ID 时使用的前缀",
@@ -955,10 +987,12 @@ def test_rag_agent_suite(args: argparse.Namespace, base_url: str) -> None:
 
 
 def main() -> int:
+    global AUTH_HEADERS
     args = parse_args()
     base_url = args.base_url.rstrip("/")
     payload = build_payload(args)
     error_payload = build_no_result_payload(args)
+    AUTH_HEADERS = build_auth_headers(args)
 
     try:
         if args.phase9_langsmith_suite:

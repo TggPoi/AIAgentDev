@@ -92,6 +92,22 @@ class Settings(BaseSettings):
         alias="CORS_ALLOW_ORIGINS",
     )
 
+    # 基础认证配置。默认关闭，保留本地学习和 mock 验证体验。
+    # 开启后，RAG Chat 主接口需要 X-API-Key 或 Authorization: Bearer token。
+    auth_enabled: bool = Field(default=False, alias="AUTH_ENABLED")
+    auth_api_keys: str = Field(default="", alias="AUTH_API_KEYS")
+    auth_bearer_tokens: str = Field(default="", alias="AUTH_BEARER_TOKENS")
+    auth_allow_demo_user_header: bool = Field(
+        default=False,
+        alias="AUTH_ALLOW_DEMO_USER_HEADER",
+    )
+    # HTTP 请求体大小上限。用于在进入 Pydantic / RAG Pipeline 前拒绝超大 body。
+    max_request_body_bytes: int = Field(
+        default=64 * 1024,
+        ge=1024,
+        alias="MAX_REQUEST_BODY_BYTES",
+    )
+
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
 
     openai_base_url: str = Field(
@@ -373,7 +389,23 @@ class Settings(BaseSettings):
             for tag in self.langsmith_tags.split(",")
             if tag.strip()
         ]
+
+    @property
+    def auth_api_key_list(self) -> list[str]:
+        return _split_csv_secret_values(self.auth_api_keys)
+
+    @property
+    def auth_bearer_token_list(self) -> list[str]:
+        return _split_csv_secret_values(self.auth_bearer_tokens)
     
+
+
+def _split_csv_secret_values(raw_value: str) -> list[str]:
+    return [
+        item.strip()
+        for item in raw_value.split(",")
+        if item.strip()
+    ]
 
 
 # @lru_cache 第一次调用 get_settings() 时创建 Settings。后续再次调用，直接返回第一次创建好的对象。

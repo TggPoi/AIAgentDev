@@ -24,6 +24,13 @@ class NoSearchResultError(AppServiceError):
     status_code = 404
 
 
+class AuthenticationError(AppServiceError):
+    """认证失败。"""
+
+    error_code = "AUTHENTICATION_FAILED"
+    status_code = 401
+
+
 class ExternalServiceError(AppServiceError):
     """外部服务调用失败。"""
 

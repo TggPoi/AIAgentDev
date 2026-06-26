@@ -16,6 +16,7 @@ from fast_app.core.langsmith import configure_langsmith
 from fast_app.core.logging import get_logger, setup_logging
 from fast_app.core.request_context import REQUEST_ID_HEADER
 from fast_app.middlewares.request_id_middleware import RequestIdMiddleware
+from fast_app.middlewares.request_size_middleware import RequestSizeLimitMiddleware
 
 from fast_app.core.exception_handlers import register_exception_handlers
 import httpx
@@ -113,6 +114,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=[REQUEST_ID_HEADER],
+)
+app.add_middleware(
+    RequestSizeLimitMiddleware,
+    max_body_bytes=settings.max_request_body_bytes,
 )
 app.add_middleware(
     RequestIdMiddleware,

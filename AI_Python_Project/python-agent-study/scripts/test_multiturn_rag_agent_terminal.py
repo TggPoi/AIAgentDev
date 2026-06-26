@@ -25,6 +25,16 @@ def parse_args() -> argparse.Namespace:
         help="Value sent as X-Demo-User-Id for phase 14-9 user/session isolation.",
     )
     parser.add_argument(
+        "--api-key",
+        default=None,
+        help="Value sent as X-API-Key when AUTH_ENABLED=true.",
+    )
+    parser.add_argument(
+        "--bearer-token",
+        default=None,
+        help="Value sent as Authorization: Bearer when AUTH_ENABLED=true.",
+    )
+    parser.add_argument(
         "--mode",
         default="hybrid",
         choices=["vector", "keyword", "hybrid"],
@@ -71,6 +81,8 @@ def print_source_summary(body: dict[str, object]) -> None:
 def request_rag_chat(
     base_url: str,
     user_id: str,
+    api_key: str | None,
+    bearer_token: str | None,
     session_id: str,
     query: str,
     mode: str,
@@ -85,10 +97,16 @@ def request_rag_chat(
         "top_k": top_k,
         "min_score": min_score,
     }
+    headers = {"X-Demo-User-Id": user_id}
+    if api_key:
+        headers["X-API-Key"] = api_key
+    if bearer_token:
+        headers["Authorization"] = f"Bearer {bearer_token}"
+
     response = requests.post(
         f"{base_url.rstrip('/')}/rag/chat",
         json=payload,
-        headers={"X-Demo-User-Id": user_id},
+        headers=headers,
         timeout=timeout_seconds,
     )
     response.raise_for_status()
@@ -101,6 +119,8 @@ def main() -> int:
 
     print(f"base_url={args.base_url.rstrip('/')}")
     print(f"user_id={args.user_id}")
+    print(f"api_key_enabled={args.api_key is not None}")
+    print(f"bearer_token_enabled={args.bearer_token is not None}")
     print(f"session_id={session_id}")
     print("输入问题后按 Enter；输入 exit 或 quit 结束。")
 
@@ -116,6 +136,8 @@ def main() -> int:
             body = request_rag_chat(
                 base_url=args.base_url,
                 user_id=args.user_id,
+                api_key=args.api_key,
+                bearer_token=args.bearer_token,
                 session_id=session_id,
                 query=query,
                 mode=args.mode,
