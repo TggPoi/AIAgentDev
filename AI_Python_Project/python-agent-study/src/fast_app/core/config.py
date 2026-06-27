@@ -101,6 +101,21 @@ class Settings(BaseSettings):
         default=False,
         alias="AUTH_ALLOW_DEMO_USER_HEADER",
     )
+    jwt_secret_key: str = Field(default="", alias="JWT_SECRET_KEY")
+    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    jwt_issuer: str = Field(default="python-agent-study", alias="JWT_ISSUER")
+    jwt_audience: str = Field(default="python-agent-study-api", alias="JWT_AUDIENCE")
+    jwt_access_token_expire_minutes: int = Field(
+        default=30,
+        ge=1,
+        alias="JWT_ACCESS_TOKEN_EXPIRE_MINUTES",
+    )
+    jwt_refresh_token_expire_days: int = Field(
+        default=14,
+        ge=1,
+        alias="JWT_REFRESH_TOKEN_EXPIRE_DAYS",
+    )
+    api_key_pepper: str = Field(default="", alias="API_KEY_PEPPER")
     # HTTP 请求体大小上限。用于在进入 Pydantic / RAG Pipeline 前拒绝超大 body。
     max_request_body_bytes: int = Field(
         default=64 * 1024,

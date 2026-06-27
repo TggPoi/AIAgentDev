@@ -23,6 +23,8 @@ from fast_app.services.conversation_summary import ConversationSummaryService
 from fast_app.services.query_rewrite import ConversationQueryRewriter
 from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
 from fast_app.services.rag_pipeline_service import RagPipeline
+from fast_app.services.auth_service import AuthService
+from fast_app.services.user_repository import UserRepository
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingClient
@@ -191,6 +193,23 @@ def get_conversation_persistence_service(
     """提供 PostgreSQL 会话持久化服务。"""
 
     return ConversationPersistenceService(repository=repository)
+
+
+def get_user_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> UserRepository:
+    """提供用户身份体系仓储。"""
+
+    return UserRepository(session=session)
+
+
+def get_auth_service(
+    settings: Settings = Depends(get_settings),
+    repository: UserRepository = Depends(get_user_repository),
+) -> AuthService:
+    """提供认证业务服务。"""
+
+    return AuthService(settings=settings, repository=repository)
 
 
 
