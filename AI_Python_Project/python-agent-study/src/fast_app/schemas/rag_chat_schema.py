@@ -2,6 +2,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
+from fast_app.domain.knowledge_permissions import RetrievalPermissionScope
+
 
 RetrievalMode = Literal["vector", "keyword", "hybrid"]
 
@@ -17,6 +19,11 @@ class RagChatRequest(BaseModel):
     # 阶段 14-9 用它承载认证层解析出的用户上下文，避免把 user_id 暴露成客户端可伪造字段。
     _current_user_id: str | None = PrivateAttr(default=None)
     _external_session_id: str | None = PrivateAttr(default=None)
+    # 阶段 15-3 用它承载服务端生成的知识库权限范围。
+    # 客户端不能通过请求体伪造 allowed_departments / allowed_users 等权限字段。
+    _retrieval_permission_scope: RetrievalPermissionScope | None = PrivateAttr(
+        default=None
+    )
 
     session_id: str | None = Field(
         default=None,

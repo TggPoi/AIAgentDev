@@ -34,6 +34,9 @@ from fast_app.graph.rag_graph_nodes import (
     should_retrieve_for_query,
 )
 from fast_app.services.exceptions import ExternalServiceError
+from fast_app.services.knowledge_permission_policy import (
+    build_retrieval_filters_from_mapping,
+)
 from fast_app.services.rag_pipeline_service import build_rag_context, build_top_doc_ids
 
 
@@ -144,20 +147,8 @@ def build_rag_agent_retrieval_filters(state: RagAgentState) -> RetrievalFilters:
     # HTTP schema 的 filters 在 initial_state 中已经 model_dump 成 dict。
     # 这里再转回内部 RetrievalFilters，供 knowledge_retrieval helper 使用。
     raw_filters = state.get("filters", {})
-    filters = raw_filters if isinstance(raw_filters, dict) else {}
-
-    raw_section_path = filters.get("section_path") or []
-    section_path = (
-        [str(item) for item in raw_section_path]
-        if isinstance(raw_section_path, list)
-        else []
-    )
-    source_path = filters.get("source_path")
-
-    return RetrievalFilters(
-        source_path=str(source_path) if source_path else None,
-        section_path=section_path,
-    )
+    filters = raw_filters if isinstance(raw_filters, dict) else None
+    return build_retrieval_filters_from_mapping(filters)
 
 
 def build_loop_limit_error_decision(reason: str) -> AgentErrorDecision:

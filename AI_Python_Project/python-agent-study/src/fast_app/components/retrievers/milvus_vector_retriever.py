@@ -23,42 +23,113 @@ from fast_app.ingestion.rag_store_schema import (
 
 logger = get_logger(__name__)
 
-# 检索结果转换同时返回 docs 和 skipped_hit_count。
 @dataclass
 class MilvusConvertResult:
+    """Milvus 原始结果转换后的内部结果。
+
+    docs 是成功转换为 RetrievedDoc 的结果；skipped_hit_count 记录因为缺少 id
+    或 content 被跳过的 hit 数，便于从日志判断 collection 中是否存在脏数据。
+    """
+
     docs: list[RetrievedDoc]
-    # 因为缺少 id / content 被跳过的 hit 数量
     skipped_hit_count: int
 
 
 def build_milvus_uri(host: str, port: int) -> str:
+    """根据 Milvus host / port 拼出 pymilvus 客户端使用的 HTTP URI。"""
+
     return f"http://{host}:{port}"
 
 
 def escape_milvus_string(value: str) -> str:
+    """转义 Milvus filter 表达式中的字符串值。
+
+    Milvus filter 是字符串表达式，用户输入或 metadata 值中如果包含反斜杠、双引号，
+    需要先转义，避免生成非法表达式或改变过滤条件语义。
+    """
+
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def build_milvus_filter_expr(filters: RetrievalFilters) -> str | None:
+    """把内部 RetrievalFilters 转成 Milvus filter 表达式。
+
+    source_path / section_path 是业务过滤条件；permission_expr 是服务端权限条件。
+    这些条件用 and 组合，表示“既要满足用户查询范围，也要满足访问权限”。
+    """
+
     expressions: list[str] = []
 
     if filters.source_path:
+        # source_path 是 Milvus 顶层 scalar 字段，可以直接使用等值过滤。
         source_path = escape_milvus_string(filters.source_path)
         expressions.append(f'{MILVUS_SOURCE_PATH_FIELD} == "{source_path}"')
 
     if filters.section_path:
+        # section_path 存在 metadata JSON 数组中。这里只取最后一级章节名，和当前 ES
+        # 侧的 section_path 过滤语义保持一致。
         section_path = escape_milvus_string(filters.section_path[-1])
         expressions.append(
             f'array_contains({MILVUS_METADATA_FIELD}["section_path"], "{section_path}")'
         )
+
+    permission_expr = build_milvus_permission_filter_expr(filters)
+    if permission_expr is not None:
+        expressions.append(permission_expr)
 
     if not expressions:
         return None
 
     return " and ".join(expressions)
 
-# 统计 Milvus 原始 hit 数量
+
+def build_milvus_permission_filter_expr(filters: RetrievalFilters) -> str | None:
+    """构造 Milvus 文档权限过滤表达式。
+
+    can_read_all=True 表示管理员或 knowledge:read:all 用户，不附加权限 filter。
+    普通用户只能召回 public 文档、所属部门文档，或 allowed_users 中显式包含自己的
+    文档。这个表达式会下推到 Milvus search 阶段，而不是召回后再做 Python 后过滤。
+    """
+
+    if filters.can_read_all:
+        return None
+
+    permission_expressions: list[str] = []
+
+    if filters.allow_public:
+        # public 文档是普通认证用户默认可见的跨部门文档。
+        permission_expressions.append(
+            f'{MILVUS_METADATA_FIELD}["visibility"] == "public"'
+        )
+
+    for department_code in filters.department_codes:
+        # 一个用户可以属于多个部门；任一部门命中 allowed_departments 即可访问。
+        escaped_department_code = escape_milvus_string(department_code)
+        permission_expressions.append(
+            f'array_contains({MILVUS_METADATA_FIELD}["allowed_departments"], "{escaped_department_code}")'
+        )
+
+    if filters.user_id:
+        # allowed_users 用于单篇文档显式授权给某个用户的场景。
+        user_id = escape_milvus_string(filters.user_id)
+        permission_expressions.append(
+            f'array_contains({MILVUS_METADATA_FIELD}["allowed_users"], "{user_id}")'
+        )
+
+    if not permission_expressions:
+        # 没有任何可访问范围时，返回一个必定不命中的表达式，避免误放开权限。
+        return f'{MILVUS_METADATA_FIELD}["visibility"] == "__deny_all__"'
+
+    return "(" + " or ".join(permission_expressions) + ")"
+
+
 def count_milvus_hits(results: list) -> int:
+    """统计 Milvus 原始 hit 数量。
+
+    当前检索一次只传入一个 query vector，因此 pymilvus 返回结构通常是
+    results[0] 对应该 query 的命中列表。
+    """
+
     if not results:
         return 0
 
@@ -66,6 +137,8 @@ def count_milvus_hits(results: list) -> int:
 
 
 def build_top_doc_ids(docs: list[RetrievedDoc], limit: int = 5) -> list[str]:
+    """提取前几个 doc id 写入日志，避免日志输出完整文档内容。"""
+
     return [doc.id for doc in docs[:limit]]
 
 
@@ -76,6 +149,13 @@ class MilvusVectorRetriever(BaseRetriever):
         embedding_client: BaseEmbeddingClient,
         client: MilvusClient | None = None,
     ):
+        """初始化 Milvus 向量检索器。
+
+        embedding_client 负责把 query 转成向量；MilvusClient 负责向量召回。
+        FastAPI lifespan 中通常会注入复用 client，测试或脚本场景也可以让 retriever
+        根据 settings 自行创建 client。
+        """
+
         self.settings = settings
         self.embedding_client = embedding_client
 
@@ -94,6 +174,13 @@ class MilvusVectorRetriever(BaseRetriever):
         query: str,
         options: RetrievalOptions,
     ) -> list[RetrievedDoc]:
+        """执行 Milvus 向量检索并返回统一 RetrievedDoc。
+
+        主流程是：生成 query embedding、校验向量维度、构造 Milvus filter、
+        执行 search、把原始 hits 转换成 RAG 主链路使用的 RetrievedDoc。日志会记录
+        embedding 耗时、filter_expr、output_fields、命中数和跳过数，方便排查召回与权限问题。
+        """
+
         total_start_time = perf_counter()
         filter_expr: str | None = None
         output_fields: list[str] = []
@@ -135,7 +222,7 @@ class MilvusVectorRetriever(BaseRetriever):
                     f"actual={len(query_vector)}, settings={self.settings.embedding_dim}"
                 )
 
-            # 构建过滤条件 milvus filter表达式
+            # 过滤表达式同时包含用户业务过滤和服务端权限过滤。
             filter_expr = build_milvus_filter_expr(options.filters)
             output_fields = options.output_fields or build_milvus_output_fields(self.settings)
 
@@ -158,6 +245,7 @@ class MilvusVectorRetriever(BaseRetriever):
                 data=[query_vector],
                 anns_field=self.settings.milvus_vector_field,
                 limit=options.candidate_k,
+                # filter 会在 Milvus 召回阶段生效，避免无权限文档进入候选集。
                 filter=filter_expr,
                 output_fields=output_fields,
                 search_params={
@@ -205,6 +293,7 @@ class MilvusVectorRetriever(BaseRetriever):
             return docs
 
         except ExternalServiceError:
+            # 业务上已经包装过的外部服务错误直接抛出，避免重复包一层导致定位困难。
             raise
 
         except Exception as exc:
@@ -238,6 +327,13 @@ class MilvusVectorRetriever(BaseRetriever):
             raise ExternalServiceError(f"Milvus 向量检索失败: {exc}") from exc
 
     def _convert_results_to_docs(self, results: list) -> MilvusConvertResult:
+        """把 Milvus 原始 hits 转换成 RAG 主链路使用的 RetrievedDoc。
+
+        Milvus distance 在 COSINE 检索下作为 vector_score 保留，后续 RRF / rerank
+        可以继续使用多阶段分数。metadata 会从 JSON 字段读取，并用顶层字段补齐
+        doc_id、source_path、document_type、chunk_index 等追溯信息。
+        """
+
         if not results:
             return MilvusConvertResult(docs=[], skipped_hit_count=0)
 

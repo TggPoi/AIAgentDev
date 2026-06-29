@@ -86,6 +86,10 @@ def validate_store_write_inputs(
         "source_path",
         "document_type",
         "chunk_index",
+        "visibility",
+        "allowed_departments",
+        "allowed_users",
+        "permission_source",
     ]
 
     for chunk in chunks:

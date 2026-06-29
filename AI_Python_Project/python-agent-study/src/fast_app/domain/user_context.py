@@ -19,6 +19,10 @@ class CurrentUserContext(BaseModel):
     auth_source: AuthSource = "anonymous"
     role: str | None = None
     permissions: list[str] = Field(default_factory=list)
+    # 权限范围字段，参与知识库检索权限判断，一个用户可以拥有多个部门权限
+    department_codes: list[str] = Field(default_factory=list)
+    # 主归属字段，表达用户默认部门，目前不参与检索权限判断 为后续扩展留边界保留
+    primary_department_code: str | None = None
     email: str | None = None
     display_name: str | None = None
     token_id: str | None = None

@@ -18,6 +18,9 @@ from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievedDoc
 from fast_app.graph.rag_graph_state import GraphRagRoute, GraphRagState
 from fast_app.services.exceptions import ExternalServiceError
+from fast_app.services.knowledge_permission_policy import (
+    build_retrieval_filters_from_mapping,
+)
 from fast_app.services.rag_pipeline_service import (
     build_top_doc_ids,
     build_rag_context,
@@ -378,21 +381,8 @@ def create_rerank_node(
 # 构造检索过滤条件
 def build_graph_retrieval_filters(state: GraphRagState) -> RetrievalFilters:
     raw_filters = state.get("filters", {})
-    filters = raw_filters if isinstance(raw_filters, dict) else {}
-    # 提取过滤器中的参数
-    raw_section_path = filters.get("section_path") or []
-    section_path = (
-        [str(item) for item in raw_section_path]
-        if isinstance(raw_section_path, list)
-        else []
-    )
-
-    source_path = filters.get("source_path")
-
-    return RetrievalFilters(
-        source_path=str(source_path) if source_path else None,
-        section_path=section_path,
-    )
+    filters = raw_filters if isinstance(raw_filters, dict) else None
+    return build_retrieval_filters_from_mapping(filters)
 
 # Node Factory **如果直接在 node 里 new，vector_retriever = MockVectorRetriever() **就破坏了阶段 4-7 的可替换组件设计。
 # 外层函数接收组件依赖。内层函数才是真正的 LangGraph node。内层 node 通过闭包使用外层传入的组件。

@@ -44,6 +44,8 @@ class CurrentUserResponse(BaseModel):
     auth_source: str
     role: str | None = None
     permissions: list[str] = Field(default_factory=list)
+    department_codes: list[str] = Field(default_factory=list)
+    primary_department_code: str | None = None
     email: str | None = None
     display_name: str | None = None
     token_id: str | None = None

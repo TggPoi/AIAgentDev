@@ -5,7 +5,7 @@ import asyncio
 
 from fast_app.core.config import get_settings
 from fast_app.db.session import create_database_engine, create_session_factory
-from fast_app.domain.auth_models import UserRole
+from fast_app.domain.auth_models import DepartmentCode, UserRole
 from fast_app.services.auth_service import AuthService
 from fast_app.services.user_repository import UserRepository
 
@@ -26,6 +26,13 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         help="可重复传入，例如 --permission auth:api_keys:create",
+    )
+    parser.add_argument(
+        "--department",
+        action="append",
+        choices=[department.value for department in DepartmentCode],
+        default=[],
+        help="可重复传入，例如 --department development",
     )
     return parser.parse_args()
 
@@ -48,10 +55,22 @@ async def main() -> None:
                 role=UserRole(args.role),
                 permissions=args.permission,
             )
+            for index, department in enumerate(args.department):
+                await repository.add_user_department(
+                    user_id=user.id,
+                    department_code=DepartmentCode(department),
+                    is_primary=index == 0,
+                )
+
+            saved_user = await repository.get_user_by_id(user.id)
             print(f"created_user_id={user.id}")
             print(f"username={user.username}")
             print(f"role={user.role.value}")
             print(f"permissions={','.join(user.permissions)}")
+            print(
+                "departments="
+                f"{','.join(code.value for code in (saved_user.department_codes if saved_user else []))}"
+            )
     finally:
         await engine.dispose()
 

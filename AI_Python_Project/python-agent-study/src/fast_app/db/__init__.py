@@ -4,7 +4,13 @@
 """
 
 from fast_app.db.base import Base
-from fast_app.db.auth_tables import ApiKeyTable, RefreshTokenTable, UserTable
+from fast_app.db.auth_tables import (
+    ApiKeyTable,
+    DepartmentTable,
+    RefreshTokenTable,
+    UserDepartmentTable,
+    UserTable,
+)
 from fast_app.db.conversation_tables import (
     ConversationMessageTable,
     ConversationSummaryTable,
@@ -18,7 +24,9 @@ __all__ = [
     "ConversationMessageTable",
     "ConversationSummaryTable",
     "ConversationTable",
+    "DepartmentTable",
     "RefreshTokenTable",
+    "UserDepartmentTable",
     "UserTable",
     "create_database_engine",
     "create_session_factory",

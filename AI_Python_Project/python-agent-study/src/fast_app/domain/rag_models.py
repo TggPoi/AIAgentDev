@@ -10,6 +10,10 @@ RagMode = Literal["vector", "keyword", "hybrid"]
 class RetrievalFilters:
     source_path: str | None = None
     section_path: list[str] = field(default_factory=list)
+    can_read_all: bool = False
+    user_id: str | None = None
+    department_codes: list[str] = field(default_factory=list)
+    allow_public: bool = True
 
 
 @dataclass

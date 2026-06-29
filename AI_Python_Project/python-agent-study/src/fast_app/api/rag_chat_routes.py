@@ -17,6 +17,7 @@ from fast_app.services.conversation_scope import (
     get_request_external_session_id,
     scope_rag_chat_request,
 )
+from fast_app.services.knowledge_permission_policy import KnowledgePermissionPolicy
 from fast_app.services.rag_pipeline_service import RagPipeline
 
 from fast_app.core.logging import format_log_fields, get_logger
@@ -28,6 +29,7 @@ from fastapi.encoders import jsonable_encoder
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/rag", tags=["rag-chat"])
+knowledge_permission_policy = KnowledgePermissionPolicy()
 
 # pipeline: RagPipeline = Depends(get_rag_pipeline)
 
@@ -43,7 +45,7 @@ async def rag_chat_endpoint(
 ) -> RagChatResponse:
     start_time = perf_counter()
     # 生成 scoped conversation id
-    scoped_req = scope_rag_chat_request(req=req, user=user)
+    scoped_req = prepare_authorized_rag_request(req=req, user=user)
     logger.info(
         "rag_chat_request %s",
         format_log_fields(
@@ -142,7 +144,7 @@ async def rag_chat_stream_endpoint(
     user: CurrentUserContext = Depends(get_current_user_context),
     pipeline: RagPipeline = Depends(get_rag_pipeline),
 ) -> StreamingResponse:
-    scoped_req = scope_rag_chat_request(req=req, user=user)
+    scoped_req = prepare_authorized_rag_request(req=req, user=user)
     return StreamingResponse(
         rag_chat_sse_event_generator(scoped_req, pipeline),
         media_type="text/event-stream",
@@ -196,8 +198,21 @@ async def rag_chat_stream_events_endpoint(
     user: CurrentUserContext = Depends(get_current_user_context),
     pipeline: RagPipeline = Depends(get_rag_pipeline),
 ) -> StreamingResponse:
-    scoped_req = scope_rag_chat_request(req=req, user=user)
+    scoped_req = prepare_authorized_rag_request(req=req, user=user)
     return StreamingResponse(
         rag_chat_structured_sse_event_generator(scoped_req, pipeline),
         media_type="text/event-stream",
     )
+
+
+def prepare_authorized_rag_request(
+    req: RagChatRequest,
+    user: CurrentUserContext,
+) -> RagChatRequest:
+    """生成带会话隔离和知识库权限 scope 的内部请求。"""
+
+    scoped_req = scope_rag_chat_request(req=req, user=user)
+    scoped_req._retrieval_permission_scope = knowledge_permission_policy.build_scope(
+        user
+    )
+    return scoped_req

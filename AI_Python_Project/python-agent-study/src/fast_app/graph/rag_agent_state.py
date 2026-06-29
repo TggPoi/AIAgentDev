@@ -4,6 +4,9 @@ from fast_app.agents.agent_error_policy import AgentErrorDecision
 from fast_app.agents.agent_loop_control import AgentLoopDecision
 from fast_app.domain.rag_models import RagContext, RetrievedDoc
 from fast_app.schemas.rag_chat_schema import RagChatRequest
+from fast_app.services.knowledge_permission_policy import (
+    merge_permission_scope_into_filter_dict,
+)
 
 
 RagAgentMode = Literal["vector", "keyword", "hybrid"]
@@ -83,7 +86,10 @@ def build_rag_agent_initial_state(
         "top_k": req.top_k,
         "candidate_k": req.candidate_k,
         "min_score": req.min_score,
-        "filters": req.filters.model_dump(),
+        "filters": merge_permission_scope_into_filter_dict(
+            filters=req.filters.model_dump(),
+            permission_scope=req._retrieval_permission_scope,
+        ),
         "operation": operation,
         "route": None,
         "route_reason": None,

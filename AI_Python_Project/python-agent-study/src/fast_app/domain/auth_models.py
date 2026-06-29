@@ -31,6 +31,38 @@ class CredentialStatus(StrEnum):
     REVOKED = "revoked"
 
 
+class DepartmentCode(StrEnum):
+    """系统内置部门 code。
+
+    权限字段中使用稳定英文 code，展示层再翻译成中文部门名，避免中文名称调整影响权限判断。
+    """
+
+    ART = "art"
+    PRODUCT_PLANNING = "product_planning"
+    DEVELOPMENT = "development"
+
+
+class Department(BaseModel):
+    """部门领域模型。"""
+
+    id: str
+    code: DepartmentCode
+    name: str
+    description: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class UserDepartment(BaseModel):
+    """用户与部门的多对多关系。"""
+
+    id: str
+    user_id: str
+    department_code: DepartmentCode
+    is_primary: bool = False
+    created_at: datetime | None = None
+
+
 class AuthUser(BaseModel):
     """认证业务使用的用户领域模型。"""
 
@@ -42,6 +74,8 @@ class AuthUser(BaseModel):
     role: UserRole = UserRole.USER
     status: UserStatus = UserStatus.ACTIVE
     permissions: list[str] = Field(default_factory=list)
+    department_codes: list[DepartmentCode] = Field(default_factory=list)
+    primary_department_code: DepartmentCode | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     last_login_at: datetime | None = None
@@ -115,9 +149,12 @@ __all__ = [
     "AuthUser",
     "CreatedApiKey",
     "CredentialStatus",
+    "Department",
+    "DepartmentCode",
     "JwtTokenPair",
     "RefreshTokenRecord",
     "TokenSubject",
+    "UserDepartment",
     "UserRole",
     "UserStatus",
 ]

@@ -26,6 +26,7 @@ class MarkdownDocumentLoader:
                     metadata=build_document_metadata(
                         source_path=source_path,
                         document_type="markdown",
+                        knowledge_base_dir=base_dir,
                     ),
                 )
             )
@@ -48,6 +49,7 @@ class TextDocumentLoader:
                     metadata=build_document_metadata(
                         source_path=source_path,
                         document_type="text",
+                        knowledge_base_dir=base_dir,
                     ),
                 )
             )

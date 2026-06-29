@@ -250,6 +250,15 @@ class AuthService:
             auth_source=auth_source,  # type: ignore[arg-type]
             role=user.role.value,
             permissions=list(user.permissions),
+            department_codes=[
+                department_code.value
+                for department_code in user.department_codes
+            ],
+            primary_department_code=(
+                user.primary_department_code.value
+                if user.primary_department_code is not None
+                else None
+            ),
             email=user.email,
             display_name=user.display_name,
             token_id=token_id,

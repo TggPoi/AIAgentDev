@@ -1,0 +1,34 @@
+{
+  "rules": [
+    {
+      "path_prefix": "public/",
+      "visibility": "public",
+      "allowed_departments": [],
+      "allowed_users": []
+    },
+    {
+      "path_prefix": "art/",
+      "visibility": "department",
+      "allowed_departments": ["art"],
+      "allowed_users": []
+    },
+    {
+      "path_prefix": "product_planning/",
+      "visibility": "department",
+      "allowed_departments": ["product_planning"],
+      "allowed_users": []
+    },
+    {
+      "path_prefix": "development/",
+      "visibility": "department",
+      "allowed_departments": ["development"],
+      "allowed_users": []
+    }
+  ],
+  "default": {
+    "visibility": "public",
+    "allowed_departments": [],
+    "allowed_users": [],
+    "permission_source": "default_policy"
+  }
+}

@@ -5,12 +5,21 @@ from datetime import UTC, datetime
 from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fast_app.db.auth_tables import ApiKeyTable, RefreshTokenTable, UserTable
+from fast_app.db.auth_tables import (
+    ApiKeyTable,
+    DepartmentTable,
+    RefreshTokenTable,
+    UserDepartmentTable,
+    UserTable,
+)
 from fast_app.domain.auth_models import (
     ApiKeyCredential,
     AuthUser,
     CredentialStatus,
+    Department,
+    DepartmentCode,
     RefreshTokenRecord,
+    UserDepartment,
     UserRole,
     UserStatus,
 )
@@ -34,7 +43,10 @@ class UserRepository:
         """按用户 ID 查询用户。"""
 
         row = await self._session.get(UserTable, user_id)
-        return _table_to_user(row) if row is not None else None
+        if row is None:
+            return None
+
+        return await self._table_to_user_with_departments(row)
 
     async def get_user_by_username_or_email(
         self,
@@ -50,7 +62,66 @@ class UserRepository:
             )
         )
         row = await self._session.scalar(stmt)
-        return _table_to_user(row) if row is not None else None
+        if row is None:
+            return None
+
+        return await self._table_to_user_with_departments(row)
+
+    async def list_departments(self) -> list[Department]:
+        """列出系统内所有部门。"""
+
+        stmt: Select[tuple[DepartmentTable]] = select(DepartmentTable).order_by(
+            DepartmentTable.code.asc()
+        )
+        rows = (await self._session.scalars(stmt)).all()
+        return [_table_to_department(row) for row in rows]
+
+    async def get_user_department_codes(
+        self,
+        user_id: str,
+    ) -> tuple[list[DepartmentCode], DepartmentCode | None]:
+        """查询用户所属部门 code 和主部门。"""
+
+        stmt: Select[tuple[UserDepartmentTable]] = (
+            select(UserDepartmentTable)
+            .where(UserDepartmentTable.user_id == user_id)
+            .order_by(UserDepartmentTable.is_primary.desc(), UserDepartmentTable.department_code.asc())
+        )
+        rows = (await self._session.scalars(stmt)).all()
+        department_codes = [
+            DepartmentCode(row.department_code)
+            for row in rows
+        ]
+        primary_department_code = next(
+            (
+                DepartmentCode(row.department_code)
+                for row in rows
+                if row.is_primary
+            ),
+            department_codes[0] if department_codes else None,
+        )
+        return department_codes, primary_department_code
+
+    async def add_user_department(
+        self,
+        user_id: str,
+        department_code: DepartmentCode,
+        is_primary: bool = False,
+    ) -> UserDepartment:
+        """给用户绑定一个部门。"""
+
+        if is_primary:
+            await self._clear_primary_department(user_id)
+
+        row = UserDepartmentTable(
+            id=f"user_dept_{user_id}_{department_code.value}",
+            user_id=user_id,
+            department_code=department_code.value,
+            is_primary=is_primary,
+        )
+        self._session.add(row)
+        await self._commit_or_rollback()
+        return _table_to_user_department(row)
 
     async def update_last_login_at(self, user_id: str) -> None:
         """记录用户最近一次登录时间。"""
@@ -178,6 +249,24 @@ class UserRepository:
             await self._session.rollback()
             raise
 
+    async def _clear_primary_department(self, user_id: str) -> None:
+        stmt: Select[tuple[UserDepartmentTable]] = select(UserDepartmentTable).where(
+            UserDepartmentTable.user_id == user_id,
+            UserDepartmentTable.is_primary.is_(True),
+        )
+        rows = (await self._session.scalars(stmt)).all()
+        for row in rows:
+            row.is_primary = False
+
+    async def _table_to_user_with_departments(self, row: UserTable) -> AuthUser:
+        user = _table_to_user(row)
+        department_codes, primary_department_code = await self.get_user_department_codes(
+            user.id
+        )
+        user.department_codes = department_codes
+        user.primary_department_code = primary_department_code
+        return user
+
 
 def _user_to_table(user: AuthUser) -> UserTable:
     return UserTable(
@@ -208,6 +297,27 @@ def _table_to_user(row: UserTable) -> AuthUser:
         created_at=row.created_at,
         updated_at=row.updated_at,
         last_login_at=row.last_login_at,
+    )
+
+
+def _table_to_department(row: DepartmentTable) -> Department:
+    return Department(
+        id=row.id,
+        code=DepartmentCode(row.code),
+        name=row.name,
+        description=row.description,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _table_to_user_department(row: UserDepartmentTable) -> UserDepartment:
+    return UserDepartment(
+        id=row.id,
+        user_id=row.user_id,
+        department_code=DepartmentCode(row.department_code),
+        is_primary=row.is_primary,
+        created_at=row.created_at,
     )
 
 

@@ -21,6 +21,10 @@ from fast_app.domain.rag_models import RagContext, RetrievalOptions, RetrievedDo
 from fast_app.graph.rag_state import RagState
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse, RagScoreBreakdown, RagSource
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
+from fast_app.services.knowledge_permission_policy import (
+    build_retrieval_filters_from_mapping,
+    merge_permission_scope_into_filter_dict,
+)
 from fast_app.services.retrieval_fusion import reciprocal_rank_fusion
 from fast_app.services.rag_context_builder import build_rag_context
 from fast_app.components.rerankers.base import BaseReranker
@@ -208,14 +212,15 @@ def extract_section_path(doc: RetrievedDoc) -> list[str]:
 # 把 API request 转成内部检索参数
 def build_retrieval_options(req: RagChatRequest) -> RetrievalOptions:
     candidate_k = max(req.candidate_k or req.top_k, req.top_k)
+    filters = merge_permission_scope_into_filter_dict(
+        filters=req.filters.model_dump(),
+        permission_scope=req._retrieval_permission_scope,
+    )
 
     return RetrievalOptions(
         top_k=req.top_k,
         candidate_k=candidate_k,
-        filters=RetrievalFilters(
-            source_path=req.filters.source_path,
-            section_path=req.filters.section_path,
-        ),
+        filters=build_retrieval_filters_from_mapping(filters),
     )
 
 

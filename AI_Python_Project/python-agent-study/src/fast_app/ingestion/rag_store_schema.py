@@ -29,6 +29,10 @@ ES_METADATA_CHUNK_ID_FIELD = "metadata.chunk_id"
 ES_METADATA_SOURCE_PATH_FIELD = "metadata.source_path"
 ES_METADATA_SECTION_PATH_FIELD = "metadata.section_path"
 ES_METADATA_DOCUMENT_TYPE_FIELD = "metadata.document_type"
+ES_METADATA_VISIBILITY_FIELD = "metadata.visibility"
+ES_METADATA_ALLOWED_DEPARTMENTS_FIELD = "metadata.allowed_departments"
+ES_METADATA_ALLOWED_USERS_FIELD = "metadata.allowed_users"
+ES_METADATA_PERMISSION_SOURCE_FIELD = "metadata.permission_source"
 
 
 def build_es_text_field_mapping(with_keyword: bool = False) -> dict[str, Any]:
@@ -66,6 +70,10 @@ def build_es_mappings() -> dict[str, Any]:
                     "source_path": {"type": "keyword"},
                     "section_path": {"type": "keyword"},
                     "document_type": {"type": "keyword"},
+                    "visibility": {"type": "keyword"},
+                    "allowed_departments": {"type": "keyword"},
+                    "allowed_users": {"type": "keyword"},
+                    "permission_source": {"type": "keyword"},
                     "file_name": {"type": "keyword"},
                     "file_extension": {"type": "keyword"},
                     "heading_level": {"type": "integer"},
