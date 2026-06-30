@@ -846,6 +846,273 @@ admin 是否能看到所有部门文档
 
 
 
+# 完整功能测试：
+
+## 推荐测试流程
+
+你要测“完整登录验证 + 检索对话”，建议按这条链路跑：
+
+```
+PostgreSQL 用户存在
+-> /auth/login 登录拿 access_token
+-> /auth/me 验证当前用户身份和部门
+-> /rag/chat 用 Bearer token 发起检索对话
+-> 检查 sources.metadata 是否符合部门权限
+```
+
+## 1. 确认服务配置
+
+完整真实检索需要这些配置方向：
+
+```
+AUTH_ENABLED=true
+RAG_PIPELINE_PROVIDER=rag_agent
+VECTOR_RETRIEVER_PROVIDER=milvus
+KEYWORD_RETRIEVER_PROVIDER=elasticsearch
+EMBEDDING_PROVIDER=qwen
+LLM_PROVIDER=mock
+```
+
+如果 Milvus 当前还不稳定，就先不要测真实检索，临时用：
+
+```
+VECTOR_RETRIEVER_PROVIDER=mock
+KEYWORD_RETRIEVER_PROVIDER=mock
+```
+
+但注意：mock retriever 不能完整证明 ES / Milvus 权限下推，只能测登录和接口链路。
+
+## 2. 创建测试用户
+
+```
+$env:PYTHONPATH="src"
+
+.\.venv\Scripts\python.exe scripts\create_auth_user.py `
+  --username dev_user `
+  --password "Dev123456!" `
+  --department development `
+  --permission rag:chat
+
+.\.venv\Scripts\python.exe scripts\create_auth_user.py `
+  --username art_user `
+  --password "Art123456!" `
+  --department art `
+  --permission rag:chat
+```
+
+如果用户已存在，换用户名即可，例如 `dev_user_2`。
+
+## 3. 启动 FastAPI
+
+```
+$env:PYTHONPATH="src"
+uvicorn fast_app.main:app --reload
+```
+
+## 4. 登录拿 token
+
+先设置 PowerShell UTF-8，避免乱码：
+
+~~~
+chcp 65001
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+~~~
+
+```
+$loginBody = @{
+  username_or_email = "dev_user"
+  password = "Dev123456!"
+} | ConvertTo-Json -Compress
+
+$loginResp = Invoke-RestMethod `
+  -Method POST `
+  -Uri "http://127.0.0.1:8000/auth/login" `
+  -ContentType "application/json; charset=utf-8" `
+  -Body $loginBody
+
+$loginResp
+```
+
+
+
+~~~
+access_token                                                                                                                                                                    
+------------                                                                                                                                                                   
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyX2NxVTkzTXJHYXFia0tzcktOVXE0M3R5dCIsInJvbGUiOiJ1c2VyIiwicGVybWlzc2lvbnMiOlsicmFnOmNoYXQiXSwiaXNzIjoicHl0aG9uLWFnZW50LXN...
+
+~~~
+
+保存 token：
+
+```
+$token = $loginResp.access_token
+```
+
+
+
+## 5. 验证当前登录身份
+
+```
+Invoke-RestMethod `
+  -Method GET `
+  -Uri "http://127.0.0.1:8000/auth/me" `
+  -Headers @{ Authorization = "Bearer $token" }
+```
+
+你应该看到类似：
+
+```
+{
+  "user_id": "...",
+  "is_authenticated": true,
+  "auth_source": "jwt",
+  "role": "user",
+  "permissions": ["rag:chat"],
+  "department_codes": ["development"],
+  "primary_department_code": "development"
+}
+```
+
+这一步证明登录验证成功，并且部门权限上下文已经进入服务端。
+
+## 6. 发起检索对话
+
+普通 JSON 接口优先使用 `Invoke-RestMethod`，避免 PowerShell 调用原生命令时吞掉 JSON 双引号。
+
+```powershell
+$chatBody = @{
+  session_id = "manual-dev-acl-test-001"
+  query = "RAG 后端部署步骤是什么？"
+  mode = "hybrid"
+  top_k = 5
+  candidate_k = 10
+} | ConvertTo-Json -Compress
+
+$chatResp = Invoke-RestMethod `
+  -Method POST `
+  -Uri "http://127.0.0.1:8000/rag/chat" `
+  -ContentType "application/json; charset=utf-8" `
+  -Headers @{ Authorization = "Bearer $token" } `
+  -Body $chatBody
+
+$chatResp
+$chatResp.sources | Select-Object id, source, title, metadata
+```
+
+重点看响应里的：
+
+```
+sources[].metadata.visibility
+sources[].metadata.allowed_departments
+sources[].metadata.permission_source
+```
+
+development 用户应该只能看到：
+
+```
+visibility=public
+或 allowed_departments 包含 development
+或 allowed_users 包含当前 user_id
+```
+
+## 7. 可选：测试流式接口
+
+SSE / streaming 接口继续使用 `curl.exe -N`。在 Windows PowerShell 中，不要把
+`ConvertTo-Json` 的原始结果直接传给 `curl.exe --data-raw`，需要先转义 JSON
+内部双引号。
+
+```powershell
+$streamBody = @{
+  session_id = "manual-stream-acl-test-001"
+  query = "RAG 后端部署步骤是什么？"
+  mode = "hybrid"
+  top_k = 5
+  candidate_k = 10
+} | ConvertTo-Json -Compress
+
+$curlBody = $streamBody.Replace('"', '\"')
+```
+
+测试 token-only stream：
+
+```powershell
+curl.exe -N `
+  -X POST "http://127.0.0.1:8000/rag/chat/stream" `
+  -H "Content-Type: application/json; charset=utf-8" `
+  -H ("Authorization: Bearer {0}" -f $token) `
+  --data-raw "$curlBody"
+```
+
+测试 structured stream events：
+
+```powershell
+curl.exe -N `
+  -X POST "http://127.0.0.1:8000/rag/chat/stream/events" `
+  -H "Content-Type: application/json; charset=utf-8" `
+  -H ("Authorization: Bearer {0}" -f $token) `
+  --data-raw "$curlBody"
+```
+
+如果你仍遇到本地 shell 参数解析问题，可以改用文件方式：
+
+```powershell
+New-Item -ItemType Directory -Force ".\tmp" | Out-Null
+[System.IO.File]::WriteAllText(
+  (Resolve-Path ".\tmp").Path + "\rag-stream-body.json",
+  $streamBody,
+  [System.Text.UTF8Encoding]::new($false)
+)
+
+curl.exe -N `
+  -X POST "http://127.0.0.1:8000/rag/chat/stream/events" `
+  -H "Content-Type: application/json; charset=utf-8" `
+  -H ("Authorization: Bearer {0}" -f $token) `
+  --data-binary "@.\tmp\rag-stream-body.json"
+```
+
+## 8. 用脚本做完整自动验收
+
+你已经跑过这个，后续完整验收建议继续用：
+
+```powershell
+$env:PYTHONPATH="src"
+
+.\.venv\Scripts\python.exe scripts\phase_15\test_department_rag_acl_acceptance.py `
+  --base-url "http://127.0.0.1:8000" `
+  --dev-username "dev_user" `
+  --dev-password "Dev123456!" `
+  --art-username "art_user" `
+  --art-password "Art123456!" `
+  --product-username "product_user" `
+  --product-password "Product123456!"
+```
+
+这比手动 curl 更适合回归测试，因为它会自动检查 sources 是否越权。
+
+## 9. 最小验收标准
+
+完整登录 + 检索对话测试通过，应满足：
+
+```
+1. /auth/login 返回 access_token。
+2. /auth/me 返回 auth_source=jwt。
+3. /auth/me 返回正确 department_codes。
+4. /rag/chat 返回 answer 和 sources。
+5. sources.metadata 不包含当前用户无权访问的部门文档。
+```
+
+如果你要测试真实权限下推，必须使用：
+
+```
+VECTOR_RETRIEVER_PROVIDER=milvus
+KEYWORD_RETRIEVER_PROVIDER=elasticsearch
+```
+
+并确保 ES / Milvus 已经用带 `.permission-rules.json` 的测试文档重新 ingest。
+
+
+
 # 关键函数讲解：match_permission_rule_from_file
 
 src\fast_app\ingestion\metadata_models.py
@@ -1603,4 +1870,3 @@ marketing/
 `match_permission_rule_from_file` 的作用是：
 
 > 根据当前文档相对知识库根目录的路径，去 `.permission-rules.json` 中查找匹配的权限规则；如果多条规则命中，就选择路径前缀最长、最具体的那条规则；最后返回可以写入文档 metadata 的权限字段。
-
