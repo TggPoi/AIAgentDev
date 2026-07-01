@@ -14,6 +14,7 @@ from fast_app.graph.rag_graph_nodes import (
     route_from_state,
 )
 from fast_app.graph.rag_graph_state import GraphRagState
+from fast_app.services.prompt_guard_service import PromptGuardService
 
 # 组装完整 graph 可运行对象结构
 def build_rag_graph(
@@ -23,6 +24,7 @@ def build_rag_graph(
     llm_client: BaseLLMClient,
     reranker: BaseReranker,
     rerank_top_k: int,
+    prompt_guard: PromptGuardService | None = None,
 ):
     builder = StateGraph(GraphRagState)
 
@@ -40,13 +42,17 @@ def build_rag_graph(
     )
     builder.add_node(
         "build_context",
-        create_build_context_node(settings=settings),
+        create_build_context_node(
+            settings=settings,
+            prompt_guard=prompt_guard,
+        ),
     )
     builder.add_node(
         "generate",
         create_generate_node(
             settings=settings,
             llm_client=llm_client,
+            prompt_guard=prompt_guard,
         ),
     )
     builder.add_node(

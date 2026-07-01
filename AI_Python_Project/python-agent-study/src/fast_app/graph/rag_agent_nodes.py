@@ -38,6 +38,7 @@ from fast_app.services.knowledge_permission_policy import (
     build_retrieval_filters_from_mapping,
 )
 from fast_app.services.rag_pipeline_service import build_rag_context, build_top_doc_ids
+from fast_app.services.prompt_guard_service import PromptGuardService
 
 
 logger = get_logger(__name__)
@@ -570,10 +571,11 @@ def create_agent_rerank_node(
 
 def create_agent_build_context_node(
     settings: Settings,
-) -> Callable[[RagAgentState], dict[str, RagContext]]:
+    prompt_guard: PromptGuardService | None = None,
+) -> Callable[[RagAgentState], dict[str, object]]:
     # build_context 是 RAG 和 LLM 之间的适配层：
     # 输入是结构化 docs，输出是 LLM client 能消费的 RagContext。
-    async def build_context_node(state: RagAgentState) -> dict[str, RagContext]:
+    async def build_context_node(state: RagAgentState) -> dict[str, object]:
         docs = state["docs"]
         with rag_agent_langsmith_step_trace(
             settings=settings,
@@ -586,6 +588,12 @@ def create_agent_build_context_node(
                 top_doc_ids=build_top_doc_ids(docs),
             ),
         ) as trace_run:
+            if prompt_guard is not None:
+                docs = await prompt_guard.filter_retrieved_docs(
+                    docs,
+                    source="rag_agent.build_context",
+                )
+
             context = build_rag_context(state["query"], docs)
             logger.info(
                 "rag_agent_context %s",
@@ -603,7 +611,10 @@ def create_agent_build_context_node(
                         "context_length": len(context.context_text),
                     }
                 )
-            return {"context": context}
+            return {
+                "docs": docs,
+                "context": context,
+            }
 
     return build_context_node
 
@@ -611,6 +622,7 @@ def create_agent_build_context_node(
 def create_agent_generate_answer_node(
     settings: Settings,
     llm_client: BaseLLMClient,
+    prompt_guard: PromptGuardService | None = None,
 ) -> Callable[[RagAgentState], dict[str, str]]:
     # 非流式 run 使用这个节点一次性生成完整 answer。
     # stream / stream_events 为了保持 token-only，会在 service 层手写到 llm_client.stream。
@@ -635,6 +647,11 @@ def create_agent_generate_answer_node(
                     query=state["query"],
                     context=context,
                 )
+                if prompt_guard is not None:
+                    answer = await prompt_guard.ensure_output_allowed(
+                        answer,
+                        source="rag_agent.generate_answer",
+                    )
             except Exception as exc:
                 # 生成失败通常不能构造可靠答案，所以这里只记录分类结果，再交给外层错误链路处理。
                 decision = classify_agent_error(exc, error_node="generate_answer")

@@ -122,6 +122,49 @@ class Settings(BaseSettings):
         ge=1024,
         alias="MAX_REQUEST_BODY_BYTES",
     )
+    # Prompt Injection 分层防护配置。当前先落地规则检测和上下文隔离。
+    prompt_guard_enabled: bool = Field(
+        default=True,
+        alias="PROMPT_GUARD_ENABLED",
+    )
+    prompt_guard_mode: str = Field(
+        default="rule",
+        alias="PROMPT_GUARD_MODE",
+    )
+    prompt_guard_block_threshold: str = Field(
+        default="high",
+        alias="PROMPT_GUARD_BLOCK_THRESHOLD",
+    )
+    prompt_guard_llm_model_name: str = Field(
+        default="",
+        alias="PROMPT_GUARD_LLM_MODEL_NAME",
+    )
+    prompt_guard_llm_temperature: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=2.0,
+        alias="PROMPT_GUARD_LLM_TEMPERATURE",
+    )
+    # 部分模型支持 provider 级 structured output；Qwen 3.5 起需要关闭此项，
+    # 继续使用普通 JSON prompt + Pydantic 校验兜底。
+    prompt_guard_structured_output_enabled: bool = Field(
+        default=False,
+        alias="PROMPT_GUARD_STRUCTURED_OUTPUT_ENABLED",
+    )
+    prompt_guard_structured_output_method: str = Field(
+        default="function_calling",
+        alias="PROMPT_GUARD_STRUCTURED_OUTPUT_METHOD",
+    )
+    prompt_guard_stream_output_mode: str = Field(
+        default="sentence_buffer",
+        alias="PROMPT_GUARD_STREAM_OUTPUT_MODE",
+    )
+    prompt_guard_stream_chunk_max_chars: int = Field(
+        default=300,
+        ge=80,
+        le=2000,
+        alias="PROMPT_GUARD_STREAM_CHUNK_MAX_CHARS",
+    )
 
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
 
@@ -352,6 +395,62 @@ class Settings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in {"in_memory", "redis"}:
             raise ValueError("MEMORY_STORE_PROVIDER 只支持 in_memory 或 redis")
+
+        return normalized
+
+    @field_validator("prompt_guard_mode", mode="before")
+    @classmethod
+    def normalize_prompt_guard_mode(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip().lower()
+        if normalized not in {"rule", "llm", "hybrid"}:
+            raise ValueError("PROMPT_GUARD_MODE 只支持 rule、llm 或 hybrid")
+
+        return normalized
+
+    @field_validator("prompt_guard_block_threshold", mode="before")
+    @classmethod
+    def normalize_prompt_guard_block_threshold(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip().lower()
+        if normalized not in {"low", "medium", "high", "critical"}:
+            raise ValueError(
+                "PROMPT_GUARD_BLOCK_THRESHOLD 只支持 low、medium、high 或 critical"
+            )
+
+        return normalized
+
+    @field_validator("prompt_guard_stream_output_mode", mode="before")
+    @classmethod
+    def normalize_prompt_guard_stream_output_mode(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip().lower()
+        if normalized not in {"pre_guard_only", "buffer_then_emit", "sentence_buffer"}:
+            raise ValueError(
+                "PROMPT_GUARD_STREAM_OUTPUT_MODE 只支持 pre_guard_only、"
+                "buffer_then_emit 或 sentence_buffer"
+            )
+
+        return normalized
+
+    @field_validator("prompt_guard_structured_output_method", mode="before")
+    @classmethod
+    def normalize_prompt_guard_structured_output_method(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip().lower()
+        if normalized not in {"function_calling", "json_mode", "json_schema"}:
+            raise ValueError(
+                "PROMPT_GUARD_STRUCTURED_OUTPUT_METHOD 只支持 "
+                "function_calling、json_mode 或 json_schema"
+            )
 
         return normalized
 

@@ -4,6 +4,7 @@ import argparse
 import getpass
 import json
 from dataclasses import dataclass
+from collections.abc import Iterator
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -28,7 +29,7 @@ def parse_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(
         description=(
-            "Login first, then run an interactive multi-turn /rag/chat test. "
+            "Login first, then run an interactive multi-turn RAG Agent test. "
             "Type exit to stop."
         )
     )
@@ -86,6 +87,19 @@ def parse_args() -> argparse.Namespace:
         "--show-source-content",
         action="store_true",
         help="打印 sources 的 content_preview。",
+    )
+    parser.add_argument(
+        "--stream-events",
+        action="store_true",
+        help=(
+            "使用 /rag/chat/stream/events 结构化 SSE 流式接口。"
+            "不加时仍测试非流式 /rag/chat。"
+        ),
+    )
+    parser.add_argument(
+        "--show-stream-events",
+        action="store_true",
+        help="流式模式下打印每个 SSE event 名称，便于观察 Prompt Guard 事件。",
     )
     parser.add_argument(
         "--max-sources-print",
@@ -242,6 +256,104 @@ def request_rag_chat(
     )
 
 
+def request_rag_chat_stream_events(
+    *,
+    base_url: str,
+    access_token: str,
+    session_id: str,
+    query: str,
+    mode: str,
+    top_k: int,
+    candidate_k: int,
+    min_score: float,
+    timeout_seconds: float,
+) -> Iterator[tuple[str, Any]]:
+    """调用 /rag/chat/stream/events，并逐个解析结构化 SSE 事件。
+
+    这个入口用于从登录开始验收完整流式链路，尤其是 Prompt-Injection
+    输出防护中的 answer_delta / guard_sanitized / guard_blocked 事件。
+    """
+
+    payload = {
+        "session_id": session_id,
+        "query": query,
+        "mode": mode,
+        "top_k": top_k,
+        "candidate_k": candidate_k,
+        "min_score": min_score,
+    }
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    request = Request(
+        url=f"{base_url}/rag/chat/stream/events",
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/json; charset=utf-8",
+            "Accept": "text/event-stream",
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            yield from iter_sse_events(response)
+    except HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"HTTP 请求失败: status={exc.code}, url={request.full_url}, body={error_body}"
+        ) from exc
+    except URLError as exc:
+        raise RuntimeError(
+            f"无法连接 FastAPI 服务: url={request.full_url}, error={exc}"
+        ) from exc
+
+
+def iter_sse_events(response: Any) -> Iterator[tuple[str, Any]]:
+    """把 text/event-stream 响应解析成 (event, data)。
+
+    FastAPI 当前每个事件都是 event + data + 空行。这里仍按 SSE 通用格式
+    解析，避免以后 data 出现多行时脚本马上失效。
+    """
+
+    event_name = "message"
+    data_lines: list[str] = []
+
+    while True:
+        raw_line = response.readline()
+        if raw_line == b"":
+            if data_lines:
+                yield event_name, parse_sse_data(data_lines)
+            return
+
+        line = raw_line.decode("utf-8", errors="replace").rstrip("\r\n")
+        if line == "":
+            if data_lines:
+                yield event_name, parse_sse_data(data_lines)
+            event_name = "message"
+            data_lines = []
+            continue
+
+        if line.startswith(":"):
+            continue
+
+        if line.startswith("event:"):
+            event_name = line.removeprefix("event:").strip()
+            continue
+
+        if line.startswith("data:"):
+            data_lines.append(line.removeprefix("data:").lstrip())
+
+
+def parse_sse_data(data_lines: list[str]) -> Any:
+    """解析 SSE data 字段，JSON 事件返回 dict，普通文本原样返回。"""
+
+    data_text = "\n".join(data_lines)
+    try:
+        return json.loads(data_text)
+    except json.JSONDecodeError:
+        return data_text
+
+
 def print_user_summary(user: dict[str, Any]) -> None:
     """打印登录后服务端识别出的用户上下文摘要。"""
 
@@ -308,10 +420,18 @@ def run_interactive_loop(
     timeout_seconds: float,
     max_sources_print: int,
     show_source_content: bool,
+    stream_events: bool,
+    show_stream_events: bool,
 ) -> None:
     """启动终端交互循环，直到用户输入 exit / quit。"""
 
     print("输入问题后按 Enter；输入 exit 或 quit 结束。")
+    if stream_events:
+        print("stream_endpoint=/rag/chat/stream/events")
+        print("answer events: answer_delta / guard_sanitized / guard_blocked")
+    else:
+        print("endpoint=/rag/chat")
+
     while True:
         query = input("query> ").strip()
         if query.lower() in {"exit", "quit"}:
@@ -319,6 +439,23 @@ def run_interactive_loop(
             return
 
         if not query:
+            continue
+
+        if stream_events:
+            run_stream_events_turn(
+                base_url=base_url,
+                access_token=access_token,
+                session_id=session_id,
+                query=query,
+                mode=mode,
+                top_k=top_k,
+                candidate_k=candidate_k,
+                min_score=min_score,
+                timeout_seconds=timeout_seconds,
+                max_sources_print=max_sources_print,
+                show_source_content=show_source_content,
+                show_stream_events=show_stream_events,
+            )
             continue
 
         try:
@@ -347,6 +484,128 @@ def run_interactive_loop(
             max_sources_print=max_sources_print,
             show_source_content=show_source_content,
         )
+
+
+def run_stream_events_turn(
+    *,
+    base_url: str,
+    access_token: str,
+    session_id: str,
+    query: str,
+    mode: str,
+    top_k: int,
+    candidate_k: int,
+    min_score: float,
+    timeout_seconds: float,
+    max_sources_print: int,
+    show_source_content: bool,
+    show_stream_events: bool,
+) -> None:
+    """执行一轮结构化流式对话，并突出打印 Prompt Guard 相关事件。"""
+
+    answer_parts: list[str] = []
+    blocked = False
+    sanitized = False
+
+    try:
+        events = request_rag_chat_stream_events(
+            base_url=base_url,
+            access_token=access_token,
+            session_id=session_id,
+            query=query,
+            mode=mode,
+            top_k=top_k,
+            candidate_k=candidate_k,
+            min_score=min_score,
+            timeout_seconds=timeout_seconds,
+        )
+
+        print("answer:")
+        for event_name, data in events:
+            if show_stream_events:
+                print(f"\n[event={event_name}]")
+
+            if event_name == "sources":
+                sources = data.get("sources") if isinstance(data, dict) else data
+                print_sources(
+                    sources=sources,
+                    max_sources_print=max_sources_print,
+                    show_source_content=show_source_content,
+                )
+                print("answer:")
+                continue
+
+            if event_name == "answer_delta":
+                text = extract_stream_text(data)
+                answer_parts.append(text)
+                print(text, end="", flush=True)
+                continue
+
+            if event_name == "guard_sanitized":
+                sanitized = True
+                text = extract_stream_text(data)
+                answer_parts.append(text)
+                print(text, end="", flush=True)
+                print("\n[prompt_guard=sanitized]")
+                print_guard_summary(data)
+                continue
+
+            if event_name == "guard_blocked":
+                blocked = True
+                text = extract_stream_text(data)
+                answer_parts.append(text)
+                print(text, end="", flush=True)
+                print("\n[prompt_guard=blocked]")
+                print_guard_summary(data)
+                continue
+
+            if event_name == "error":
+                print("\nstream_error:")
+                print(json.dumps(data, ensure_ascii=False, indent=2))
+                return
+
+            if event_name == "done":
+                print("\nstream_done=passed")
+                break
+
+        print(f"answer_length={len(''.join(answer_parts))}")
+        print(f"guard_sanitized={sanitized} guard_blocked={blocked}")
+
+    except RuntimeError as exc:
+        print(f"request_failed={exc}")
+
+
+def extract_stream_text(data: Any) -> str:
+    """从 answer_delta / guard_* 事件 data 中取出要展示的文本。"""
+
+    if isinstance(data, dict):
+        text = data.get("text")
+        if isinstance(text, str):
+            return text
+
+        answer = data.get("answer")
+        if isinstance(answer, str):
+            return answer
+
+    if isinstance(data, str):
+        return data
+
+    return ""
+
+
+def print_guard_summary(data: Any) -> None:
+    """打印 Prompt Guard 决策摘要，便于终端验收注入防护是否触发。"""
+
+    if not isinstance(data, dict):
+        return
+
+    print(
+        "guard_detail: "
+        f"action={data.get('action')} "
+        f"risk_level={data.get('risk_level')} "
+        f"categories={data.get('categories')} "
+        f"reason={data.get('reason')}"
+    )
 
 
 def main() -> int:
@@ -378,6 +637,7 @@ def main() -> int:
         print(f"base_url={base_url}")
         print(f"session_id={session_id}")
         print(f"mode={args.mode} top_k={args.top_k} candidate_k={args.candidate_k}")
+        print(f"stream_events={args.stream_events}")
         run_interactive_loop(
             base_url=base_url,
             access_token=login_result.access_token,
@@ -389,6 +649,8 @@ def main() -> int:
             timeout_seconds=args.timeout_seconds,
             max_sources_print=args.max_sources_print,
             show_source_content=args.show_source_content,
+            stream_events=args.stream_events,
+            show_stream_events=args.show_stream_events,
         )
         return 0
 

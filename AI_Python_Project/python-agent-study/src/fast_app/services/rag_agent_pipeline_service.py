@@ -48,6 +48,12 @@ from fast_app.services.conversation_scope import (
 )
 from fast_app.services.conversation_summary import ConversationSummaryService
 from fast_app.services.exceptions import ExternalServiceError
+from fast_app.services.guarded_streaming import (
+    GuardedStreamState,
+    guarded_answer_delta_events,
+    text_to_async_tokens,
+)
+from fast_app.services.prompt_guard_service import PromptGuardService
 from fast_app.services.query_rewrite import ConversationQueryRewriter
 from fast_app.services.rag_pipeline_service import docs_to_sources
 
@@ -69,6 +75,7 @@ class RagAgentPipeline:
         query_rewriter: ConversationQueryRewriter | None = None,
         conversation_persistence: ConversationPersistenceService | None = None,
         conversation_summary_service: ConversationSummaryService | None = None,
+        prompt_guard: PromptGuardService | None = None,
     ):
         # 保存底层组件引用，方便非流式 graph 和流式手写路径复用同一批依赖。
         self.settings = settings
@@ -80,6 +87,7 @@ class RagAgentPipeline:
         self.query_rewriter = query_rewriter
         self.conversation_persistence = conversation_persistence
         self.conversation_summary_service = conversation_summary_service
+        self.prompt_guard = prompt_guard
         # run() 使用 compiled graph，完整展示 LangGraph Agent 状态机。
         self.graph = build_rag_agent_graph(
             settings=settings,
@@ -88,6 +96,7 @@ class RagAgentPipeline:
             llm_client=llm_client,
             reranker=reranker,
             rerank_top_k=settings.rerank_top_k,
+            prompt_guard=prompt_guard,
         )
 
         # stream / stream_events 需要在生成阶段逐 token yield。
@@ -108,9 +117,31 @@ class RagAgentPipeline:
             reranker=reranker,
             rerank_top_k=settings.rerank_top_k,
         )
-        self.build_context_node = create_agent_build_context_node(settings=settings)
+        self.build_context_node = create_agent_build_context_node(
+            settings=settings,
+            prompt_guard=prompt_guard,
+        )
         self.error_answer_node = create_agent_error_answer_node(settings=settings)
         self.fail_request_node = create_agent_fail_request_node(settings=settings)
+
+    async def _ensure_query_allowed(self, query: str, *, source: str) -> None:
+        if self.prompt_guard is not None:
+            await self.prompt_guard.ensure_user_input_allowed(query, source=source)
+
+    async def _filter_docs_with_prompt_guard(
+        self,
+        docs: list,
+        *,
+        source: str,
+    ) -> list:
+        if self.prompt_guard is None:
+            return docs
+
+        return await self.prompt_guard.filter_retrieved_docs(docs, source=source)
+
+    async def _audit_stream_output(self, answer: str, *, source: str) -> None:
+        if self.prompt_guard is not None:
+            await self.prompt_guard.audit_stream_output(answer, source=source)
 
     def _langsmith_trace(self, req: RagChatRequest, operation: str):
         # pipeline 级 trace 记录一次完整请求；节点级 trace 在 rag_agent_nodes.py 中完成。
@@ -146,6 +177,10 @@ class RagAgentPipeline:
         """构造 Agent 初始 state，并在进入 graph 前完成 query rewrite。"""
 
         state = self._build_initial_state(req=req, operation=operation)
+        await self._ensure_query_allowed(
+            req.query,
+            source="rag_agent.query_rewrite.raw_input",
+        )
 
         with rag_agent_langsmith_step_trace(
             settings=self.settings,
@@ -239,6 +274,10 @@ class RagAgentPipeline:
             state["rewritten_query"] = rewrite_result.rewritten_query
             state["query_rewrite_reason"] = rewrite_result.reason
             state["query"] = rewrite_result.rewritten_query
+            await self._ensure_query_allowed(
+                state["query"],
+                source="rag_agent.query_rewrite.rewritten_query",
+            )
 
             if trace_run is not None:
                 trace_run.add_outputs(
@@ -632,6 +671,10 @@ class RagAgentPipeline:
                 operation="stream",
                 raise_on_error=False,
             )
+            await self._audit_stream_output(
+                answer,
+                source="rag_agent.stream.output",
+            )
 
             latency_ms = (perf_counter() - start_time) * 1000
             log_slow_operation(
@@ -687,6 +730,10 @@ class RagAgentPipeline:
                 )
 
         answer = "".join(answer_parts)
+        await self._audit_stream_output(
+            answer,
+            source="rag_agent.stream.output",
+        )
         await self._save_conversation_turn(
             req=req,
             state=state,
@@ -762,14 +809,20 @@ class RagAgentPipeline:
                 data={"sources": []},
             )
 
-            token_count = 0
             answer = state["answer"] or ""
-            for token in answer:
-                token_count += 1
-                yield RagStreamEvent(
-                    event="token",
-                    data={"token": token},
-                )
+            stream_state = GuardedStreamState()
+            async for event in guarded_answer_delta_events(
+                text_to_async_tokens(answer),
+                prompt_guard=self.prompt_guard,
+                source="rag_agent.stream_events.output",
+                mode=self.settings.prompt_guard_stream_output_mode,
+                max_chars=self.settings.prompt_guard_stream_chunk_max_chars,
+                state=stream_state,
+            ):
+                yield event
+
+            token_count = stream_state.raw_token_count
+            answer = stream_state.answer
 
             await self._save_conversation_turn(
                 req=req,
@@ -785,7 +838,6 @@ class RagAgentPipeline:
                 operation="stream_events",
                 raise_on_error=False,
             )
-
             latency_ms = (perf_counter() - start_time) * 1000
             log_slow_operation(
                 logger=logger,
@@ -806,6 +858,11 @@ class RagAgentPipeline:
             return
 
         docs = state["docs"]
+        docs = await self._filter_docs_with_prompt_guard(
+            docs,
+            source="rag_agent.stream_events.documents",
+        )
+        state["docs"] = docs
         # 检索路径先把 sources 发给前端，再开始 token 流。
         # 这和现有 LangGraphRagPipeline.stream_events 的用户体验保持一致。
         with rag_agent_langsmith_step_trace(
@@ -856,24 +913,29 @@ class RagAgentPipeline:
         ) as trace_run:
             # stream_events 的 token 事件包装在 pipeline 层完成；
             # API 层只负责把 RagStreamEvent 转成 SSE 文本。
-            answer_parts: list[str] = []
-            async for token in self.llm_client.stream(state["query"], context):
-                token_count += 1
-                answer_parts.append(token)
-                yield RagStreamEvent(
-                    event="token",
-                    data={"token": token},
-                )
+            stream_state = GuardedStreamState()
+            async for event in guarded_answer_delta_events(
+                self.llm_client.stream(state["query"], context),
+                prompt_guard=self.prompt_guard,
+                source="rag_agent.stream_events.output",
+                mode=self.settings.prompt_guard_stream_output_mode,
+                max_chars=self.settings.prompt_guard_stream_chunk_max_chars,
+                state=stream_state,
+            ):
+                yield event
 
+            token_count = stream_state.raw_token_count
             if trace_run is not None:
                 trace_run.add_outputs(
                     {
                         "token_count": token_count,
                         "source_count": len(context.docs),
+                        "blocked_by_prompt_guard": stream_state.blocked,
+                        "emitted_answer_length": len(stream_state.answer),
                     }
                 )
 
-        answer = "".join(answer_parts)
+        answer = stream_state.answer
         await self._save_conversation_turn(
             req=req,
             state=state,

@@ -31,6 +31,13 @@ class AuthenticationError(AppServiceError):
     status_code = 401
 
 
+class PromptInjectionBlockedError(AppServiceError):
+    """Prompt Injection 或敏感信息窃取请求被安全策略拦截。"""
+
+    error_code = "PROMPT_INJECTION_BLOCKED"
+    status_code = 400
+
+
 class ExternalServiceError(AppServiceError):
     """外部服务调用失败。"""
 

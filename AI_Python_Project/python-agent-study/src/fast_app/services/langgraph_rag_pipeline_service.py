@@ -35,6 +35,12 @@ from fast_app.graph.rag_graph_nodes import (
     create_route_query_node,
 )
 from fast_app.services.exceptions import ExternalServiceError
+from fast_app.services.guarded_streaming import (
+    GuardedStreamState,
+    guarded_answer_delta_events,
+    text_to_async_tokens,
+)
+from fast_app.services.prompt_guard_service import PromptGuardService
 
 from fast_app.domain.rag_stream_models import RagStreamEvent
 
@@ -50,13 +56,15 @@ class LangGraphRagPipeline:
         vector_retriever: BaseRetriever,
         keyword_retriever: BaseRetriever,
         llm_client: BaseLLMClient,
-        reranker: BaseReranker
+        reranker: BaseReranker,
+        prompt_guard: PromptGuardService | None = None,
     ):
         self.settings = settings
         self.vector_retriever = vector_retriever
         self.keyword_retriever = keyword_retriever
         self.llm_client = llm_client
         self.reranker = reranker
+        self.prompt_guard = prompt_guard
         self.rerank_node = create_rerank_node(
             settings=settings,
             reranker=reranker,
@@ -71,6 +79,7 @@ class LangGraphRagPipeline:
             llm_client=llm_client,
             reranker=reranker,
             mode="explicit_graph", #设置使用graph还是 create Agent[未实现]模式
+            prompt_guard=prompt_guard,
         )
 
         self.retrieve_node = create_retrieve_node(
@@ -78,7 +87,10 @@ class LangGraphRagPipeline:
             vector_retriever=vector_retriever,
             keyword_retriever=keyword_retriever,
         )
-        self.build_context_node = create_build_context_node(settings=settings)
+        self.build_context_node = create_build_context_node(
+            settings=settings,
+            prompt_guard=prompt_guard,
+        )
         self.route_query_node = create_route_query_node(settings=settings)
         self.direct_answer_node = create_direct_answer_node(settings=settings)
 
@@ -99,6 +111,25 @@ class LangGraphRagPipeline:
                 operation=operation,
             ),
         )
+
+    async def _ensure_query_allowed(self, query: str, *, source: str) -> None:
+        if self.prompt_guard is not None:
+            await self.prompt_guard.ensure_user_input_allowed(query, source=source)
+
+    async def _audit_stream_output(self, answer: str, *, source: str) -> None:
+        if self.prompt_guard is not None:
+            await self.prompt_guard.audit_stream_output(answer, source=source)
+
+    async def _filter_docs_with_prompt_guard(
+        self,
+        docs: list,
+        *,
+        source: str,
+    ) -> list:
+        if self.prompt_guard is None:
+            return docs
+
+        return await self.prompt_guard.filter_retrieved_docs(docs, source=source)
 
     def _langsmith_step_trace(
         self,
@@ -152,6 +183,7 @@ class LangGraphRagPipeline:
         )
 
         try:
+            await self._ensure_query_allowed(req.query, source="langgraph.run.input")
             initial_state = self._build_initial_state(req, operation="run")
 
             final_state = await self.graph.ainvoke(initial_state)
@@ -263,6 +295,10 @@ class LangGraphRagPipeline:
             req.top_k,
             req.min_score,
         )
+        await self._ensure_query_allowed(
+            req.query,
+            source="langgraph.stream.input",
+        )
 
         state = self._build_initial_state(req, operation="stream")
 
@@ -328,11 +364,13 @@ class LangGraphRagPipeline:
                 "context_length": len(context.context_text),
             },
         ) as trace_run:
+            answer_parts: list[str] = []
             async for token in self.llm_client.stream(
                 query=req.query,
                 context=context,
             ):
                 token_count += 1
+                answer_parts.append(token)
                 yield token
 
             if trace_run is not None:
@@ -343,6 +381,10 @@ class LangGraphRagPipeline:
                     }
                 )
 
+        await self._audit_stream_output(
+            "".join(answer_parts),
+            source="langgraph.stream.output",
+        )
         logger.info(
             "LangGraph RAG Stream Pipeline 执行完成: token_count=%s",
             token_count,
@@ -381,6 +423,10 @@ class LangGraphRagPipeline:
             req.mode,
             req.top_k,
             req.min_score,
+        )
+        await self._ensure_query_allowed(
+            req.query,
+            source="langgraph.stream_events.input",
         )
 
         state = self._build_initial_state(req, operation="stream_events")
@@ -422,15 +468,17 @@ class LangGraphRagPipeline:
             )
 
             answer = state.get("answer") or ""
-            token_count = 0
-            for token in answer:
-                token_count += 1
-                yield RagStreamEvent(
-                    event="token",
-                    data={
-                        "token": token,
-                    },
-                )
+            stream_state = GuardedStreamState()
+            async for event in guarded_answer_delta_events(
+                text_to_async_tokens(answer),
+                prompt_guard=self.prompt_guard,
+                source="langgraph.stream_events.output",
+                mode=self.settings.prompt_guard_stream_output_mode,
+                max_chars=self.settings.prompt_guard_stream_chunk_max_chars,
+                state=stream_state,
+            ):
+                yield event
+            token_count = stream_state.raw_token_count
 
             logger.info(
                 "LangGraph RAG Stream Events Pipeline 直接回答完成: token_count=%s",
@@ -461,6 +509,11 @@ class LangGraphRagPipeline:
         state.update(rerank_update)
 
         docs = state["docs"]
+        docs = await self._filter_docs_with_prompt_guard(
+            docs,
+            source="langgraph.stream_events.documents",
+        )
+        state["docs"] = docs
 
         with self._langsmith_step_trace(
             req=req,
@@ -511,23 +564,25 @@ class LangGraphRagPipeline:
                 "context_length": len(context.context_text),
             },
         ) as trace_run:
-            async for token in self.llm_client.stream(
-                query=req.query,
-                context=context,
+            stream_state = GuardedStreamState()
+            async for event in guarded_answer_delta_events(
+                self.llm_client.stream(query=req.query, context=context),
+                prompt_guard=self.prompt_guard,
+                source="langgraph.stream_events.output",
+                mode=self.settings.prompt_guard_stream_output_mode,
+                max_chars=self.settings.prompt_guard_stream_chunk_max_chars,
+                state=stream_state,
             ):
-                token_count += 1
-                yield RagStreamEvent(
-                    event="token",
-                    data={
-                        "token": token,
-                    },
-                )
+                yield event
 
+            token_count = stream_state.raw_token_count
             if trace_run is not None:
                 trace_run.add_outputs(
                     {
                         "token_count": token_count,
                         "source_count": len(context.docs),
+                        "blocked_by_prompt_guard": stream_state.blocked,
+                        "emitted_answer_length": len(stream_state.answer),
                     }
                 )
 

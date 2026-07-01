@@ -25,6 +25,7 @@ from fast_app.services.rag_pipeline_service import (
     build_top_doc_ids,
     build_rag_context,
 )
+from fast_app.services.prompt_guard_service import PromptGuardService
 
 from fast_app.components.rerankers.base import BaseReranker
 
@@ -460,12 +461,19 @@ def create_retrieve_node(
 
 def create_build_context_node(
     settings: Settings,
-) -> Callable[[GraphRagState], dict[str, RagContext]]:
+    prompt_guard: PromptGuardService | None = None,
+) -> Callable[[GraphRagState], dict[str, object]]:
 
-    async def build_context_node(state: GraphRagState) -> dict[str, RagContext]:
+    async def build_context_node(state: GraphRagState) -> dict[str, object]:
         docs = state["docs"]
 
         logger.info("LangGraph 开始构造上下文: docs_count=%s", len(docs))
+
+        if prompt_guard is not None:
+            docs = await prompt_guard.filter_retrieved_docs(
+                docs,
+                source="langgraph.build_context",
+            )
 
         context = build_rag_context(state["query"], docs)
 
@@ -474,11 +482,14 @@ def create_build_context_node(
             len(context.docs),
         )
 
-        return {"context": context}
+        return {
+            "docs": docs,
+            "context": context,
+        }
 
     async def traced_build_context_node(
         state: GraphRagState,
-    ) -> dict[str, RagContext]:
+    ) -> dict[str, object]:
         docs = state["docs"]
         with graph_langsmith_step_trace(
             settings=settings,
@@ -508,6 +519,7 @@ def create_build_context_node(
 def create_generate_node(
     settings: Settings,
     llm_client: BaseLLMClient,
+    prompt_guard: PromptGuardService | None = None,
 ) -> Callable[[GraphRagState], object]:
     
     async def generate_node(state: GraphRagState) -> dict[str, str]:
@@ -523,6 +535,11 @@ def create_generate_node(
             query=query,
             context=context,
         )
+        if prompt_guard is not None:
+            answer = await prompt_guard.ensure_output_allowed(
+                answer,
+                source="langgraph.generate",
+            )
 
         logger.info("LangGraph 回答生成完成: answer_length=%s", len(answer))
 

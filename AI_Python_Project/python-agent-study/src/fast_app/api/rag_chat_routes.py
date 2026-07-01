@@ -111,7 +111,7 @@ async def rag_chat_endpoint(
     return response
 
 
-#token处理，放在API层面，保持pipeline的纯粹性
+# 兼容旧版 token-only SSE；当前主流式接口是 /rag/chat/stream/events。
 async def rag_chat_sse_event_generator(
     req: RagChatRequest,
     pipeline: RagPipeline,
@@ -138,7 +138,7 @@ async def rag_chat_sse_event_generator(
 
 
 
-@router.post("/chat/stream")
+@router.post("/chat/stream", deprecated=True)
 async def rag_chat_stream_endpoint(
     req: RagChatRequest,
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -151,7 +151,8 @@ async def rag_chat_stream_endpoint(
     )
 
 
-# 流式事件格式化工具函数，事件包括：sources（检索结果）和token（生成的回答token）
+# 流式事件格式化工具函数。
+# 当前主线事件包括 sources / answer_delta / guard_sanitized / guard_blocked。
 # sources 里包含 RagSource 这种 Pydantic model, json.dumps() 不能直接序列化 Pydantic model，所以需要先用 jsonable_encoder 转成 dict，再序列化成字符串。
 def format_sse_event(event: str, data: object) -> str:
     return (

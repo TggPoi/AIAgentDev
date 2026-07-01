@@ -23,6 +23,7 @@ from fast_app.services.conversation_summary import ConversationSummaryService
 from fast_app.services.query_rewrite import ConversationQueryRewriter
 from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
 from fast_app.services.rag_pipeline_service import RagPipeline
+from fast_app.services.prompt_guard_service import PromptGuardService
 from fast_app.services.auth_service import AuthService
 from fast_app.services.user_repository import UserRepository
 
@@ -212,6 +213,14 @@ def get_auth_service(
     return AuthService(settings=settings, repository=repository)
 
 
+def get_prompt_guard_service(
+    settings: Settings = Depends(get_settings),
+) -> PromptGuardService:
+    """提供 Prompt Injection 分层防护服务。"""
+
+    return PromptGuardService(settings=settings)
+
+
 
 # 这里先不写返回类型，因为RagPipeline LangGraphRagPipeline这两个类目前没有共同的显式基类。
 def get_rag_pipeline(
@@ -221,6 +230,7 @@ def get_rag_pipeline(
     keyword_retriever: BaseRetriever = Depends(get_keyword_retriever),
     llm_client: BaseLLMClient = Depends(get_llm_client),
     reranker: BaseReranker = Depends(get_reranker),
+    prompt_guard: PromptGuardService = Depends(get_prompt_guard_service),
     conversation_persistence: ConversationPersistenceService = Depends(
         get_conversation_persistence_service
     ),
@@ -234,6 +244,7 @@ def get_rag_pipeline(
             keyword_retriever=keyword_retriever,
             llm_client=llm_client,
             reranker=reranker,
+            prompt_guard=prompt_guard,
         )
 
     if provider == "langgraph":
@@ -243,6 +254,7 @@ def get_rag_pipeline(
             keyword_retriever=keyword_retriever,
             llm_client=llm_client,
             reranker=reranker,
+            prompt_guard=prompt_guard,
         )
 
     # 13-11 新增的第三条执行路线。
@@ -266,6 +278,7 @@ def get_rag_pipeline(
             query_rewriter=ConversationQueryRewriter.from_settings(settings),
             conversation_persistence=conversation_persistence,
             conversation_summary_service=conversation_summary_service,
+            prompt_guard=prompt_guard,
         )
 
     raise AppServiceError(

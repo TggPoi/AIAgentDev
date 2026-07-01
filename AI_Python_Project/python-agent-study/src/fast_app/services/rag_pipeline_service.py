@@ -29,6 +29,11 @@ from fast_app.services.retrieval_fusion import reciprocal_rank_fusion
 from fast_app.services.rag_context_builder import build_rag_context
 from fast_app.components.rerankers.base import BaseReranker
 from fast_app.domain.rag_stream_models import RagStreamEvent
+from fast_app.services.guarded_streaming import (
+    GuardedStreamState,
+    guarded_answer_delta_events,
+)
+from fast_app.services.prompt_guard_service import PromptGuardService
 
 
 # `__name__` 是当前模块名。
@@ -504,6 +509,7 @@ class RagPipeline:
         keyword_retriever: BaseRetriever,
         llm_client: BaseLLMClient,
         reranker: BaseReranker,
+        prompt_guard: PromptGuardService | None = None,
     ):
         """初始化 RAG Pipeline 依赖。
         """
@@ -512,6 +518,32 @@ class RagPipeline:
         self.keyword_retriever = keyword_retriever
         self.llm_client = llm_client
         self.reranker = reranker
+        self.prompt_guard = prompt_guard
+
+    async def _ensure_query_allowed(self, query: str, *, source: str) -> None:
+        if self.prompt_guard is not None:
+            await self.prompt_guard.ensure_user_input_allowed(query, source=source)
+
+    async def _filter_docs_with_prompt_guard(
+        self,
+        docs: list[RetrievedDoc],
+        *,
+        source: str,
+    ) -> list[RetrievedDoc]:
+        if self.prompt_guard is None:
+            return docs
+
+        return await self.prompt_guard.filter_retrieved_docs(docs, source=source)
+
+    async def _ensure_output_allowed(self, answer: str, *, source: str) -> str:
+        if self.prompt_guard is None:
+            return answer
+
+        return await self.prompt_guard.ensure_output_allowed(answer, source=source)
+
+    async def _audit_stream_output(self, answer: str, *, source: str) -> None:
+        if self.prompt_guard is not None:
+            await self.prompt_guard.audit_stream_output(answer, source=source)
 
     def _langsmith_trace(self, req: RagChatRequest, operation: str):
         return rag_langsmith_trace(
@@ -671,6 +703,7 @@ class RagPipeline:
         )
 
         try:
+            await self._ensure_query_allowed(req.query, source="classic.run.input")
             state: RagState = {
                 "query": req.query,
                 "docs": [],
@@ -724,6 +757,11 @@ class RagPipeline:
                     )
 
             state["docs"] = docs
+            docs = await self._filter_docs_with_prompt_guard(
+                docs,
+                source="classic.run.documents",
+            )
+            state["docs"] = docs
 
             logger.info("RAG 召回完成: docs_count=%s", len(docs))
 
@@ -766,6 +804,10 @@ class RagPipeline:
                 answer = await self.llm_client.generate(
                     query=state["query"],
                     context=context,
+                )
+                answer = await self._ensure_output_allowed(
+                    answer,
+                    source="classic.run.output",
                 )
                 if trace_run is not None:
                     trace_run.add_outputs(
@@ -866,6 +908,7 @@ class RagPipeline:
             req.top_k,
             req.min_score,
         )
+        await self._ensure_query_allowed(req.query, source="classic.stream.input")
 
         with self._langsmith_step_trace(
             req=req,
@@ -912,6 +955,11 @@ class RagPipeline:
                     }
                 )
 
+        docs = await self._filter_docs_with_prompt_guard(
+            docs,
+            source="classic.stream.documents",
+        )
+
         logger.info("RAG Stream 召回完成: docs_count=%s", len(docs))
 
         with self._langsmith_step_trace(
@@ -951,8 +999,10 @@ class RagPipeline:
                 "context_length": len(context.context_text),
             },
         ) as trace_run:
+            answer_parts: list[str] = []
             async for token in self.llm_client.stream(req.query, context):
                 token_count += 1
+                answer_parts.append(token)
                 yield token
 
             if trace_run is not None:
@@ -963,6 +1013,10 @@ class RagPipeline:
                     }
                 )
 
+        await self._audit_stream_output(
+            "".join(answer_parts),
+            source="classic.stream.output",
+        )
         logger.info("RAG Stream 输出完成: token_count=%s", token_count)
 
     # 检索文档
@@ -1308,6 +1362,10 @@ class RagPipeline:
             req.top_k,
             req.min_score,
         )
+        await self._ensure_query_allowed(
+            req.query,
+            source="classic.stream_events.input",
+        )
 
         with self._langsmith_step_trace(
             req=req,
@@ -1365,6 +1423,10 @@ class RagPipeline:
                 "top_doc_ids": build_top_doc_ids(docs),
             },
         ) as trace_run:
+            docs = await self._filter_docs_with_prompt_guard(
+                docs,
+                source="classic.stream_events.documents",
+            )
             sources = docs_to_sources(docs)
             if trace_run is not None:
                 trace_run.add_outputs(
@@ -1416,20 +1478,25 @@ class RagPipeline:
                 "context_length": len(context.context_text),
             },
         ) as trace_run:
-            async for token in self.llm_client.stream(req.query, context):
-                token_count += 1
-                yield RagStreamEvent(
-                    event="token",
-                    data={
-                        "token": token,
-                    },
-                )
+            stream_state = GuardedStreamState()
+            async for event in guarded_answer_delta_events(
+                self.llm_client.stream(req.query, context),
+                prompt_guard=self.prompt_guard,
+                source="classic.stream_events.output",
+                mode=self.settings.prompt_guard_stream_output_mode,
+                max_chars=self.settings.prompt_guard_stream_chunk_max_chars,
+                state=stream_state,
+            ):
+                yield event
 
+            token_count = stream_state.raw_token_count
             if trace_run is not None:
                 trace_run.add_outputs(
                     {
                         "token_count": token_count,
                         "source_count": len(context.docs),
+                        "blocked_by_prompt_guard": stream_state.blocked,
+                        "emitted_answer_length": len(stream_state.answer),
                     }
                 )
 

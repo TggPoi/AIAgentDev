@@ -18,6 +18,7 @@ from fast_app.graph.rag_agent_nodes import (
     route_after_tool_call,
 )
 from fast_app.graph.rag_agent_state import RagAgentState
+from fast_app.services.prompt_guard_service import PromptGuardService
 
 
 def build_rag_agent_graph(
@@ -27,6 +28,7 @@ def build_rag_agent_graph(
     llm_client: BaseLLMClient,
     reranker: BaseReranker,
     rerank_top_k: int,
+    prompt_guard: PromptGuardService | None = None,
 ):
     # 这是 13-11 新增的独立 Agent graph。
     # 它和现有 build_rag_graph() 并列存在，避免改变 langgraph provider 的稳定行为。
@@ -62,13 +64,17 @@ def build_rag_agent_graph(
     )
     builder.add_node(
         "build_context",
-        create_agent_build_context_node(settings=settings),
+        create_agent_build_context_node(
+            settings=settings,
+            prompt_guard=prompt_guard,
+        ),
     )
     builder.add_node(
         "generate_answer",
         create_agent_generate_answer_node(
             settings=settings,
             llm_client=llm_client,
+            prompt_guard=prompt_guard,
         ),
     )
     builder.add_node(

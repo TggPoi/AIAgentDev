@@ -15,7 +15,23 @@ Before doing project work, read these files in order:
 
 Do not replace the explicit LangGraph RAG pipeline with `create_agent()` unless the user explicitly asks and a design review has been completed.
 
-Do not change `pipeline.stream()` from token-only. Structured streaming information should use `stream_events()`.
+`pipeline.stream_events()` is the main structured streaming interface. It may emit guarded answer events such as `answer_delta`, `guard_sanitized`, and `guard_blocked`.
+
+`pipeline.stream()` and `POST /rag/chat/stream` are compatibility-only legacy token streams. Do not add new enterprise frontend, Prompt Guard, sources, Agent step, or tool-call features to this legacy stream path.
+
+For the enterprise-system conversion, keep only two RAG chat endpoints as the mainline:
+
+1. `POST /rag/chat`
+   - Non-streaming RAG chat.
+   - Returns the complete answer, sources, request_id, and trace_id.
+   - Use this for evaluation, debugging, admin workflows, and non-streaming React calls.
+
+2. `POST /rag/chat/stream/events`
+   - Structured SSE RAG chat.
+   - Uses `pipeline.stream_events()`.
+   - Use this as the main React streaming interface for sources, guarded answer deltas, guard events, done, and error events.
+
+`POST /rag/chat/stream` is a deprecated compatibility-only token stream. Prefer `POST /rag/chat/stream/events` for all new work.
 
 Do not modify `src/app` or `app` temporary learning code unless explicitly requested.
 
