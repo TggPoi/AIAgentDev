@@ -38,6 +38,13 @@ class PromptInjectionBlockedError(AppServiceError):
     status_code = 400
 
 
+class ToolExecutionRequiresApprovalError(AppServiceError):
+    """高风险 Agent 工具执行需要权限网关或人工确认。"""
+
+    error_code = "TOOL_EXECUTION_REQUIRES_APPROVAL"
+    status_code = 403
+
+
 class ExternalServiceError(AppServiceError):
     """外部服务调用失败。"""
 

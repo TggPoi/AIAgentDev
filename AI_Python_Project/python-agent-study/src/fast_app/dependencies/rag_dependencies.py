@@ -20,6 +20,9 @@ from fast_app.services.conversation_memory import (
 from fast_app.services.conversation_repository import PostgresConversationRepository
 from fast_app.services.conversation_persistence import ConversationPersistenceService
 from fast_app.services.conversation_summary import ConversationSummaryService
+from fast_app.services.knowledge_document_management_service import (
+    KnowledgeDocumentManagementService,
+)
 from fast_app.services.query_rewrite import ConversationQueryRewriter
 from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
 from fast_app.services.rag_pipeline_service import RagPipeline
@@ -219,6 +222,25 @@ def get_prompt_guard_service(
     """提供 Prompt Injection 分层防护服务。"""
 
     return PromptGuardService(settings=settings)
+
+
+def get_knowledge_document_management_service(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    embedding_client: BaseEmbeddingClient = Depends(get_embedding_client),
+) -> KnowledgeDocumentManagementService:
+    """提供 Agent 文档管理工具的后端服务边界。
+
+    15-6.5 只使用 dry-run 主线，所以 ES / Milvus client 可以为空。这里仍优先从
+    app.state 读取外部 client，是为了后续 15-7 放开受控执行时复用同一套依赖注入。
+    """
+
+    return KnowledgeDocumentManagementService(
+        settings=settings,
+        embedding_client=embedding_client,
+        elasticsearch_client=getattr(request.app.state, "elasticsearch_client", None),
+        milvus_client=getattr(request.app.state, "milvus_client", None),
+    )
 
 
 

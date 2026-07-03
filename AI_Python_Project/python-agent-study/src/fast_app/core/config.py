@@ -186,6 +186,33 @@ class Settings(BaseSettings):
         le=50,
         alias="AGENT_MAX_TOOL_CALLS",
     )
+    # Agent 文档管理工具默认关闭，并且默认只允许 dry-run。
+    # 真实写入需要后续 15-7 的工具权限网关和人工确认接入后再放开。
+    agent_document_tools_enabled: bool = Field(
+        default=False,
+        alias="AGENT_DOCUMENT_TOOLS_ENABLED",
+    )
+    agent_document_tools_dry_run_only: bool = Field(
+        default=True,
+        alias="AGENT_DOCUMENT_TOOLS_DRY_RUN_ONLY",
+    )
+    agent_document_tools_allowed_extensions: str = Field(
+        default=".md,.txt",
+        alias="AGENT_DOCUMENT_TOOLS_ALLOWED_EXTENSIONS",
+    )
+    agent_document_tools_allow_permission_file_edit: bool = Field(
+        default=False,
+        alias="AGENT_DOCUMENT_TOOLS_ALLOW_PERMISSION_FILE_EDIT",
+    )
+    agent_document_tools_max_content_chars: int = Field(
+        default=200_000,
+        ge=1,
+        alias="AGENT_DOCUMENT_TOOLS_MAX_CONTENT_CHARS",
+    )
+    agent_document_tools_require_confirmation: bool = Field(
+        default=True,
+        alias="AGENT_DOCUMENT_TOOLS_REQUIRE_CONFIRMATION",
+    )
 
     # 多轮对话短期记忆配置。默认仍使用内存实现，避免本地开发强依赖 Redis。
     memory_store_provider: str = Field(
@@ -454,6 +481,26 @@ class Settings(BaseSettings):
 
         return normalized
 
+    @field_validator("agent_document_tools_allowed_extensions", mode="before")
+    @classmethod
+    def normalize_agent_document_tools_allowed_extensions(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+
+        extensions = []
+        for item in value.split(","):
+            extension = item.strip().lower()
+            if not extension:
+                continue
+            if not extension.startswith("."):
+                extension = f".{extension}"
+            extensions.append(extension)
+
+        if not extensions:
+            raise ValueError("AGENT_DOCUMENT_TOOLS_ALLOWED_EXTENSIONS 不能为空")
+
+        return ",".join(sorted(set(extensions)))
+
 
     @field_validator("debug", mode="before")
     @classmethod
@@ -511,6 +558,14 @@ class Settings(BaseSettings):
     @property
     def auth_bearer_token_list(self) -> list[str]:
         return _split_csv_secret_values(self.auth_bearer_tokens)
+
+    @property
+    def agent_document_tools_allowed_extension_list(self) -> list[str]:
+        return [
+            item.strip().lower()
+            for item in self.agent_document_tools_allowed_extensions.split(",")
+            if item.strip()
+        ]
     
 
 
