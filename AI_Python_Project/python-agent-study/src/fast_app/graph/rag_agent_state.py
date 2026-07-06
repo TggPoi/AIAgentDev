@@ -70,7 +70,6 @@ class RagAgentState(TypedDict):
     current_user: NotRequired[CurrentUserContext | None]
     agent_task_plan: NotRequired[AgentTaskPlan | None]
     agent_task_plan_id: NotRequired[str | None]
-    tool_approval_id: NotRequired[str | None]
     requires_confirmation: NotRequired[bool]
 
 
@@ -117,6 +116,5 @@ def build_rag_agent_initial_state(
         "current_user": current_user,
         "agent_task_plan": None,
         "agent_task_plan_id": None,
-        "tool_approval_id": None,
         "requires_confirmation": False,
     }

@@ -73,8 +73,8 @@ async def main() -> None:
             user_id=TEST_USERS["editor"],
             operation=KnowledgeDocumentOperation.UPDATE,
             department="development",
-            expected=AgentToolPermissionAction.APPROVAL_REQUIRED,
-            label="editor_update_approval_required",
+            expected=AgentToolPermissionAction.CONFIRMATION_REQUIRED,
+            label="editor_update_confirmation_required",
             expected_requires_confirmation=True,
         )
         await assert_decision(
@@ -91,8 +91,8 @@ async def main() -> None:
             user_id=TEST_USERS["manager"],
             operation=KnowledgeDocumentOperation.DELETE,
             department="development",
-            expected=AgentToolPermissionAction.APPROVAL_REQUIRED,
-            label="manager_delete_approval_required",
+            expected=AgentToolPermissionAction.CONFIRMATION_REQUIRED,
+            label="manager_delete_confirmation_required",
             expected_requires_confirmation=True,
         )
         await assert_decision(
@@ -119,8 +119,8 @@ async def main() -> None:
             user_id=TEST_USERS["admin"],
             operation=KnowledgeDocumentOperation.UPDATE,
             department="art",
-            expected=AgentToolPermissionAction.APPROVAL_REQUIRED,
-            label="admin_cross_department_approval_required",
+            expected=AgentToolPermissionAction.CONFIRMATION_REQUIRED,
+            label="admin_cross_department_confirmation_required",
             role="admin",
             expected_requires_confirmation=True,
         )

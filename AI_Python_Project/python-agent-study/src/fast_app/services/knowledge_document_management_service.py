@@ -21,7 +21,7 @@ from fast_app.ingestion.metadata_models import (
 )
 from fast_app.services.exceptions import (
     AppServiceError,
-    ToolExecutionRequiresApprovalError,
+    ToolExecutionRequiresConfirmationError,
 )
 
 
@@ -45,8 +45,8 @@ class KnowledgeDocumentManagementService:
     """知识库文档管理服务。
 
     Agent 只能把 create / update / delete 意图提交到这里。服务层负责路径安全、
-    文件类型、权限 metadata 预估和 dry-run 预览；真实写入必须等 15-7 的工具
-    权限网关和人工确认接入后再放开。
+    文件类型、权限 metadata 预估和 dry-run 预览；真实写入必须由 TaskPlan
+    确认入口重新校验权限后再放开。
     """
 
     def __init__(
@@ -81,7 +81,7 @@ class KnowledgeDocumentManagementService:
         target = self._resolve_safe_target_path(request.target_path)
         self._validate_operation_requirements(request=request, target=target)
 
-        # preview 是后续权限网关、plan 文件和人工确认页面的事实输入。
+        # preview 是后续权限网关、TaskPlan 确认页面的事实输入。
         preview = self._build_preview(
             request=request,
             target=target,
@@ -101,19 +101,19 @@ class KnowledgeDocumentManagementService:
 
         # 安全默认值：即使上游传 dry_run=false，只要配置仍是 dry-run-only，就必须拒绝。
         if self.settings.agent_document_tools_dry_run_only:
-            raise ToolExecutionRequiresApprovalError(
-                "当前配置只允许 dry-run，文档写操作需要经过 15-7 工具权限和人工确认。"
+            raise ToolExecutionRequiresConfirmationError(
+                "当前配置只允许 dry-run，文档写操作需要经过 TaskPlan 权限校验和人工确认。"
             )
 
         # 如果配置要求人工确认，则普通 plan_action 不能直接执行写操作。
         if self.settings.agent_document_tools_require_confirmation:
-            raise ToolExecutionRequiresApprovalError(
-                "文档写操作需要经过 15-7 工具权限和人工确认后才能执行。"
+            raise ToolExecutionRequiresConfirmationError(
+                "文档写操作需要经过 TaskPlan 权限校验和人工确认后才能执行。"
             )
 
         # 兜底拒绝：真实执行只允许走 execute_confirmed_action，避免绕过权限网关。
-        raise ToolExecutionRequiresApprovalError(
-            "文档真实执行路径尚未接入 15-7 工具权限网关。"
+        raise ToolExecutionRequiresConfirmationError(
+            "文档真实执行路径必须通过 TaskPlan 确认入口。"
         )
 
     async def execute_confirmed_action(
@@ -122,10 +122,10 @@ class KnowledgeDocumentManagementService:
         user: CurrentUserContext,
         expected_before_hash: str | None = None,
     ) -> KnowledgeDocumentActionResult:
-        """执行已经通过 15-7 权限网关和人工确认的文档动作。
+        """执行已经通过 TaskPlan 权限网关和人工确认的文档动作。
 
         本阶段只修改知识库源文件，不直接写 Elasticsearch / Milvus。索引一致性继续由
-        ingestion CLI 负责，避免把人工确认接口扩展成复杂异步索引任务。
+        ingestion CLI 负责，避免把 TaskPlan 确认接口扩展成复杂异步索引任务。
         """
 
         if not self.settings.agent_document_tools_enabled:
@@ -133,7 +133,7 @@ class KnowledgeDocumentManagementService:
 
         # 确认接口仍受全局 dry-run-only 开关保护，便于本地演示和生产配置一键禁写。
         if self.settings.agent_document_tools_dry_run_only:
-            raise ToolExecutionRequiresApprovalError(
+            raise ToolExecutionRequiresConfirmationError(
                 "当前配置只允许 dry-run，请将 AGENT_DOCUMENT_TOOLS_DRY_RUN_ONLY=false 后再确认执行。"
             )
 

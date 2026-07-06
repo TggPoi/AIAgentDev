@@ -128,7 +128,7 @@ def build_knowledge_document_update_tool(
         name=KNOWLEDGE_DOCUMENT_UPDATE_TOOL_NAME,
         description=(
             "提出修改知识库文档的受控请求。默认只返回 dry-run 预览，"
-            "真实修改需要后续工具权限网关和人工确认。"
+            "真实修改需要通过 TaskPlan 确认接口。"
         ),
         args_schema=KnowledgeDocumentUpdateToolInput,
     )
@@ -171,7 +171,7 @@ def build_knowledge_document_management_tools(
     service: KnowledgeDocumentManagementService,
     user: CurrentUserContext,
 ) -> list[BaseTool]:
-    """构造三个独立工具，方便 15-7 按工具名配置不同权限。"""
+    """构造三个独立工具，方便权限网关按工具名配置不同权限。"""
 
     return [
         build_knowledge_document_create_tool(service=service, user=user),

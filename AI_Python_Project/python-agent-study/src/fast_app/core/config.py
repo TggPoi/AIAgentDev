@@ -187,7 +187,7 @@ class Settings(BaseSettings):
         alias="AGENT_MAX_TOOL_CALLS",
     )
     # Agent 文档管理工具默认关闭，并且默认只允许 dry-run。
-    # 真实写入需要后续 15-7 的工具权限网关和人工确认接入后再放开。
+    # 真实写入需要通过 TaskPlan 确认接口重新校验权限后再放开。
     agent_document_tools_enabled: bool = Field(
         default=False,
         alias="AGENT_DOCUMENT_TOOLS_ENABLED",
@@ -213,21 +213,12 @@ class Settings(BaseSettings):
         default=True,
         alias="AGENT_DOCUMENT_TOOLS_REQUIRE_CONFIRMATION",
     )
-    agent_tool_approval_dir: str = Field(
-        default="runtime/agent-tool-approvals",
-        alias="AGENT_TOOL_APPROVAL_DIR",
-    )
-    agent_tool_approval_expire_minutes: int = Field(
-        default=60,
-        ge=1,
-        alias="AGENT_TOOL_APPROVAL_EXPIRE_MINUTES",
-    )
     agent_task_plan_dir: str = Field(
         default="runtime/agent-task-plans",
         alias="AGENT_TASK_PLAN_DIR",
     )
     agent_tool_execution_policy: str = Field(
-        default="approval_required",
+        default="confirmation_required",
         alias="AGENT_TOOL_EXECUTION_POLICY",
     )
 
@@ -525,9 +516,9 @@ class Settings(BaseSettings):
             return value
 
         normalized = value.strip().lower()
-        if normalized not in {"approval_required", "risk_based", "dry_run_only"}:
+        if normalized not in {"confirmation_required", "risk_based", "dry_run_only"}:
             raise ValueError(
-                "AGENT_TOOL_EXECUTION_POLICY 只支持 approval_required / risk_based / dry_run_only"
+                "AGENT_TOOL_EXECUTION_POLICY 只支持 confirmation_required / risk_based / dry_run_only"
             )
 
         return normalized

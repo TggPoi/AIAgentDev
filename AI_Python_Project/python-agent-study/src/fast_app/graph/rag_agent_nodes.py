@@ -536,17 +536,16 @@ def create_execute_task_plan_node(
                 min_score=state["min_score"],
                 filters=build_rag_agent_retrieval_filters(state),
             )
-            approval_id = _first_task_approval_id(executed_plan)
             answer = build_task_plan_answer(executed_plan)
             result = {
                 "agent_task_plan": executed_plan,
                 "agent_task_plan_id": executed_plan.task_plan_id,
-                "tool_approval_id": approval_id,
                 "answer": answer,
-                "final_reason": "agent_task_waiting_approval"
-                if executed_plan.status == AgentTaskPlanStatus.WAITING_APPROVAL
+                "final_reason": "agent_task_waiting_confirmation"
+                if executed_plan.status == AgentTaskPlanStatus.WAITING_CONFIRMATION
                 else f"agent_task_{executed_plan.status.value}",
-                "requires_confirmation": approval_id is not None,
+                "requires_confirmation": executed_plan.status
+                == AgentTaskPlanStatus.WAITING_CONFIRMATION,
             }
 
             if trace_run is not None:
@@ -554,19 +553,12 @@ def create_execute_task_plan_node(
                     {
                         "task_plan_id": executed_plan.task_plan_id,
                         "status": executed_plan.status.value,
-                        "approval_id": approval_id,
+                        "requires_confirmation": result["requires_confirmation"],
                     }
                 )
             return result
 
     return execute_task_plan_node
-
-
-def _first_task_approval_id(plan) -> str | None:
-    for step in plan.steps:
-        if step.approval_id:
-            return step.approval_id
-    return None
 
 
 def build_task_plan_answer(plan) -> str:
@@ -578,14 +570,13 @@ def build_task_plan_answer(plan) -> str:
         f"- status: {plan.status.value}",
         f"- target_path: {plan.target_path}",
     ]
-    approval_id = _first_task_approval_id(plan)
-    if approval_id:
+    if plan.status == AgentTaskPlanStatus.WAITING_CONFIRMATION:
         lines.extend(
             [
-                f"- approval_id: {approval_id}",
+                f"- confirm_endpoint: /agent/task-plans/{plan.task_plan_id}/confirm",
                 "",
-                "高风险文档创建步骤已停在执行确认单，尚未执行真实写入。",
-                "请通过 `POST /agent/tool-approvals/{approval_id}/confirm` 完成人工确认。",
+                "文档创建步骤已停在 TaskPlan 人工确认，尚未执行真实写入。",
+                f"请通过 `POST /agent/task-plans/{plan.task_plan_id}/confirm` 完成人工确认。",
             ]
         )
     return "\n".join(lines)

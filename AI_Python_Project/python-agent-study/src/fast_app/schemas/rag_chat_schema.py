@@ -134,18 +134,6 @@ class RagChatResponse(BaseModel):
     sources: list[RagSource] = Field(
         description="本次回答引用或检索到的来源列表；无检索时为空列表。",
     )
-    tool_approval_id: str | None = Field(
-        default=None,
-        description="当 Agent 生成高风险工具执行确认单时返回的 approval_id",
-    )
-    tool_confirmation_required: bool = Field(
-        default=False,
-        description="是否需要调用独立确认接口后才执行工具动作",
-    )
-    tool_approval: dict[str, Any] | None = Field(
-        default=None,
-        description="高风险工具执行确认单摘要；普通 RAG 请求为空",
-    )
     agent_task_plan_id: str | None = Field(
         default=None,
         description="当 Agent 生成多步骤任务计划时返回的 task_plan_id",
@@ -157,6 +145,14 @@ class RagChatResponse(BaseModel):
     agent_task_plan: dict[str, Any] | None = Field(
         default=None,
         description="Agent 多步骤任务计划摘要；普通 RAG 请求为空",
+    )
+    task_confirmation_required: bool = Field(
+        default=False,
+        description="TaskPlan 是否等待人工确认后继续执行。",
+    )
+    task_confirm_endpoint: str | None = Field(
+        default=None,
+        description="TaskPlan 确认执行接口；无需确认时为空。",
     )
 
 

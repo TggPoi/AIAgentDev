@@ -184,7 +184,7 @@ class AgentTaskPlanner:
                     tool_name="knowledge_document_create",
                     input={"target_path": target_path},
                     risk_level="medium",
-                    requires_approval=True,
+                    requires_confirmation=True,
                 ),
             ],
         )

@@ -63,9 +63,9 @@ class AgentToolPermissionAction(StrEnum):
     ALLOW = "allow"
     # 拒绝当前工具调用。
     DENY = "deny"
-    # 必须先生成工具执行确认单。
-    APPROVAL_REQUIRED = "approval_required"
-    # 已有确认单但还需要用户确认。
+    # 必须等待人工确认。
+    CONFIRMATION_REQUIRED = "confirmation_required"
+    # 当前动作还需要用户确认。
     REQUIRE_CONFIRMATION = "require_confirmation"
     # 确认通过，可以执行真实工具动作。
     EXECUTE_ALLOWED = "execute_allowed"
@@ -78,7 +78,7 @@ class ToolRiskLevel(StrEnum):
     LOW = "low"
     # 中风险工具，需要审计但通常不需要人工确认。
     MEDIUM = "medium"
-    # 高风险工具，需要执行确认单和人工确认。
+    # 高风险工具，需要 TaskPlan 人工确认。
     HIGH = "high"
     # 关键风险工具，通常代表删除或不可逆动作。
     CRITICAL = "critical"
@@ -199,7 +199,7 @@ class AgentToolCallContext(BaseModel):
         description="文档工具对应的 create/update/delete 操作；非文档工具可为空。",
     )
     risk_level: KnowledgeDocumentRiskLevel | ToolRiskLevel = Field(
-        description="本次工具调用的风险等级，用于决定是否需要执行确认单和人工确认。",
+        description="本次工具调用的风险等级，用于决定是否需要 TaskPlan 人工确认。",
     )
     target_path: str | None = Field(
         default=None,
@@ -211,15 +211,11 @@ class AgentToolCallContext(BaseModel):
     )
     requires_confirmation: bool = Field(
         default=False,
-        description="该工具动作是否必须先生成执行确认单并等待人工确认。",
-    )
-    approval_id: str | None = Field(
-        default=None,
-        description="确认执行阶段对应的工具执行确认单 ID；首次生成 approval 时为空。",
+        description="该工具动作是否必须等待 TaskPlan 人工确认。",
     )
     confirmation_text: str | None = Field(
         default=None,
-        description="用户提交的确认口令；存在时表示正在尝试执行已有 approval。",
+        description="确认阶段的服务端确认标记；存在时表示正在尝试执行已确认的高风险动作。",
     )
     metadata: dict[str, Any] = Field(
         default_factory=dict,
@@ -234,7 +230,7 @@ class AgentToolPermissionDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action: AgentToolPermissionAction = Field(
-        description="权限网关裁决动作，例如 deny / approval_required / execute_allowed。",
+        description="权限网关裁决动作，例如 deny / confirmation_required / execute_allowed。",
     )
     allowed: bool = Field(
         default=False,

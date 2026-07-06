@@ -15,7 +15,7 @@ class AgentTaskPlanStatus(StrEnum):
 
     CREATED = "created"
     RUNNING = "running"
-    WAITING_APPROVAL = "waiting_approval"
+    WAITING_CONFIRMATION = "waiting_confirmation"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -26,7 +26,7 @@ class AgentToolStepStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
-    WAITING_APPROVAL = "waiting_approval"
+    WAITING_CONFIRMATION = "waiting_confirmation"
     FAILED = "failed"
     SKIPPED = "skipped"
 
@@ -51,13 +51,9 @@ class AgentToolStep(BaseModel):
         description="工具调用输出摘要，供后续步骤和 React 展示使用。",
     )
     risk_level: str = Field(default="low", description="步骤风险等级。")
-    requires_approval: bool = Field(
+    requires_confirmation: bool = Field(
         default=False,
-        description="该步骤是否必须生成工具执行确认单。",
-    )
-    approval_id: str | None = Field(
-        default=None,
-        description="该步骤关联的工具执行确认单 ID；没有确认单时为空。",
+        description="该步骤是否需要人工确认后才能真实执行。",
     )
     error: str | None = Field(default=None, description="步骤失败原因。")
 
@@ -86,7 +82,7 @@ class AgentTaskPlan(BaseModel):
     steps: list[AgentToolStep] = Field(description="顺序执行的工具步骤列表。")
     final_output: dict[str, Any] = Field(
         default_factory=dict,
-        description="任务最终输出摘要，例如 approval_id 或报告长度。",
+        description="任务最终输出摘要，例如确认接口或报告长度。",
     )
     created_at: datetime = Field(description="任务计划创建时间。")
     updated_at: datetime = Field(description="任务计划最后更新时间。")

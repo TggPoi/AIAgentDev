@@ -16,11 +16,11 @@ class KnowledgeDocumentOperation(StrEnum):
 
 
 class KnowledgeDocumentRiskLevel(StrEnum):
-    """文档管理动作的风险等级，后续 15-7 会用于权限网关和人工确认。"""
+    """文档管理动作的风险等级，用于权限网关和 TaskPlan 人工确认。"""
 
     # 中风险动作，通常需要记录审计但不一定需要人工确认。
     MEDIUM = "medium"
-    # 高风险动作，需要 plan 和人工确认。
+    # 高风险动作，需要 TaskPlan 人工确认。
     HIGH = "high"
     # 关键风险动作，代表删除或影响范围更大的操作。
     CRITICAL = "critical"
@@ -70,7 +70,7 @@ class KnowledgeDocumentActionRequest(BaseModel):
 class KnowledgeDocumentActionPreview(BaseModel):
     """文档管理 dry-run 预览。
 
-    preview 是后续工具权限、人工确认和审计日志最重要的结构化输入。它需要告诉
+    preview 是后续工具权限、TaskPlan 确认和审计日志最重要的结构化输入。它需要告诉
     上游这次操作影响哪个文档、风险多高、预计权限 metadata 是什么。
     """
 

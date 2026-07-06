@@ -26,12 +26,11 @@ from fast_app.domain.knowledge_document_actions import (
 from fast_app.domain.rag_models import RetrievalFilters
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.agent_tool_audit_service import AgentToolAuditService
-from fast_app.services.agent_tool_approval_service import AgentToolApprovalService
 from fast_app.services.agent_tool_permission_service import (
     AgentToolPermissionService,
     tool_name_for_document_operation,
 )
-from fast_app.services.exceptions import AppServiceError
+from fast_app.services.exceptions import AppServiceError, ToolPermissionDeniedError
 from fast_app.services.knowledge_document_management_service import (
     KnowledgeDocumentManagementService,
 )
@@ -81,7 +80,6 @@ class AgentTaskExecutor:
         document_management_service: KnowledgeDocumentManagementService,
         tool_permission_service: AgentToolPermissionService,
         tool_audit_service: AgentToolAuditService,
-        tool_approval_service: AgentToolApprovalService,
         task_plan_store: AgentTaskPlanStore,
     ) -> None:
         self._settings = settings
@@ -91,7 +89,6 @@ class AgentTaskExecutor:
         self._document_management_service = document_management_service
         self._tool_permission_service = tool_permission_service
         self._tool_audit_service = tool_audit_service
-        self._tool_approval_service = tool_approval_service
         self._task_plan_store = task_plan_store
 
     # 任务执行，构造plan的步骤状态，执行知识检索和报告生成，并处理文档创建的权限和审批逻辑。
@@ -188,7 +185,7 @@ class AgentTaskExecutor:
             action_result.preview.permission_metadata.get("allowed_departments", [])
             or []
         )
-        requires_approval = _requires_approval(
+        requires_confirmation = _requires_confirmation(
             policy=self._settings.agent_tool_execution_policy,
             risk_level=action_result.preview.risk_level,
         ) or self._settings.agent_document_tools_dry_run_only
@@ -198,7 +195,7 @@ class AgentTaskExecutor:
             risk_level=action_result.preview.risk_level,
             target_path=action_request.target_path,
             target_department_codes=target_departments,
-            requires_confirmation=requires_approval,
+            requires_confirmation=requires_confirmation,
             metadata={"source": "rag_agent.task_executor"},
         )
         decision = await self._tool_permission_service.authorize(user=user, context=context)
@@ -215,32 +212,23 @@ class AgentTaskExecutor:
             return
 
         if decision.action in {
-            AgentToolPermissionAction.APPROVAL_REQUIRED,
+            AgentToolPermissionAction.CONFIRMATION_REQUIRED,
             AgentToolPermissionAction.REQUIRE_CONFIRMATION,
         }:
-            created = await self._tool_approval_service.create_approval(
-                user=user,
-                tool_name=context.tool_name,
-                action_request=action_request,
-                action_result=action_result,
-                permission_decision=decision,
-            )
-            step.status = AgentToolStepStatus.WAITING_APPROVAL
-            step.requires_approval = True
-            step.approval_id = created.approval.approval_id
+            step.status = AgentToolStepStatus.WAITING_CONFIRMATION
+            step.requires_confirmation = True
             step.output = {
-                "approval_id": created.approval.approval_id,
-                "approval_kind": created.approval.approval_kind,
-                "markdown_path": created.markdown_path,
-                "json_path": created.json_path,
-                "confirmation_text": created.confirmation_text,
-                "action_request_content": report_content,
+                "target_path": plan.target_path,
+                "content": report_content,
+                "action_request": action_request.model_dump(mode="json"),
+                "preview": action_result.preview.model_dump(mode="json"),
+                "permission_decision": decision.model_dump(mode="json"),
             }
-            plan.status = AgentTaskPlanStatus.WAITING_APPROVAL
+            plan.status = AgentTaskPlanStatus.WAITING_CONFIRMATION
             plan.final_output = {
-                "approval_id": created.approval.approval_id,
                 "target_path": plan.target_path,
                 "status": plan.status.value,
+                "confirm_endpoint": f"/agent/task-plans/{plan.task_plan_id}/confirm",
             }
             return
 
@@ -260,8 +248,97 @@ class AgentTaskExecutor:
             plan.final_output = {"target_path": plan.target_path, "executed": True}
             return
 
-        step.status = AgentToolStepStatus.WAITING_APPROVAL
-        plan.status = AgentTaskPlanStatus.WAITING_APPROVAL
+        step.status = AgentToolStepStatus.WAITING_CONFIRMATION
+        step.requires_confirmation = True
+        step.output = {
+            "target_path": plan.target_path,
+            "content": report_content,
+            "action_request": action_request.model_dump(mode="json"),
+            "preview": action_result.preview.model_dump(mode="json"),
+            "permission_decision": decision.model_dump(mode="json"),
+        }
+        plan.status = AgentTaskPlanStatus.WAITING_CONFIRMATION
+        plan.final_output = {
+            "target_path": plan.target_path,
+            "status": plan.status.value,
+            "confirm_endpoint": f"/agent/task-plans/{plan.task_plan_id}/confirm",
+        }
+
+    async def confirm(
+        self,
+        task_plan_id: str,
+        user: CurrentUserContext,
+    ) -> AgentTaskPlan:
+        plan = self._task_plan_store.load(task_plan_id)
+        if plan.user_id != user.user_id and user.role != "admin":
+            raise ToolPermissionDeniedError("只能确认自己创建的 Agent task plan")
+        if plan.status != AgentTaskPlanStatus.WAITING_CONFIRMATION:
+            raise AppServiceError("Agent task plan 状态不是 waiting_confirmation，拒绝执行")
+
+        step = _find_step(plan, "knowledge_document_create")
+        if step.status != AgentToolStepStatus.WAITING_CONFIRMATION:
+            raise AppServiceError("文档创建步骤状态不是 waiting_confirmation，拒绝执行")
+
+        action_payload = step.output.get("action_request")
+        preview_payload = step.output.get("preview")
+        if not isinstance(action_payload, dict) or not isinstance(preview_payload, dict):
+            raise AppServiceError("Agent task plan 缺少确认执行所需的 dry-run 事实")
+
+        action_request = KnowledgeDocumentActionRequest.model_validate(
+            {
+                **action_payload,
+                "dry_run": False,
+            }
+        )
+        target_departments = list(
+            preview_payload.get("permission_metadata", {}).get("allowed_departments", [])
+            or []
+        )
+        context = AgentToolCallContext(
+            tool_name=tool_name_for_document_operation(action_request.operation),
+            operation=action_request.operation,
+            risk_level=KnowledgeDocumentRiskLevel(preview_payload["risk_level"]),
+            target_path=action_request.target_path,
+            target_department_codes=target_departments,
+            requires_confirmation=False,
+            confirmation_text="confirmed",
+            metadata={"source": "agent_task_plan.confirm", "task_plan_id": task_plan_id},
+        )
+        decision = await self._tool_permission_service.authorize(user=user, context=context)
+        await self._tool_audit_service.record_decision(
+            user=user,
+            context=context,
+            decision=decision,
+        )
+        if decision.action != AgentToolPermissionAction.EXECUTE_ALLOWED:
+            raise ToolPermissionDeniedError(decision.reason)
+
+        result = await self._document_management_service.execute_confirmed_action(
+            request=action_request,
+            user=user,
+            expected_before_hash=preview_payload.get("before_hash"),
+        )
+        step.status = AgentToolStepStatus.COMPLETED
+        step.requires_confirmation = False
+        step.output = {
+            **step.output,
+            "execution_result": result.model_dump(mode="json"),
+        }
+        plan.status = AgentTaskPlanStatus.COMPLETED
+        plan.final_output = {
+            "target_path": plan.target_path,
+            "status": plan.status.value,
+            "executed": True,
+        }
+        await self._tool_audit_service.record_execution(
+            user=user,
+            task_plan_id=plan.task_plan_id,
+            tool_name=context.tool_name,
+            executed=True,
+            message=result.message,
+        )
+        self._task_plan_store.save(plan)
+        return plan
 
 
 def _find_step(plan: AgentTaskPlan, tool_name: str) -> AgentToolStep:
@@ -276,11 +353,11 @@ def _infer_departments_from_path(target_path: str) -> list[str]:
     return [first] if first else []
 
 
-def _requires_approval(
+def _requires_confirmation(
     policy: str,
     risk_level: KnowledgeDocumentRiskLevel,
 ) -> bool:
-    if policy in {"approval_required", "dry_run_only"}:
+    if policy in {"confirmation_required", "dry_run_only"}:
         return True
     return risk_level in {
         KnowledgeDocumentRiskLevel.HIGH,

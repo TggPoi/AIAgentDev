@@ -25,7 +25,6 @@ from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievalOp
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
 from fast_app.services.agent_task_planner import AgentTaskPlanner
-from fast_app.services.agent_tool_approval_service import AgentToolApprovalService
 from fast_app.services.knowledge_document_management_service import (
     KnowledgeDocumentManagementService,
 )
@@ -61,10 +60,24 @@ class FakeLLMClient(BaseLLMClient):
 
 class FakePermissionService:
     async def authorize(self, user, context):
+        if context.confirmation_text is not None:
+            return AgentToolPermissionDecision(
+                action=AgentToolPermissionAction.EXECUTE_ALLOWED,
+                allowed=True,
+                reason="测试：TaskPlan 已人工确认",
+                risk_level=KnowledgeDocumentRiskLevel.MEDIUM,
+                required_permissions=[
+                    PermissionCode.KNOWLEDGE_DOCUMENT_CREATE,
+                    PermissionCode.KNOWLEDGE_DOCUMENT_APPROVE,
+                ],
+                missing_permissions=[],
+                target_department_codes=context.target_department_codes,
+                requires_confirmation=False,
+            )
         return AgentToolPermissionDecision(
-            action=AgentToolPermissionAction.APPROVAL_REQUIRED,
+            action=AgentToolPermissionAction.CONFIRMATION_REQUIRED,
             allowed=True,
-            reason="测试：文档创建需要 approval",
+            reason="测试：文档创建需要 TaskPlan 人工确认",
             risk_level=KnowledgeDocumentRiskLevel.MEDIUM,
             required_permissions=[PermissionCode.KNOWLEDGE_DOCUMENT_CREATE],
             missing_permissions=[],
@@ -75,6 +88,9 @@ class FakePermissionService:
 
 class FakeAuditService:
     async def record_decision(self, **kwargs):
+        return None
+
+    async def record_execution(self, **kwargs):
         return None
 
 
@@ -103,9 +119,8 @@ async def main() -> None:
             OPENAI_API_KEY="",
             KNOWLEDGE_BASE_DIR=kb.as_posix(),
             AGENT_DOCUMENT_TOOLS_ENABLED=True,
-            AGENT_DOCUMENT_TOOLS_DRY_RUN_ONLY=True,
-            AGENT_TOOL_EXECUTION_POLICY="approval_required",
-            AGENT_TOOL_APPROVAL_DIR=(root / "approvals").as_posix(),
+            AGENT_DOCUMENT_TOOLS_DRY_RUN_ONLY=False,
+            AGENT_TOOL_EXECUTION_POLICY="confirmation_required",
             AGENT_TASK_PLAN_DIR=(root / "task-plans").as_posix(),
         )
         user = CurrentUserContext(
@@ -138,7 +153,6 @@ async def main() -> None:
             document_management_service=KnowledgeDocumentManagementService(settings=settings),
             tool_permission_service=FakePermissionService(),
             tool_audit_service=FakeAuditService(),
-            tool_approval_service=AgentToolApprovalService(settings=settings),
             task_plan_store=store,
         )
         executed = await executor.execute(
@@ -151,22 +165,25 @@ async def main() -> None:
             filters=RetrievalFilters(department_codes=["development"]),
         )
 
-        assert executed.status == AgentTaskPlanStatus.WAITING_APPROVAL
+        assert executed.status == AgentTaskPlanStatus.WAITING_CONFIRMATION
         create_step = executed.steps[-1]
-        assert create_step.status == AgentToolStepStatus.WAITING_APPROVAL
-        assert create_step.approval_id
-        assert not (kb / "development" / "task-report.md").exists()
-
+        assert create_step.status == AgentToolStepStatus.WAITING_CONFIRMATION
+        assert create_step.requires_confirmation is True
         report_content = executed.steps[1].output["content"]
-        approval_files = list((root / "approvals").glob("*.json"))
-        assert approval_files
-        approval_payload = json.loads(approval_files[0].read_text(encoding="utf-8"))
-        assert approval_payload["action_request"]["content"] == report_content
-        assert "planner forged" not in approval_payload["action_request"]["content"]
+        assert create_step.output["content"] == report_content
+        assert create_step.output["action_request"]["content"] == report_content
+        assert "planner forged" not in create_step.output["content"]
+        target = kb / "development" / "task-report.md"
+        assert not target.exists()
 
         loaded = store.load(executed.task_plan_id)
         assert loaded.task_plan_id == executed.task_plan_id
-        assert loaded.status == AgentTaskPlanStatus.WAITING_APPROVAL
+        assert loaded.status == AgentTaskPlanStatus.WAITING_CONFIRMATION
+
+        confirmed = await executor.confirm(task_plan_id=executed.task_plan_id, user=user)
+        assert confirmed.status == AgentTaskPlanStatus.COMPLETED
+        assert confirmed.steps[-1].status == AgentToolStepStatus.COMPLETED
+        assert target.read_text(encoding="utf-8") == report_content
 
     print("agent_task_planning_flow=passed")
 

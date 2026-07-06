@@ -50,7 +50,7 @@ class AgentToolAuditService:
     async def record_execution(
         self,
         user: CurrentUserContext,
-        approval_id: str,
+        task_plan_id: str,
         tool_name: str,
         executed: bool,
         message: str,
@@ -63,7 +63,7 @@ class AgentToolAuditService:
                 audit_id=audit_id,
                 user_id=user.user_id,
                 auth_source=user.auth_source,
-                approval_id=approval_id,
+                task_plan_id=task_plan_id,
                 tool_name=tool_name,
                 executed=executed,
                 message=message,

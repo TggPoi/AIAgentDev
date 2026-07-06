@@ -35,7 +35,6 @@ from fast_app.services.agent_task_executor import AgentTaskExecutor, AgentTaskPl
 from fast_app.services.agent_task_planner import AgentTaskPlanner
 from fast_app.services.agent_tool_audit_service import AgentToolAuditService
 from fast_app.services.agent_tool_permission_service import AgentToolPermissionService
-from fast_app.services.agent_tool_approval_service import AgentToolApprovalService
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingClient
@@ -269,14 +268,6 @@ def get_agent_tool_audit_service() -> AgentToolAuditService:
     return AgentToolAuditService()
 
 
-def get_agent_tool_approval_service(
-    settings: Settings = Depends(get_settings),
-) -> AgentToolApprovalService:
-    """提供 Agent 工具执行确认单双文件持久化服务。"""
-
-    return AgentToolApprovalService(settings=settings)
-
-
 def get_prompt_guard_service(
     settings: Settings = Depends(get_settings),
 ) -> PromptGuardService:
@@ -304,6 +295,34 @@ def get_knowledge_document_management_service(
     )
 
 
+def get_agent_task_executor(
+    settings: Settings = Depends(get_settings),
+    vector_retriever: BaseRetriever = Depends(get_vector_retriever),
+    keyword_retriever: BaseRetriever = Depends(get_keyword_retriever),
+    llm_client: BaseLLMClient = Depends(get_llm_client),
+    document_management_service: KnowledgeDocumentManagementService = Depends(
+        get_knowledge_document_management_service
+    ),
+    tool_permission_service: AgentToolPermissionService = Depends(
+        get_agent_tool_permission_service
+    ),
+    tool_audit_service: AgentToolAuditService = Depends(get_agent_tool_audit_service),
+    task_plan_store: AgentTaskPlanStore = Depends(get_agent_task_plan_store),
+) -> AgentTaskExecutor:
+    """提供 Agent TaskPlan 执行器。"""
+
+    return AgentTaskExecutor(
+        settings=settings,
+        vector_retriever=vector_retriever,
+        keyword_retriever=keyword_retriever,
+        llm_client=llm_client,
+        document_management_service=document_management_service,
+        tool_permission_service=tool_permission_service,
+        tool_audit_service=tool_audit_service,
+        task_plan_store=task_plan_store,
+    )
+
+
 
 # 这里先不写返回类型，因为RagPipeline LangGraphRagPipeline这两个类目前没有共同的显式基类。
 def get_rag_pipeline(
@@ -315,15 +334,7 @@ def get_rag_pipeline(
     reranker: BaseReranker = Depends(get_reranker),
     prompt_guard: PromptGuardService = Depends(get_prompt_guard_service),
     task_planner: AgentTaskPlanner = Depends(get_agent_task_planner),
-    task_plan_store: AgentTaskPlanStore = Depends(get_agent_task_plan_store),
-    document_management_service: KnowledgeDocumentManagementService = Depends(
-        get_knowledge_document_management_service
-    ),
-    tool_permission_service: AgentToolPermissionService = Depends(
-        get_agent_tool_permission_service
-    ),
-    tool_audit_service: AgentToolAuditService = Depends(get_agent_tool_audit_service),
-    tool_approval_service: AgentToolApprovalService = Depends(get_agent_tool_approval_service),
+    task_executor: AgentTaskExecutor = Depends(get_agent_task_executor),
     conversation_persistence: ConversationPersistenceService = Depends(
         get_conversation_persistence_service
     ),
@@ -373,20 +384,9 @@ def get_rag_pipeline(
             conversation_summary_service=conversation_summary_service,
             prompt_guard=prompt_guard,
             task_planner=task_planner,
-            task_executor=AgentTaskExecutor(
-                settings=settings,
-                vector_retriever=vector_retriever,
-                keyword_retriever=keyword_retriever,
-                llm_client=llm_client,
-                document_management_service=document_management_service,
-                tool_permission_service=tool_permission_service,
-                tool_audit_service=tool_audit_service,
-                tool_approval_service=tool_approval_service,
-                task_plan_store=task_plan_store,
-            ),
+            task_executor=task_executor,
         )
 
     raise AppServiceError(
         f"不支持的 RAG_PIPELINE_PROVIDER: {settings.rag_pipeline_provider}"
     )
-

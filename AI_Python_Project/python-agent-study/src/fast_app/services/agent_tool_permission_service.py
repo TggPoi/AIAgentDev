@@ -44,7 +44,7 @@ class AgentToolPermissionService:
     """Agent 工具权限网关。
 
     LLM 或 planner 只能提出工具意图；这个服务根据数据库有效权限和目标部门
-    决定 allow / deny / approval_required / require_confirmation / execute_allowed。
+    决定 allow / deny / confirmation_required / require_confirmation / execute_allowed。
     """
 
     def __init__(self, permission_service: PermissionService) -> None:
@@ -92,7 +92,7 @@ class AgentToolPermissionService:
         # 根据工具名确定基础权限，例如 create 工具必须具备 knowledge:document:create。
         required_permission = DOCUMENT_TOOL_PERMISSION_MAP[context.tool_name]
         required_permissions = [required_permission]
-        # confirmation_text 出现时，表示用户正在确认并尝试执行已有 plan。
+        # confirmation_text 出现时，表示用户正在确认并尝试执行已有 TaskPlan。
         # 这一步除了动作权限，还必须具备 approve 权限，避免普通编辑者绕过人审。
         if context.confirmation_text is not None:
             required_permissions.append(PermissionCode.KNOWLEDGE_DOCUMENT_APPROVE)
@@ -160,12 +160,12 @@ class AgentToolPermissionService:
                 requires_confirmation=False,
             )
 
-        # 没有 confirmation_text，但工具本身标记为高风险，则只允许生成 plan，不直接执行。
+        # 没有 confirmation_text，但工具本身标记为高风险，则只允许进入 TaskPlan 人工确认，不直接执行。
         if context.requires_confirmation:
             return AgentToolPermissionDecision(
-                action=AgentToolPermissionAction.APPROVAL_REQUIRED,
+                action=AgentToolPermissionAction.CONFIRMATION_REQUIRED,
                 allowed=True,
-                reason="用户具备发起计划权限，但高风险文档动作需要人工确认",
+                reason="用户具备发起 TaskPlan 权限，但高风险文档动作需要人工确认",
                 risk_level=context.risk_level,
                 required_permissions=required_permissions,
                 permission_level=permission_level,
@@ -192,12 +192,12 @@ class AgentToolPermissionService:
     ) -> AgentToolPermissionDecision:
         # 管理员仍然区分三种业务状态：
         # 1. confirmation_text 存在 -> 确认执行；
-        # 2. requires_confirmation 为 true -> 先生成 plan；
+        # 2. requires_confirmation 为 true -> 等待 TaskPlan 人工确认；
         # 3. 否则直接允许调用。
         action = (
             AgentToolPermissionAction.EXECUTE_ALLOWED
             if context.confirmation_text is not None
-            else AgentToolPermissionAction.APPROVAL_REQUIRED
+            else AgentToolPermissionAction.CONFIRMATION_REQUIRED
             if context.requires_confirmation
             else AgentToolPermissionAction.ALLOW
         )

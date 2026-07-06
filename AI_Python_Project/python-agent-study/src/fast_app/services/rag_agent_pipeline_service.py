@@ -605,9 +605,6 @@ class RagAgentPipeline:
             query=final_state["query"],
             answer=answer,
             sources=docs_to_sources(docs),
-            tool_approval_id=final_state.get("tool_approval_id"),
-            tool_confirmation_required=final_state.get("requires_confirmation", False),
-            tool_approval=None,
             agent_task_plan_id=final_state.get("agent_task_plan_id"),
             agent_task_status=(
                 final_state["agent_task_plan"].status.value
@@ -617,6 +614,13 @@ class RagAgentPipeline:
             agent_task_plan=(
                 final_state["agent_task_plan"].model_dump(mode="json")
                 if final_state.get("agent_task_plan") is not None
+                else None
+            ),
+            task_confirmation_required=final_state.get("requires_confirmation", False),
+            task_confirm_endpoint=(
+                f"/agent/task-plans/{final_state['agent_task_plan_id']}/confirm"
+                if final_state.get("requires_confirmation", False)
+                and final_state.get("agent_task_plan_id") is not None
                 else None
             ),
         )
@@ -848,7 +852,7 @@ class RagAgentPipeline:
                     if step.status.value in {
                         "running",
                         "completed",
-                        "waiting_approval",
+                        "waiting_confirmation",
                         "failed",
                     }:
                         yield RagStreamEvent(
@@ -869,37 +873,16 @@ class RagAgentPipeline:
                                 "output": step.output,
                             },
                         )
-                    if step.status.value == "waiting_approval":
+                    if step.status.value == "waiting_confirmation":
                         yield RagStreamEvent(
-                            event="agent_task_waiting_approval",
+                            event="agent_task_waiting_confirmation",
                             data={
                                 "task_plan_id": task_plan.task_plan_id,
                                 "step_id": step.step_id,
                                 "tool_name": step.tool_name,
-                                "approval_id": step.approval_id,
+                                "confirm_endpoint": f"/agent/task-plans/{task_plan.task_plan_id}/confirm",
                             },
                         )
-                        if step.approval_id:
-                            yield RagStreamEvent(
-                                event="tool_approval_created",
-                                data={
-                                    "approval_kind": step.output.get("approval_kind"),
-                                    "approval_id": step.approval_id,
-                                    "markdown_path": step.output.get("markdown_path"),
-                                    "json_path": step.output.get("json_path"),
-                                    "operation": "create",
-                                    "target_path": task_plan.target_path,
-                                    "risk_level": step.risk_level,
-                                },
-                            )
-                            yield RagStreamEvent(
-                                event="tool_confirmation_required",
-                                data={
-                                    "approval_id": step.approval_id,
-                                    "confirmation_required": True,
-                                    "confirm_endpoint": f"/agent/tool-approvals/{step.approval_id}/confirm",
-                                },
-                            )
 
             with rag_agent_langsmith_step_trace(
                 settings=self.settings,
