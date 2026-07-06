@@ -64,6 +64,14 @@ class UserTable(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    global_roles: Mapped[list[UserRoleTable]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    department_roles: Mapped[list[UserDepartmentRoleTable]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class DepartmentTable(Base):
@@ -131,6 +139,194 @@ class UserDepartmentTable(Base):
         ),
         Index("idx_user_departments_user_id", "user_id"),
         Index("idx_user_departments_department_code", "department_code"),
+    )
+
+
+class PermissionTable(Base):
+    """permissions 表：系统可授权动作目录。"""
+
+    __tablename__ = "permissions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    code: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    risk_level: Mapped[str] = mapped_column(String(32), nullable=False)
+    is_system: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("true"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    role_permissions: Mapped[list[RolePermissionTable]] = relationship(
+        back_populates="permission",
+        cascade="all, delete-orphan",
+    )
+
+
+class RoleTable(Base):
+    """roles 表：系统角色目录。"""
+
+    __tablename__ = "roles"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    code: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_system: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("true"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    role_permissions: Mapped[list[RolePermissionTable]] = relationship(
+        back_populates="role",
+        cascade="all, delete-orphan",
+    )
+    user_roles: Mapped[list[UserRoleTable]] = relationship(
+        back_populates="role",
+        cascade="all, delete-orphan",
+    )
+    user_department_roles: Mapped[list[UserDepartmentRoleTable]] = relationship(
+        back_populates="role",
+        cascade="all, delete-orphan",
+    )
+
+
+class RolePermissionTable(Base):
+    """role_permissions 表：角色和权限的多对多关系。"""
+
+    __tablename__ = "role_permissions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    role_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("roles.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    permission_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("permissions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    role: Mapped[RoleTable] = relationship(back_populates="role_permissions")
+    permission: Mapped[PermissionTable] = relationship(
+        back_populates="role_permissions"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "role_id",
+            "permission_id",
+            name="uq_role_permissions_role_permission",
+        ),
+        Index("idx_role_permissions_role_id", "role_id"),
+        Index("idx_role_permissions_permission_id", "permission_id"),
+    )
+
+
+class UserRoleTable(Base):
+    """user_roles 表：用户全局角色。"""
+
+    __tablename__ = "user_roles"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("roles.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    user: Mapped[UserTable] = relationship(back_populates="global_roles")
+    role: Mapped[RoleTable] = relationship(back_populates="user_roles")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "role_id", name="uq_user_roles_user_role"),
+        Index("idx_user_roles_user_id", "user_id"),
+        Index("idx_user_roles_role_id", "role_id"),
+    )
+
+
+class UserDepartmentRoleTable(Base):
+    """user_department_roles 表：用户在某个部门内的作用域角色。"""
+
+    __tablename__ = "user_department_roles"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    department_code: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("departments.code", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("roles.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    user: Mapped[UserTable] = relationship(back_populates="department_roles")
+    role: Mapped[RoleTable] = relationship(back_populates="user_department_roles")
+    department: Mapped[DepartmentTable] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "department_code",
+            "role_id",
+            name="uq_user_department_roles_user_department_role",
+        ),
+        Index("idx_user_department_roles_user_id", "user_id"),
+        Index("idx_user_department_roles_department_code", "department_code"),
+        Index("idx_user_department_roles_role_id", "role_id"),
     )
 
 
@@ -234,7 +430,12 @@ class RefreshTokenTable(Base):
 __all__ = [
     "ApiKeyTable",
     "DepartmentTable",
+    "PermissionTable",
     "RefreshTokenTable",
+    "RolePermissionTable",
+    "RoleTable",
     "UserDepartmentTable",
+    "UserDepartmentRoleTable",
+    "UserRoleTable",
     "UserTable",
 ]

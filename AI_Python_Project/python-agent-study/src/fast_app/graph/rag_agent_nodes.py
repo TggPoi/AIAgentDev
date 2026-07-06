@@ -16,6 +16,12 @@ from fast_app.agents.rag_agent_tools import (
     KNOWLEDGE_RETRIEVAL_TOOL_NAME,
     retrieve_knowledge_docs,
 )
+from fast_app.domain.agent_tool_permissions import (
+    AgentToolCallContext,
+    AgentToolPermissionAction,
+)
+from fast_app.domain.agent_task_plan import AgentTaskPlanStatus, AgentToolStepStatus
+from fast_app.domain.knowledge_document_actions import KnowledgeDocumentActionRequest
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.retrievers.base import BaseRetriever
@@ -34,6 +40,19 @@ from fast_app.graph.rag_graph_nodes import (
     should_retrieve_for_query,
 )
 from fast_app.services.exceptions import ExternalServiceError
+from fast_app.services.agent_document_action_planner import AgentDocumentActionPlanner
+from fast_app.services.agent_task_executor import AgentTaskExecutor
+from fast_app.services.agent_task_planner import AgentTaskPlanner
+from fast_app.services.agent_tool_audit_service import AgentToolAuditService
+from fast_app.services.agent_tool_permission_service import (
+    AgentToolPermissionService,
+    risk_level_for_document_operation,
+    tool_name_for_document_operation,
+)
+from fast_app.services.agent_tool_approval_service import AgentToolApprovalService
+from fast_app.services.knowledge_document_management_service import (
+    KnowledgeDocumentManagementService,
+)
 from fast_app.services.knowledge_permission_policy import (
     build_retrieval_filters_from_mapping,
 )
@@ -56,9 +75,13 @@ def get_rag_agent_step_index(operation: str, step_name: str) -> int:
     if operation == "stream_events":
         indexes = {
             "query_rewrite": 0,
-            "plan_next_action": 1,
+            "decide_next_action": 1,
             "check_loop_limits": 2,
             "direct_answer": 3,
+            "execute_task_plan": 3,
+            "authorize_tool_call": 3,
+            "create_tool_approval": 4,
+            "tool_permission_denied": 4,
             "call_knowledge_retrieval": 3,
             "rerank": 4,
             "emit_sources": 5,
@@ -72,9 +95,13 @@ def get_rag_agent_step_index(operation: str, step_name: str) -> int:
 
     indexes = {
         "query_rewrite": 0,
-        "plan_next_action": 1,
+        "decide_next_action": 1,
         "check_loop_limits": 2,
         "direct_answer": 3,
+        "execute_task_plan": 3,
+        "authorize_tool_call": 3,
+        "create_tool_approval": 4,
+        "tool_permission_denied": 4,
         "call_knowledge_retrieval": 3,
         "rerank": 4,
         "build_context": 5,
@@ -175,10 +202,32 @@ def route_after_loop_check(state: RagAgentState) -> RagAgentRoute:
         return "final_error_answer"
 
     route = state.get("route")
-    if route in ("direct_answer", "knowledge_retrieval"):
+    if route in (
+        "direct_answer",
+        "knowledge_retrieval",
+        "execute_task_plan",
+        "authorize_tool_call",
+    ):
         return route
 
     return "knowledge_retrieval"
+
+
+def route_after_tool_authorization(state: RagAgentState) -> RagAgentRoute:
+    decision = state.get("tool_permission_decision")
+    if decision is None:
+        return "tool_permission_denied"
+
+    if decision.action == AgentToolPermissionAction.DENY:
+        return "tool_permission_denied"
+
+    if decision.action in {
+        AgentToolPermissionAction.APPROVAL_REQUIRED,
+        AgentToolPermissionAction.REQUIRE_CONFIRMATION,
+    }:
+        return "tool_approval_created"
+
+    return "tool_permission_denied"
 
 
 def route_after_tool_call(state: RagAgentState) -> RagAgentRoute:
@@ -193,23 +242,113 @@ def route_after_tool_call(state: RagAgentState) -> RagAgentRoute:
     return "knowledge_retrieval"
 
 
-def create_plan_next_action_node(
+def create_next_action_decision_node(
     settings: Settings,
+    document_action_planner: AgentDocumentActionPlanner | None = None,
+    task_planner: AgentTaskPlanner | None = None,
 ) -> Callable[[RagAgentState], dict[str, object]]:
-    # Node factory 接收 settings，返回真正给 LangGraph 调用的 async node [plan_next_action_node]。
-    # 这样依赖在 graph 装配时注入，node 执行时只读 state。
-    async def plan_next_action_node(state: RagAgentState) -> dict[str, object]:
+    # decide_next_action 节点是 Agent 的“判断”步骤：先决定是否需要知识库，或是否需要调用工具。
+    async def decide_next_action_node(state: RagAgentState) -> dict[str, object]:
         with rag_agent_langsmith_step_trace(
             settings=settings,
             state=state,
-            step_name="plan_next_action",
+            step_name="decide_next_action",
             run_type="chain",
             inputs=build_rag_agent_step_inputs(state),
         ) as trace_run:
+            task_plan = None
+            if task_planner is not None:
+                current_user = state.get("current_user")
+                task_plan = await task_planner.plan(
+                    query=state["query"],
+                    history=[],
+                    user_id=current_user.user_id if current_user is not None else None,
+                )
+
+            if task_plan is not None:
+                route: RagAgentRoute = "execute_task_plan"
+                step_count = state["step_count"] + 1
+                result = {
+                    "route": route,
+                    "route_reason": "agent_task_plan_detected",
+                    "step_count": step_count,
+                    "agent_task_plan": task_plan,
+                    "agent_task_plan_id": task_plan.task_plan_id,
+                }
+                logger.info(
+                    "rag_agent_decision %s",
+                    format_log_fields(
+                        event="rag_agent.decide_next_action.task_plan",
+                        pipeline_provider="rag_agent",
+                        query=state["query"],
+                        route=route,
+                        task_plan_id=task_plan.task_plan_id,
+                        task_kind=task_plan.task_kind,
+                        step_count=step_count,
+                    ),
+                )
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "route": route,
+                            "task_plan_id": task_plan.task_plan_id,
+                            "task_kind": task_plan.task_kind,
+                        }
+                    )
+                return result
+
+            document_intent = None
+            if document_action_planner is not None:
+                document_intent = await document_action_planner.plan(
+                    query=state["query"],
+                    history=[],
+                )
+
+            # 判断当前用户行为是否会触发tool调用，如果document_intent为空，直接跳过，进入下面的 检索文档行为
+            if document_intent is not None:
+                # 把用户行为映射为tool名称
+                tool_name = tool_name_for_document_operation(document_intent.operation)
+                route: RagAgentRoute = "authorize_tool_call"
+                route_reason = "document_action_intent_detected"
+                step_count = state["step_count"] + 1
+                result = {
+                    "route": route,
+                    "route_reason": route_reason,
+                    "step_count": step_count,
+                    "document_action_intent": document_intent,
+                    "pending_tool_name": tool_name,
+                }
+
+                logger.info(
+                    "rag_agent_decision %s",
+                    format_log_fields(
+                        event="rag_agent.decide_next_action.document_action",
+                        pipeline_provider="rag_agent",
+                        query=state["query"],
+                        route=route,
+                        tool_name=tool_name,
+                        operation=document_intent.operation.value,
+                        target_path=document_intent.target_path,
+                        confidence=document_intent.confidence,
+                        step_count=step_count,
+                    ),
+                )
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "route": route,
+                            "tool_name": tool_name,
+                            "operation": document_intent.operation.value,
+                            "target_path": document_intent.target_path,
+                            "confidence": document_intent.confidence,
+                        }
+                    )
+                return result
+
             need_retrieval, route_reason = should_retrieve_for_query(state["query"])
             # 当前最小 Agent 只有两个动作：直接回答，或调用 knowledge_retrieval。
             # 后续多工具 Agent 可以在这里扩展 calculator / web_search / MCP tool 的选择。
-            route: RagAgentRoute = (
+            route = (
                 "knowledge_retrieval" if need_retrieval else "direct_answer"
             )
             step_count = state["step_count"] + 1
@@ -221,9 +360,9 @@ def create_plan_next_action_node(
             }
 
             logger.info(
-                "rag_agent_plan %s",
+                "rag_agent_decision %s",
                 format_log_fields(
-                    event="rag_agent.plan_next_action.finish",
+                    event="rag_agent.decide_next_action.finish",
                     pipeline_provider="rag_agent",
                     query=state["query"],
                     route=route,
@@ -236,7 +375,7 @@ def create_plan_next_action_node(
 
             return result
 
-    return plan_next_action_node
+    return decide_next_action_node
 
 
 def create_check_loop_limits_node(
@@ -449,6 +588,326 @@ def create_call_knowledge_retrieval_node(
             return result
 
     return call_knowledge_retrieval_node
+
+
+def create_execute_task_plan_node(
+    settings: Settings,
+    task_executor: AgentTaskExecutor,
+) -> Callable[[RagAgentState], dict[str, object]]:
+    """构造 AgentTaskPlan 执行节点。"""
+
+    async def execute_task_plan_node(state: RagAgentState) -> dict[str, object]:
+        plan = state.get("agent_task_plan")
+        user = state.get("current_user")
+        if plan is None or user is None:
+            return {
+                "answer": "缺少 Agent task plan 或当前用户上下文，无法执行多步骤任务。",
+                "final_reason": "agent_task_plan_failed",
+            }
+
+        with rag_agent_langsmith_step_trace(
+            settings=settings,
+            state=state,
+            step_name="execute_task_plan",
+            run_type="chain",
+            inputs=build_rag_agent_step_inputs(
+                state,
+                task_plan_id=plan.task_plan_id,
+                task_kind=plan.task_kind,
+            ),
+        ) as trace_run:
+            executed_plan = await task_executor.execute(
+                plan=plan,
+                user=user,
+                mode=state["mode"],
+                top_k=state["top_k"],
+                candidate_k=state.get("candidate_k"),
+                min_score=state["min_score"],
+                filters=build_rag_agent_retrieval_filters(state),
+            )
+            approval_id = _first_task_approval_id(executed_plan)
+            answer = build_task_plan_answer(executed_plan)
+            result = {
+                "agent_task_plan": executed_plan,
+                "agent_task_plan_id": executed_plan.task_plan_id,
+                "tool_approval_id": approval_id,
+                "answer": answer,
+                "final_reason": "agent_task_waiting_approval"
+                if executed_plan.status == AgentTaskPlanStatus.WAITING_APPROVAL
+                else f"agent_task_{executed_plan.status.value}",
+                "requires_confirmation": approval_id is not None,
+            }
+            if approval_id is not None:
+                result["tool_execution_approval"] = None
+
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "task_plan_id": executed_plan.task_plan_id,
+                        "status": executed_plan.status.value,
+                        "approval_id": approval_id,
+                    }
+                )
+            return result
+
+    return execute_task_plan_node
+
+
+def _first_task_approval_id(plan) -> str | None:
+    for step in plan.steps:
+        if step.approval_id:
+            return step.approval_id
+    return None
+
+
+def build_task_plan_answer(plan) -> str:
+    lines = [
+        "已生成并执行 Agent 多步骤任务计划。",
+        "",
+        f"- task_plan_id: {plan.task_plan_id}",
+        f"- task_kind: {plan.task_kind}",
+        f"- status: {plan.status.value}",
+        f"- target_path: {plan.target_path}",
+    ]
+    approval_id = _first_task_approval_id(plan)
+    if approval_id:
+        lines.extend(
+            [
+                f"- approval_id: {approval_id}",
+                "",
+                "高风险文档创建步骤已停在执行确认单，尚未执行真实写入。",
+                "请通过 `POST /agent/tool-approvals/{approval_id}/confirm` 完成人工确认。",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def create_authorize_tool_call_node(
+    settings: Settings,
+    document_management_service: KnowledgeDocumentManagementService,
+    tool_permission_service: AgentToolPermissionService,
+    tool_audit_service: AgentToolAuditService,
+) -> Callable[[RagAgentState], dict[str, object]]:
+    """构造工具授权节点。
+
+    节点先生成安全 dry-run preview，再把 preview 中的部门和风险信息交给权限网关。
+    """
+
+    async def authorize_tool_call_node(state: RagAgentState) -> dict[str, object]:
+        intent = state.get("document_action_intent")
+        user = state.get("current_user")
+        if intent is None or user is None:
+            return {
+                "answer": "缺少工具调用意图或当前用户上下文，已拒绝工具调用。",
+                "final_reason": "tool_permission_denied",
+            }
+
+        tool_name = tool_name_for_document_operation(intent.operation)
+        with rag_agent_langsmith_step_trace(
+            settings=settings,
+            state=state,
+            step_name="authorize_tool_call",
+            run_type="chain",
+            inputs=build_rag_agent_step_inputs(
+                state,
+                tool_name=tool_name,
+                operation=intent.operation.value,
+                target_path=intent.target_path,
+            ),
+        ) as trace_run:
+            request = KnowledgeDocumentActionRequest(
+                operation=intent.operation,
+                target_path=intent.target_path,
+                content=intent.content,
+                reason=intent.reason,
+                dry_run=True,
+                expected_department_codes=intent.expected_department_codes,
+            )
+            action_result = await document_management_service.plan_action(
+                request=request,
+                user=user,
+            )
+            target_departments = list(
+                action_result.preview.permission_metadata.get(
+                    "allowed_departments",
+                    [],
+                )
+                or []
+            )
+            context = AgentToolCallContext(
+                tool_name=tool_name,
+                operation=intent.operation,
+                risk_level=action_result.preview.risk_level,
+                target_path=intent.target_path,
+                target_department_codes=target_departments,
+                requires_confirmation=action_result.preview.requires_confirmation,
+                metadata={"source": "rag_agent.authorize_tool_call"},
+            )
+            decision = await tool_permission_service.authorize(
+                user=user,
+                context=context,
+            )
+            await tool_audit_service.record_decision(
+                user=user,
+                context=context,
+                decision=decision,
+            )
+            result = {
+                "pending_tool_name": tool_name,
+                "document_action_result": action_result,
+                "tool_permission_decision": decision,
+                "requires_confirmation": decision.requires_confirmation,
+            }
+            if decision.action == AgentToolPermissionAction.DENY:
+                result["answer"] = f"工具调用被拒绝：{decision.reason}"
+                result["final_reason"] = "tool_permission_denied"
+
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "tool_name": tool_name,
+                        "decision": decision.action.value,
+                        "allowed": decision.allowed,
+                        "reason": decision.reason,
+                        "target_department_codes": target_departments,
+                    }
+                )
+            return result
+
+    return authorize_tool_call_node
+
+
+def create_tool_approval_node(
+    settings: Settings,
+    tool_approval_service: AgentToolApprovalService,
+) -> Callable[[RagAgentState], dict[str, object]]:
+    """构造工具执行确认单节点，只生成 approval，不执行真实写操作。"""
+
+    async def create_tool_approval_node(state: RagAgentState) -> dict[str, object]:
+        intent = state.get("document_action_intent")
+        user = state.get("current_user")
+        action_result = state.get("document_action_result")
+        decision = state.get("tool_permission_decision")
+        tool_name = state.get("pending_tool_name")
+        if (
+            intent is None
+            or user is None
+            or action_result is None
+            or decision is None
+            or tool_name is None
+        ):
+            return {
+                "answer": "工具执行确认单生成失败：缺少必要上下文。",
+                "final_reason": "tool_approval_failed",
+            }
+
+        with rag_agent_langsmith_step_trace(
+            settings=settings,
+            state=state,
+            step_name="create_tool_approval",
+            run_type="chain",
+            inputs=build_rag_agent_step_inputs(
+                state,
+                tool_name=tool_name,
+                operation=intent.operation.value,
+                target_path=intent.target_path,
+            ),
+        ) as trace_run:
+            action_request = KnowledgeDocumentActionRequest(
+                operation=intent.operation,
+                target_path=intent.target_path,
+                content=intent.content,
+                reason=intent.reason,
+                dry_run=True,
+                expected_department_codes=intent.expected_department_codes,
+            )
+            created = await tool_approval_service.create_approval(
+                user=user,
+                tool_name=tool_name,
+                action_request=action_request,
+                action_result=action_result,
+                permission_decision=decision,
+            )
+            answer = build_tool_approval_answer(
+                approval_kind=created.approval.approval_kind,
+                approval_id=created.approval.approval_id,
+                markdown_path=created.markdown_path,
+                json_path=created.json_path,
+                confirmation_text=created.confirmation_text,
+                action_result=action_result,
+            )
+            result = {
+                "tool_execution_approval": created.approval,
+                "tool_approval_id": created.approval.approval_id,
+                "answer": answer,
+                "final_reason": "tool_confirmation_required",
+                "requires_confirmation": True,
+            }
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "approval_id": created.approval.approval_id,
+                        "markdown_path": created.markdown_path,
+                        "json_path": created.json_path,
+                    }
+                )
+            return result
+
+    return create_tool_approval_node
+
+
+def create_tool_permission_denied_node(
+    settings: Settings,
+) -> Callable[[RagAgentState], dict[str, str]]:
+    async def tool_permission_denied_node(state: RagAgentState) -> dict[str, str]:
+        decision = state.get("tool_permission_decision")
+        answer = state.get("answer")
+        if not answer:
+            reason = decision.reason if decision is not None else "工具权限检查失败"
+            answer = f"工具调用被拒绝：{reason}"
+
+        with rag_agent_langsmith_step_trace(
+            settings=settings,
+            state=state,
+            step_name="tool_permission_denied",
+            run_type="chain",
+            inputs=build_rag_agent_step_inputs(
+                state,
+                decision=decision.action.value if decision else None,
+            ),
+        ) as trace_run:
+            if trace_run is not None:
+                trace_run.add_outputs({"answer_length": len(answer)})
+            return {
+                "answer": answer,
+                "final_reason": "tool_permission_denied",
+            }
+
+    return tool_permission_denied_node
+
+
+def build_tool_approval_answer(
+    approval_kind: str,
+    approval_id: str,
+    markdown_path: str,
+    json_path: str,
+    confirmation_text: str,
+    action_result: object,
+) -> str:
+    preview = action_result.preview
+    return (
+        "已生成文档管理工具执行确认单，尚未执行真实写入。\n\n"
+        f"- approval_kind: {approval_kind}\n"
+        f"- approval_id: {approval_id}\n"
+        f"- operation: {preview.operation.value}\n"
+        f"- target_path: {preview.normalized_path}\n"
+        f"- risk_level: {preview.risk_level.value}\n"
+        f"- affected_chunk_count: {preview.affected_chunk_count}\n"
+        f"- markdown_path: {markdown_path}\n"
+        f"- json_path: {json_path}\n"
+        f"- confirmation_text: {confirmation_text}\n\n"
+        "请通过 `POST /agent/tool-approvals/{approval_id}/confirm` 提交 confirmation_text 后再执行。"
+    )
 
 
 def create_agent_rerank_node(

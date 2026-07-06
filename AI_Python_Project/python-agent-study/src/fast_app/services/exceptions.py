@@ -45,6 +45,13 @@ class ToolExecutionRequiresApprovalError(AppServiceError):
     status_code = 403
 
 
+class ToolPermissionDeniedError(AppServiceError):
+    """当前用户没有调用目标 Agent 工具的权限。"""
+
+    error_code = "TOOL_PERMISSION_DENIED"
+    status_code = 403
+
+
 class ExternalServiceError(AppServiceError):
     """外部服务调用失败。"""
 

@@ -29,6 +29,14 @@ from fast_app.services.rag_pipeline_service import RagPipeline
 from fast_app.services.prompt_guard_service import PromptGuardService
 from fast_app.services.auth_service import AuthService
 from fast_app.services.user_repository import UserRepository
+from fast_app.services.permission_repository import PermissionRepository
+from fast_app.services.permission_service import PermissionService
+from fast_app.services.agent_document_action_planner import AgentDocumentActionPlanner
+from fast_app.services.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
+from fast_app.services.agent_task_planner import AgentTaskPlanner
+from fast_app.services.agent_tool_audit_service import AgentToolAuditService
+from fast_app.services.agent_tool_permission_service import AgentToolPermissionService
+from fast_app.services.agent_tool_approval_service import AgentToolApprovalService
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingClient
@@ -216,6 +224,68 @@ def get_auth_service(
     return AuthService(settings=settings, repository=repository)
 
 
+def get_permission_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> PermissionRepository:
+    """提供 RBAC 权限仓储。"""
+
+    return PermissionRepository(session=session)
+
+
+def get_permission_service(
+    repository: PermissionRepository = Depends(get_permission_repository),
+) -> PermissionService:
+    """提供用户有效权限计算服务。"""
+
+    return PermissionService(repository=repository)
+
+
+def get_agent_document_action_planner(
+    settings: Settings = Depends(get_settings),
+) -> AgentDocumentActionPlanner:
+    """提供文档动作意图识别服务。"""
+
+    return AgentDocumentActionPlanner(settings=settings)
+
+
+def get_agent_task_planner(
+    settings: Settings = Depends(get_settings),
+) -> AgentTaskPlanner:
+    """提供 Agent 多步骤任务规划器。"""
+
+    return AgentTaskPlanner(settings=settings)
+
+
+def get_agent_task_plan_store(
+    settings: Settings = Depends(get_settings),
+) -> AgentTaskPlanStore:
+    """提供 Agent task plan runtime JSON 存储。"""
+
+    return AgentTaskPlanStore(settings=settings)
+
+
+def get_agent_tool_permission_service(
+    permission_service: PermissionService = Depends(get_permission_service),
+) -> AgentToolPermissionService:
+    """提供 Agent 工具权限网关。"""
+
+    return AgentToolPermissionService(permission_service=permission_service)
+
+
+def get_agent_tool_audit_service() -> AgentToolAuditService:
+    """提供 Agent 工具审计服务。"""
+
+    return AgentToolAuditService()
+
+
+def get_agent_tool_approval_service(
+    settings: Settings = Depends(get_settings),
+) -> AgentToolApprovalService:
+    """提供 Agent 工具执行确认单双文件持久化服务。"""
+
+    return AgentToolApprovalService(settings=settings)
+
+
 def get_prompt_guard_service(
     settings: Settings = Depends(get_settings),
 ) -> PromptGuardService:
@@ -253,6 +323,19 @@ def get_rag_pipeline(
     llm_client: BaseLLMClient = Depends(get_llm_client),
     reranker: BaseReranker = Depends(get_reranker),
     prompt_guard: PromptGuardService = Depends(get_prompt_guard_service),
+    document_action_planner: AgentDocumentActionPlanner = Depends(
+        get_agent_document_action_planner
+    ),
+    task_planner: AgentTaskPlanner = Depends(get_agent_task_planner),
+    task_plan_store: AgentTaskPlanStore = Depends(get_agent_task_plan_store),
+    document_management_service: KnowledgeDocumentManagementService = Depends(
+        get_knowledge_document_management_service
+    ),
+    tool_permission_service: AgentToolPermissionService = Depends(
+        get_agent_tool_permission_service
+    ),
+    tool_audit_service: AgentToolAuditService = Depends(get_agent_tool_audit_service),
+    tool_approval_service: AgentToolApprovalService = Depends(get_agent_tool_approval_service),
     conversation_persistence: ConversationPersistenceService = Depends(
         get_conversation_persistence_service
     ),
@@ -301,6 +384,23 @@ def get_rag_pipeline(
             conversation_persistence=conversation_persistence,
             conversation_summary_service=conversation_summary_service,
             prompt_guard=prompt_guard,
+            document_action_planner=document_action_planner,
+            task_planner=task_planner,
+            task_executor=AgentTaskExecutor(
+                settings=settings,
+                vector_retriever=vector_retriever,
+                keyword_retriever=keyword_retriever,
+                llm_client=llm_client,
+                document_management_service=document_management_service,
+                tool_permission_service=tool_permission_service,
+                tool_audit_service=tool_audit_service,
+                tool_approval_service=tool_approval_service,
+                task_plan_store=task_plan_store,
+            ),
+            document_management_service=document_management_service,
+            tool_permission_service=tool_permission_service,
+            tool_audit_service=tool_audit_service,
+            tool_approval_service=tool_approval_service,
         )
 
     raise AppServiceError(

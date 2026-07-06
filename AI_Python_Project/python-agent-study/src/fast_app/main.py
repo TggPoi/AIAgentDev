@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from fast_app.api.chat_routes import router as chat_router
 from fast_app.api.auth_routes import router as auth_router
+from fast_app.api.agent_task_plan_routes import router as agent_task_plan_router
+from fast_app.api.agent_tool_approval_routes import router as agent_tool_approval_router
 from fast_app.api.health_routes import router as health_router
 from fast_app.api.rag_chat_routes import router as rag_chat_router
 from fast_app.api.rag_routes import router as rag_router
@@ -129,6 +131,8 @@ register_exception_handlers(app)
 
 app.include_router(health_router)
 app.include_router(auth_router)
+app.include_router(agent_task_plan_router)
+app.include_router(agent_tool_approval_router)
 app.include_router(chat_router)
 app.include_router(rag_router)
 app.include_router(rag_chat_router)

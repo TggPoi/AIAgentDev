@@ -7,8 +7,13 @@ from fast_app.db.base import Base
 from fast_app.db.auth_tables import (
     ApiKeyTable,
     DepartmentTable,
+    PermissionTable,
     RefreshTokenTable,
+    RolePermissionTable,
+    RoleTable,
     UserDepartmentTable,
+    UserDepartmentRoleTable,
+    UserRoleTable,
     UserTable,
 )
 from fast_app.db.conversation_tables import (
@@ -25,8 +30,13 @@ __all__ = [
     "ConversationSummaryTable",
     "ConversationTable",
     "DepartmentTable",
+    "PermissionTable",
     "RefreshTokenTable",
+    "RolePermissionTable",
+    "RoleTable",
     "UserDepartmentTable",
+    "UserDepartmentRoleTable",
+    "UserRoleTable",
     "UserTable",
     "create_database_engine",
     "create_session_factory",

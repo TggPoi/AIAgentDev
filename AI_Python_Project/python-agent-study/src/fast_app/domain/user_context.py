@@ -14,19 +14,23 @@ class CurrentUserContext(BaseModel):
     demo_header 只保留给本地学习和阶段 14-9 的隔离验证。
     """
 
-    user_id: str = Field(min_length=1, max_length=128)
-    is_authenticated: bool = False
-    auth_source: AuthSource = "anonymous"
-    role: str | None = None
-    permissions: list[str] = Field(default_factory=list)
-    # 权限范围字段，参与知识库检索权限判断，一个用户可以拥有多个部门权限
-    department_codes: list[str] = Field(default_factory=list)
-    # 主归属字段，表达用户默认部门，目前不参与检索权限判断 为后续扩展留边界保留
-    primary_department_code: str | None = None
-    email: str | None = None
-    display_name: str | None = None
-    token_id: str | None = None
-    api_key_id: str | None = None
+    user_id: str = Field(min_length=1, max_length=128, description="当前请求用户 ID。")
+    is_authenticated: bool = Field(default=False, description="当前请求是否通过可信认证。")
+    auth_source: AuthSource = Field(default="anonymous", description="当前用户上下文来源。")
+    role: str | None = Field(default=None, description="当前用户角色 code。")
+    permissions: list[str] = Field(default_factory=list, description="当前用户拥有的权限 code 列表。")
+    department_codes: list[str] = Field(
+        default_factory=list,
+        description="当前用户可访问的部门 code 列表，用于知识库检索 ACL。",
+    )
+    primary_department_code: str | None = Field(
+        default=None,
+        description="当前用户主归属部门 code，目前主要用于展示和后续扩展。",
+    )
+    email: str | None = Field(default=None, description="当前用户邮箱。")
+    display_name: str | None = Field(default=None, description="当前用户展示名称。")
+    token_id: str | None = Field(default=None, description="当前 JWT token ID；非 JWT 认证时为空。")
+    api_key_id: str | None = Field(default=None, description="当前 API Key ID；非 API Key 认证时为空。")
 
 
 __all__ = ["AuthSource", "CurrentUserContext"]

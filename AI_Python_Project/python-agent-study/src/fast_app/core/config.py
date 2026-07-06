@@ -213,6 +213,27 @@ class Settings(BaseSettings):
         default=True,
         alias="AGENT_DOCUMENT_TOOLS_REQUIRE_CONFIRMATION",
     )
+    agent_document_action_planner_mode: str = Field(
+        default="rules",
+        alias="AGENT_DOCUMENT_ACTION_PLANNER_MODE",
+    )
+    agent_tool_approval_dir: str = Field(
+        default="runtime/agent-tool-approvals",
+        alias="AGENT_TOOL_APPROVAL_DIR",
+    )
+    agent_tool_approval_expire_minutes: int = Field(
+        default=60,
+        ge=1,
+        alias="AGENT_TOOL_APPROVAL_EXPIRE_MINUTES",
+    )
+    agent_task_plan_dir: str = Field(
+        default="runtime/agent-task-plans",
+        alias="AGENT_TASK_PLAN_DIR",
+    )
+    agent_tool_execution_policy: str = Field(
+        default="approval_required",
+        alias="AGENT_TOOL_EXECUTION_POLICY",
+    )
 
     # 多轮对话短期记忆配置。默认仍使用内存实现，避免本地开发强依赖 Redis。
     memory_store_provider: str = Field(
@@ -500,6 +521,32 @@ class Settings(BaseSettings):
             raise ValueError("AGENT_DOCUMENT_TOOLS_ALLOWED_EXTENSIONS 不能为空")
 
         return ",".join(sorted(set(extensions)))
+
+    @field_validator("agent_document_action_planner_mode", mode="before")
+    @classmethod
+    def normalize_agent_document_action_planner_mode(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip().lower()
+        if normalized not in {"rules", "llm"}:
+            raise ValueError("AGENT_DOCUMENT_ACTION_PLANNER_MODE 只支持 rules 或 llm")
+
+        return normalized
+
+    @field_validator("agent_tool_execution_policy", mode="before")
+    @classmethod
+    def normalize_agent_tool_execution_policy(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip().lower()
+        if normalized not in {"approval_required", "risk_based", "dry_run_only"}:
+            raise ValueError(
+                "AGENT_TOOL_EXECUTION_POLICY 只支持 approval_required / risk_based / dry_run_only"
+            )
+
+        return normalized
 
 
     @field_validator("debug", mode="before")

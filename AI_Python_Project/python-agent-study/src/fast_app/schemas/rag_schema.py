@@ -7,6 +7,7 @@ RetrievalMode = Literal["vector", "keyword", "hybrid"]
 
 
 class SearchRequest(BaseModel):
+    # 禁止客户端传入未声明字段，保持检索 demo 接口参数可控。
     model_config = ConfigDict(extra="forbid")
 
     query: str = Field(
@@ -46,13 +47,13 @@ class SearchRequest(BaseModel):
 
 
 class RetrievedDocument(BaseModel):
-    id: str
-    content: str
-    score: float = Field(ge=0.0, le=1.0)
-    source: str
+    id: str = Field(description="命中文档或 chunk ID。")
+    content: str = Field(description="命中文档内容。")
+    score: float = Field(ge=0.0, le=1.0, description="命中文档相关性分数。")
+    source: str = Field(description="命中文档来源。")
 
 
 class SearchResponse(BaseModel):
-    query: str
-    mode: RetrievalMode
-    documents: list[RetrievedDocument] = Field(default_factory=list)
+    query: str = Field(description="实际执行的检索问题。")
+    mode: RetrievalMode = Field(description="本次请求使用的检索模式。")
+    documents: list[RetrievedDocument] = Field(default_factory=list, description="检索命中文档列表。")

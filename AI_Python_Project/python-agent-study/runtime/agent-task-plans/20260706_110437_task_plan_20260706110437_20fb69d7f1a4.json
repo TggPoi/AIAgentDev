@@ -1,0 +1,78 @@
+{
+  "task_plan_id": "task_plan_20260706110437_20fb69d7f1a4",
+  "task_kind": "knowledge_report_to_document",
+  "user_id": "tool_user_15_7_manager",
+  "goal": "根据混合检索相关资料整理一份报告",
+  "source_query": "混合检索相关资料",
+  "target_path": "development/taskplan-manager-20260706190416.md",
+  "report_title": "混合检索相关资料报告",
+  "status": "waiting_approval",
+  "steps": [
+    {
+      "step_id": "step_1_retrieve",
+      "tool_name": "knowledge_retrieval",
+      "status": "completed",
+      "input": {
+        "query": "混合检索相关资料"
+      },
+      "output": {
+        "doc_count": 5,
+        "top_doc_ids": [
+          "chunk_b8fa512d1170ac32",
+          "chunk_de094e10721af645",
+          "chunk_b2336e872eadb22e",
+          "chunk_b41202f77c43d025",
+          "chunk_7fb28963670580a8"
+        ]
+      },
+      "risk_level": "low",
+      "requires_approval": false,
+      "approval_id": null,
+      "error": null
+    },
+    {
+      "step_id": "step_2_summarize",
+      "tool_name": "summarize_report",
+      "status": "completed",
+      "input": {
+        "report_title": "混合检索相关资料报告"
+      },
+      "output": {
+        "content": "# 混合检索相关资料报告\n\n# 混合检索相关资料报告\n\n### 一、 核心目标\n本项目旨在使 RAG 系统在多部门知识库场景下，能够精确控制文档召回范围。具体目标包括：识别登录用户身份与所属部门；文档导入时根据目录自动生成权限 metadata；检索时动态生成 permission scope；确保 Milvus 向量检索与 Elasticsearch 关键词检索仅召回有权限的 chunk；混合检索结果合并后绝不引入无权限文档；最终进入 LLM prompt 的内容必须 100% 通过权限校验。[chunk_b8fa512d1170ac32]\n\n### 二、 混合权限模型设计\n系统采用 `RBAC + ACL + ABAC` 混合权限模型，各组件职责明确：\n* **RBAC**：控制功能级访问权限，例如判断用户是否具备 `knowledge:read` 权限。\n* **ACL**：控制文档级访问范围，记录允许访问的用户或部门（如 `allowed_departments`、`allowed_users`）。\n* **ABAC**：基于当前用户属性与文档属性，动态判定单个文档 chunk 是否可被召回。[chunk_b41202f77c43d025]\n\n### 三、 混合检索全流程权限控制\n权限控制必须贯穿系统全链路，而非仅停留在接口入口。完整控制节点包括：接口入口 → 文档导入 → chunk metadata 写入 → Milvus 检索 → Elasticsearch 检索 → Rerank → Prompt 构建 → LLM 回答。在混合检索环节，需保证双引擎检索均按权限过滤，且结果融合阶段严格隔离越权数据。[chunk_b41202f77c43d025][chunk_b8fa512d1170ac32]\n\n### 四、 检索后兜底校验机制\n即使 Milvus 与 Elasticsearch 已完成前置权限过滤，在构建 LLM prompt 前仍必须执行最终权限校验（`final_permission_check`）。\n* **必要性**：索引 metadata 可能存在滞后、权限字段同步可能失败、混合检索合并逻辑可能引入异常结果、开发调试阶段可能绕过 filter。\n* **标准数据流**：`retrieved_chunks` → `final_permission_check` → `allowed_chunks` → `build_rag_context` → `LLM`。仅 `allowed_chunks` 允许进入模型上下文。[chunk_b2336e872eadb22e]\n\n### 五、 测试与验收标准\n针对 public 权限与混合检索的验收要求如下：\n1. **跨部门可见性**：特定测试关键词（如“公开项目总览”、“Hybrid Retrieval 权限验证”、“Prompt 前最终兜底校验”等）必须可被 `art`、`product_planning`、`development` 三个部门用户检索到。若已认证用户无法检索，则表明 public 权限处理存在缺陷。[chunk_de094e10721af645]\n2. **权限属性规范**：public 文档不应依赖 `allowed_departments` 字段，其 chunk metadata 必须包含 `visibility = \"public\"`。[chunk_7fb28963670580a8]\n3. **引擎支持与混合参与**：Milvus 与 Elasticsearch 均需支持 public 文档过滤规则，且 public 文档需能与部门文档共同参与 Hybrid Retrieval。[chunk_7fb28963670580a8]\n4. **最终校验强制**：所有文档（含 public 文档）在进入 prompt 前，均须通过最终权限校验流程。[chunk_b2336e872eadb22e][chunk_7fb28963670580a8]\n",
+        "content_length": 1694
+      },
+      "risk_level": "low",
+      "requires_approval": false,
+      "approval_id": null,
+      "error": null
+    },
+    {
+      "step_id": "step_3_create_document",
+      "tool_name": "knowledge_document_create",
+      "status": "waiting_approval",
+      "input": {
+        "target_path": "development/taskplan-manager-20260706190416.md"
+      },
+      "output": {
+        "approval_id": "tool_approval_20260706110529_1306456c5b3b",
+        "approval_kind": "tool_execution_approval",
+        "markdown_path": "runtime/agent-tool-approvals/20260706_110529_tool_approval_20260706110529_1306456c5b3b.md",
+        "json_path": "runtime/agent-tool-approvals/20260706_110529_tool_approval_20260706110529_1306456c5b3b.json",
+        "confirmation_text": "CONFIRM EXECUTE TOOL APPROVAL tool_approval_20260706110529_1306456c5b3b",
+        "action_request_content": "# 混合检索相关资料报告\n\n# 混合检索相关资料报告\n\n### 一、 核心目标\n本项目旨在使 RAG 系统在多部门知识库场景下，能够精确控制文档召回范围。具体目标包括：识别登录用户身份与所属部门；文档导入时根据目录自动生成权限 metadata；检索时动态生成 permission scope；确保 Milvus 向量检索与 Elasticsearch 关键词检索仅召回有权限的 chunk；混合检索结果合并后绝不引入无权限文档；最终进入 LLM prompt 的内容必须 100% 通过权限校验。[chunk_b8fa512d1170ac32]\n\n### 二、 混合权限模型设计\n系统采用 `RBAC + ACL + ABAC` 混合权限模型，各组件职责明确：\n* **RBAC**：控制功能级访问权限，例如判断用户是否具备 `knowledge:read` 权限。\n* **ACL**：控制文档级访问范围，记录允许访问的用户或部门（如 `allowed_departments`、`allowed_users`）。\n* **ABAC**：基于当前用户属性与文档属性，动态判定单个文档 chunk 是否可被召回。[chunk_b41202f77c43d025]\n\n### 三、 混合检索全流程权限控制\n权限控制必须贯穿系统全链路，而非仅停留在接口入口。完整控制节点包括：接口入口 → 文档导入 → chunk metadata 写入 → Milvus 检索 → Elasticsearch 检索 → Rerank → Prompt 构建 → LLM 回答。在混合检索环节，需保证双引擎检索均按权限过滤，且结果融合阶段严格隔离越权数据。[chunk_b41202f77c43d025][chunk_b8fa512d1170ac32]\n\n### 四、 检索后兜底校验机制\n即使 Milvus 与 Elasticsearch 已完成前置权限过滤，在构建 LLM prompt 前仍必须执行最终权限校验（`final_permission_check`）。\n* **必要性**：索引 metadata 可能存在滞后、权限字段同步可能失败、混合检索合并逻辑可能引入异常结果、开发调试阶段可能绕过 filter。\n* **标准数据流**：`retrieved_chunks` → `final_permission_check` → `allowed_chunks` → `build_rag_context` → `LLM`。仅 `allowed_chunks` 允许进入模型上下文。[chunk_b2336e872eadb22e]\n\n### 五、 测试与验收标准\n针对 public 权限与混合检索的验收要求如下：\n1. **跨部门可见性**：特定测试关键词（如“公开项目总览”、“Hybrid Retrieval 权限验证”、“Prompt 前最终兜底校验”等）必须可被 `art`、`product_planning`、`development` 三个部门用户检索到。若已认证用户无法检索，则表明 public 权限处理存在缺陷。[chunk_de094e10721af645]\n2. **权限属性规范**：public 文档不应依赖 `allowed_departments` 字段，其 chunk metadata 必须包含 `visibility = \"public\"`。[chunk_7fb28963670580a8]\n3. **引擎支持与混合参与**：Milvus 与 Elasticsearch 均需支持 public 文档过滤规则，且 public 文档需能与部门文档共同参与 Hybrid Retrieval。[chunk_7fb28963670580a8]\n4. **最终校验强制**：所有文档（含 public 文档）在进入 prompt 前，均须通过最终权限校验流程。[chunk_b2336e872eadb22e][chunk_7fb28963670580a8]\n"
+      },
+      "risk_level": "medium",
+      "requires_approval": true,
+      "approval_id": "tool_approval_20260706110529_1306456c5b3b",
+      "error": null
+    }
+  ],
+  "final_output": {
+    "approval_id": "tool_approval_20260706110529_1306456c5b3b",
+    "target_path": "development/taskplan-manager-20260706190416.md",
+    "status": "waiting_approval"
+  },
+  "created_at": "2026-07-06T11:04:37.531771Z",
+  "updated_at": "2026-07-06T11:05:29.269540Z",
+  "error": null
+}

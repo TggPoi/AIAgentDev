@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ChatRequest(BaseModel):
-    # 禁止客户端传入未声明字段
+    # 禁止客户端传入未声明字段，避免旧 demo 接口吞掉拼错参数。
     model_config = ConfigDict(extra="forbid")
 
     # 用户消息，不能为空，最长 2000
@@ -36,5 +36,5 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    answer: str
-    session_id: str
+    answer: str = Field(description="聊天接口返回的完整回答文本。")
+    session_id: str = Field(description="本轮请求所属会话 ID。")

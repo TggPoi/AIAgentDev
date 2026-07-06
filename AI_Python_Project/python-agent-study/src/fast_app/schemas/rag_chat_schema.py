@@ -3,6 +3,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
 from fast_app.domain.knowledge_permissions import RetrievalPermissionScope
+from fast_app.domain.user_context import CurrentUserContext
 
 
 RetrievalMode = Literal["vector", "keyword", "hybrid"]
@@ -15,12 +16,13 @@ class RagRetrievalFilters(BaseModel):
 class RagChatRequest(BaseModel):
     # 禁止客户端传入未声明字段
     model_config = ConfigDict(extra="forbid")
-    # 这两个字段只给服务端内部使用，不会进入 OpenAPI schema，也不能由请求体传入。
-    # 阶段 14-9 用它承载认证层解析出的用户上下文，避免把 user_id 暴露成客户端可伪造字段。
+    # 当前认证用户 ID 的内部副本；不进入请求体，避免客户端伪造 user_id。
     _current_user_id: str | None = PrivateAttr(default=None)
+    # 当前认证用户上下文；由依赖注入层写入，供 RAG Agent 工具权限链路读取。
+    _current_user_context: CurrentUserContext | None = PrivateAttr(default=None)
+    # 客户端传入的原始 session_id；服务端会再生成带 user_id 的 scoped session_id。
     _external_session_id: str | None = PrivateAttr(default=None)
-    # 阶段 15-3 用它承载服务端生成的知识库权限范围。
-    # 客户端不能通过请求体伪造 allowed_departments / allowed_users 等权限字段。
+    # 服务端根据当前用户生成的知识库检索权限范围；客户端不能伪造。
     _retrieval_permission_scope: RetrievalPermissionScope | None = PrivateAttr(
         default=None
     )
@@ -127,8 +129,34 @@ class RagChatResponse(BaseModel):
         default=None,
         description="本次请求的 trace_id，当前阶段默认与 request_id 相同",
     )
-    query: str
-    answer: str
-    sources: list[RagSource]
+    query: str = Field(description="实际用于回答或检索的 query，可能是多轮改写后的问题。")
+    answer: str = Field(description="RAG / Agent 生成的最终回答文本。")
+    sources: list[RagSource] = Field(
+        description="本次回答引用或检索到的来源列表；无检索时为空列表。",
+    )
+    tool_approval_id: str | None = Field(
+        default=None,
+        description="当 Agent 生成高风险工具执行确认单时返回的 approval_id",
+    )
+    tool_confirmation_required: bool = Field(
+        default=False,
+        description="是否需要调用独立确认接口后才执行工具动作",
+    )
+    tool_approval: dict[str, Any] | None = Field(
+        default=None,
+        description="高风险工具执行确认单摘要；普通 RAG 请求为空",
+    )
+    agent_task_plan_id: str | None = Field(
+        default=None,
+        description="当 Agent 生成多步骤任务计划时返回的 task_plan_id",
+    )
+    agent_task_status: str | None = Field(
+        default=None,
+        description="多步骤任务计划状态；普通 RAG 请求为空",
+    )
+    agent_task_plan: dict[str, Any] | None = Field(
+        default=None,
+        description="Agent 多步骤任务计划摘要；普通 RAG 请求为空",
+    )
 
 

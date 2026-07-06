@@ -4,12 +4,14 @@
 
 This project is a Python / FastAPI / LangGraph / RAG Agent backend learning project.
 
+The final system must support a React-based web frontend for visual operations. Backend design should therefore expose stable, structured, frontend-friendly APIs and SSE events for RAG chat, document management, tool plan review, human confirmation, permission status, evaluation, and observability. Do not design new control actions only as natural-language chat prompts when they should be buttons, forms, dialogs, or task-status views in React.
+
 Before doing project work, read these files in order:
 
-1. `教学讲解规范.md`
-2. `当前学习进度.md`
-3. `学习路线优先级.md`
-4. `总学习路线_归档参考.md`
+1. `learning-docs\教学讲解规范.md`
+2. `learning-docs\当前学习进度.md`
+3. `learning-docs\学习路线优先级.md`
+4. `learning-docs\总学习路线_归档参考.md`
 
 `总学习路线_归档参考.md` is archived reference only.
 
@@ -32,6 +34,8 @@ For the enterprise-system conversion, keep only two RAG chat endpoints as the ma
    - Use this as the main React streaming interface for sources, guarded answer deltas, guard events, done, and error events.
 
 `POST /rag/chat/stream` is a deprecated compatibility-only token stream. Prefer `POST /rag/chat/stream/events` for all new work.
+
+For high-risk Agent operations such as creating, updating, or deleting knowledge-base documents, prefer dedicated backend control APIs that React can call directly. For example, confirmation should use an endpoint such as `POST /agent/tool-plans/{plan_id}/confirm` rather than relying only on `/rag/chat` query text.
 
 Do not modify `src/app` or `app` temporary learning code unless explicitly requested.
 

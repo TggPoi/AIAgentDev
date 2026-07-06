@@ -213,6 +213,7 @@ def prepare_authorized_rag_request(
     """生成带会话隔离和知识库权限 scope 的内部请求。"""
 
     scoped_req = scope_rag_chat_request(req=req, user=user)
+    scoped_req._current_user_context = user
     scoped_req._retrieval_permission_scope = knowledge_permission_policy.build_scope(
         user
     )
