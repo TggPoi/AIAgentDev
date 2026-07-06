@@ -31,7 +31,6 @@ from fast_app.services.auth_service import AuthService
 from fast_app.services.user_repository import UserRepository
 from fast_app.services.permission_repository import PermissionRepository
 from fast_app.services.permission_service import PermissionService
-from fast_app.services.agent_document_action_planner import AgentDocumentActionPlanner
 from fast_app.services.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
 from fast_app.services.agent_task_planner import AgentTaskPlanner
 from fast_app.services.agent_tool_audit_service import AgentToolAuditService
@@ -240,14 +239,6 @@ def get_permission_service(
     return PermissionService(repository=repository)
 
 
-def get_agent_document_action_planner(
-    settings: Settings = Depends(get_settings),
-) -> AgentDocumentActionPlanner:
-    """提供文档动作意图识别服务。"""
-
-    return AgentDocumentActionPlanner(settings=settings)
-
-
 def get_agent_task_planner(
     settings: Settings = Depends(get_settings),
 ) -> AgentTaskPlanner:
@@ -323,9 +314,6 @@ def get_rag_pipeline(
     llm_client: BaseLLMClient = Depends(get_llm_client),
     reranker: BaseReranker = Depends(get_reranker),
     prompt_guard: PromptGuardService = Depends(get_prompt_guard_service),
-    document_action_planner: AgentDocumentActionPlanner = Depends(
-        get_agent_document_action_planner
-    ),
     task_planner: AgentTaskPlanner = Depends(get_agent_task_planner),
     task_plan_store: AgentTaskPlanStore = Depends(get_agent_task_plan_store),
     document_management_service: KnowledgeDocumentManagementService = Depends(
@@ -384,7 +372,6 @@ def get_rag_pipeline(
             conversation_persistence=conversation_persistence,
             conversation_summary_service=conversation_summary_service,
             prompt_guard=prompt_guard,
-            document_action_planner=document_action_planner,
             task_planner=task_planner,
             task_executor=AgentTaskExecutor(
                 settings=settings,
@@ -397,14 +384,9 @@ def get_rag_pipeline(
                 tool_approval_service=tool_approval_service,
                 task_plan_store=task_plan_store,
             ),
-            document_management_service=document_management_service,
-            tool_permission_service=tool_permission_service,
-            tool_audit_service=tool_audit_service,
-            tool_approval_service=tool_approval_service,
         )
 
     raise AppServiceError(
         f"不支持的 RAG_PIPELINE_PROVIDER: {settings.rag_pipeline_provider}"
     )
-
 

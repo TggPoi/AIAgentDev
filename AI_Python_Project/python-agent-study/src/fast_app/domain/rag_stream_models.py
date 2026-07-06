@@ -13,7 +13,6 @@ RagStreamEventName = Literal[
     "tool_approval_created",
     "tool_confirmation_required",
     "tool_execution_result",
-    "tool_permission_denied",
     "agent_task_plan_created",
     "agent_task_step_started",
     "agent_task_step_completed",
@@ -23,7 +22,7 @@ RagStreamEventName = Literal[
 # 在 Pipeline 层和 API 层之间传递结构化事件。
 # sources / answer_delta 是正常业务事件；guard_* 用于表达流式输出安全处理结果。
 # token 保留为兼容事件名，新主线使用 answer_delta。
-# tool_* 事件用于 Agent 工具执行确认单、人审确认和权限拒绝，不进入 legacy token stream。
+# tool_* 事件用于 TaskPlan 高风险步骤的执行确认单和人审确认，不进入 legacy token stream。
 @dataclass(frozen=True)
 class RagStreamEvent:
     # 结构化事件名称，API 层会把它写成 SSE 的 event 字段。

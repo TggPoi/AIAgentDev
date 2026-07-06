@@ -10,28 +10,17 @@ from fast_app.graph.rag_agent_nodes import (
     create_agent_fail_request_node,
     create_agent_generate_answer_node,
     create_agent_rerank_node,
-    create_authorize_tool_call_node,
     create_call_knowledge_retrieval_node,
     create_check_loop_limits_node,
     create_execute_task_plan_node,
     create_next_action_decision_node,
     create_rag_agent_direct_answer_node,
-    create_tool_permission_denied_node,
-    create_tool_approval_node,
     route_after_loop_check,
     route_after_tool_call,
-    route_after_tool_authorization,
 )
 from fast_app.graph.rag_agent_state import RagAgentState
-from fast_app.services.agent_document_action_planner import AgentDocumentActionPlanner
 from fast_app.services.agent_task_executor import AgentTaskExecutor
 from fast_app.services.agent_task_planner import AgentTaskPlanner
-from fast_app.services.agent_tool_audit_service import AgentToolAuditService
-from fast_app.services.agent_tool_permission_service import AgentToolPermissionService
-from fast_app.services.agent_tool_approval_service import AgentToolApprovalService
-from fast_app.services.knowledge_document_management_service import (
-    KnowledgeDocumentManagementService,
-)
 from fast_app.services.prompt_guard_service import PromptGuardService
 
 
@@ -43,13 +32,8 @@ def build_rag_agent_graph(
     reranker: BaseReranker,
     rerank_top_k: int,
     prompt_guard: PromptGuardService | None = None,
-    document_action_planner: AgentDocumentActionPlanner | None = None,
     task_planner: AgentTaskPlanner | None = None,
     task_executor: AgentTaskExecutor | None = None,
-    document_management_service: KnowledgeDocumentManagementService | None = None,
-    tool_permission_service: AgentToolPermissionService | None = None,
-    tool_audit_service: AgentToolAuditService | None = None,
-    tool_approval_service: AgentToolApprovalService | None = None,
 ):
     # 这是 13-11 新增的独立 Agent graph。
     # 它和现有 build_rag_graph() 并列存在，避免改变 langgraph provider 的稳定行为。
@@ -61,7 +45,6 @@ def build_rag_agent_graph(
         "decide_next_action",
         create_next_action_decision_node(
             settings=settings,
-            document_action_planner=document_action_planner,
             task_planner=task_planner,
         ),
     )
@@ -88,32 +71,6 @@ def build_rag_agent_graph(
             keyword_retriever=keyword_retriever,
         ),
     )
-    if (
-        document_management_service is not None
-        and tool_permission_service is not None
-        and tool_audit_service is not None
-        and tool_approval_service is not None
-    ):
-        builder.add_node(
-            "authorize_tool_call",
-            create_authorize_tool_call_node(
-                settings=settings,
-                document_management_service=document_management_service,
-                tool_permission_service=tool_permission_service,
-                tool_audit_service=tool_audit_service,
-            ),
-        )
-        builder.add_node(
-            "create_tool_approval",
-            create_tool_approval_node(
-                settings=settings,
-                tool_approval_service=tool_approval_service,
-            ),
-        )
-        builder.add_node(
-            "tool_permission_denied",
-            create_tool_permission_denied_node(settings=settings),
-        )
     builder.add_node(
         "rerank",
         create_agent_rerank_node(
@@ -158,7 +115,6 @@ def build_rag_agent_graph(
     next_action_routes = {
         "direct_answer": "direct_answer",
         "knowledge_retrieval": "call_knowledge_retrieval",
-        "authorize_tool_call": "authorize_tool_call",
         "final_error_answer": "final_error_answer",
     }
 
@@ -172,20 +128,6 @@ def build_rag_agent_graph(
         route_after_loop_check,
         next_action_routes,
     )
-    if (
-        document_management_service is not None
-        and tool_permission_service is not None
-        and tool_audit_service is not None
-        and tool_approval_service is not None
-    ):
-        builder.add_conditional_edges(
-            "authorize_tool_call",
-            route_after_tool_authorization,
-            {
-                "tool_approval_created": "create_tool_approval",
-                "tool_permission_denied": "tool_permission_denied",
-            },
-        )
     # 工具调用后可能成功进入 rerank，也可能根据错误策略进入最终错误回答或请求失败。
     builder.add_conditional_edges(
         "call_knowledge_retrieval",
@@ -203,14 +145,6 @@ def build_rag_agent_graph(
     builder.add_edge("direct_answer", END)
     if task_executor is not None:
         builder.add_edge("execute_task_plan", END)
-    if (
-        document_management_service is not None
-        and tool_permission_service is not None
-        and tool_audit_service is not None
-        and tool_approval_service is not None
-    ):
-        builder.add_edge("create_tool_approval", END)
-        builder.add_edge("tool_permission_denied", END)
     builder.add_edge("final_error_answer", END)
     builder.add_edge("fail_request", END)
     builder.add_edge("generate_answer", END)

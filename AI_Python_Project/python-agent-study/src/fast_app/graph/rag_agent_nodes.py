@@ -16,12 +16,7 @@ from fast_app.agents.rag_agent_tools import (
     KNOWLEDGE_RETRIEVAL_TOOL_NAME,
     retrieve_knowledge_docs,
 )
-from fast_app.domain.agent_tool_permissions import (
-    AgentToolCallContext,
-    AgentToolPermissionAction,
-)
 from fast_app.domain.agent_task_plan import AgentTaskPlanStatus, AgentToolStepStatus
-from fast_app.domain.knowledge_document_actions import KnowledgeDocumentActionRequest
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.retrievers.base import BaseRetriever
@@ -40,19 +35,8 @@ from fast_app.graph.rag_graph_nodes import (
     should_retrieve_for_query,
 )
 from fast_app.services.exceptions import ExternalServiceError
-from fast_app.services.agent_document_action_planner import AgentDocumentActionPlanner
 from fast_app.services.agent_task_executor import AgentTaskExecutor
 from fast_app.services.agent_task_planner import AgentTaskPlanner
-from fast_app.services.agent_tool_audit_service import AgentToolAuditService
-from fast_app.services.agent_tool_permission_service import (
-    AgentToolPermissionService,
-    risk_level_for_document_operation,
-    tool_name_for_document_operation,
-)
-from fast_app.services.agent_tool_approval_service import AgentToolApprovalService
-from fast_app.services.knowledge_document_management_service import (
-    KnowledgeDocumentManagementService,
-)
 from fast_app.services.knowledge_permission_policy import (
     build_retrieval_filters_from_mapping,
 )
@@ -79,9 +63,6 @@ def get_rag_agent_step_index(operation: str, step_name: str) -> int:
             "check_loop_limits": 2,
             "direct_answer": 3,
             "execute_task_plan": 3,
-            "authorize_tool_call": 3,
-            "create_tool_approval": 4,
-            "tool_permission_denied": 4,
             "call_knowledge_retrieval": 3,
             "rerank": 4,
             "emit_sources": 5,
@@ -99,9 +80,6 @@ def get_rag_agent_step_index(operation: str, step_name: str) -> int:
         "check_loop_limits": 2,
         "direct_answer": 3,
         "execute_task_plan": 3,
-        "authorize_tool_call": 3,
-        "create_tool_approval": 4,
-        "tool_permission_denied": 4,
         "call_knowledge_retrieval": 3,
         "rerank": 4,
         "build_context": 5,
@@ -206,28 +184,10 @@ def route_after_loop_check(state: RagAgentState) -> RagAgentRoute:
         "direct_answer",
         "knowledge_retrieval",
         "execute_task_plan",
-        "authorize_tool_call",
     ):
         return route
 
     return "knowledge_retrieval"
-
-
-def route_after_tool_authorization(state: RagAgentState) -> RagAgentRoute:
-    decision = state.get("tool_permission_decision")
-    if decision is None:
-        return "tool_permission_denied"
-
-    if decision.action == AgentToolPermissionAction.DENY:
-        return "tool_permission_denied"
-
-    if decision.action in {
-        AgentToolPermissionAction.APPROVAL_REQUIRED,
-        AgentToolPermissionAction.REQUIRE_CONFIRMATION,
-    }:
-        return "tool_approval_created"
-
-    return "tool_permission_denied"
 
 
 def route_after_tool_call(state: RagAgentState) -> RagAgentRoute:
@@ -244,7 +204,6 @@ def route_after_tool_call(state: RagAgentState) -> RagAgentRoute:
 
 def create_next_action_decision_node(
     settings: Settings,
-    document_action_planner: AgentDocumentActionPlanner | None = None,
     task_planner: AgentTaskPlanner | None = None,
 ) -> Callable[[RagAgentState], dict[str, object]]:
     # decide_next_action 节点是 Agent 的“判断”步骤：先决定是否需要知识库，或是否需要调用工具。
@@ -293,54 +252,6 @@ def create_next_action_decision_node(
                             "route": route,
                             "task_plan_id": task_plan.task_plan_id,
                             "task_kind": task_plan.task_kind,
-                        }
-                    )
-                return result
-
-            document_intent = None
-            if document_action_planner is not None:
-                document_intent = await document_action_planner.plan(
-                    query=state["query"],
-                    history=[],
-                )
-
-            # 判断当前用户行为是否会触发tool调用，如果document_intent为空，直接跳过，进入下面的 检索文档行为
-            if document_intent is not None:
-                # 把用户行为映射为tool名称
-                tool_name = tool_name_for_document_operation(document_intent.operation)
-                route: RagAgentRoute = "authorize_tool_call"
-                route_reason = "document_action_intent_detected"
-                step_count = state["step_count"] + 1
-                result = {
-                    "route": route,
-                    "route_reason": route_reason,
-                    "step_count": step_count,
-                    "document_action_intent": document_intent,
-                    "pending_tool_name": tool_name,
-                }
-
-                logger.info(
-                    "rag_agent_decision %s",
-                    format_log_fields(
-                        event="rag_agent.decide_next_action.document_action",
-                        pipeline_provider="rag_agent",
-                        query=state["query"],
-                        route=route,
-                        tool_name=tool_name,
-                        operation=document_intent.operation.value,
-                        target_path=document_intent.target_path,
-                        confidence=document_intent.confidence,
-                        step_count=step_count,
-                    ),
-                )
-                if trace_run is not None:
-                    trace_run.add_outputs(
-                        {
-                            "route": route,
-                            "tool_name": tool_name,
-                            "operation": document_intent.operation.value,
-                            "target_path": document_intent.target_path,
-                            "confidence": document_intent.confidence,
                         }
                     )
                 return result
@@ -637,8 +548,6 @@ def create_execute_task_plan_node(
                 else f"agent_task_{executed_plan.status.value}",
                 "requires_confirmation": approval_id is not None,
             }
-            if approval_id is not None:
-                result["tool_execution_approval"] = None
 
             if trace_run is not None:
                 trace_run.add_outputs(
@@ -680,234 +589,6 @@ def build_task_plan_answer(plan) -> str:
             ]
         )
     return "\n".join(lines)
-
-
-def create_authorize_tool_call_node(
-    settings: Settings,
-    document_management_service: KnowledgeDocumentManagementService,
-    tool_permission_service: AgentToolPermissionService,
-    tool_audit_service: AgentToolAuditService,
-) -> Callable[[RagAgentState], dict[str, object]]:
-    """构造工具授权节点。
-
-    节点先生成安全 dry-run preview，再把 preview 中的部门和风险信息交给权限网关。
-    """
-
-    async def authorize_tool_call_node(state: RagAgentState) -> dict[str, object]:
-        intent = state.get("document_action_intent")
-        user = state.get("current_user")
-        if intent is None or user is None:
-            return {
-                "answer": "缺少工具调用意图或当前用户上下文，已拒绝工具调用。",
-                "final_reason": "tool_permission_denied",
-            }
-
-        tool_name = tool_name_for_document_operation(intent.operation)
-        with rag_agent_langsmith_step_trace(
-            settings=settings,
-            state=state,
-            step_name="authorize_tool_call",
-            run_type="chain",
-            inputs=build_rag_agent_step_inputs(
-                state,
-                tool_name=tool_name,
-                operation=intent.operation.value,
-                target_path=intent.target_path,
-            ),
-        ) as trace_run:
-            request = KnowledgeDocumentActionRequest(
-                operation=intent.operation,
-                target_path=intent.target_path,
-                content=intent.content,
-                reason=intent.reason,
-                dry_run=True,
-                expected_department_codes=intent.expected_department_codes,
-            )
-            action_result = await document_management_service.plan_action(
-                request=request,
-                user=user,
-            )
-            target_departments = list(
-                action_result.preview.permission_metadata.get(
-                    "allowed_departments",
-                    [],
-                )
-                or []
-            )
-            context = AgentToolCallContext(
-                tool_name=tool_name,
-                operation=intent.operation,
-                risk_level=action_result.preview.risk_level,
-                target_path=intent.target_path,
-                target_department_codes=target_departments,
-                requires_confirmation=action_result.preview.requires_confirmation,
-                metadata={"source": "rag_agent.authorize_tool_call"},
-            )
-            decision = await tool_permission_service.authorize(
-                user=user,
-                context=context,
-            )
-            await tool_audit_service.record_decision(
-                user=user,
-                context=context,
-                decision=decision,
-            )
-            result = {
-                "pending_tool_name": tool_name,
-                "document_action_result": action_result,
-                "tool_permission_decision": decision,
-                "requires_confirmation": decision.requires_confirmation,
-            }
-            if decision.action == AgentToolPermissionAction.DENY:
-                result["answer"] = f"工具调用被拒绝：{decision.reason}"
-                result["final_reason"] = "tool_permission_denied"
-
-            if trace_run is not None:
-                trace_run.add_outputs(
-                    {
-                        "tool_name": tool_name,
-                        "decision": decision.action.value,
-                        "allowed": decision.allowed,
-                        "reason": decision.reason,
-                        "target_department_codes": target_departments,
-                    }
-                )
-            return result
-
-    return authorize_tool_call_node
-
-
-def create_tool_approval_node(
-    settings: Settings,
-    tool_approval_service: AgentToolApprovalService,
-) -> Callable[[RagAgentState], dict[str, object]]:
-    """构造工具执行确认单节点，只生成 approval，不执行真实写操作。"""
-
-    async def create_tool_approval_node(state: RagAgentState) -> dict[str, object]:
-        intent = state.get("document_action_intent")
-        user = state.get("current_user")
-        action_result = state.get("document_action_result")
-        decision = state.get("tool_permission_decision")
-        tool_name = state.get("pending_tool_name")
-        if (
-            intent is None
-            or user is None
-            or action_result is None
-            or decision is None
-            or tool_name is None
-        ):
-            return {
-                "answer": "工具执行确认单生成失败：缺少必要上下文。",
-                "final_reason": "tool_approval_failed",
-            }
-
-        with rag_agent_langsmith_step_trace(
-            settings=settings,
-            state=state,
-            step_name="create_tool_approval",
-            run_type="chain",
-            inputs=build_rag_agent_step_inputs(
-                state,
-                tool_name=tool_name,
-                operation=intent.operation.value,
-                target_path=intent.target_path,
-            ),
-        ) as trace_run:
-            action_request = KnowledgeDocumentActionRequest(
-                operation=intent.operation,
-                target_path=intent.target_path,
-                content=intent.content,
-                reason=intent.reason,
-                dry_run=True,
-                expected_department_codes=intent.expected_department_codes,
-            )
-            created = await tool_approval_service.create_approval(
-                user=user,
-                tool_name=tool_name,
-                action_request=action_request,
-                action_result=action_result,
-                permission_decision=decision,
-            )
-            answer = build_tool_approval_answer(
-                approval_kind=created.approval.approval_kind,
-                approval_id=created.approval.approval_id,
-                markdown_path=created.markdown_path,
-                json_path=created.json_path,
-                confirmation_text=created.confirmation_text,
-                action_result=action_result,
-            )
-            result = {
-                "tool_execution_approval": created.approval,
-                "tool_approval_id": created.approval.approval_id,
-                "answer": answer,
-                "final_reason": "tool_confirmation_required",
-                "requires_confirmation": True,
-            }
-            if trace_run is not None:
-                trace_run.add_outputs(
-                    {
-                        "approval_id": created.approval.approval_id,
-                        "markdown_path": created.markdown_path,
-                        "json_path": created.json_path,
-                    }
-                )
-            return result
-
-    return create_tool_approval_node
-
-
-def create_tool_permission_denied_node(
-    settings: Settings,
-) -> Callable[[RagAgentState], dict[str, str]]:
-    async def tool_permission_denied_node(state: RagAgentState) -> dict[str, str]:
-        decision = state.get("tool_permission_decision")
-        answer = state.get("answer")
-        if not answer:
-            reason = decision.reason if decision is not None else "工具权限检查失败"
-            answer = f"工具调用被拒绝：{reason}"
-
-        with rag_agent_langsmith_step_trace(
-            settings=settings,
-            state=state,
-            step_name="tool_permission_denied",
-            run_type="chain",
-            inputs=build_rag_agent_step_inputs(
-                state,
-                decision=decision.action.value if decision else None,
-            ),
-        ) as trace_run:
-            if trace_run is not None:
-                trace_run.add_outputs({"answer_length": len(answer)})
-            return {
-                "answer": answer,
-                "final_reason": "tool_permission_denied",
-            }
-
-    return tool_permission_denied_node
-
-
-def build_tool_approval_answer(
-    approval_kind: str,
-    approval_id: str,
-    markdown_path: str,
-    json_path: str,
-    confirmation_text: str,
-    action_result: object,
-) -> str:
-    preview = action_result.preview
-    return (
-        "已生成文档管理工具执行确认单，尚未执行真实写入。\n\n"
-        f"- approval_kind: {approval_kind}\n"
-        f"- approval_id: {approval_id}\n"
-        f"- operation: {preview.operation.value}\n"
-        f"- target_path: {preview.normalized_path}\n"
-        f"- risk_level: {preview.risk_level.value}\n"
-        f"- affected_chunk_count: {preview.affected_chunk_count}\n"
-        f"- markdown_path: {markdown_path}\n"
-        f"- json_path: {json_path}\n"
-        f"- confirmation_text: {confirmation_text}\n\n"
-        "请通过 `POST /agent/tool-approvals/{approval_id}/confirm` 提交 confirmation_text 后再执行。"
-    )
 
 
 def create_agent_rerank_node(

@@ -24,7 +24,6 @@ from fast_app.domain.knowledge_document_actions import (
     KnowledgeDocumentRiskLevel,
 )
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.graph.rag_agent_nodes import build_tool_approval_answer
 from fast_app.services.agent_tool_approval_service import AgentToolApprovalService
 
 
@@ -103,18 +102,8 @@ async def test_execution_approval_is_approval_snapshot() -> None:
         assert "执行确认单" in markdown
         assert "不是 LLM 任务规划结果" in markdown
         assert "多步骤任务计划" not in markdown
-
-        answer = build_tool_approval_answer(
-            approval_kind=created.approval.approval_kind,
-            approval_id=created.approval.approval_id,
-            markdown_path=created.markdown_path,
-            json_path=created.json_path,
-            confirmation_text=created.confirmation_text,
-            action_result=action_result,
-        )
-        assert "执行确认单" in answer
-        assert "approval_kind: tool_execution_approval" in answer
-        assert "多步骤任务计划" not in answer
+        assert "请使用系统返回的 `confirmation_text`" in markdown
+        assert created.confirmation_text not in markdown
 
 
 def main() -> None:

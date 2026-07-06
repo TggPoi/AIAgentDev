@@ -213,10 +213,6 @@ class Settings(BaseSettings):
         default=True,
         alias="AGENT_DOCUMENT_TOOLS_REQUIRE_CONFIRMATION",
     )
-    agent_document_action_planner_mode: str = Field(
-        default="rules",
-        alias="AGENT_DOCUMENT_ACTION_PLANNER_MODE",
-    )
     agent_tool_approval_dir: str = Field(
         default="runtime/agent-tool-approvals",
         alias="AGENT_TOOL_APPROVAL_DIR",
@@ -521,18 +517,6 @@ class Settings(BaseSettings):
             raise ValueError("AGENT_DOCUMENT_TOOLS_ALLOWED_EXTENSIONS 不能为空")
 
         return ",".join(sorted(set(extensions)))
-
-    @field_validator("agent_document_action_planner_mode", mode="before")
-    @classmethod
-    def normalize_agent_document_action_planner_mode(cls, value: object) -> object:
-        if not isinstance(value, str):
-            return value
-
-        normalized = value.strip().lower()
-        if normalized not in {"rules", "llm"}:
-            raise ValueError("AGENT_DOCUMENT_ACTION_PLANNER_MODE 只支持 rules 或 llm")
-
-        return normalized
 
     @field_validator("agent_tool_execution_policy", mode="before")
     @classmethod

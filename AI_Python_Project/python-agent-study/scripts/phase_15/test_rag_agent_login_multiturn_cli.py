@@ -915,11 +915,6 @@ def run_stream_events_turn(
                 print(json.dumps(data, ensure_ascii=False, indent=2))
                 continue
 
-            if event_name == "tool_permission_denied":
-                print("\ntool_permission_denied:")
-                print(json.dumps(data, ensure_ascii=False, indent=2))
-                continue
-
             if event_name == "answer_delta":
                 text = extract_stream_text(data)
                 answer_parts.append(text)

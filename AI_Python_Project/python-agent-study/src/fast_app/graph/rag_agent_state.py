@@ -2,13 +2,7 @@ from typing import Literal, NotRequired, TypedDict
 
 from fast_app.agents.agent_error_policy import AgentErrorDecision
 from fast_app.agents.agent_loop_control import AgentLoopDecision
-from fast_app.domain.agent_tool_permissions import (
-    AgentToolPermissionDecision,
-    DocumentActionIntent,
-)
 from fast_app.domain.agent_task_plan import AgentTaskPlan
-from fast_app.domain.agent_tool_approval import AgentToolExecutionApproval
-from fast_app.domain.knowledge_document_actions import KnowledgeDocumentActionResult
 from fast_app.domain.rag_models import RagContext, RetrievedDoc
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.schemas.rag_chat_schema import RagChatRequest
@@ -25,11 +19,8 @@ RagAgentRoute = Literal[
     "direct_answer",
     "knowledge_retrieval",
     "execute_task_plan",
-    "authorize_tool_call",
     "final_error_answer",
     "fail_request",
-    "tool_permission_denied",
-    "tool_approval_created",
 ]
 
 
@@ -79,12 +70,7 @@ class RagAgentState(TypedDict):
     current_user: NotRequired[CurrentUserContext | None]
     agent_task_plan: NotRequired[AgentTaskPlan | None]
     agent_task_plan_id: NotRequired[str | None]
-    document_action_intent: NotRequired[DocumentActionIntent | None]
-    pending_tool_name: NotRequired[str | None]
-    tool_permission_decision: NotRequired[AgentToolPermissionDecision | None]
-    tool_execution_approval: NotRequired[AgentToolExecutionApproval | None]
     tool_approval_id: NotRequired[str | None]
-    document_action_result: NotRequired[KnowledgeDocumentActionResult | None]
     requires_confirmation: NotRequired[bool]
 
 
@@ -131,11 +117,6 @@ def build_rag_agent_initial_state(
         "current_user": current_user,
         "agent_task_plan": None,
         "agent_task_plan_id": None,
-        "document_action_intent": None,
-        "pending_tool_name": None,
-        "tool_permission_decision": None,
-        "tool_execution_approval": None,
         "tool_approval_id": None,
-        "document_action_result": None,
         "requires_confirmation": False,
     }

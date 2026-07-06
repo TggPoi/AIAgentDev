@@ -24,16 +24,12 @@ from fast_app.graph.rag_agent_nodes import (
     create_call_knowledge_retrieval_node,
     create_check_loop_limits_node,
     create_execute_task_plan_node,
-    create_authorize_tool_call_node,
     create_next_action_decision_node,
     create_rag_agent_direct_answer_node,
     create_agent_rerank_node,
-    create_tool_permission_denied_node,
-    create_tool_approval_node,
     rag_agent_langsmith_step_trace,
     route_after_loop_check,
     route_after_tool_call,
-    route_after_tool_authorization,
 )
 from fast_app.graph.rag_agent_state import (
     RagAgentOperation,
@@ -53,21 +49,14 @@ from fast_app.services.conversation_scope import (
 )
 from fast_app.services.conversation_summary import ConversationSummaryService
 from fast_app.services.exceptions import ExternalServiceError
-from fast_app.services.agent_document_action_planner import AgentDocumentActionPlanner
 from fast_app.services.agent_task_executor import AgentTaskExecutor
 from fast_app.services.agent_task_planner import AgentTaskPlanner
-from fast_app.services.agent_tool_audit_service import AgentToolAuditService
-from fast_app.services.agent_tool_permission_service import AgentToolPermissionService
-from fast_app.services.agent_tool_approval_service import AgentToolApprovalService
 from fast_app.services.guarded_streaming import (
     GuardedStreamState,
     guarded_answer_delta_events,
     text_to_async_tokens,
 )
 from fast_app.services.prompt_guard_service import PromptGuardService
-from fast_app.services.knowledge_document_management_service import (
-    KnowledgeDocumentManagementService,
-)
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.query_rewrite import ConversationQueryRewriter
 from fast_app.services.rag_pipeline_service import docs_to_sources
@@ -92,13 +81,8 @@ class RagAgentPipeline:
         conversation_summary_service: ConversationSummaryService | None = None,
         prompt_guard: PromptGuardService | None = None,
         current_user: CurrentUserContext | None = None,
-        document_action_planner: AgentDocumentActionPlanner | None = None,
         task_planner: AgentTaskPlanner | None = None,
         task_executor: AgentTaskExecutor | None = None,
-        document_management_service: KnowledgeDocumentManagementService | None = None,
-        tool_permission_service: AgentToolPermissionService | None = None,
-        tool_audit_service: AgentToolAuditService | None = None,
-        tool_approval_service: AgentToolApprovalService | None = None,
     ):
         # 保存底层组件引用，方便非流式 graph 和流式手写路径复用同一批依赖。
         self.settings = settings
@@ -112,13 +96,8 @@ class RagAgentPipeline:
         self.conversation_summary_service = conversation_summary_service
         self.prompt_guard = prompt_guard
         self.current_user = current_user
-        self.document_action_planner = document_action_planner
         self.task_planner = task_planner
         self.task_executor = task_executor
-        self.document_management_service = document_management_service
-        self.tool_permission_service = tool_permission_service
-        self.tool_audit_service = tool_audit_service
-        self.tool_approval_service = tool_approval_service
         # run() 使用 compiled graph，完整展示 LangGraph Agent 状态机。
         self.graph = build_rag_agent_graph(
             settings=settings,
@@ -128,13 +107,8 @@ class RagAgentPipeline:
             reranker=reranker,
             rerank_top_k=settings.rerank_top_k,
             prompt_guard=prompt_guard,
-            document_action_planner=document_action_planner,
             task_planner=task_planner,
             task_executor=task_executor,
-            document_management_service=document_management_service,
-            tool_permission_service=tool_permission_service,
-            tool_audit_service=tool_audit_service,
-            tool_approval_service=tool_approval_service,
         )
 
         # stream / stream_events 需要在生成阶段逐 token yield。
@@ -142,7 +116,6 @@ class RagAgentPipeline:
         # 让流式入口可以手动按同样顺序推进 state，但不改变 pipeline.stream() 的 token-only 协议。
         self.decide_next_action_node = create_next_action_decision_node(
             settings=settings,
-            document_action_planner=document_action_planner,
             task_planner=task_planner,
         )
         self.check_loop_limits_node = create_check_loop_limits_node(settings=settings)
@@ -161,29 +134,6 @@ class RagAgentPipeline:
             )
             if task_executor is not None
             else None
-        )
-        self.authorize_tool_call_node = (
-            create_authorize_tool_call_node(
-                settings=settings,
-                document_management_service=document_management_service,
-                tool_permission_service=tool_permission_service,
-                tool_audit_service=tool_audit_service,
-            )
-            if document_management_service is not None
-            and tool_permission_service is not None
-            and tool_audit_service is not None
-            else None
-        )
-        self.create_tool_approval_node = (
-            create_tool_approval_node(
-                settings=settings,
-                tool_approval_service=tool_approval_service,
-            )
-            if tool_approval_service is not None
-            else None
-        )
-        self.tool_permission_denied_node = create_tool_permission_denied_node(
-            settings=settings
         )
         self.rerank_node = create_agent_rerank_node(
             settings=settings,
@@ -657,11 +607,7 @@ class RagAgentPipeline:
             sources=docs_to_sources(docs),
             tool_approval_id=final_state.get("tool_approval_id"),
             tool_confirmation_required=final_state.get("requires_confirmation", False),
-            tool_approval=(
-                final_state["tool_execution_approval"].model_dump(mode="json")
-                if final_state.get("tool_execution_approval") is not None
-                else None
-            ),
+            tool_approval=None,
             agent_task_plan_id=final_state.get("agent_task_plan_id"),
             agent_task_status=(
                 final_state["agent_task_plan"].status.value
@@ -710,26 +656,6 @@ class RagAgentPipeline:
                 raise ExternalServiceError("RAG Agent 多步骤任务执行节点尚未初始化")
             task_update = await self.execute_task_plan_node(state)
             state.update(task_update)
-            return state
-
-        if next_route == "authorize_tool_call":
-            if self.authorize_tool_call_node is None:
-                raise ExternalServiceError("RAG Agent 工具授权节点尚未初始化")
-
-            authorize_update = await self.authorize_tool_call_node(state)
-            state.update(authorize_update)
-            authorization_route = route_after_tool_authorization(state)
-
-            if authorization_route == "tool_permission_denied":
-                denied_update = await self.tool_permission_denied_node(state)
-                state.update(denied_update)
-                return state
-
-            if self.create_tool_approval_node is None:
-                raise ExternalServiceError("RAG Agent 工具执行确认单节点尚未初始化")
-
-            approval_update = await self.create_tool_approval_node(state)
-            state.update(approval_update)
             return state
 
         tool_update = await self.call_knowledge_retrieval_node(state)
@@ -974,38 +900,6 @@ class RagAgentPipeline:
                                     "confirm_endpoint": f"/agent/tool-approvals/{step.approval_id}/confirm",
                                 },
                             )
-
-            tool_approval = state.get("tool_execution_approval")
-            if tool_approval is not None:
-                yield RagStreamEvent(
-                    event="tool_approval_created",
-                    data={
-                        "approval_kind": tool_approval.approval_kind,
-                        "approval_id": tool_approval.approval_id,
-                        "markdown_path": tool_approval.markdown_path,
-                        "json_path": tool_approval.json_path,
-                        "operation": tool_approval.operation.value,
-                        "target_path": tool_approval.target_path,
-                        "risk_level": tool_approval.preview.risk_level.value,
-                    },
-                )
-                yield RagStreamEvent(
-                    event="tool_confirmation_required",
-                    data={
-                        "approval_id": tool_approval.approval_id,
-                        "confirmation_required": True,
-                        "confirm_endpoint": f"/agent/tool-approvals/{tool_approval.approval_id}/confirm",
-                    },
-                )
-            elif state.get("final_reason") == "tool_permission_denied":
-                decision = state.get("tool_permission_decision")
-                yield RagStreamEvent(
-                    event="tool_permission_denied",
-                    data={
-                        "reason": decision.reason if decision is not None else state.get("answer"),
-                        "tool_name": state.get("pending_tool_name"),
-                    },
-                )
 
             with rag_agent_langsmith_step_trace(
                 settings=self.settings,
