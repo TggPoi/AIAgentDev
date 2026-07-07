@@ -201,9 +201,11 @@ class RagAgentPipeline:
         req: RagChatRequest,
         operation: RagAgentOperation,
     ) -> RagAgentState:
-        """构造 Agent 初始 state，并在进入 graph 前完成 query rewrite。"""
+        """prompt_guard + 构造 Agent 初始 state，并在进入 graph 前完成 query rewrite。"""
 
         state = self._build_initial_state(req=req, operation=operation)
+
+        # 检查用户的初始query是否存在恶意注入
         await self._ensure_query_allowed(
             req.query,
             source="rag_agent.query_rewrite.raw_input",
@@ -257,6 +259,7 @@ class RagAgentPipeline:
                     )
                 return state
 
+            # 读取之前的对话历史记录，用于rewrite query的上下文
             history_window = await load_recent_history_window(
                 store=self.conversation_memory_store,
                 conversation_id=req.session_id,
@@ -301,6 +304,8 @@ class RagAgentPipeline:
             state["rewritten_query"] = rewrite_result.rewritten_query
             state["query_rewrite_reason"] = rewrite_result.reason
             state["query"] = rewrite_result.rewritten_query
+
+            # rewrite完成后，prompt_guard 再一次检测是否存在恶意注入
             await self._ensure_query_allowed(
                 state["query"],
                 source="rag_agent.query_rewrite.rewritten_query",
@@ -508,7 +513,9 @@ class RagAgentPipeline:
         )
 
         try:
+            # 构造初始State，prompt_guard 检查用户的初始query，执行rewrite后再执行一次 prompt_guard
             initial_state = await self._prepare_initial_state(req, operation="run")
+            
             # graph.ainvoke 会按 rag_agent_builder.py 中定义的边执行到 END。
             final_state = await self.graph.ainvoke(initial_state)
             answer = final_state.get("answer") or ""
@@ -839,13 +846,23 @@ class RagAgentPipeline:
             # 直接回答或错误回答没有检索来源，但 stream_events 协议仍先发 sources。
             task_plan = state.get("agent_task_plan")
             if task_plan is not None:
+                # Agent task plan 是 React 前端需要单独渲染的结构化状态，
+                # 所以先发 agent_task_plan_created，再继续 answer_delta。
                 yield RagStreamEvent(
                     event="agent_task_plan_created",
                     data={
                         "task_plan_id": task_plan.task_plan_id,
                         "task_kind": task_plan.task_kind,
+                        "task_type": task_plan.task_type,
+                        "objective": task_plan.objective,
                         "status": task_plan.status.value,
                         "target_path": task_plan.target_path,
+                        "source_query": task_plan.source_query,
+                        "sub_questions": [
+                            item.model_dump(mode="json")
+                            for item in task_plan.sub_questions
+                        ],
+                        "final_synthesis_instruction": task_plan.final_synthesis_instruction,
                     },
                 )
                 for step in task_plan.steps:

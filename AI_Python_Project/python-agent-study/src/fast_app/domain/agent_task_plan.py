@@ -7,7 +7,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-AgentTaskKind = Literal["knowledge_report_to_document"]
+AgentTaskKind = Literal["knowledge_report_to_document", "question_decomposition"]
+AgentTaskType = Literal["qa", "comparison", "report_generation", "analysis", "unknown"]
+AgentTaskInformationSourceHint = Literal["knowledge_retrieval", "web_search", "none"]
 
 
 class AgentTaskPlanStatus(StrEnum):
@@ -58,22 +60,62 @@ class AgentToolStep(BaseModel):
     error: str | None = Field(default=None, description="步骤失败原因。")
 
 
+class AgentTaskSubQuestion(BaseModel):
+    """复杂问题拆解后的一个待回答子问题，不表示工具执行步骤。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sub_question_id: str = Field(description="子问题唯一 ID，当前 task plan 内稳定。")
+    order: int = Field(description="子问题在最终推理中的建议处理顺序。")
+    question: str = Field(description="真正需要被回答的子问题，不能是执行动作指令。")
+    purpose: str = Field(description="拆出该子问题的目的。")
+    depends_on: list[str] = Field(
+        default_factory=list,
+        description="该子问题依赖的前置 sub_question_id 列表。",
+    )
+    information_source_hint: AgentTaskInformationSourceHint = Field(
+        description="建议的信息来源；本字段不代表本阶段会真实调用工具。",
+    )
+    reason: str = Field(description="为什么该子问题有助于回答原始复杂问题。")
+    expected_evidence: str | None = Field(
+        default=None,
+        description="理想情况下回答该子问题需要的证据类型。",
+    )
+
+
 class AgentTaskPlan(BaseModel):
     """LLM 生成的 Agent 多步骤任务计划。"""
 
     model_config = ConfigDict(extra="forbid")
 
+    # 一个 plan 同时服务两类前端展示：
+    # - question_decomposition：只展示问题拆解，不进入工具执行。
+    # - knowledge_report_to_document：沿用 steps 执行和人工确认链路。
     task_plan_id: str = Field(description="任务计划唯一 ID。")
     task_kind: AgentTaskKind = Field(
-        description="白名单任务类型；v1 只支持 knowledge_report_to_document。",
+        description="任务计划类型；question_decomposition 只表达复杂问题拆解，不执行工具。",
     )
     user_id: str | None = Field(
         default=None,
         description="创建该任务计划的用户 ID，用于查询和审计。",
     )
-    goal: str = Field(description="用户希望完成的业务目标。")
-    source_query: str = Field(description="用于知识库检索的查询文本。")
-    target_path: str = Field(description="报告要保存到的知识库相对路径。")
+    original_query: str = Field(description="用户输入的原始复杂问题。")
+    objective: str = Field(description="用户最终希望完成的目标。")
+    task_type: AgentTaskType = Field(description="复杂问题的任务类型。")
+    goal: str = Field(description="兼容字段，语义上等同于 objective。")
+    sub_questions: list[AgentTaskSubQuestion] = Field(
+        description="复杂问题拆解出的待回答子问题列表，不是执行 TODO list。",
+    )
+    final_synthesis_instruction: str = Field(
+        description="最终如何整合多个子问题答案的说明。",
+    )
+    source_query: str = Field(
+        description="给当前 legacy executor 使用的一次检索 condensed query。",
+    )
+    target_path: str | None = Field(
+        default=None,
+        description="报告要保存到的知识库相对路径；纯问题拆解计划为空。",
+    )
     report_title: str = Field(default="知识库报告", description="报告标题。")
     status: AgentTaskPlanStatus = Field(
         default=AgentTaskPlanStatus.CREATED,
@@ -90,9 +132,12 @@ class AgentTaskPlan(BaseModel):
 
 
 __all__ = [
+    "AgentTaskInformationSourceHint",
     "AgentTaskKind",
     "AgentTaskPlan",
     "AgentTaskPlanStatus",
+    "AgentTaskSubQuestion",
+    "AgentTaskType",
     "AgentToolStep",
     "AgentToolStepStatus",
 ]

@@ -217,6 +217,7 @@ def create_next_action_decision_node(
         ) as trace_run:
             task_plan = None
             if task_planner is not None:
+                # 开始判断拆解多步骤任务
                 current_user = state.get("current_user")
                 task_plan = await task_planner.plan(
                     query=state["query"],
@@ -527,6 +528,29 @@ def create_execute_task_plan_node(
                 task_kind=plan.task_kind,
             ),
         ) as trace_run:
+            if plan.task_kind == "question_decomposition":
+                # 纯问题拆解 plan 不是高风险工具任务：保存后直接返回给 React 展示，
+                # 不进入 AgentTaskExecutor，也不会生成确认 endpoint。
+                task_executor.save_plan(plan)
+                answer = build_task_plan_answer(plan)
+                result = {
+                    "agent_task_plan": plan,
+                    "agent_task_plan_id": plan.task_plan_id,
+                    "answer": answer,
+                    "final_reason": "agent_task_plan_decomposed",
+                    "requires_confirmation": False,
+                }
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "task_plan_id": plan.task_plan_id,
+                            "status": plan.status.value,
+                            "task_kind": plan.task_kind,
+                            "requires_confirmation": False,
+                        }
+                    )
+                return result
+
             executed_plan = await task_executor.execute(
                 plan=plan,
                 user=user,
@@ -562,14 +586,28 @@ def create_execute_task_plan_node(
 
 
 def build_task_plan_answer(plan) -> str:
+    # 这里的文本是 chat 回答；结构化字段仍通过 response.agent_task_plan
+    # 和 stream_events 的 agent_task_plan_created 给前端消费。
     lines = [
         "已生成并执行 Agent 多步骤任务计划。",
         "",
         f"- task_plan_id: {plan.task_plan_id}",
         f"- task_kind: {plan.task_kind}",
         f"- status: {plan.status.value}",
-        f"- target_path: {plan.target_path}",
+        f"- task_type: {plan.task_type}",
+        f"- objective: {plan.objective}",
+        f"- source_query: {plan.source_query}",
     ]
+    if plan.target_path:
+        lines.append(f"- target_path: {plan.target_path}")
+    if plan.sub_questions:
+        lines.append("")
+        lines.append("问题拆解：")
+        for item in plan.sub_questions:
+            depends_on = f" depends_on={item.depends_on}" if item.depends_on else ""
+            lines.append(f"- {item.sub_question_id}: {item.question}{depends_on}")
+        lines.append("")
+        lines.append(f"最终整合策略：{plan.final_synthesis_instruction}")
     if plan.status == AgentTaskPlanStatus.WAITING_CONFIRMATION:
         lines.extend(
             [

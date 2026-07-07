@@ -91,6 +91,11 @@ class AgentTaskExecutor:
         self._tool_audit_service = tool_audit_service
         self._task_plan_store = task_plan_store
 
+    def save_plan(self, plan: AgentTaskPlan) -> None:
+        """保存不需要执行器推进的 TaskPlan，例如纯问题拆解计划。"""
+
+        self._task_plan_store.save(plan)
+
     # 任务执行，构造plan的步骤状态，执行知识检索和报告生成，并处理文档创建的权限和审批逻辑。
     async def execute(
         self,

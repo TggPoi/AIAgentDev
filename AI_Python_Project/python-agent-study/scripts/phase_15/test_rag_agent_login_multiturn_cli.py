@@ -118,6 +118,14 @@ def parse_args() -> argparse.Namespace:
         help="多轮对话 session_id。不传时自动生成。",
     )
     parser.add_argument(
+        "--query",
+        default=None,
+        help=(
+            "单轮验收 query。传入后脚本会登录、请求 /rag/chat、打印 TaskPlan，"
+            "然后退出，不进入交互循环。"
+        ),
+    )
+    parser.add_argument(
         "--mode",
         choices=["vector", "keyword", "hybrid"],
         default="hybrid",
@@ -169,6 +177,27 @@ def parse_args() -> argparse.Namespace:
         "--manual-confirm-task-plans",
         action="store_true",
         help="交互模式下 TaskPlan 等待确认时，提示人工输入 true；输入 true 后调用 TaskPlan confirm 接口执行。",
+    )
+    parser.add_argument(
+        "--expect-task-plan",
+        action="store_true",
+        help="单轮模式下要求响应必须包含 agent_task_plan_id，否则脚本失败。",
+    )
+    parser.add_argument(
+        "--expect-task-kind",
+        choices=["knowledge_report_to_document", "question_decomposition"],
+        default=None,
+        help="单轮模式下要求 TaskPlan 的 task_kind 必须等于该值。",
+    )
+    parser.add_argument(
+        "--verify-task-plan-saved",
+        action="store_true",
+        help="通过 GET /agent/task-plans/{id} 和本地 JSON 文件确认 plan 已保存。",
+    )
+    parser.add_argument(
+        "--task-plan-dir",
+        default="runtime/agent-task-plans",
+        help="本地 TaskPlan JSON 保存目录，用于 --verify-task-plan-saved 文件检查。",
     )
     parser.add_argument(
         "--max-sources-print",
@@ -350,6 +379,37 @@ def confirm_task_plan(
         headers={"Authorization": f"Bearer {access_token}"},
         timeout_seconds=timeout_seconds,
     )
+
+
+def get_task_plan(
+    *,
+    base_url: str,
+    access_token: str,
+    task_plan_id: str,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    """读取服务端保存的 TaskPlan。"""
+
+    return get_json(
+        url=f"{base_url}/agent/task-plans/{task_plan_id}",
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def find_saved_task_plan_file(
+    *,
+    task_plan_id: str,
+    task_plan_dir: str,
+) -> Path | None:
+    """在本地 runtime 目录查找 TaskPlan JSON 文件。"""
+
+    path = Path(task_plan_dir)
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+
+    matches = sorted(path.glob(f"*_{task_plan_id}.json"))
+    return matches[-1] if matches else None
 
 
 def request_rag_chat_stream_events(
@@ -734,6 +794,149 @@ def print_15_7_tool_users() -> None:
         )
 
 
+def inspect_task_plan(
+    *,
+    base_url: str,
+    access_token: str,
+    task_plan_id: object,
+    inline_task_plan: object = None,
+    timeout_seconds: float,
+    verify_saved: bool,
+    task_plan_dir: str,
+) -> dict[str, Any] | None:
+    """打印 TaskPlan 摘要，并可验证服务端 store 与本地 JSON 文件。"""
+
+    if not isinstance(task_plan_id, str) or not task_plan_id:
+        return None
+
+    task_plan = inline_task_plan if isinstance(inline_task_plan, dict) else None
+    if task_plan is None or verify_saved:
+        task_plan = get_task_plan(
+            base_url=base_url,
+            access_token=access_token,
+            task_plan_id=task_plan_id,
+            timeout_seconds=timeout_seconds,
+        )
+
+    print_task_plan_summary(task_plan)
+
+    if verify_saved:
+        saved_file = find_saved_task_plan_file(
+            task_plan_id=task_plan_id,
+            task_plan_dir=task_plan_dir,
+        )
+        if saved_file is None:
+            raise RuntimeError(
+                "TaskPlan GET 成功，但本地 runtime JSON 不存在: "
+                f"task_plan_id={task_plan_id}, task_plan_dir={task_plan_dir}"
+            )
+        print(f"task_plan_json={saved_file}")
+
+    return task_plan
+
+
+def print_task_plan_summary(task_plan: dict[str, Any]) -> None:
+    """打印 TaskPlan 摘要，方便人工检查问题拆解质量。"""
+
+    print("agent_task_plan:")
+    print(f"  task_plan_id={task_plan.get('task_plan_id')}")
+    print(f"  task_kind={task_plan.get('task_kind')}")
+    print(f"  task_type={task_plan.get('task_type')}")
+    print(f"  status={task_plan.get('status')}")
+    print(f"  objective={task_plan.get('objective')}")
+    print(f"  source_query={task_plan.get('source_query')}")
+    print(f"  target_path={task_plan.get('target_path')}")
+    print(f"  final_synthesis_instruction={task_plan.get('final_synthesis_instruction')}")
+
+    sub_questions = task_plan.get("sub_questions")
+    if not isinstance(sub_questions, list):
+        return
+
+    print(f"  sub_question_count={len(sub_questions)}")
+    for item in sub_questions:
+        if not isinstance(item, dict):
+            continue
+        print(
+            "  - "
+            f"{item.get('sub_question_id')} "
+            f"order={item.get('order')} "
+            f"source_hint={item.get('information_source_hint')} "
+            f"depends_on={item.get('depends_on')} "
+            f"question={item.get('question')}"
+        )
+
+
+def run_single_query_check(
+    *,
+    base_url: str,
+    access_token: str,
+    session_id: str,
+    query: str,
+    mode: str,
+    top_k: int,
+    candidate_k: int,
+    min_score: float,
+    timeout_seconds: float,
+    max_sources_print: int,
+    show_source_content: bool,
+    expect_task_plan: bool,
+    expect_task_kind: str | None,
+    verify_task_plan_saved: bool,
+    task_plan_dir: str,
+) -> None:
+    """登录后执行一轮 /rag/chat，验收到 TaskPlan 生成和保存为止。"""
+
+    response = request_rag_chat(
+        base_url=base_url,
+        access_token=access_token,
+        session_id=session_id,
+        query=query,
+        mode=mode,
+        top_k=top_k,
+        candidate_k=candidate_k,
+        min_score=min_score,
+        timeout_seconds=timeout_seconds,
+    )
+
+    print(f"request_id={response.get('request_id')}")
+    print(f"trace_id={response.get('trace_id')}")
+    print(f"effective_query={response.get('query')}")
+    print(f"agent_task_plan_id={response.get('agent_task_plan_id')}")
+    print(f"agent_task_status={response.get('agent_task_status')}")
+    print(f"task_confirmation_required={response.get('task_confirmation_required')}")
+    print(f"task_confirm_endpoint={response.get('task_confirm_endpoint')}")
+    print("answer:")
+    print(response.get("answer"))
+    print_sources(
+        sources=response.get("sources"),
+        max_sources_print=max_sources_print,
+        show_source_content=show_source_content,
+    )
+
+    task_plan_id = response.get("agent_task_plan_id")
+    if expect_task_plan and not isinstance(task_plan_id, str):
+        raise RuntimeError("期望生成 TaskPlan，但响应缺少 agent_task_plan_id")
+
+    task_plan = inspect_task_plan(
+        base_url=base_url,
+        access_token=access_token,
+        task_plan_id=task_plan_id,
+        inline_task_plan=response.get("agent_task_plan"),
+        timeout_seconds=timeout_seconds,
+        verify_saved=verify_task_plan_saved,
+        task_plan_dir=task_plan_dir,
+    )
+
+    if expect_task_kind is not None:
+        actual = task_plan.get("task_kind") if task_plan is not None else None
+        if actual != expect_task_kind:
+            raise RuntimeError(
+                f"TaskPlan 类型不符合预期: expected={expect_task_kind}, actual={actual}"
+            )
+
+    print(f"single_query_check=passed task_plan_generated={task_plan is not None}")
+
+
 def run_interactive_loop(
     *,
     base_url: str,
@@ -749,6 +952,8 @@ def run_interactive_loop(
     stream_events: bool,
     show_stream_events: bool,
     manual_confirm_task_plans: bool,
+    verify_task_plan_saved: bool,
+    task_plan_dir: str,
 ) -> None:
     """启动终端交互循环，直到用户输入 exit / quit。"""
 
@@ -783,6 +988,8 @@ def run_interactive_loop(
                 show_source_content=show_source_content,
                 show_stream_events=show_stream_events,
                 manual_confirm_task_plans=manual_confirm_task_plans,
+                verify_task_plan_saved=verify_task_plan_saved,
+                task_plan_dir=task_plan_dir,
             )
             continue
 
@@ -812,6 +1019,18 @@ def run_interactive_loop(
             max_sources_print=max_sources_print,
             show_source_content=show_source_content,
         )
+        try:
+            inspect_task_plan(
+                base_url=base_url,
+                access_token=access_token,
+                task_plan_id=response.get("agent_task_plan_id"),
+                inline_task_plan=response.get("agent_task_plan"),
+                timeout_seconds=timeout_seconds,
+                verify_saved=verify_task_plan_saved,
+                task_plan_dir=task_plan_dir,
+            )
+        except RuntimeError as exc:
+            print(f"task_plan_inspect_failed={exc}")
         maybe_prompt_and_confirm_task_plan(
             base_url=base_url,
             access_token=access_token,
@@ -837,6 +1056,8 @@ def run_stream_events_turn(
     show_source_content: bool,
     show_stream_events: bool,
     manual_confirm_task_plans: bool,
+    verify_task_plan_saved: bool,
+    task_plan_dir: str,
 ) -> None:
     """执行一轮结构化流式对话，并突出打印 Prompt Guard 相关事件。"""
 
@@ -922,6 +1143,17 @@ def run_stream_events_turn(
 
         print(f"answer_length={len(''.join(answer_parts))}")
         print(f"guard_sanitized={sanitized} guard_blocked={blocked}")
+        try:
+            inspect_task_plan(
+                base_url=base_url,
+                access_token=access_token,
+                task_plan_id=task_plan_id,
+                timeout_seconds=timeout_seconds,
+                verify_saved=verify_task_plan_saved,
+                task_plan_dir=task_plan_dir,
+            )
+        except RuntimeError as exc:
+            print(f"task_plan_inspect_failed={exc}")
         maybe_prompt_and_confirm_task_plan(
             base_url=base_url,
             access_token=access_token,
@@ -1058,6 +1290,29 @@ def main() -> int:
         print(f"session_id={session_id}")
         print(f"mode={args.mode} top_k={args.top_k} candidate_k={args.candidate_k}")
         print(f"stream_events={args.stream_events}")
+
+        if args.query:
+            # --query 是 CI/手动验收用的单轮模式：只检查一次 /rag/chat 和 TaskPlan，
+            # 不进入交互循环，方便复现复杂问题拆解或确认保存行为。
+            run_single_query_check(
+                base_url=base_url,
+                access_token=login_result.access_token,
+                session_id=session_id,
+                query=args.query,
+                mode=args.mode,
+                top_k=args.top_k,
+                candidate_k=args.candidate_k,
+                min_score=args.min_score,
+                timeout_seconds=args.timeout_seconds,
+                max_sources_print=args.max_sources_print,
+                show_source_content=args.show_source_content,
+                expect_task_plan=args.expect_task_plan,
+                expect_task_kind=args.expect_task_kind,
+                verify_task_plan_saved=args.verify_task_plan_saved,
+                task_plan_dir=args.task_plan_dir,
+            )
+            return 0
+
         run_interactive_loop(
             base_url=base_url,
             access_token=login_result.access_token,
@@ -1072,6 +1327,8 @@ def main() -> int:
             stream_events=args.stream_events,
             show_stream_events=args.show_stream_events,
             manual_confirm_task_plans=args.manual_confirm_task_plans,
+            verify_task_plan_saved=args.verify_task_plan_saved,
+            task_plan_dir=args.task_plan_dir,
         )
         return 0
 
