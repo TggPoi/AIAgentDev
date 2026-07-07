@@ -6,6 +6,7 @@ from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.core.langsmith import (
+    build_rag_langchain_child_config,
     build_rag_langsmith_inputs,
     build_rag_langsmith_metadata,
     build_rag_langsmith_tags,
@@ -289,6 +290,16 @@ class RagAgentPipeline:
             rewrite_result = await self.query_rewriter.rewrite(
                 query=req.query,
                 memory_context=memory_context,
+                langchain_config=build_rag_langchain_child_config(
+                    settings=self.settings,
+                    state=state,
+                    pipeline_provider="rag_agent",
+                    operation=operation,
+                    step_name="query_rewrite",
+                    step_index=0,
+                    child_name="query_rewrite.llm",
+                    run_name=f"rag_agent_pipeline.{operation}.query_rewrite.llm",
+                ),
             )
 
             state["history_window_text"] = history_window.formatted_text

@@ -22,6 +22,7 @@ from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.core.langsmith import (
+    build_rag_langchain_child_config,
     build_rag_langsmith_step_metadata_from_state,
     build_rag_langsmith_step_tags,
     rag_langsmith_step_trace,
@@ -219,10 +220,31 @@ def create_next_action_decision_node(
             if task_planner is not None:
                 # 开始判断拆解多步骤任务
                 current_user = state.get("current_user")
+                operation = get_rag_agent_operation(state)
+
+                def build_planner_config(child_name: str):
+                    return build_rag_langchain_child_config(
+                        settings=settings,
+                        state=state,
+                        pipeline_provider="rag_agent",
+                        operation=operation,
+                        step_name="decide_next_action",
+                        step_index=get_rag_agent_step_index(
+                            operation,
+                            "decide_next_action",
+                        ),
+                        child_name=child_name,
+                        run_name=(
+                            f"rag_agent_pipeline.{operation}."
+                            f"decide_next_action.{child_name}"
+                        ),
+                    )
+
                 task_plan = await task_planner.plan(
                     query=state["query"],
                     history=[],
                     user_id=current_user.user_id if current_user is not None else None,
+                    langchain_config_factory=build_planner_config,
                 )
 
             if task_plan is not None:

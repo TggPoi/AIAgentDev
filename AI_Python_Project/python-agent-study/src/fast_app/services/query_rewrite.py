@@ -2,6 +2,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
@@ -101,6 +102,7 @@ class ConversationQueryRewriter:
         query: str,
         history_window: ConversationHistoryWindow | None = None,
         memory_context: ConversationMemoryContext | None = None,
+        langchain_config: RunnableConfig | None = None,
     ) -> QueryRewriteResult:
         """结合历史窗口把当前追问改写成独立检索 query。"""
 
@@ -124,7 +126,9 @@ class ConversationQueryRewriter:
                 {
                     "memory_context": memory_context.formatted_text,
                     "query": query,
-                }
+                },
+                # chain内部runnable包装langsmith信息
+                config=langchain_config,
             )
             rewritten_query = _normalize_rewritten_query(
                 _extract_message_content(response)

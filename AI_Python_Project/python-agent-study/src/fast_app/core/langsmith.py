@@ -2,6 +2,7 @@ import os
 from contextlib import nullcontext
 from typing import Any
 
+from langchain_core.runnables import RunnableConfig
 from langsmith import trace
 
 from fast_app.core.config import Settings
@@ -312,6 +313,46 @@ def build_rag_langsmith_step_tags(
         "trace-level:step",
         f"step:{step_name}",
     ]
+
+
+def build_rag_langchain_child_config(
+    settings: Settings,
+    state: dict[str, Any],
+    pipeline_provider: str,
+    operation: str,
+    step_name: str,
+    step_index: int,
+    child_name: str,
+    run_name: str | None = None,
+) -> RunnableConfig:
+    """把当前 RAG step trace 上下文转成 LangChain 子调用 config。"""
+
+    return {
+        "run_name": run_name
+        or f"{pipeline_provider}_pipeline.{operation}.{step_name}.{child_name}",
+        "tags": [
+            *build_rag_langsmith_step_tags(
+                settings=settings,
+                pipeline_provider=pipeline_provider,
+                operation=operation,
+                step_name=step_name,
+            ),
+            "trace-level:langchain-child",
+            f"child:{child_name}",
+        ],
+        "metadata": {
+            **build_rag_langsmith_step_metadata_from_state(
+                settings=settings,
+                state=state,
+                pipeline_provider=pipeline_provider,
+                operation=operation,
+                step_name=step_name,
+                step_index=step_index,
+            ),
+            "trace_level": "langchain_child",
+            "child_name": child_name,
+        },
+    }
 
 
 def rag_langsmith_step_trace(

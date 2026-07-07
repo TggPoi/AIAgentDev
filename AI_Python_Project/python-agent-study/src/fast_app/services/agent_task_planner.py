@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,6 +24,8 @@ from fast_app.domain.agent_task_plan import (
 
 
 logger = get_logger(__name__)
+
+LangChainConfigFactory = Callable[[str], RunnableConfig]
 
 
 class AgentTaskPlannerSubQuestionPayload(BaseModel):
@@ -137,6 +141,7 @@ class AgentTaskPlanner:
         query: str,
         history: list[object] | None = None,
         user_id: str | None = None,
+        langchain_config_factory: LangChainConfigFactory | None = None,
     ) -> AgentTaskPlan | None:
         """识别多步骤任务；不执行工具，也不生成报告正文。"""
 
@@ -151,6 +156,7 @@ class AgentTaskPlanner:
             model=model,
             query=query,
             history=history,
+            langchain_config_factory=langchain_config_factory,
         )
         if payload is None:
             # 兼容不支持 structured output 的 OpenAI-compatible 服务。
@@ -158,6 +164,7 @@ class AgentTaskPlanner:
                 model=model,
                 query=query,
                 history=history,
+                langchain_config_factory=langchain_config_factory,
             )
 
         if payload is None:
@@ -188,6 +195,8 @@ class AgentTaskPlanner:
                 query=query,
                 history=history,
                 missing_topics=missing_topics,
+                langchain_config_factory=langchain_config_factory,
+                child_name_prefix="task_planner.repair.structured",
             )
             if retry_payload is None:
                 retry_payload = await self._invoke_json_planner(
@@ -195,6 +204,8 @@ class AgentTaskPlanner:
                     query=query,
                     history=history,
                     missing_topics=missing_topics,
+                    langchain_config_factory=langchain_config_factory,
+                    child_name="task_planner.repair.json_object",
                 )
             if retry_payload is not None:
                 retry_plan = self._plan_from_payload(
@@ -244,6 +255,8 @@ class AgentTaskPlanner:
         query: str,
         history: list[object] | None,
         missing_topics: list[str] | None = None,
+        langchain_config_factory: LangChainConfigFactory | None = None,
+        child_name_prefix: str = "task_planner.structured",
     ) -> dict[str, Any] | None:
         # 不同 OpenAI 兼容服务对 structured output 支持不一致：
         # 先走 json_schema，失败再试 function_calling，最后由调用方降级到普通 JSON。
@@ -258,7 +271,12 @@ class AgentTaskPlanner:
                         query=query,
                         history=history,
                         missing_topics=missing_topics,
-                    )
+                    ),
+                    config=(
+                        langchain_config_factory(f"{child_name_prefix}.{method}")
+                        if langchain_config_factory is not None
+                        else None
+                    ),
                 )
             except Exception as exc:
                 logger.warning(
@@ -282,6 +300,8 @@ class AgentTaskPlanner:
         query: str,
         history: list[object] | None,
         missing_topics: list[str] | None = None,
+        langchain_config_factory: LangChainConfigFactory | None = None,
+        child_name: str = "task_planner.json_object",
     ) -> dict[str, Any] | None:
         # 最低兼容路径：要求模型输出 JSON object，再由 json.loads + 本地校验接管。
         json_model = model.bind(response_format={"type": "json_object"})
@@ -290,7 +310,12 @@ class AgentTaskPlanner:
                 query=query,
                 history=history,
                 missing_topics=missing_topics,
-            )
+            ),
+            config=(
+                langchain_config_factory(child_name)
+                if langchain_config_factory is not None
+                else None
+            ),
         )
         raw = str(getattr(response, "content", ""))
         try:
