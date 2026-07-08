@@ -911,6 +911,63 @@ class RagAgentPipeline:
                                 "confirm_endpoint": f"/agent/task-plans/{task_plan.task_plan_id}/confirm",
                             },
                         )
+                if (
+                    task_plan.task_kind == "question_decomposition"
+                    and task_plan.status.value == "waiting_confirmation"
+                ):
+                    yield RagStreamEvent(
+                        event="agent_task_waiting_confirmation",
+                        data={
+                            "task_plan_id": task_plan.task_plan_id,
+                            "confirm_endpoint": f"/agent/task-plans/{task_plan.task_plan_id}/confirm",
+                        },
+                    )
+                sub_question_results = task_plan.final_output.get(
+                    "sub_question_results",
+                    [],
+                )
+                if isinstance(sub_question_results, list):
+                    for result in sub_question_results:
+                        if not isinstance(result, dict):
+                            continue
+                        yield RagStreamEvent(
+                            event="agent_task_sub_question_started",
+                            data={
+                                "task_plan_id": task_plan.task_plan_id,
+                                "sub_question_id": result.get("sub_question_id"),
+                                "question": result.get("question"),
+                            },
+                        )
+                        yield RagStreamEvent(
+                            event="agent_task_tool_selected",
+                            data={
+                                "task_plan_id": task_plan.task_plan_id,
+                                "sub_question_id": result.get("sub_question_id"),
+                                "selected_tool": result.get("selected_tool"),
+                                "tool_input": result.get("tool_input", {}),
+                            },
+                        )
+                        yield RagStreamEvent(
+                            event="agent_task_sub_question_completed",
+                            data={
+                                "task_plan_id": task_plan.task_plan_id,
+                                "sub_question_id": result.get("sub_question_id"),
+                                "status": result.get("status"),
+                                "answer": result.get("answer"),
+                                "evidence": result.get("evidence", []),
+                                "error": result.get("error"),
+                            },
+                        )
+                final_answer = task_plan.final_output.get("final_answer")
+                if isinstance(final_answer, str) and final_answer:
+                    yield RagStreamEvent(
+                        event="agent_task_final_synthesis_completed",
+                        data={
+                            "task_plan_id": task_plan.task_plan_id,
+                            "final_answer": final_answer,
+                            "used_tools": task_plan.final_output.get("used_tools", []),
+                        },
+                    )
 
             with rag_agent_langsmith_step_trace(
                 settings=self.settings,

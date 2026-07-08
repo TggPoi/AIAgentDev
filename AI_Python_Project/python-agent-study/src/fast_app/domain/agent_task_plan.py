@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 AgentTaskKind = Literal["knowledge_report_to_document", "question_decomposition"]
 AgentTaskType = Literal["qa", "comparison", "report_generation", "analysis", "unknown"]
 AgentTaskInformationSourceHint = Literal["knowledge_retrieval", "web_search", "none"]
+AgentTaskSubQuestionResultStatus = Literal["completed", "failed"]
 
 
 class AgentTaskPlanStatus(StrEnum):
@@ -83,6 +84,31 @@ class AgentTaskSubQuestion(BaseModel):
     )
 
 
+class AgentTaskSubQuestionResult(BaseModel):
+    """一个子问题的执行结果，不反写到规划字段。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sub_question_id: str = Field(description="对应的子问题 ID。")
+    question: str = Field(description="实际被回答的子问题。")
+    selected_tool: str = Field(description="LLM 选择的工具名；none 表示不调用工具。")
+    tool_input: dict[str, Any] = Field(
+        default_factory=dict,
+        description="传给工具的结构化参数。",
+    )
+    tool_output: dict[str, Any] = Field(
+        default_factory=dict,
+        description="工具输出摘要，供后续整合和前端展示。",
+    )
+    answer: str = Field(default="", description="该子问题的回答。")
+    evidence: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="支撑该子问题回答的证据摘要。",
+    )
+    status: AgentTaskSubQuestionResultStatus = Field(description="子问题执行状态。")
+    error: str | None = Field(default=None, description="子问题失败原因。")
+
+
 class AgentTaskPlan(BaseModel):
     """LLM 生成的 Agent 多步骤任务计划。"""
 
@@ -137,6 +163,8 @@ __all__ = [
     "AgentTaskPlan",
     "AgentTaskPlanStatus",
     "AgentTaskSubQuestion",
+    "AgentTaskSubQuestionResult",
+    "AgentTaskSubQuestionResultStatus",
     "AgentTaskType",
     "AgentToolStep",
     "AgentToolStepStatus",

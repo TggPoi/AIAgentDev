@@ -55,6 +55,8 @@ class AgentToolAuditService:
         executed: bool,
         message: str,
     ) -> str:
+        
+        # 日志记录 任务执行操作
         audit_id = f"tool_audit_{uuid4().hex}"
         logger.info(
             "agent_tool_audit %s",

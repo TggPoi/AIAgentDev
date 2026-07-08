@@ -551,16 +551,19 @@ def create_execute_task_plan_node(
             ),
         ) as trace_run:
             if plan.task_kind == "question_decomposition":
-                # 纯问题拆解 plan 不是高风险工具任务：保存后直接返回给 React 展示，
-                # 不进入 AgentTaskExecutor，也不会生成确认 endpoint。
+                plan.status = AgentTaskPlanStatus.WAITING_CONFIRMATION
+                plan.final_output = {
+                    "status": plan.status.value,
+                    "confirm_endpoint": f"/agent/task-plans/{plan.task_plan_id}/confirm",
+                }
                 task_executor.save_plan(plan)
                 answer = build_task_plan_answer(plan)
                 result = {
                     "agent_task_plan": plan,
                     "agent_task_plan_id": plan.task_plan_id,
                     "answer": answer,
-                    "final_reason": "agent_task_plan_decomposed",
-                    "requires_confirmation": False,
+                    "final_reason": "agent_task_waiting_confirmation",
+                    "requires_confirmation": True,
                 }
                 if trace_run is not None:
                     trace_run.add_outputs(
@@ -568,7 +571,7 @@ def create_execute_task_plan_node(
                             "task_plan_id": plan.task_plan_id,
                             "status": plan.status.value,
                             "task_kind": plan.task_kind,
-                            "requires_confirmation": False,
+                            "requires_confirmation": True,
                         }
                     )
                 return result
@@ -611,7 +614,7 @@ def build_task_plan_answer(plan) -> str:
     # 这里的文本是 chat 回答；结构化字段仍通过 response.agent_task_plan
     # 和 stream_events 的 agent_task_plan_created 给前端消费。
     lines = [
-        "已生成并执行 Agent 多步骤任务计划。",
+        "已生成 Agent 多步骤任务计划。",
         "",
         f"- task_plan_id: {plan.task_plan_id}",
         f"- task_kind: {plan.task_kind}",
@@ -631,14 +634,18 @@ def build_task_plan_answer(plan) -> str:
         lines.append("")
         lines.append(f"最终整合策略：{plan.final_synthesis_instruction}")
     if plan.status == AgentTaskPlanStatus.WAITING_CONFIRMATION:
-        lines.extend(
-            [
-                f"- confirm_endpoint: /agent/task-plans/{plan.task_plan_id}/confirm",
-                "",
-                "文档创建步骤已停在 TaskPlan 人工确认，尚未执行真实写入。",
-                f"请通过 `POST /agent/task-plans/{plan.task_plan_id}/confirm` 完成人工确认。",
-            ]
+        lines.append(f"- confirm_endpoint: /agent/task-plans/{plan.task_plan_id}/confirm")
+        lines.append("")
+        if plan.task_kind == "question_decomposition":
+            lines.append("TaskPlan 已等待人工确认，尚未开始执行子问题。")
+        else:
+            lines.append("文档创建步骤已停在 TaskPlan 人工确认，尚未执行真实写入。")
+        lines.append(
+            f"请通过 `POST /agent/task-plans/{plan.task_plan_id}/confirm` 完成人工确认。"
         )
+    final_answer = plan.final_output.get("final_answer")
+    if isinstance(final_answer, str) and final_answer.strip():
+        lines.extend(["", "最终答案：", final_answer.strip()])
     return "\n".join(lines)
 
 
