@@ -2,6 +2,8 @@ import asyncio
 from collections.abc import AsyncGenerator
 from time import perf_counter
 
+from langchain_core.runnables import RunnableConfig
+
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.core.config import Settings
 from fast_app.core.latency import log_slow_operation
@@ -16,7 +18,12 @@ class MockLLMClient(BaseLLMClient):
     def __init__(self, settings: Settings):
         self.settings = settings
 
-    async def generate(self, query: str, context: RagContext) -> str:
+    async def generate(
+        self,
+        query: str,
+        context: RagContext,
+        langchain_config: RunnableConfig | None = None,
+    ) -> str:
         start_time = perf_counter()
 
         try:
@@ -104,6 +111,7 @@ class MockLLMClient(BaseLLMClient):
         self,
         query: str,
         context: RagContext,
+        langchain_config: RunnableConfig | None = None,
     ) -> AsyncGenerator[str, None]:
         start_time = perf_counter()
         chunk_count = 0

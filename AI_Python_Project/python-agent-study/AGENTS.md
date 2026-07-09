@@ -9,8 +9,6 @@ The final system must support a React-based web frontend for visual operations. 
 Before doing project work, read these files in order:
 
 1. `learning-docs\教学讲解规范.md`
-2. `learning-docs\当前学习进度.md`
-3. `learning-docs\学习路线优先级.md`
 4. `learning-docs\总学习路线_归档参考.md`
 
 `总学习路线_归档参考.md` is archived reference only.

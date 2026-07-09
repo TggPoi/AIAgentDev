@@ -4,6 +4,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 
 from fast_app.components.llms.base import BaseLLMClient
@@ -130,7 +131,12 @@ class QwenLangChainLLMClient(BaseLLMClient):
         self.chain = self.prompt | self.model
 
 
-    async def generate(self, query: str, context: RagContext) -> str:
+    async def generate(
+        self,
+        query: str,
+        context: RagContext,
+        langchain_config: RunnableConfig | None = None,
+    ) -> str:
         start_time = perf_counter()
 
         try:
@@ -152,7 +158,8 @@ class QwenLangChainLLMClient(BaseLLMClient):
                 {
                     "query": query,
                     "context": context.context_text,
-                }
+                },
+                config=langchain_config,
             )
 
             answer = self._extract_message_content(response)
@@ -233,6 +240,7 @@ class QwenLangChainLLMClient(BaseLLMClient):
         self,
         query: str,
         context: RagContext,
+        langchain_config: RunnableConfig | None = None,
     ) -> AsyncGenerator[str, None]:
         start_time = perf_counter()
         chunk_count = 0
@@ -257,7 +265,8 @@ class QwenLangChainLLMClient(BaseLLMClient):
                 {
                     "query": query,
                     "context": context.context_text,
-                }
+                },
+                config=langchain_config,
             ):
                 content = getattr(chunk, "content", "")
 

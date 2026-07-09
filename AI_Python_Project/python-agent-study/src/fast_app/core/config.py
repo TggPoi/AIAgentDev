@@ -221,6 +221,15 @@ class Settings(BaseSettings):
         default="confirmation_required",
         alias="AGENT_TOOL_EXECUTION_POLICY",
     )
+    # MCP调用的相关配置
+    agent_task_mcp_enabled: bool = Field(
+        default=False,
+        alias="AGENT_TASK_MCP_ENABLED",
+    )
+    agent_task_mcp_stdio_servers_json: str = Field(
+        default="[]",
+        alias="AGENT_TASK_MCP_STDIO_SERVERS_JSON",
+    )
 
     # 多轮对话短期记忆配置。默认仍使用内存实现，避免本地开发强依赖 Redis。
     memory_store_provider: str = Field(

@@ -11,6 +11,7 @@ AgentTaskKind = Literal["knowledge_report_to_document", "question_decomposition"
 AgentTaskType = Literal["qa", "comparison", "report_generation", "analysis", "unknown"]
 AgentTaskInformationSourceHint = Literal["knowledge_retrieval", "web_search", "none"]
 AgentTaskSubQuestionResultStatus = Literal["completed", "failed"]
+AgentTaskToolCallStatus = Literal["completed", "failed"]
 
 
 class AgentTaskPlanStatus(StrEnum):
@@ -84,6 +85,27 @@ class AgentTaskSubQuestion(BaseModel):
     )
 
 
+class AgentTaskToolCallTrace(BaseModel):
+    """子问题执行过程中的一次工具调用轨迹。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    call_id: str = Field(description="工具调用唯一 ID，当前子问题内稳定。")
+    round: int = Field(description="该工具调用在当前子问题 tool loop 中的轮次。")
+    tool_name: str = Field(description="实际调用的工具名。")
+    tool_input: dict[str, Any] = Field(
+        default_factory=dict,
+        description="传给工具的结构化参数。",
+    )
+    tool_output: dict[str, Any] = Field(
+        default_factory=dict,
+        description="工具输出摘要，必须保持 JSON 可序列化。",
+    )
+    status: AgentTaskToolCallStatus = Field(description="本次工具调用状态。")
+    error: str | None = Field(default=None, description="工具调用失败原因。")
+    reason: str = Field(default="", description="LLM 选择该工具的原因。")
+
+
 class AgentTaskSubQuestionResult(BaseModel):
     """一个子问题的执行结果，不反写到规划字段。"""
 
@@ -100,6 +122,10 @@ class AgentTaskSubQuestionResult(BaseModel):
         default_factory=dict,
         description="工具输出摘要，供后续整合和前端展示。",
     )
+    tool_calls: list[AgentTaskToolCallTrace] = Field(
+        default_factory=list,
+        description="该子问题完整的多轮工具调用轨迹。",
+    )
     answer: str = Field(default="", description="该子问题的回答。")
     evidence: list[dict[str, Any]] = Field(
         default_factory=list,
@@ -115,11 +141,11 @@ class AgentTaskPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # 一个 plan 同时服务两类前端展示：
-    # - question_decomposition：只展示问题拆解，不进入工具执行。
+    # - question_decomposition：展示问题拆解，用户确认后按子问题执行工具循环。
     # - knowledge_report_to_document：沿用 steps 执行和人工确认链路。
     task_plan_id: str = Field(description="任务计划唯一 ID。")
     task_kind: AgentTaskKind = Field(
-        description="任务计划类型；question_decomposition 只表达复杂问题拆解，不执行工具。",
+        description="任务计划类型；question_decomposition 表达复杂问题拆解并在确认后执行。",
     )
     user_id: str | None = Field(
         default=None,
@@ -165,6 +191,8 @@ __all__ = [
     "AgentTaskSubQuestion",
     "AgentTaskSubQuestionResult",
     "AgentTaskSubQuestionResultStatus",
+    "AgentTaskToolCallStatus",
+    "AgentTaskToolCallTrace",
     "AgentTaskType",
     "AgentToolStep",
     "AgentToolStepStatus",

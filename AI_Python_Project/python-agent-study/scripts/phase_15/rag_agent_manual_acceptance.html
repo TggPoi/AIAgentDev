@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RAG Agent 手工验收</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      color: #1f2937;
+      background: #f6f7f9;
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+    }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+    h1 {
+      margin: 0 0 16px;
+      font-size: 24px;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+    section {
+      background: #fff;
+      border: 1px solid #d8dee8;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin: 10px 0 4px;
+    }
+    input, select, textarea {
+      box-sizing: border-box;
+      width: 100%;
+      border: 1px solid #c9d2df;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font: inherit;
+      background: #fff;
+    }
+    textarea {
+      min-height: 110px;
+      resize: vertical;
+    }
+    button {
+      border: 0;
+      border-radius: 6px;
+      padding: 9px 14px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      background: #2563eb;
+      color: #fff;
+    }
+    button.secondary {
+      background: #4b5563;
+    }
+    button.danger {
+      background: #b91c1c;
+    }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: .55;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 12px;
+    }
+    .status {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #3730a3;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    pre {
+      margin: 0;
+      min-height: 180px;
+      max-height: 520px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #111827;
+      color: #e5e7eb;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: Consolas, monospace;
+      font-size: 12px;
+    }
+    .answer {
+      min-height: 180px;
+      max-height: 520px;
+      overflow: auto;
+      white-space: pre-wrap;
+      background: #f9fafb;
+      border: 1px solid #d8dee8;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .hint {
+      color: #6b7280;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    @media (max-width: 860px) {
+      body { padding: 12px; }
+      .grid, .split { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>RAG Agent 手工验收页面</h1>
+
+  <section>
+    <h2>1. 服务与登录</h2>
+    <p class="hint">
+      建议在本目录启动静态服务：<code>cd scripts\phase_15; python -m http.server 5173</code>，
+      然后访问 <code>http://127.0.0.1:5173/rag_agent_manual_acceptance.html</code>。
+      默认 CORS 配置已允许 <code>127.0.0.1:5173</code>。
+    </p>
+    <div class="grid">
+      <div>
+        <label for="baseUrl">API Base URL</label>
+        <input id="baseUrl" value="http://127.0.0.1:8000" />
+      </div>
+      <div>
+        <label for="username">用户名或邮箱</label>
+        <input id="username" value="tool_manager" autocomplete="username" />
+      </div>
+      <div>
+        <label for="password">密码</label>
+        <input id="password" type="password" autocomplete="current-password" />
+      </div>
+    </div>
+    <div class="row">
+      <button id="loginBtn">登录</button>
+      <button id="meBtn" class="secondary">查看 /auth/me</button>
+      <span class="status" id="authStatus">未登录</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. 对话请求</h2>
+    <div class="grid">
+      <div>
+        <label for="sessionId">session_id</label>
+        <input id="sessionId" value="manual-agent-session-001" />
+      </div>
+      <div>
+        <label for="mode">mode</label>
+        <select id="mode">
+          <option value="hybrid" selected>hybrid</option>
+          <option value="vector">vector</option>
+          <option value="keyword">keyword</option>
+        </select>
+      </div>
+      <div>
+        <label for="topK">top_k</label>
+        <input id="topK" type="number" min="1" max="20" value="5" />
+      </div>
+    </div>
+    <label for="query">query</label>
+    <textarea id="query">请分析 https://example.com 这个页面说明了什么，并结合知识库中的 RAG Agent 工具调用设计，说明 Fetch MCP 在当前系统中的作用。</textarea>
+    <div class="row">
+      <button id="nonStreamBtn">非流式 /rag/chat</button>
+      <button id="streamBtn">流式 /rag/chat/stream/events</button>
+      <button id="stopStreamBtn" class="danger" disabled>停止流式请求</button>
+      <button id="confirmBtn" class="secondary" disabled>确认并执行 TaskPlan</button>
+      <button id="loadPlanBtn" class="secondary" disabled>读取 TaskPlan</button>
+      <span class="status" id="taskStatus">无 TaskPlan</span>
+    </div>
+  </section>
+
+  <section class="split">
+    <div>
+      <h2>回答</h2>
+      <div id="answerBox" class="answer"></div>
+    </div>
+    <div>
+      <h2>事件 / JSON</h2>
+      <pre id="logBox"></pre>
+    </div>
+  </section>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  let accessToken = localStorage.getItem("rag_agent_access_token") || "";
+  let currentTaskPlanId = "";
+  let currentConfirmEndpoint = "";
+  let streamController = null;
+
+  if (accessToken) {
+    $("authStatus").textContent = "已加载本地 token";
+  }
+
+  function baseUrl() {
+    return $("baseUrl").value.replace(/\/+$/, "");
+  }
+
+  function headers() {
+    const result = {"Content-Type": "application/json"};
+    if (accessToken) {
+      result.Authorization = `Bearer ${accessToken}`;
+    }
+    return result;
+  }
+
+  function chatBody() {
+    return {
+      session_id: $("sessionId").value.trim() || null,
+      query: $("query").value,
+      mode: $("mode").value,
+      top_k: Number($("topK").value || 5),
+      min_score: 0,
+      filters: {source_path: null, section_path: []}
+    };
+  }
+
+  function log(value, append = true) {
+    const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    $("logBox").textContent = append
+      ? `${$("logBox").textContent}${text}\n`
+      : `${text}\n`;
+  }
+
+  function setAnswer(value, append = false) {
+    $("answerBox").textContent = append
+      ? `${$("answerBox").textContent}${value}`
+      : value;
+  }
+
+  function setTaskPlan(taskPlanId, confirmEndpoint, status) {
+    currentTaskPlanId = taskPlanId || currentTaskPlanId;
+    currentConfirmEndpoint = confirmEndpoint || (
+      currentTaskPlanId ? `/agent/task-plans/${currentTaskPlanId}/confirm` : ""
+    );
+    $("taskStatus").textContent = currentTaskPlanId
+      ? `${status || "task_plan"}: ${currentTaskPlanId}`
+      : "无 TaskPlan";
+    $("confirmBtn").disabled = !currentTaskPlanId;
+    $("loadPlanBtn").disabled = !currentTaskPlanId;
+  }
+
+  async function readJsonResponse(response) {
+    const text = await response.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}\n${JSON.stringify(data, null, 2)}`);
+    }
+    return data;
+  }
+
+  $("loginBtn").addEventListener("click", async () => {
+    log("", false);
+    setAnswer("");
+    try {
+      const response = await fetch(`${baseUrl()}/auth/login`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          username_or_email: $("username").value.trim(),
+          password: $("password").value
+        })
+      });
+      const data = await readJsonResponse(response);
+      accessToken = data.access_token || "";
+      localStorage.setItem("rag_agent_access_token", accessToken);
+      $("authStatus").textContent = accessToken ? "登录成功" : "登录响应无 access_token";
+      log(data, false);
+    } catch (error) {
+      $("authStatus").textContent = "登录失败";
+      log(String(error), false);
+    }
+  });
+
+  $("meBtn").addEventListener("click", async () => {
+    try {
+      const response = await fetch(`${baseUrl()}/auth/me`, {headers: headers()});
+      log(await readJsonResponse(response), false);
+    } catch (error) {
+      log(String(error), false);
+    }
+  });
+
+  $("nonStreamBtn").addEventListener("click", async () => {
+    log("请求 /rag/chat ...", false);
+    setAnswer("");
+    setTaskPlan("", "", "");
+    try {
+      const response = await fetch(`${baseUrl()}/rag/chat`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify(chatBody())
+      });
+      const data = await readJsonResponse(response);
+      setAnswer(data.answer || "");
+      log(data, false);
+      setTaskPlan(data.agent_task_plan_id, data.task_confirm_endpoint, data.agent_task_status);
+    } catch (error) {
+      log(String(error), false);
+    }
+  });
+
+  $("streamBtn").addEventListener("click", async () => {
+    log("请求 /rag/chat/stream/events ...", false);
+    setAnswer("");
+    setTaskPlan("", "", "");
+    streamController = new AbortController();
+    $("stopStreamBtn").disabled = false;
+    try {
+      const response = await fetch(`${baseUrl()}/rag/chat/stream/events`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify(chatBody()),
+        signal: streamController.signal
+      });
+      if (!response.ok || !response.body) {
+        throw new Error(`${response.status} ${response.statusText}\n${await response.text()}`);
+      }
+      await readSse(response.body);
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        log(String(error));
+      }
+    } finally {
+      $("stopStreamBtn").disabled = true;
+      streamController = null;
+    }
+  });
+
+  $("stopStreamBtn").addEventListener("click", () => {
+    if (streamController) {
+      streamController.abort();
+    }
+  });
+
+  $("confirmBtn").addEventListener("click", async () => {
+    if (!currentTaskPlanId) return;
+    log(`确认执行 ${currentTaskPlanId} ...`, false);
+    setAnswer("");
+    try {
+      const endpoint = currentConfirmEndpoint || `/agent/task-plans/${currentTaskPlanId}/confirm`;
+      const response = await fetch(`${baseUrl()}${endpoint}`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({confirmed: true})
+      });
+      const data = await readJsonResponse(response);
+      log(data, false);
+      setAnswer(data.task_plan?.final_output?.final_answer || data.message || "");
+      setTaskPlan(data.task_plan_id, `/agent/task-plans/${data.task_plan_id}/confirm`, data.status);
+    } catch (error) {
+      log(String(error), false);
+    }
+  });
+
+  $("loadPlanBtn").addEventListener("click", async () => {
+    if (!currentTaskPlanId) return;
+    try {
+      const response = await fetch(`${baseUrl()}/agent/task-plans/${currentTaskPlanId}`, {
+        headers: headers()
+      });
+      log(await readJsonResponse(response), false);
+    } catch (error) {
+      log(String(error), false);
+    }
+  });
+
+  async function readSse(body) {
+    const reader = body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+      const parts = buffer.split(/\r?\n\r?\n/);
+      buffer = parts.pop() || "";
+      for (const part of parts) {
+        handleSseBlock(part);
+      }
+    }
+    if (buffer.trim()) {
+      handleSseBlock(buffer);
+    }
+  }
+
+  function handleSseBlock(block) {
+    const lines = block.split(/\r?\n/);
+    let event = "message";
+    const dataLines = [];
+    for (const line of lines) {
+      if (line.startsWith("event:")) {
+        event = line.slice(6).trim();
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).trimStart());
+      }
+    }
+    const raw = dataLines.join("\n");
+    let data = raw;
+    try {
+      data = raw ? JSON.parse(raw) : {};
+    } catch {}
+
+    log({event, data});
+    if (event === "answer_delta") {
+      setAnswer(data.delta || data.text || data.answer_delta || "", true);
+    }
+    if (event === "agent_task_plan_created") {
+      setTaskPlan(data.task_plan_id, data.confirm_endpoint, data.status);
+    }
+    if (event === "agent_task_waiting_confirmation") {
+      setTaskPlan(data.task_plan_id, data.confirm_endpoint, "waiting_confirmation");
+    }
+    if (event === "agent_task_final_synthesis_completed") {
+      setAnswer(data.final_answer || "");
+    }
+  }
+</script>
+</body>
+</html>

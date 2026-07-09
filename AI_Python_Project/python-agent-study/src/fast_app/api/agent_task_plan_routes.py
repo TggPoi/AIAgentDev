@@ -3,6 +3,11 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from fast_app.core.config import Settings, get_settings
+from fast_app.core.langsmith import (
+    build_rag_langchain_pipeline_child_config,
+    langsmith_trace,
+)
 from fast_app.core.request_context import get_request_id, get_trace_id
 from fast_app.dependencies.rag_dependencies import (
     get_agent_task_executor,
@@ -51,13 +56,66 @@ async def confirm_agent_task_plan_endpoint(
     req: AgentTaskPlanConfirmRequest,
     user: CurrentUserContext = Depends(get_current_user_context),
     task_executor: AgentTaskExecutor = Depends(get_agent_task_executor),
+    settings: Settings = Depends(get_settings),
 ) -> AgentTaskPlanConfirmResponse:
     """确认并执行等待人工确认的 Agent TaskPlan。"""
 
     if req.confirmed is not True:
         raise AppServiceError("confirmed 必须为 true")
 
-    plan = await task_executor.confirm(task_plan_id=task_plan_id, user=user)
+    async with langsmith_trace(
+        settings=settings,
+        name="agent_task_plan.confirm",
+        run_type="chain",
+        inputs={"task_plan_id": task_plan_id, "confirmed": req.confirmed},
+        metadata={
+            "request_id": get_request_id(),
+            "trace_id": get_trace_id(),
+            "app_name": settings.app_name,
+            "app_env": settings.app_env,
+            "pipeline_provider": "rag_agent",
+            "operation": "confirm",
+            "task_plan_id": task_plan_id,
+            "user_id": user.user_id,
+            "trace_level": "pipeline",
+        },
+        tags=[
+            "rag",
+            "agent-task-plan",
+            "operation:confirm",
+            "pipeline:rag_agent",
+            "trace-level:pipeline",
+            f"env:{settings.app_env}",
+            *settings.langsmith_tag_list,
+        ],
+    ) as trace_run:
+        def build_confirm_config(child_name: str):
+            return build_rag_langchain_pipeline_child_config(
+                settings=settings,
+                pipeline_provider="rag_agent",
+                operation="confirm",
+                child_name=f"task_executor.{child_name}",
+                run_name=f"agent_task_plan.confirm.task_executor.{child_name}",
+                metadata={
+                    "task_plan_id": task_plan_id,
+                    "user_id": user.user_id,
+                },
+            )
+
+        plan = await task_executor.confirm(
+            task_plan_id=task_plan_id,
+            user=user,
+            langchain_config_factory=build_confirm_config,
+        )
+        if trace_run is not None:
+            trace_run.add_outputs(
+                {
+                    "task_plan_id": plan.task_plan_id,
+                    "status": plan.status.value,
+                    "executed": True,
+                }
+            )
+
     return AgentTaskPlanConfirmResponse(
         task_plan_id=plan.task_plan_id,
         status=plan.status.value,

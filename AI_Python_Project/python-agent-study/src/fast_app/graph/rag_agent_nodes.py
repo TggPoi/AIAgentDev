@@ -209,7 +209,7 @@ def create_next_action_decision_node(
 ) -> Callable[[RagAgentState], dict[str, object]]:
     # decide_next_action 节点是 Agent 的“判断”步骤：先决定是否需要知识库，或是否需要调用工具。
     async def decide_next_action_node(state: RagAgentState) -> dict[str, object]:
-        with rag_agent_langsmith_step_trace(
+        async with rag_agent_langsmith_step_trace(
             settings=settings,
             state=state,
             step_name="decide_next_action",
@@ -316,7 +316,7 @@ def create_check_loop_limits_node(
     settings: Settings,
 ) -> Callable[[RagAgentState], dict[str, object]]:
     async def check_loop_limits_node(state: RagAgentState) -> dict[str, object]:
-        with rag_agent_langsmith_step_trace(
+        async with rag_agent_langsmith_step_trace(
             settings=settings,
             state=state,
             step_name="check_loop_limits",
@@ -382,7 +382,7 @@ def create_rag_agent_direct_answer_node(
     # 直接回答节点用于问候、能力说明等不需要知识库的 query。
     # 它不调用 LLM，避免把简单系统能力说明变成不稳定的模型输出。
     async def direct_answer_node(state: RagAgentState) -> dict[str, str]:
-        with rag_agent_langsmith_step_trace(
+        async with rag_agent_langsmith_step_trace(
             settings=settings,
             state=state,
             step_name="direct_answer",
@@ -431,7 +431,7 @@ def create_call_knowledge_retrieval_node(
     async def call_knowledge_retrieval_node(
         state: RagAgentState,
     ) -> dict[str, object]:
-        with rag_agent_langsmith_step_trace(
+        async with rag_agent_langsmith_step_trace(
             settings=settings,
             state=state,
             step_name="call_knowledge_retrieval",
@@ -539,7 +539,7 @@ def create_execute_task_plan_node(
                 "final_reason": "agent_task_plan_failed",
             }
 
-        with rag_agent_langsmith_step_trace(
+        async with rag_agent_langsmith_step_trace(
             settings=settings,
             state=state,
             step_name="execute_task_plan",
@@ -576,6 +576,23 @@ def create_execute_task_plan_node(
                     )
                 return result
 
+            operation = get_rag_agent_operation(state)
+
+            def build_executor_config(child_name: str):
+                return build_rag_langchain_child_config(
+                    settings=settings,
+                    state=state,
+                    pipeline_provider="rag_agent",
+                    operation=operation,
+                    step_name="execute_task_plan",
+                    step_index=get_rag_agent_step_index(operation, "execute_task_plan"),
+                    child_name=f"task_executor.{child_name}",
+                    run_name=(
+                        f"rag_agent_pipeline.{operation}."
+                        f"execute_task_plan.task_executor.{child_name}"
+                    ),
+                )
+
             executed_plan = await task_executor.execute(
                 plan=plan,
                 user=user,
@@ -584,6 +601,7 @@ def create_execute_task_plan_node(
                 candidate_k=state.get("candidate_k"),
                 min_score=state["min_score"],
                 filters=build_rag_agent_retrieval_filters(state),
+                langchain_config_factory=build_executor_config,
             )
             answer = build_task_plan_answer(executed_plan)
             result = {
@@ -658,7 +676,7 @@ def create_agent_rerank_node(
     # 所以 rerank 的 ExternalServiceError 会降级为 fallback docs，而不是直接中断 Agent。
     async def rerank_node(state: RagAgentState) -> dict[str, object]:
         docs = state["docs"]
-        with rag_agent_langsmith_step_trace(
+        async with rag_agent_langsmith_step_trace(
             settings=settings,
             state=state,
             step_name="rerank",
@@ -775,7 +793,7 @@ def create_agent_build_context_node(
     # 输入是结构化 docs，输出是 LLM client 能消费的 RagContext。
     async def build_context_node(state: RagAgentState) -> dict[str, object]:
         docs = state["docs"]
-        with rag_agent_langsmith_step_trace(
+        async with rag_agent_langsmith_step_trace(
             settings=settings,
             state=state,
             step_name="build_context",
@@ -829,7 +847,7 @@ def create_agent_generate_answer_node(
         if context is None:
             raise ExternalServiceError("RAG Agent 上下文为空，无法生成回答")
 
-        with rag_agent_langsmith_step_trace(
+        async with rag_agent_langsmith_step_trace(
             settings=settings,
             state=state,
             step_name="generate_answer",
@@ -844,6 +862,22 @@ def create_agent_generate_answer_node(
                 answer = await llm_client.generate(
                     query=state["query"],
                     context=context,
+                    langchain_config=build_rag_langchain_child_config(
+                        settings=settings,
+                        state=state,
+                        pipeline_provider="rag_agent",
+                        operation=get_rag_agent_operation(state),
+                        step_name="generate_answer",
+                        step_index=get_rag_agent_step_index(
+                            get_rag_agent_operation(state),
+                            "generate_answer",
+                        ),
+                        child_name="generate_answer.llm",
+                        run_name=(
+                            f"rag_agent_pipeline.{get_rag_agent_operation(state)}."
+                            "generate_answer.llm"
+                        ),
+                    ),
                 )
                 if prompt_guard is not None:
                     answer = await prompt_guard.ensure_output_allowed(
@@ -907,7 +941,7 @@ def create_agent_error_answer_node(
         if decision is None:
             raise ExternalServiceError("RAG Agent 错误分支缺少错误决策")
 
-        with rag_agent_langsmith_step_trace(
+        async with rag_agent_langsmith_step_trace(
             settings=settings,
             state=state,
             step_name="final_error_answer",
@@ -945,7 +979,7 @@ def create_agent_fail_request_node(
         if decision is None:
             raise ExternalServiceError("RAG Agent 请求失败")
 
-        with rag_agent_langsmith_step_trace(
+        async with rag_agent_langsmith_step_trace(
             settings=settings,
             state=state,
             step_name="fail_request",

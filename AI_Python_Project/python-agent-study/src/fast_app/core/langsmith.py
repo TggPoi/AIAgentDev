@@ -355,6 +355,41 @@ def build_rag_langchain_child_config(
     }
 
 
+def build_rag_langchain_pipeline_child_config(
+    settings: Settings,
+    pipeline_provider: str,
+    operation: str,
+    child_name: str,
+    run_name: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> RunnableConfig:
+    """构造挂在 pipeline root 下的 LangChain 子调用 config。"""
+
+    return {
+        "run_name": run_name or f"{pipeline_provider}_pipeline.{operation}.{child_name}",
+        "tags": [
+            *build_rag_langsmith_tags(
+                settings=settings,
+                pipeline_provider=pipeline_provider,
+                operation=operation,
+            ),
+            "trace-level:langchain-child",
+            f"child:{child_name}",
+        ],
+        "metadata": {
+            "request_id": get_request_id(),
+            "trace_id": get_trace_id(),
+            "app_name": settings.app_name,
+            "app_env": settings.app_env,
+            "pipeline_provider": pipeline_provider,
+            "operation": operation,
+            "trace_level": "langchain_child",
+            "child_name": child_name,
+            **(metadata or {}),
+        },
+    }
+
+
 def rag_langsmith_step_trace(
     settings: Settings,
     name: str,

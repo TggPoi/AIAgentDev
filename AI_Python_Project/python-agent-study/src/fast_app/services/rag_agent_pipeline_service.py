@@ -7,6 +7,7 @@ from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.core.langsmith import (
     build_rag_langchain_child_config,
+    build_rag_langchain_pipeline_child_config,
     build_rag_langsmith_inputs,
     build_rag_langsmith_metadata,
     build_rag_langsmith_tags,
@@ -212,7 +213,7 @@ class RagAgentPipeline:
             source="rag_agent.query_rewrite.raw_input",
         )
 
-        with rag_agent_langsmith_step_trace(
+        async with rag_agent_langsmith_step_trace(
             settings=self.settings,
             state=state,
             step_name="query_rewrite",
@@ -505,7 +506,7 @@ class RagAgentPipeline:
 
     async def run(self, req: RagChatRequest) -> RagChatResponse:
         # 非流式入口可以直接运行 compiled graph，最后把 final_state 转成 API response。
-        with self._langsmith_trace(req, "run"):
+        async with self._langsmith_trace(req, "run"):
             return await self._run(req)
 
     async def _run(self, req: RagChatRequest) -> RagChatResponse:
@@ -528,7 +529,16 @@ class RagAgentPipeline:
             initial_state = await self._prepare_initial_state(req, operation="run")
             
             # graph.ainvoke 会按 rag_agent_builder.py 中定义的边执行到 END。
-            final_state = await self.graph.ainvoke(initial_state)
+            final_state = await self.graph.ainvoke(
+                initial_state,
+                config=build_rag_langchain_pipeline_child_config(
+                    settings=self.settings,
+                    pipeline_provider="rag_agent",
+                    operation="run",
+                    child_name="langgraph",
+                    run_name="rag_agent_pipeline.run.langgraph",
+                ),
+            )
             answer = final_state.get("answer") or ""
             docs = final_state.get("docs") or []
 
@@ -707,7 +717,7 @@ class RagAgentPipeline:
     ) -> AsyncGenerator[str, None]:
         # 对外契约：pipeline.stream() 只能 yield str token。
         # SSE 的 event/data 包装仍由 API 层负责。
-        with self._langsmith_trace(req, "stream"):
+        async with self._langsmith_trace(req, "stream"):
             async for token in self._stream(req):
                 yield token
 
@@ -772,7 +782,7 @@ class RagAgentPipeline:
             raise ExternalServiceError("RAG Agent Stream 上下文为空，无法流式生成回答")
 
         token_count = 0
-        with rag_agent_langsmith_step_trace(
+        async with rag_agent_langsmith_step_trace(
             settings=self.settings,
             state=state,
             step_name="stream_generate",
@@ -786,7 +796,20 @@ class RagAgentPipeline:
         ) as trace_run:
             # 真正需要知识库回答时，仍然使用 LLM client 的 stream 能力逐 token 输出。
             answer_parts: list[str] = []
-            async for token in self.llm_client.stream(state["query"], context):
+            async for token in self.llm_client.stream(
+                state["query"],
+                context,
+                langchain_config=build_rag_langchain_child_config(
+                    settings=self.settings,
+                    state=state,
+                    pipeline_provider="rag_agent",
+                    operation="stream",
+                    step_name="stream_generate",
+                    step_index=6,
+                    child_name="stream_generate.llm",
+                    run_name="rag_agent_pipeline.stream.stream_generate.llm",
+                ),
+            ):
                 token_count += 1
                 answer_parts.append(token)
                 yield token
@@ -842,7 +865,7 @@ class RagAgentPipeline:
     ) -> AsyncGenerator[RagStreamEvent, None]:
         # 结构化流式入口仍只产生业务事件 sources/token。
         # done/error 继续由 API SSE 包装层处理，保持和现有协议一致。
-        with self._langsmith_trace(req, "stream_events"):
+        async with self._langsmith_trace(req, "stream_events"):
             async for event in self._stream_events(req):
                 yield event
 
@@ -947,6 +970,39 @@ class RagAgentPipeline:
                                 "tool_input": result.get("tool_input", {}),
                             },
                         )
+                        tool_calls = result.get("tool_calls", [])
+                        if isinstance(tool_calls, list):
+                            for call in tool_calls:
+                                if not isinstance(call, dict):
+                                    continue
+                                yield RagStreamEvent(
+                                    event="agent_task_tool_call_started",
+                                    data={
+                                        "task_plan_id": task_plan.task_plan_id,
+                                        "sub_question_id": result.get("sub_question_id"),
+                                        "call_id": call.get("call_id"),
+                                        "round": call.get("round"),
+                                        "tool_name": call.get("tool_name"),
+                                        "tool_input": call.get("tool_input", {}),
+                                        "reason": call.get("reason", ""),
+                                    },
+                                )
+                                yield RagStreamEvent(
+                                    event=(
+                                        "agent_task_tool_call_completed"
+                                        if call.get("status") == "completed"
+                                        else "agent_task_tool_call_failed"
+                                    ),
+                                    data={
+                                        "task_plan_id": task_plan.task_plan_id,
+                                        "sub_question_id": result.get("sub_question_id"),
+                                        "call_id": call.get("call_id"),
+                                        "round": call.get("round"),
+                                        "tool_name": call.get("tool_name"),
+                                        "tool_output": call.get("tool_output", {}),
+                                        "error": call.get("error"),
+                                    },
+                                )
                         yield RagStreamEvent(
                             event="agent_task_sub_question_completed",
                             data={
@@ -969,7 +1025,7 @@ class RagAgentPipeline:
                         },
                     )
 
-            with rag_agent_langsmith_step_trace(
+            async with rag_agent_langsmith_step_trace(
                 settings=self.settings,
                 state=state,
                 step_name="emit_sources",
@@ -1049,7 +1105,7 @@ class RagAgentPipeline:
         state["docs"] = docs
         # 检索路径先把 sources 发给前端，再开始 token 流。
         # 这和现有 LangGraphRagPipeline.stream_events 的用户体验保持一致。
-        with rag_agent_langsmith_step_trace(
+        async with rag_agent_langsmith_step_trace(
             settings=self.settings,
             state=state,
             step_name="emit_sources",
@@ -1083,7 +1139,7 @@ class RagAgentPipeline:
             )
 
         token_count = 0
-        with rag_agent_langsmith_step_trace(
+        async with rag_agent_langsmith_step_trace(
             settings=self.settings,
             state=state,
             step_name="stream_generate",
@@ -1099,7 +1155,20 @@ class RagAgentPipeline:
             # API 层只负责把 RagStreamEvent 转成 SSE 文本。
             stream_state = GuardedStreamState()
             async for event in guarded_answer_delta_events(
-                self.llm_client.stream(state["query"], context),
+                self.llm_client.stream(
+                    state["query"],
+                    context,
+                    langchain_config=build_rag_langchain_child_config(
+                        settings=self.settings,
+                        state=state,
+                        pipeline_provider="rag_agent",
+                        operation="stream_events",
+                        step_name="stream_generate",
+                        step_index=7,
+                        child_name="stream_generate.llm",
+                        run_name="rag_agent_pipeline.stream_events.stream_generate.llm",
+                    ),
+                ),
                 prompt_guard=self.prompt_guard,
                 source="rag_agent.stream_events.output",
                 mode=self.settings.prompt_guard_stream_output_mode,
