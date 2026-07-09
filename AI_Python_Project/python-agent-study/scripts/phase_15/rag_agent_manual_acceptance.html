@@ -123,6 +123,19 @@
       border-radius: 8px;
       padding: 12px;
     }
+    .plan {
+      min-height: 220px;
+      max-height: 520px;
+      overflow: auto;
+      white-space: pre-wrap;
+      background: #fff;
+      border: 1px solid #d8dee8;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: Consolas, "Microsoft YaHei", monospace;
+      font-size: 13px;
+      line-height: 1.6;
+    }
     .hint {
       color: #6b7280;
       font-size: 13px;
@@ -208,6 +221,11 @@
       <pre id="logBox"></pre>
     </div>
   </section>
+
+  <section>
+    <h2>TaskPlan Markdown 审查视图</h2>
+    <div id="planBox" class="plan">暂无 TaskPlan</div>
+  </section>
 </main>
 
 <script>
@@ -259,6 +277,15 @@
   }
 
   function setTaskPlan(taskPlanId, confirmEndpoint, status) {
+    if (taskPlanId === "" && confirmEndpoint === "" && status === "") {
+      currentTaskPlanId = "";
+      currentConfirmEndpoint = "";
+      $("taskStatus").textContent = "无 TaskPlan";
+      $("confirmBtn").disabled = true;
+      $("loadPlanBtn").disabled = true;
+      $("planBox").textContent = "暂无 TaskPlan";
+      return;
+    }
     currentTaskPlanId = taskPlanId || currentTaskPlanId;
     currentConfirmEndpoint = confirmEndpoint || (
       currentTaskPlanId ? `/agent/task-plans/${currentTaskPlanId}/confirm` : ""
@@ -268,6 +295,24 @@
       : "无 TaskPlan";
     $("confirmBtn").disabled = !currentTaskPlanId;
     $("loadPlanBtn").disabled = !currentTaskPlanId;
+    if (currentTaskPlanId) {
+      loadTaskPlanMarkdown();
+    }
+  }
+
+  async function loadTaskPlanMarkdown() {
+    if (!currentTaskPlanId) return;
+    try {
+      const response = await fetch(`${baseUrl()}/agent/task-plans/${currentTaskPlanId}/markdown`, {
+        headers: headers()
+      });
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}\n${await response.text()}`);
+      }
+      $("planBox").textContent = await response.text();
+    } catch (error) {
+      $("planBox").textContent = String(error);
+    }
   }
 
   async function readJsonResponse(response) {
@@ -370,19 +415,19 @@
 
   $("confirmBtn").addEventListener("click", async () => {
     if (!currentTaskPlanId) return;
-    log(`确认执行 ${currentTaskPlanId} ...`, false);
+    log(`确认并流式执行 ${currentTaskPlanId} ...`, false);
     setAnswer("");
     try {
-      const endpoint = currentConfirmEndpoint || `/agent/task-plans/${currentTaskPlanId}/confirm`;
+      const endpoint = `/agent/task-plans/${currentTaskPlanId}/confirm/stream`;
       const response = await fetch(`${baseUrl()}${endpoint}`, {
         method: "POST",
         headers: headers(),
         body: JSON.stringify({confirmed: true})
       });
-      const data = await readJsonResponse(response);
-      log(data, false);
-      setAnswer(data.task_plan?.final_output?.final_answer || data.message || "");
-      setTaskPlan(data.task_plan_id, `/agent/task-plans/${data.task_plan_id}/confirm`, data.status);
+      if (!response.ok || !response.body) {
+        throw new Error(`${response.status} ${response.statusText}\n${await response.text()}`);
+      }
+      await readSse(response.body);
     } catch (error) {
       log(String(error), false);
     }
@@ -395,6 +440,7 @@
         headers: headers()
       });
       log(await readJsonResponse(response), false);
+      await loadTaskPlanMarkdown();
     } catch (error) {
       log(String(error), false);
     }
@@ -446,8 +492,29 @@
     if (event === "agent_task_waiting_confirmation") {
       setTaskPlan(data.task_plan_id, data.confirm_endpoint, "waiting_confirmation");
     }
+    if (event === "agent_task_execution_started") {
+      setAnswer(`开始执行 TaskPlan：${data.task_plan_id}\n`);
+    }
+    if (event === "agent_task_status") {
+      setTaskPlan(data.task_plan_id, `/agent/task-plans/${data.task_plan_id}/confirm`, data.status);
+    }
+    if (event === "agent_task_sub_question_completed") {
+      setAnswer(
+        `\n[${data.sub_question_id}] ${data.question}\n状态：${data.status}\n工具：${data.selected_tool}\n${data.answer || data.error || ""}\n`,
+        true
+      );
+      loadTaskPlanMarkdown();
+    }
     if (event === "agent_task_final_synthesis_completed") {
       setAnswer(data.final_answer || "");
+      loadTaskPlanMarkdown();
+    }
+    if (event === "done" && data.task_plan) {
+      setTaskPlan(data.task_plan_id, `/agent/task-plans/${data.task_plan_id}/confirm`, data.status);
+      if (data.task_plan.final_output?.final_answer) {
+        setAnswer(data.task_plan.final_output.final_answer);
+      }
+      loadTaskPlanMarkdown();
     }
   }
 </script>

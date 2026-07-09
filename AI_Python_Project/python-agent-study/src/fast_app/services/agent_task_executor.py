@@ -117,6 +117,7 @@ class AgentTaskPlanStore:
         plan.updated_at = datetime.now(UTC)
         path = self._path_for_new_plan(plan)
         path.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
+        path.with_suffix(".md").write_text(_render_task_plan_markdown(plan), encoding="utf-8")
 
     def load(self, task_plan_id: str) -> AgentTaskPlan:
         """按 task_plan_id 读取最近一次保存的计划快照。"""
@@ -131,6 +132,15 @@ class AgentTaskPlanStore:
         return AgentTaskPlan.model_validate(
             json.loads(matches[-1].read_text(encoding="utf-8"))
         )
+
+    def load_markdown(self, task_plan_id: str) -> str:
+        """读取面向人工审查的 Markdown；没有旧文件时按 JSON 现场渲染。"""
+
+        plan = self.load(task_plan_id)
+        matches = sorted(self._task_plan_dir.glob(f"*_{task_plan_id}.md"))
+        if matches:
+            return matches[-1].read_text(encoding="utf-8")
+        return _render_task_plan_markdown(plan)
 
     def _path_for_new_plan(self, plan: AgentTaskPlan) -> Path:
         """已有文件继续覆盖，避免同一个 plan 在执行中生成多份快照。"""
@@ -185,15 +195,17 @@ class AgentTaskExecutor:
 
         try:
             # 真实 LangChain client 使用 langchain_config 透传 LangSmith 子 run 名称。
-            return await self._llm_client.generate(
+            answer = await self._llm_client.generate(
                 query=query,
                 context=context,
                 langchain_config=langchain_config,
             )
+            return _as_text(answer)
         except TypeError as exc:
             if "langchain_config" not in str(exc):
                 raise
-            return await self._llm_client.generate(query=query, context=context)
+            answer = await self._llm_client.generate(query=query, context=context)
+            return _as_text(answer)
 
     async def execute_question_decomposition_plan(
         self,
@@ -487,8 +499,11 @@ class AgentTaskExecutor:
             # 当前模型明确需要调用tool，判断question里面有没有包含明确的url，如果有，强制绑定 mcp__fetch 调用
             # 避免 子问题里已经有明确 URL ，但 LLM 没有选 fetch，或者选了 fetch 但没把 url 参数填好
             if selection is not None:
+                selection = _validate_tool_selection(selection, available_tools)
+                if tool_calls:
+                    return selection
                 return _repair_fetch_tool_selection(
-                    selection=_validate_tool_selection(selection, available_tools),
+                    selection=selection,
                     sub_question=sub_question,
                     tools=available_tools,
                 )
@@ -885,7 +900,7 @@ class AgentTaskExecutor:
             docs=[],
             context_text=_format_sub_question_results(results),
         )
-        return await self._generate_with_trace(
+        answer = await self._generate_with_trace(
             query=(
                 f"请回答原始复杂问题：{plan.original_query}\n"
                 f"最终目标：{plan.objective}\n"
@@ -898,6 +913,7 @@ class AgentTaskExecutor:
                 else None
             ),
         )
+        return answer.strip() or _fallback_final_answer(plan, results)
 
     async def _answer_from_tool_calls(
         self,
@@ -1238,6 +1254,89 @@ def _find_step(plan: AgentTaskPlan, tool_name: str) -> AgentToolStep:
         if step.tool_name == tool_name:
             return step
     raise AppServiceError(f"Agent task plan 缺少步骤: {tool_name}")
+
+
+def _as_text(value: object) -> str:
+    """把 LLM 返回值收敛成字符串，避免 None 被保存成 JSON null。"""
+
+    if value is None:
+        return ""
+    return value if isinstance(value, str) else str(value)
+
+
+def _fallback_final_answer(
+    plan: AgentTaskPlan,
+    results: list[AgentTaskSubQuestionResult],
+) -> str:
+    """LLM 最终综合返回空值时，用已完成子问题答案生成可读兜底结果。"""
+
+    lines = [
+        f"# {plan.objective}",
+        "",
+        "最终综合模型没有返回有效正文，以下为基于子问题结果生成的兜底答案。",
+    ]
+    for result in results:
+        if result.status != "completed" or not result.answer.strip():
+            continue
+        lines.extend(["", f"## {result.question}", "", result.answer.strip()])
+    return "\n".join(lines)
+
+
+def _render_task_plan_markdown(plan: AgentTaskPlan) -> str:
+    """把 TaskPlan JSON 快照渲染成更适合人工审查的 Markdown。"""
+
+    lines = [
+        f"# Agent TaskPlan: {plan.task_plan_id}",
+        "",
+        f"- 状态: `{plan.status.value}`",
+        f"- 任务类型: `{plan.task_kind}` / `{plan.task_type}`",
+        f"- 用户目标: {plan.objective}",
+        f"- 原始问题: {plan.original_query}",
+        f"- 检索 query: `{plan.source_query}`",
+        f"- 确认接口: `/agent/task-plans/{plan.task_plan_id}/confirm`",
+        "",
+        "## 子问题拆解",
+    ]
+    for item in sorted(plan.sub_questions, key=lambda sub: sub.order):
+        depends_on = ", ".join(item.depends_on) if item.depends_on else "无"
+        lines.extend(
+            [
+                "",
+                f"### {item.order}. {item.question}",
+                "",
+                f"- sub_question_id: `{item.sub_question_id}`",
+                f"- 目的: {item.purpose}",
+                f"- 依赖: {depends_on}",
+                f"- 建议信息来源: `{item.information_source_hint}`",
+                f"- 拆解原因: {item.reason}",
+                f"- 期望证据: {item.expected_evidence or '无'}",
+            ]
+        )
+
+    lines.extend(["", "## 最终整合要求", "", plan.final_synthesis_instruction])
+
+    results = plan.final_output.get("sub_question_results", [])
+    if isinstance(results, list) and results:
+        lines.extend(["", "## 执行结果"])
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            lines.extend(
+                [
+                    "",
+                    f"### {result.get('sub_question_id')} - {result.get('question')}",
+                    "",
+                    f"- 状态: `{result.get('status')}`",
+                    f"- 使用工具: `{result.get('selected_tool')}`",
+                    "",
+                    result.get("answer") or result.get("error") or "",
+                ]
+            )
+
+    final_answer = plan.final_output.get("final_answer")
+    if isinstance(final_answer, str) and final_answer.strip():
+        lines.extend(["", "## 最终答案", "", final_answer.strip()])
+    return "\n".join(lines) + "\n"
 
 
 def _infer_departments_from_path(target_path: str) -> list[str]:
