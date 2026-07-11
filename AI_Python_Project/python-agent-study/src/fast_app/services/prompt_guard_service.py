@@ -10,9 +10,12 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from fast_app.core.config import Settings
-from fast_app.core.langsmith import langsmith_trace
+from fast_app.core.langsmith import (
+    build_langsmith_metadata,
+    build_langsmith_tags,
+    langsmith_trace,
+)
 from fast_app.core.logging import format_log_fields, get_logger
-from fast_app.core.request_context import get_request_id, get_trace_id
 from fast_app.domain.prompt_guard_models import (
     PromptGuardAction,
     PromptGuardResult,
@@ -674,27 +677,23 @@ class PromptGuardService:
                 "text_preview": self._safe_text_preview(text),
                 "mode": self.mode,
             },
-            metadata={
-                "request_id": get_request_id(),
-                "trace_id": get_trace_id(),
-                "app_name": self.settings.app_name,
-                "app_env": self.settings.app_env,
-                "trace_level": "step",
-                "step_name": f"prompt_guard.{classifier_type}_classifier",
-                "prompt_guard_mode": self.mode,
-                "prompt_guard_model_name": (
+            metadata=build_langsmith_metadata(
+                self.settings,
+                trace_level="step",
+                step_name=f"prompt_guard.{classifier_type}_classifier",
+                prompt_guard_mode=self.mode,
+                prompt_guard_model_name=(
                     self.settings.prompt_guard_llm_model_name
                     or self.settings.llm_model_name
                 ),
-            },
-            tags=[
+            ),
+            tags=build_langsmith_tags(
+                self.settings,
                 "rag",
                 "prompt-guard",
                 "trace-level:step",
                 f"step:prompt_guard.{classifier_type}_classifier",
-                f"env:{self.settings.app_env}",
-                *self.settings.langsmith_tag_list,
-            ],
+            ),
         )
 
     @staticmethod

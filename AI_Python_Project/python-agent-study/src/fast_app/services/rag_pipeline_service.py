@@ -7,13 +7,8 @@ from fast_app.components.retrievers.base import BaseRetriever
 
 from fast_app.core.config import Settings
 from fast_app.core.langsmith import (
-    build_rag_langsmith_inputs,
-    build_rag_langsmith_metadata,
-    build_rag_langsmith_step_metadata,
-    build_rag_langsmith_step_tags,
-    build_rag_langsmith_tags,
-    rag_langsmith_trace,
-    rag_langsmith_step_trace,
+    rag_langsmith_pipeline_trace,
+    rag_langsmith_request_step_trace,
 )
 from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
@@ -546,20 +541,11 @@ class RagPipeline:
             await self.prompt_guard.audit_stream_output(answer, source=source)
 
     def _langsmith_trace(self, req: RagChatRequest, operation: str):
-        return rag_langsmith_trace(
-            settings=self.settings,
-            name=f"classic_rag_pipeline.{operation}",
-            inputs=build_rag_langsmith_inputs(req),
-            metadata=build_rag_langsmith_metadata(
-                settings=self.settings,
-                req=req,
-                pipeline_provider="classic",
-            ),
-            tags=build_rag_langsmith_tags(
-                settings=self.settings,
-                pipeline_provider="classic",
-                operation=operation,
-            ),
+        return rag_langsmith_pipeline_trace(
+            self.settings,
+            req,
+            "classic",
+            operation,
         )
 
     def _langsmith_step_trace(
@@ -571,25 +557,15 @@ class RagPipeline:
         run_type: str,
         inputs: dict[str, object],
     ):
-        return rag_langsmith_step_trace(
-            settings=self.settings,
-            name=f"classic_rag_pipeline.{operation}.{step_name}",
-            run_type=run_type,
-            inputs=inputs,
-            metadata=build_rag_langsmith_step_metadata(
-                settings=self.settings,
-                req=req,
-                pipeline_provider="classic",
-                operation=operation,
-                step_name=step_name,
-                step_index=step_index,
-            ),
-            tags=build_rag_langsmith_step_tags(
-                settings=self.settings,
-                pipeline_provider="classic",
-                operation=operation,
-                step_name=step_name,
-            ),
+        return rag_langsmith_request_step_trace(
+            self.settings,
+            req,
+            "classic",
+            operation,
+            step_name,
+            step_index,
+            run_type,
+            inputs,
         )
 
     # 重排序模型报错时降级处理 rerank 是增强能力 增强能力失败时，不应该直接让普通问答接口失败

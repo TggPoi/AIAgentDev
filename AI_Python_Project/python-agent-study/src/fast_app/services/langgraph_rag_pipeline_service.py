@@ -7,13 +7,8 @@ from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.core.langsmith import (
-    build_rag_langsmith_inputs,
-    build_rag_langsmith_metadata,
-    build_rag_langsmith_step_metadata,
-    build_rag_langsmith_step_tags,
-    build_rag_langsmith_tags,
-    rag_langsmith_trace,
-    rag_langsmith_step_trace,
+    rag_langsmith_pipeline_trace,
+    rag_langsmith_request_step_trace,
 )
 from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
@@ -96,20 +91,11 @@ class LangGraphRagPipeline:
 
     # 构造langsmith 追踪
     def _langsmith_trace(self, req: RagChatRequest, operation: str):
-        return rag_langsmith_trace(
-            settings=self.settings,
-            name=f"langgraph_rag_pipeline.{operation}",
-            inputs=build_rag_langsmith_inputs(req),
-            metadata=build_rag_langsmith_metadata(
-                settings=self.settings,
-                req=req,
-                pipeline_provider="langgraph",
-            ),
-            tags=build_rag_langsmith_tags(
-                settings=self.settings,
-                pipeline_provider="langgraph",
-                operation=operation,
-            ),
+        return rag_langsmith_pipeline_trace(
+            self.settings,
+            req,
+            "langgraph",
+            operation,
         )
 
     async def _ensure_query_allowed(self, query: str, *, source: str) -> None:
@@ -140,25 +126,15 @@ class LangGraphRagPipeline:
         run_type: str,
         inputs: dict[str, object],
     ):
-        return rag_langsmith_step_trace(
-            settings=self.settings,
-            name=f"langgraph_rag_pipeline.{operation}.{step_name}",
-            run_type=run_type,
-            inputs=inputs,
-            metadata=build_rag_langsmith_step_metadata(
-                settings=self.settings,
-                req=req,
-                pipeline_provider="langgraph",
-                operation=operation,
-                step_name=step_name,
-                step_index=step_index,
-            ),
-            tags=build_rag_langsmith_step_tags(
-                settings=self.settings,
-                pipeline_provider="langgraph",
-                operation=operation,
-                step_name=step_name,
-            ),
+        return rag_langsmith_request_step_trace(
+            self.settings,
+            req,
+            "langgraph",
+            operation,
+            step_name,
+            step_index,
+            run_type,
+            inputs,
         )
 
 

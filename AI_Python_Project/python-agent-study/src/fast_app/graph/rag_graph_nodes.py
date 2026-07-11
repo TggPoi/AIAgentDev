@@ -8,11 +8,7 @@ from fast_app.agents.rag_agent_tools import (
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
-from fast_app.core.langsmith import (
-    build_rag_langsmith_step_metadata_from_state,
-    build_rag_langsmith_step_tags,
-    rag_langsmith_step_trace,
-)
+from fast_app.core.langsmith import rag_langsmith_state_step_trace
 from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievedDoc
@@ -118,25 +114,15 @@ def graph_langsmith_step_trace(
     inputs: dict[str, object],
 ):
     operation = get_graph_operation(state)
-    return rag_langsmith_step_trace(
-        settings=settings,
-        name=f"langgraph_rag_pipeline.{operation}.{step_name}",
-        run_type=run_type,
-        inputs=inputs,
-        metadata=build_rag_langsmith_step_metadata_from_state(
-            settings=settings,
-            state=state,
-            pipeline_provider="langgraph",
-            operation=operation,
-            step_name=step_name,
-            step_index=get_graph_step_index(operation, step_name),
-        ),
-        tags=build_rag_langsmith_step_tags(
-            settings=settings,
-            pipeline_provider="langgraph",
-            operation=operation,
-            step_name=step_name,
-        ),
+    return rag_langsmith_state_step_trace(
+        settings,
+        state,
+        "langgraph",
+        operation,
+        step_name,
+        get_graph_step_index(operation, step_name),
+        run_type,
+        inputs,
     )
 
 

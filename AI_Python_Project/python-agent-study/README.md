@@ -413,6 +413,14 @@ $env:LANGSMITH_PROJECT="python-agent-study"
 
 服务启动后，RAG pipeline、LangGraph pipeline、RAG Agent pipeline 会写入对应 trace metadata 和 tags。
 
+默认不会向 LangSmith 上传完整 query、filters 和 user_id。如需在受控的本地调试环境查看这些字段，再显式开启：
+
+```powershell
+$env:LANGSMITH_INCLUDE_SENSITIVE_DATA="true"
+```
+
+该开关只控制本项目主动写入的自定义 trace 字段。LangChain SDK 自动采集的模型 prompt / output 仍需通过 LangSmith 平台级脱敏策略控制。
+
 ## 关键设计决策
 
 ### 保留三条 Provider

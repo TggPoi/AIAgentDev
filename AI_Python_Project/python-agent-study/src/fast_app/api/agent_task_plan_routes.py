@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 
 from fast_app.core.config import Settings, get_settings
 from fast_app.core.langsmith import (
+    build_langsmith_metadata,
+    build_langsmith_tags,
     build_rag_langchain_pipeline_child_config,
     langsmith_trace,
 )
@@ -39,6 +41,43 @@ class AgentTaskPlanConfirmResponse(BaseModel):
     task_plan: dict[str, Any]
     request_id: str | None = None
     trace_id: str | None = None
+
+
+def _agent_task_plan_trace(
+    settings: Settings,
+    *,
+    operation: str,
+    task_plan_id: str,
+    user_id: str,
+):
+    """创建普通确认和 SSE 确认共用的 root trace。"""
+
+    return langsmith_trace(
+        settings=settings,
+        name=f"agent_task_plan.{operation}",
+        run_type="chain",
+        inputs={
+            "task_plan_id": task_plan_id,
+            "confirmed": True,
+            "stream": operation == "confirm_stream",
+        },
+        metadata=build_langsmith_metadata(
+            settings,
+            sensitive_metadata={"user_id": user_id},
+            pipeline_provider="rag_agent",
+            operation=operation,
+            task_plan_id=task_plan_id,
+            trace_level="pipeline",
+        ),
+        tags=build_langsmith_tags(
+            settings,
+            "rag",
+            "agent-task-plan",
+            f"operation:{operation}",
+            "pipeline:rag_agent",
+            "trace-level:pipeline",
+        ),
+    )
 
 
 @router.get("/{task_plan_id}")
@@ -82,31 +121,11 @@ async def confirm_agent_task_plan_endpoint(
     if req.confirmed is not True:
         raise AppServiceError("confirmed 必须为 true")
 
-    async with langsmith_trace(
-        settings=settings,
-        name="agent_task_plan.confirm",
-        run_type="chain",
-        inputs={"task_plan_id": task_plan_id, "confirmed": req.confirmed},
-        metadata={
-            "request_id": get_request_id(),
-            "trace_id": get_trace_id(),
-            "app_name": settings.app_name,
-            "app_env": settings.app_env,
-            "pipeline_provider": "rag_agent",
-            "operation": "confirm",
-            "task_plan_id": task_plan_id,
-            "user_id": user.user_id,
-            "trace_level": "pipeline",
-        },
-        tags=[
-            "rag",
-            "agent-task-plan",
-            "operation:confirm",
-            "pipeline:rag_agent",
-            "trace-level:pipeline",
-            f"env:{settings.app_env}",
-            *settings.langsmith_tag_list,
-        ],
+    async with _agent_task_plan_trace(
+        settings,
+        operation="confirm",
+        task_plan_id=task_plan_id,
+        user_id=user.user_id,
     ) as trace_run:
         def build_confirm_config(child_name: str):
             return build_rag_langchain_pipeline_child_config(
@@ -181,31 +200,11 @@ async def _confirm_task_plan_sse_generator(
 ) -> AsyncGenerator[str, None]:
     """用现有 runtime 快照输出进度，避免给 executor 新增事件总线。"""
 
-    async with langsmith_trace(
-        settings=settings,
-        name="agent_task_plan.confirm",
-        run_type="chain",
-        inputs={"task_plan_id": task_plan_id, "confirmed": True, "stream": True},
-        metadata={
-            "request_id": get_request_id(),
-            "trace_id": get_trace_id(),
-            "app_name": settings.app_name,
-            "app_env": settings.app_env,
-            "pipeline_provider": "rag_agent",
-            "operation": "confirm_stream",
-            "task_plan_id": task_plan_id,
-            "user_id": user.user_id,
-            "trace_level": "pipeline",
-        },
-        tags=[
-            "rag",
-            "agent-task-plan",
-            "operation:confirm-stream",
-            "pipeline:rag_agent",
-            "trace-level:pipeline",
-            f"env:{settings.app_env}",
-            *settings.langsmith_tag_list,
-        ],
+    async with _agent_task_plan_trace(
+        settings,
+        operation="confirm_stream",
+        task_plan_id=task_plan_id,
+        user_id=user.user_id,
     ) as trace_run:
         def build_confirm_config(child_name: str):
             return build_rag_langchain_pipeline_child_config(

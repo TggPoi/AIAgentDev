@@ -86,6 +86,11 @@ class Settings(BaseSettings):
         alias="LANGSMITH_PROJECT",
     )
     langsmith_tags: str = Field(default="", alias="LANGSMITH_TAGS")
+    # 默认不向远端 trace 上传 query、filters、user_id 等业务敏感数据。
+    langsmith_include_sensitive_data: bool = Field(
+        default=False,
+        alias="LANGSMITH_INCLUDE_SENSITIVE_DATA",
+    )
 
     cors_allow_origins: str = Field(
         default="http://localhost:5173,http://127.0.0.1:5173",

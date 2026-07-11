@@ -56,3 +56,14 @@ For ordinary non-stream JSON APIs, prefer `Invoke-RestMethod` in PowerShell. For
 The FastAPI module is `fast_app`.
 
 Before file-level modifications, read the real code and dependency files. If docs and code disagree, code is the source of truth.
+
+## LangSmith observability rules
+
+Use the pattern "centralized tracing policy, distributed business instrumentation":
+
+1. Keep LangSmith enablement, environment synchronization, common metadata/tags, naming conventions, sensitive-data policy, and reusable trace builders in `src/fast_app/core/langsmith.py`.
+2. New pipelines and business modules must reuse the high-level helpers in `fast_app.core.langsmith`; do not manually repeat `request_id`, `trace_id`, `app_name`, `app_env`, environment tags, or global LangSmith tags.
+3. Keep the actual trace context and `add_outputs()` calls next to the business operation or LangGraph node whose boundary and safe output they describe. Do not hide all instrumentation behind middleware, decorators, a `LangSmithManager`, or speculative abstraction.
+4. Domain-specific trace fields belong to the domain module. If the same trace assembly appears twice, extract the smallest local helper or extend an existing core helper instead of creating another tracing layer.
+5. Custom LangSmith inputs, metadata, and outputs must pass through the shared sensitive-field policy before including query text, retrieval filters, or user IDs. `LANGSMITH_INCLUDE_SENSITIVE_DATA=true` may enable those custom fields only in a controlled environment. SDK-instrumented LangChain calls can still upload prompts and model outputs when tracing is enabled, so do not enable LangSmith against sensitive production traffic without an explicit platform-level redaction policy.
+6. Any change to shared LangSmith builders or naming conventions must update and run `scripts/test_langsmith_tracing.py`.

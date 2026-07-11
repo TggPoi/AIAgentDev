@@ -23,9 +23,7 @@ from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.core.langsmith import (
     build_rag_langchain_child_config,
-    build_rag_langsmith_step_metadata_from_state,
-    build_rag_langsmith_step_tags,
-    rag_langsmith_step_trace,
+    rag_langsmith_state_step_trace,
 )
 from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
@@ -128,25 +126,15 @@ def rag_agent_langsmith_step_trace(
     # Agent 节点内部拿到的是 RagAgentState，不是 RagChatRequest。
     # 所以这里使用 from_state 版本的 metadata builder，把 state 转成 LangSmith 可读的 step 元数据。
     operation = get_rag_agent_operation(state)
-    return rag_langsmith_step_trace(
-        settings=settings,
-        name=f"rag_agent_pipeline.{operation}.{step_name}",
-        run_type=run_type,
-        inputs=inputs,
-        metadata=build_rag_langsmith_step_metadata_from_state(
-            settings=settings,
-            state=state,
-            pipeline_provider="rag_agent",
-            operation=operation,
-            step_name=step_name,
-            step_index=get_rag_agent_step_index(operation, step_name),
-        ),
-        tags=build_rag_langsmith_step_tags(
-            settings=settings,
-            pipeline_provider="rag_agent",
-            operation=operation,
-            step_name=step_name,
-        ),
+    return rag_langsmith_state_step_trace(
+        settings,
+        state,
+        "rag_agent",
+        operation,
+        step_name,
+        get_rag_agent_step_index(operation, step_name),
+        run_type,
+        inputs,
     )
 
 

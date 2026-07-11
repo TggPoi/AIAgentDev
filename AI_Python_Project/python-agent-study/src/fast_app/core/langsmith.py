@@ -12,6 +12,17 @@ from fast_app.schemas.rag_chat_schema import RagChatRequest
 
 
 logger = get_logger(__name__)
+# 敏感字段列表，默认在 LangSmith trace 中会被脱敏为 "[REDACTED]"。.env中LANGSMITH_INCLUDE_SENSITIVE_DATA配置
+_SENSITIVE_TRACE_FIELDS = frozenset(
+    {
+        "query",
+        "original_query",
+        "rewritten_query",
+        "effective_query",
+        "filters",
+        "user_id",
+    }
+)
 
 
 def is_langsmith_enabled(settings: Settings) -> bool:
@@ -63,24 +74,86 @@ def configure_langsmith(settings: Settings) -> None:
     )
 
 
-def build_rag_langsmith_inputs(req: RagChatRequest) -> dict[str, Any]:
+def build_langsmith_metadata(
+    settings: Settings,
+    *,
+    sensitive_metadata: dict[str, Any] | None = None,
+    **metadata: Any,
+) -> dict[str, Any]:
+    """构造所有业务 trace 共用的请求和应用 metadata。"""
+
+    result = {
+        "request_id": get_request_id(),
+        "trace_id": get_trace_id(),
+        "app_name": settings.app_name,
+        "app_env": settings.app_env,
+        **metadata,
+    }
+    if settings.langsmith_include_sensitive_data and sensitive_metadata:
+        result.update(sensitive_metadata)
+    return result
+
+
+def build_langsmith_tags(settings: Settings, *tags: str) -> list[str]:
+    """构造所有业务 trace 共用的环境和自定义 tags。"""
+
+    return [*tags, f"env:{settings.app_env}", *settings.langsmith_tag_list]
+
+
+def sanitize_langsmith_payload(
+    settings: Settings,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """递归脱敏自定义 trace payload 中的请求敏感字段。"""
+
+    if settings.langsmith_include_sensitive_data:
+        return payload
+
+    def sanitize_field(key: str, item: Any) -> Any:
+        if key not in _SENSITIVE_TRACE_FIELDS:
+            return sanitize(item)
+        if item is None or item == "[REDACTED]" or item == {}:
+            return item
+        return "[REDACTED]"
+
+    def sanitize(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {key: sanitize_field(key, item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [sanitize(item) for item in value]
+        if isinstance(value, tuple):
+            return tuple(sanitize(item) for item in value)
+        return value
+
+    return sanitize(payload)
+
+
+def build_rag_langsmith_inputs(
+    settings: Settings,
+    req: RagChatRequest,
+) -> dict[str, Any]:
     """构造 pipeline root run 的 inputs。
 
     inputs 表示“这次 RAG 请求的业务输入是什么”。root run 需要包含用户问题
     和 RAG 控制参数，这样你在 LangSmith UI 中打开一次请求时，可以直接看到
     这次请求问了什么、使用了什么检索模式、top_k 等参数。
 
-    注意：inputs 会上传到 LangSmith。后续生产环境需要结合脱敏策略决定
-    是否保留完整 query。
+    默认只保留 query 长度；完整 query 和 filters 需要显式开启敏感数据上传。
     """
-    return {
-        "query": req.query,
+    inputs = {
+        "query": "[REDACTED]",
+        "query_length": len(req.query),
         "mode": req.mode,
         "top_k": req.top_k,
         "candidate_k": req.candidate_k,
         "min_score": req.min_score,
-        "filters": req.filters.model_dump(),
+        "filters": {},
+        "sensitive_data_included": settings.langsmith_include_sensitive_data,
     }
+    if settings.langsmith_include_sensitive_data:
+        inputs["query"] = req.query
+        inputs["filters"] = req.filters.model_dump()
+    return inputs
 
 
 def build_rag_langsmith_metadata(
@@ -98,23 +171,20 @@ def build_rag_langsmith_metadata(
     - LangSmith metadata 里也有它们。
     - 排查时就能把本地日志和 LangSmith trace 串起来。
     """
-    return {
-        "request_id": get_request_id(),
-        "trace_id": get_trace_id(),
-        "app_name": settings.app_name,
-        "app_env": settings.app_env,
-        "pipeline_provider": pipeline_provider,
-        "mode": req.mode,
-        "top_k": req.top_k,
-        "candidate_k": req.candidate_k,
-        "min_score": req.min_score,
-        "llm_provider": settings.llm_provider,
-        "llm_model_name": settings.llm_model_name,
-        "vector_retriever_provider": settings.vector_retriever_provider,
-        "keyword_retriever_provider": settings.keyword_retriever_provider,
-        "reranker_provider": settings.reranker_provider,
-        "rerank_model_name": settings.rerank_model_name,
-    }
+    return build_langsmith_metadata(
+        settings,
+        pipeline_provider=pipeline_provider,
+        mode=req.mode,
+        top_k=req.top_k,
+        candidate_k=req.candidate_k,
+        min_score=req.min_score,
+        llm_provider=settings.llm_provider,
+        llm_model_name=settings.llm_model_name,
+        vector_retriever_provider=settings.vector_retriever_provider,
+        keyword_retriever_provider=settings.keyword_retriever_provider,
+        reranker_provider=settings.reranker_provider,
+        rerank_model_name=settings.rerank_model_name,
+    )
 
 
 def build_rag_langsmith_tags(
@@ -133,15 +203,13 @@ def build_rag_langsmith_tags(
     和 metadata 的区别：
     metadata 更适合放结构化详情，tags 更适合做快速筛选。
     """
-    tags = [
+    return build_langsmith_tags(
+        settings,
         "rag",
         f"operation:{operation}",
         f"pipeline:{pipeline_provider}",
-        f"env:{settings.app_env}",
         f"llm:{settings.llm_provider}",
-    ]
-    tags.extend(settings.langsmith_tag_list)
-    return tags
+    )
 
 
 def langsmith_trace(
@@ -169,9 +237,9 @@ def langsmith_trace(
         name=name,
         # 支持的常用类型："tool", "chain", "llm", "retriever", "embedding", "prompt", "parser"
         run_type=run_type,
-        inputs=inputs,
+        inputs=sanitize_langsmith_payload(settings, inputs),
         project_name=settings.langsmith_project,
-        metadata=metadata,
+        metadata=sanitize_langsmith_payload(settings, metadata),
         tags=tags,
     )
 
@@ -210,6 +278,34 @@ def rag_langsmith_trace(
             *tags,
             "trace-level:pipeline",
         ],
+    )
+
+
+_RAG_PIPELINE_TRACE_NAMES = {
+    "classic": "classic_rag_pipeline",
+    "langgraph": "langgraph_rag_pipeline",
+    "rag_agent": "rag_agent_pipeline",
+}
+
+
+def rag_langsmith_pipeline_trace(
+    settings: Settings,
+    req: RagChatRequest,
+    pipeline_provider: str,
+    operation: str,
+):
+    """按统一命名和字段规范创建 RAG pipeline root run。"""
+
+    trace_name = _RAG_PIPELINE_TRACE_NAMES.get(
+        pipeline_provider,
+        f"{pipeline_provider}_pipeline",
+    )
+    return rag_langsmith_trace(
+        settings=settings,
+        name=f"{trace_name}.{operation}",
+        inputs=build_rag_langsmith_inputs(settings, req),
+        metadata=build_rag_langsmith_metadata(settings, req, pipeline_provider),
+        tags=build_rag_langsmith_tags(settings, pipeline_provider, operation),
     )
 
 
@@ -263,27 +359,24 @@ def build_rag_langsmith_step_metadata_from_state(
 
     这样两条链路最终写入 LangSmith 的字段结构仍然保持一致。
     """
-    return {
-        "request_id": get_request_id(),
-        "trace_id": get_trace_id(),
-        "app_name": settings.app_name,
-        "app_env": settings.app_env,
-        "pipeline_provider": pipeline_provider,
-        "mode": state.get("mode"),
-        "top_k": state.get("top_k"),
-        "candidate_k": state.get("candidate_k"),
-        "min_score": state.get("min_score"),
-        "llm_provider": settings.llm_provider,
-        "llm_model_name": settings.llm_model_name,
-        "vector_retriever_provider": settings.vector_retriever_provider,
-        "keyword_retriever_provider": settings.keyword_retriever_provider,
-        "reranker_provider": settings.reranker_provider,
-        "rerank_model_name": settings.rerank_model_name,
-        "trace_level": "step",
-        "operation": operation,
-        "step_name": step_name,
-        "step_index": step_index,
-    }
+    return build_langsmith_metadata(
+        settings,
+        pipeline_provider=pipeline_provider,
+        mode=state.get("mode"),
+        top_k=state.get("top_k"),
+        candidate_k=state.get("candidate_k"),
+        min_score=state.get("min_score"),
+        llm_provider=settings.llm_provider,
+        llm_model_name=settings.llm_model_name,
+        vector_retriever_provider=settings.vector_retriever_provider,
+        keyword_retriever_provider=settings.keyword_retriever_provider,
+        reranker_provider=settings.reranker_provider,
+        rerank_model_name=settings.rerank_model_name,
+        trace_level="step",
+        operation=operation,
+        step_name=step_name,
+        step_index=step_index,
+    )
 
 
 def build_rag_langsmith_step_tags(
@@ -315,6 +408,82 @@ def build_rag_langsmith_step_tags(
     ]
 
 
+def rag_langsmith_request_step_trace(
+    settings: Settings,
+    req: RagChatRequest,
+    pipeline_provider: str,
+    operation: str,
+    step_name: str,
+    step_index: int,
+    run_type: str,
+    inputs: dict[str, Any],
+):
+    """根据 RagChatRequest 创建统一的 RAG step run。"""
+
+    trace_name = _RAG_PIPELINE_TRACE_NAMES.get(
+        pipeline_provider,
+        f"{pipeline_provider}_pipeline",
+    )
+    return rag_langsmith_step_trace(
+        settings=settings,
+        name=f"{trace_name}.{operation}.{step_name}",
+        run_type=run_type,
+        inputs=inputs,
+        metadata=build_rag_langsmith_step_metadata(
+            settings,
+            req,
+            pipeline_provider,
+            operation,
+            step_name,
+            step_index,
+        ),
+        tags=build_rag_langsmith_step_tags(
+            settings,
+            pipeline_provider,
+            operation,
+            step_name,
+        ),
+    )
+
+
+def rag_langsmith_state_step_trace(
+    settings: Settings,
+    state: dict[str, Any],
+    pipeline_provider: str,
+    operation: str,
+    step_name: str,
+    step_index: int,
+    run_type: str,
+    inputs: dict[str, Any],
+):
+    """根据 LangGraph state 创建统一的 RAG step run。"""
+
+    trace_name = _RAG_PIPELINE_TRACE_NAMES.get(
+        pipeline_provider,
+        f"{pipeline_provider}_pipeline",
+    )
+    return rag_langsmith_step_trace(
+        settings=settings,
+        name=f"{trace_name}.{operation}.{step_name}",
+        run_type=run_type,
+        inputs=inputs,
+        metadata=build_rag_langsmith_step_metadata_from_state(
+            settings,
+            state,
+            pipeline_provider,
+            operation,
+            step_name,
+            step_index,
+        ),
+        tags=build_rag_langsmith_step_tags(
+            settings,
+            pipeline_provider,
+            operation,
+            step_name,
+        ),
+    )
+
+
 def build_rag_langchain_child_config(
     settings: Settings,
     state: dict[str, Any],
@@ -340,18 +509,21 @@ def build_rag_langchain_child_config(
             "trace-level:langchain-child",
             f"child:{child_name}",
         ],
-        "metadata": {
-            **build_rag_langsmith_step_metadata_from_state(
-                settings=settings,
-                state=state,
-                pipeline_provider=pipeline_provider,
-                operation=operation,
-                step_name=step_name,
-                step_index=step_index,
-            ),
-            "trace_level": "langchain_child",
-            "child_name": child_name,
-        },
+        "metadata": sanitize_langsmith_payload(
+            settings,
+            {
+                **build_rag_langsmith_step_metadata_from_state(
+                    settings=settings,
+                    state=state,
+                    pipeline_provider=pipeline_provider,
+                    operation=operation,
+                    step_name=step_name,
+                    step_index=step_index,
+                ),
+                "trace_level": "langchain_child",
+                "child_name": child_name,
+            },
+        ),
     }
 
 
@@ -376,17 +548,19 @@ def build_rag_langchain_pipeline_child_config(
             "trace-level:langchain-child",
             f"child:{child_name}",
         ],
-        "metadata": {
-            "request_id": get_request_id(),
-            "trace_id": get_trace_id(),
-            "app_name": settings.app_name,
-            "app_env": settings.app_env,
-            "pipeline_provider": pipeline_provider,
-            "operation": operation,
-            "trace_level": "langchain_child",
-            "child_name": child_name,
-            **(metadata or {}),
-        },
+        "metadata": sanitize_langsmith_payload(
+            settings,
+            {
+                **build_langsmith_metadata(
+                    settings,
+                    pipeline_provider=pipeline_provider,
+                    operation=operation,
+                    trace_level="langchain_child",
+                    child_name=child_name,
+                ),
+                **(metadata or {}),
+            },
+        ),
     }
 
 

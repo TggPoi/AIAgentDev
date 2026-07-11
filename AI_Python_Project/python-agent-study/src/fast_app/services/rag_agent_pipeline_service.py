@@ -8,10 +8,8 @@ from fast_app.core.config import Settings
 from fast_app.core.langsmith import (
     build_rag_langchain_child_config,
     build_rag_langchain_pipeline_child_config,
-    build_rag_langsmith_inputs,
-    build_rag_langsmith_metadata,
-    build_rag_langsmith_tags,
-    rag_langsmith_trace,
+    rag_langsmith_pipeline_trace,
+    sanitize_langsmith_payload,
 )
 from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
@@ -170,20 +168,11 @@ class RagAgentPipeline:
 
     def _langsmith_trace(self, req: RagChatRequest, operation: str):
         # pipeline 级 trace 记录一次完整请求；节点级 trace 在 rag_agent_nodes.py 中完成。
-        return rag_langsmith_trace(
-            settings=self.settings,
-            name=f"rag_agent_pipeline.{operation}",
-            inputs=build_rag_langsmith_inputs(req),
-            metadata=build_rag_langsmith_metadata(
-                settings=self.settings,
-                req=req,
-                pipeline_provider="rag_agent",
-            ),
-            tags=build_rag_langsmith_tags(
-                settings=self.settings,
-                pipeline_provider="rag_agent",
-                operation=operation,
-            ),
+        return rag_langsmith_pipeline_trace(
+            self.settings,
+            req,
+            "rag_agent",
+            operation,
         )
 
     def _build_initial_state(
@@ -229,17 +218,20 @@ class RagAgentPipeline:
                 state["query_rewrite_reason"] = "session_id_empty"
                 if trace_run is not None:
                     trace_run.add_outputs(
-                        {
-                            "original_query": req.query,
-                            "rewritten_query": req.query,
-                            "effective_query": state["query"],
-                            "used_history": False,
-                            "query_rewrite_reason": state["query_rewrite_reason"],
-                            "history_message_count": 0,
-                            "summary_used": False,
-                            "summary_version": None,
-                            "summary_source_message_count": 0,
-                        }
+                        sanitize_langsmith_payload(
+                            self.settings,
+                            {
+                                "original_query": req.query,
+                                "rewritten_query": req.query,
+                                "effective_query": state["query"],
+                                "used_history": False,
+                                "query_rewrite_reason": state["query_rewrite_reason"],
+                                "history_message_count": 0,
+                                "summary_used": False,
+                                "summary_version": None,
+                                "summary_source_message_count": 0,
+                            },
+                        )
                     )
                 return state
 
@@ -247,17 +239,20 @@ class RagAgentPipeline:
                 state["query_rewrite_reason"] = "memory_or_rewriter_unavailable"
                 if trace_run is not None:
                     trace_run.add_outputs(
-                        {
-                            "original_query": req.query,
-                            "rewritten_query": req.query,
-                            "effective_query": state["query"],
-                            "used_history": False,
-                            "query_rewrite_reason": state["query_rewrite_reason"],
-                            "history_message_count": 0,
-                            "summary_used": False,
-                            "summary_version": None,
-                            "summary_source_message_count": 0,
-                        }
+                        sanitize_langsmith_payload(
+                            self.settings,
+                            {
+                                "original_query": req.query,
+                                "rewritten_query": req.query,
+                                "effective_query": state["query"],
+                                "used_history": False,
+                                "query_rewrite_reason": state["query_rewrite_reason"],
+                                "history_message_count": 0,
+                                "summary_used": False,
+                                "summary_version": None,
+                                "summary_source_message_count": 0,
+                            },
+                        )
                     )
                 return state
 
@@ -325,20 +320,23 @@ class RagAgentPipeline:
 
             if trace_run is not None:
                 trace_run.add_outputs(
-                    {
-                        "original_query": rewrite_result.original_query,
-                        "rewritten_query": rewrite_result.rewritten_query,
-                        "effective_query": state["query"],
-                        "used_history": rewrite_result.used_history,
-                        "query_rewrite_reason": rewrite_result.reason,
-                        "history_message_count": len(history_window.messages),
-                        "history_window_chars": len(history_window.formatted_text),
-                        "summary_used": state["summary_used"],
-                        "summary_version": state["summary_version"],
-                        "summary_source_message_count": state[
-                            "summary_source_message_count"
-                        ],
-                    }
+                    sanitize_langsmith_payload(
+                        self.settings,
+                        {
+                            "original_query": rewrite_result.original_query,
+                            "rewritten_query": rewrite_result.rewritten_query,
+                            "effective_query": state["query"],
+                            "used_history": rewrite_result.used_history,
+                            "query_rewrite_reason": rewrite_result.reason,
+                            "history_message_count": len(history_window.messages),
+                            "history_window_chars": len(history_window.formatted_text),
+                            "summary_used": state["summary_used"],
+                            "summary_version": state["summary_version"],
+                            "summary_source_message_count": state[
+                                "summary_source_message_count"
+                            ],
+                        },
+                    )
                 )
 
             logger.info(
