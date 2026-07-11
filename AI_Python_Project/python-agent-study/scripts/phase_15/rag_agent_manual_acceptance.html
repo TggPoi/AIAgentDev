@@ -506,14 +506,11 @@
       loadTaskPlanMarkdown();
     }
     if (event === "agent_task_final_synthesis_completed") {
-      setAnswer(data.final_answer || "");
+      setTaskPlan(data.task_plan_id, `/agent/task-plans/${data.task_plan_id}/confirm`, data.status);
       loadTaskPlanMarkdown();
     }
-    if (event === "done" && data.task_plan) {
+    if (event === "done" && data.task_plan_id) {
       setTaskPlan(data.task_plan_id, `/agent/task-plans/${data.task_plan_id}/confirm`, data.status);
-      if (data.task_plan.final_output?.final_answer) {
-        setAnswer(data.task_plan.final_output.final_answer);
-      }
       loadTaskPlanMarkdown();
     }
   }

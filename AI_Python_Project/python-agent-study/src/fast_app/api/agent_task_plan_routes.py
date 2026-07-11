@@ -19,11 +19,18 @@ from fast_app.core.request_context import get_request_id, get_trace_id
 from fast_app.dependencies.rag_dependencies import (
     get_agent_task_executor,
     get_agent_task_plan_store,
+    get_prompt_guard_service,
 )
 from fast_app.dependencies.user_context import get_current_user_context
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
 from fast_app.services.exceptions import AppServiceError, ToolPermissionDeniedError
+from fast_app.services.guarded_streaming import (
+    GuardedStreamState,
+    guarded_answer_delta_events,
+    text_to_async_tokens,
+)
+from fast_app.services.prompt_guard_service import PromptGuardService
 
 
 router = APIRouter(prefix="/agent/task-plans", tags=["agent-task-plans"])
@@ -172,6 +179,7 @@ async def confirm_agent_task_plan_stream_endpoint(
     user: CurrentUserContext = Depends(get_current_user_context),
     task_executor: AgentTaskExecutor = Depends(get_agent_task_executor),
     task_plan_store: AgentTaskPlanStore = Depends(get_agent_task_plan_store),
+    prompt_guard: PromptGuardService = Depends(get_prompt_guard_service),
     settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
     """确认并执行 TaskPlan，同时用 SSE 输出执行进度。"""
@@ -185,6 +193,7 @@ async def confirm_agent_task_plan_stream_endpoint(
             user=user,
             task_executor=task_executor,
             task_plan_store=task_plan_store,
+            prompt_guard=prompt_guard,
             settings=settings,
         ),
         media_type="text/event-stream",
@@ -196,9 +205,16 @@ async def _confirm_task_plan_sse_generator(
     user: CurrentUserContext,
     task_executor: AgentTaskExecutor,
     task_plan_store: AgentTaskPlanStore,
+    prompt_guard: PromptGuardService,
     settings: Settings,
 ) -> AsyncGenerator[str, None]:
-    """用现有 runtime 快照输出进度，避免给 executor 新增事件总线。"""
+    """确认并执行 TaskPlan，同时把执行中的进度转换为 SSE。
+
+    ``task_executor.confirm()`` 本身返回的是最终完成后的 ``plan``，不会逐条
+    ``yield`` 子问题结果。执行器每完成一个子问题会先把最新 ``plan`` 保存到
+    runtime JSON 快照；本生成器在确认任务运行期间每秒读取一次该快照，将新出现的
+    子问题结果发给前端。因此无需为了流式进度额外给执行器设计事件总线。
+    """
 
     async with _agent_task_plan_trace(
         settings,
@@ -219,12 +235,16 @@ async def _confirm_task_plan_sse_generator(
                 },
             )
 
+        # 轮询会重复读到已经完成的子问题；用 id 去重，确保前端每题只收到一次完成事件。
         seen_sub_questions: set[str] = set()
         yield _format_sse_event(
             "agent_task_execution_started",
             {"task_plan_id": task_plan_id},
         )
+
+        # confirm 在后台继续执行，这个生成器才能同时轮询快照并向 HTTP 连接 yield SSE。
         task = asyncio.create_task(
+            # 让 `task_executor.confirm(...)` 在后台开始执行，但当前 SSE 函数不等待它完成
             task_executor.confirm(
                 task_plan_id=task_plan_id,
                 user=user,
@@ -234,23 +254,46 @@ async def _confirm_task_plan_sse_generator(
         try:
             while not task.done():
                 try:
+                    # task_executor 会在 单个子问题 完成时更新 当前任务的json文件 快照；这里读取的是“目前为止”的进度。
                     plan = task_plan_store.load(task_plan_id)
+
+                    # 把当前读取到的 任务快照进度 转换为 sse事件 响应给前端显示任务状态
                     for event in _task_plan_progress_events(plan, seen_sub_questions):
                         yield event
+                
+                # 轮询快照的异常被忽略 例如后台任务刚启动、快照文件还没写好时，`load()` 可能暂时失败。这里不让一次短暂读取失败直接断开 SSE；等一秒后再试。
                 except Exception:
+                    # 任务刚启动、快照暂不可读等短暂情况不应中断已建立的 SSE 连接；下次轮询重试。
                     pass
                 await asyncio.sleep(1)
 
+            # confirm 已结束，await 取得最终 plan，并补发最后一次快照中尚未发送的子问题事件。
             plan = await task
+
             for event in _task_plan_progress_events(plan, seen_sub_questions):
                 yield event
+
+            # prompt_guard 开始校验 最终回答
             final_answer = plan.final_output.get("final_answer")
             if isinstance(final_answer, str) and final_answer.strip():
+                stream_state = GuardedStreamState()
+
+                # 开始消费llm生成的token，组装为多个chunk，直到达到最大长度或句号边界时，交给 Prompt Guard 检查。
+                async for event in guarded_answer_delta_events(
+                    text_to_async_tokens(final_answer),
+                    prompt_guard=prompt_guard,
+                    source="agent_task_plan.confirm_stream.output",
+                    mode="buffer_then_emit",
+                    max_chars=settings.prompt_guard_stream_chunk_max_chars,
+                    state=stream_state,
+                ):
+                    yield _format_sse_event(event.event, event.data)
+
                 yield _format_sse_event(
                     "agent_task_final_synthesis_completed",
                     {
                         "task_plan_id": plan.task_plan_id,
-                        "final_answer": final_answer,
+                        "status": plan.status.value,
                         "used_tools": plan.final_output.get("used_tools", []),
                     },
                 )
@@ -267,7 +310,6 @@ async def _confirm_task_plan_sse_generator(
                 {
                     "task_plan_id": plan.task_plan_id,
                     "status": plan.status.value,
-                    "task_plan": plan.model_dump(mode="json"),
                 },
             )
         except Exception as exc:
@@ -284,7 +326,11 @@ def _task_plan_progress_events(
     plan: Any,
     seen_sub_questions: set[str],
 ) -> list[str]:
-    """把 TaskPlan 快照转换成前端可消费的进度事件。"""
+    """把一次 TaskPlan 快照中可观察到的状态和新增子问题结果转为 SSE。
+
+    每次轮询都发送当前总状态（如 ``running`` 或 ``completed``）；而子问题完成
+    事件通过 ``seen_sub_questions`` 去重，只在该 id 第一次出现在快照中时发送。
+    """
 
     events = [
         _format_sse_event(
@@ -292,16 +338,25 @@ def _task_plan_progress_events(
             {"task_plan_id": plan.task_plan_id, "status": plan.status.value},
         )
     ]
+    # question_decomposition 执行器将每个已完成子问题的字典追加到这里并保存快照。
     results = plan.final_output.get("sub_question_results", [])
+
+    # 检查当前子任务执行结果的json文件 格式是否正确
     if not isinstance(results, list):
         return events
+    
+    # 检查单个子任务的格式是否正确
     for result in results:
         if not isinstance(result, dict):
             continue
         sub_question_id = str(result.get("sub_question_id") or "")
+
+        # seen_sub_questions 记录已经发送给前端的子任务id，防止前端收到重复完成事件
         if not sub_question_id or sub_question_id in seen_sub_questions:
             continue
         seen_sub_questions.add(sub_question_id)
+
+        # 将执行结果原样带给前端：页面可据此显示问题、所选工具、答案或单题错误。
         events.append(
             _format_sse_event(
                 "agent_task_sub_question_completed",

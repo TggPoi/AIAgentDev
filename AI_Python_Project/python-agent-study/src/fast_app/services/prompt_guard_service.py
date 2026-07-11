@@ -132,7 +132,7 @@ JSON 字段固定如下：
     "indirect_injection" |
     "sensitive_output"
   ],
-  "reason": "简短英文原因",
+  "reason": "简短中文原因",
   "sanitized_text": null
 }
 
@@ -391,6 +391,9 @@ class PromptGuardService:
         source: str,
     ) -> PromptGuardResult:
         """按 rule / llm / hybrid 模式分类模型输出。"""
+
+        if not answer.strip():
+            return PromptGuardResult(reason=f"{source}_empty_output_allowed")
 
         rule_result = self.scan_output(answer, source=source)
         if not self.enabled:

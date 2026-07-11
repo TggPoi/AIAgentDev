@@ -1012,17 +1012,6 @@ class RagAgentPipeline:
                                 "error": result.get("error"),
                             },
                         )
-                final_answer = task_plan.final_output.get("final_answer")
-                if isinstance(final_answer, str) and final_answer:
-                    yield RagStreamEvent(
-                        event="agent_task_final_synthesis_completed",
-                        data={
-                            "task_plan_id": task_plan.task_plan_id,
-                            "final_answer": final_answer,
-                            "used_tools": task_plan.final_output.get("used_tools", []),
-                        },
-                    )
-
             async with rag_agent_langsmith_step_trace(
                 settings=self.settings,
                 state=state,
@@ -1053,11 +1042,24 @@ class RagAgentPipeline:
                 text_to_async_tokens(answer),
                 prompt_guard=self.prompt_guard,
                 source="rag_agent.stream_events.output",
-                mode=self.settings.prompt_guard_stream_output_mode,
+                # answer 已完整生成，整段检查一次即可，避免按字符模拟流造成重复分类。
+                mode="buffer_then_emit",
                 max_chars=self.settings.prompt_guard_stream_chunk_max_chars,
                 state=stream_state,
             ):
                 yield event
+
+            if task_plan is not None:
+                final_answer = task_plan.final_output.get("final_answer")
+                if isinstance(final_answer, str) and final_answer.strip():
+                    yield RagStreamEvent(
+                        event="agent_task_final_synthesis_completed",
+                        data={
+                            "task_plan_id": task_plan.task_plan_id,
+                            "status": task_plan.status.value,
+                            "used_tools": task_plan.final_output.get("used_tools", []),
+                        },
+                    )
 
             token_count = stream_state.raw_token_count
             answer = stream_state.answer

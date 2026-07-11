@@ -27,7 +27,7 @@ class GuardedStreamState:
 
 
 async def text_to_async_tokens(text: str) -> AsyncGenerator[str, None]:
-    """把完整文本转成异步字符流，复用同一套缓冲安全检查逻辑。"""
+    """把完整文本转成异步字符流，复用同一套 Prompt injection 缓冲安全检查逻辑。"""
 
     for char in text:
         yield char
@@ -42,7 +42,7 @@ async def guarded_answer_delta_events(
     max_chars: int,
     state: GuardedStreamState,
 ) -> AsyncGenerator[RagStreamEvent, None]:
-    """把原始 token 流转换为经过输出安全检查的结构化事件。
+    """把原始llm token 流转换为经过 llm输出安全检查的结构化事件（过滤敏感信息）。
 
     这个函数是当前主流式接口 `/rag/chat/stream/events` 的输出安全边界。
     上游传进来的是 LLM 产生的原始 token；下游拿到的是可以发给前端的
@@ -73,7 +73,7 @@ async def guarded_answer_delta_events(
         return
 
     if normalized_mode == "pre_guard_only":
-        # 兼容旧流式体验的模式：原始 token 先发给用户，结束后只做审计。
+        # 兼容【当前工程实现的 API层 旧流式接口】的模式：原始 token 先发给用户，结束后只做审计。
         # 这个模式不能阻止已发出的危险内容，只适合兼容或观察，不适合作为严格安全主线。
         raw_parts: list[str] = []
         async for token in token_stream:
@@ -92,8 +92,12 @@ async def guarded_answer_delta_events(
     # 才把一个语义片段交给 Prompt Guard 检查。检查通过后再发给前端。
     buffer: list[str] = []
     async for token in token_stream:
+
+        # 先组装token chunk，到达最大长度或句号边界时，交给 Prompt Guard 检查。
         state.raw_token_count += 1
         buffer.append(token)
+
+        # 判断token chunk是否已经达到最大长度，如果已经满足条件，进入 prompt_guard 开始llm检测步骤
         if _should_flush_buffer(buffer, max_chars=max_chars):
             should_continue = True
             # _emit_guarded_chunk 会根据 Prompt Guard 结果产出：
@@ -135,7 +139,10 @@ def _should_flush_buffer(buffer: list[str], *, max_chars: int) -> bool:
     if not buffer:
         return False
 
-    return len(buffer) >= max_chars or buffer[-1] in SENTENCE_ENDINGS
+    last_token = buffer[-1]
+    return sum(len(token) for token in buffer) >= max_chars or (
+        bool(last_token) and last_token[-1] in SENTENCE_ENDINGS
+    )
 
 
 async def _emit_guarded_chunk(

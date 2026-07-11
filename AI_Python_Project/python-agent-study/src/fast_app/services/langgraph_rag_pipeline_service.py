@@ -449,7 +449,8 @@ class LangGraphRagPipeline:
                 text_to_async_tokens(answer),
                 prompt_guard=self.prompt_guard,
                 source="langgraph.stream_events.output",
-                mode=self.settings.prompt_guard_stream_output_mode,
+                # answer 已完整生成，整段检查一次即可，实时 LLM 流仍使用配置模式。
+                mode="buffer_then_emit",
                 max_chars=self.settings.prompt_guard_stream_chunk_max_chars,
                 state=stream_state,
             ):

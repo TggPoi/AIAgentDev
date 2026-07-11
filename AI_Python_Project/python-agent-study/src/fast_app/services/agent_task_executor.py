@@ -230,12 +230,15 @@ class AgentTaskExecutor:
             "sub_question_results": [],
             "used_tools": [],
         }
+
+        # 保存running状态快照
         self._task_plan_store.save(plan)
 
         results: list[AgentTaskSubQuestionResult] = []
         try:
             # sub_questions 是规划事实；执行结果单独写入 final_output，避免污染 plan。
             for sub_question in sorted(plan.sub_questions, key=lambda item: item.order):
+                # 开始执行子任务
                 result = await self._execute_sub_question(
                     plan=plan,
                     sub_question=sub_question,
@@ -259,6 +262,7 @@ class AgentTaskExecutor:
                         for tool_name in _result_used_tools(item)
                     }
                 )
+                # 保存一次已完成的子任务的 任务快照
                 self._task_plan_store.save(plan)
 
             # 允许单个子问题失败，但不能在完全没有有效答案时继续综合。
@@ -270,6 +274,7 @@ class AgentTaskExecutor:
                 results,
                 langchain_config_factory=langchain_config_factory,
             )
+            # 所有任务完成后，保存最终结果的 任务快照
             plan.status = AgentTaskPlanStatus.COMPLETED
             plan.final_output.update(
                 {
