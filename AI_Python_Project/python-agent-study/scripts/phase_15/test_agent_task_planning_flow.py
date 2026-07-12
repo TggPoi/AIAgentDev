@@ -134,56 +134,14 @@ async def main() -> None:
         query = "请你查询混合检索资料，生成一份报告，并保存到 development/task-report.md"
         plan = await planner.plan(query=query, user_id=user.user_id)
         assert plan is not None
-        assert plan.task_kind == "knowledge_report_to_document"
-        assert [step.tool_name for step in plan.steps] == [
-            "knowledge_retrieval",
-            "summarize_report",
-            "knowledge_document_create",
-        ]
+        assert plan.task_kind == "knowledge_document_management"
+        assert plan.steps == []
 
         single_tool_query = "新增 development/single.md 内容是：# 单工具"
-        assert await planner.plan(query=single_tool_query, user_id=user.user_id) is None
-
-        store = AgentTaskPlanStore(settings=settings)
-        executor = AgentTaskExecutor(
-            settings=settings,
-            vector_retriever=FakeRetriever(),
-            keyword_retriever=FakeRetriever(),
-            llm_client=FakeLLMClient(),
-            document_management_service=KnowledgeDocumentManagementService(settings=settings),
-            tool_permission_service=FakePermissionService(),
-            tool_audit_service=FakeAuditService(),
-            task_plan_store=store,
-        )
-        executed = await executor.execute(
-            plan=plan,
-            user=user,
-            mode="hybrid",
-            top_k=1,
-            candidate_k=1,
-            min_score=0.0,
-            filters=RetrievalFilters(department_codes=["development"]),
-        )
-
-        assert executed.status == AgentTaskPlanStatus.WAITING_CONFIRMATION
-        create_step = executed.steps[-1]
-        assert create_step.status == AgentToolStepStatus.WAITING_CONFIRMATION
-        assert create_step.requires_confirmation is True
-        report_content = executed.steps[1].output["content"]
-        assert create_step.output["content"] == report_content
-        assert create_step.output["action_request"]["content"] == report_content
-        assert "planner forged" not in create_step.output["content"]
-        target = kb / "development" / "task-report.md"
-        assert not target.exists()
-
-        loaded = store.load(executed.task_plan_id)
-        assert loaded.task_plan_id == executed.task_plan_id
-        assert loaded.status == AgentTaskPlanStatus.WAITING_CONFIRMATION
-
-        confirmed = await executor.confirm(task_plan_id=executed.task_plan_id, user=user)
-        assert confirmed.status == AgentTaskPlanStatus.COMPLETED
-        assert confirmed.steps[-1].status == AgentToolStepStatus.COMPLETED
-        assert target.read_text(encoding="utf-8") == report_content
+        single_plan = await planner.plan(query=single_tool_query, user_id=user.user_id)
+        assert single_plan is not None
+        assert single_plan.task_kind == "knowledge_document_management"
+        assert single_plan.steps == []
 
     print("agent_task_planning_flow=passed")
 

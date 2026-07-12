@@ -19,7 +19,6 @@ from fast_app.domain.agent_task_plan import (
     AgentTaskPlan,
     AgentTaskSubQuestion,
     AgentTaskType,
-    AgentToolStep,
 )
 
 
@@ -55,8 +54,6 @@ class AgentTaskPlannerPayload(BaseModel):
     objective: str = Field(default="")
     task_type: str = Field(default="unknown")
     source_query: str = Field(default="")
-    target_path: str | None = Field(default=None)
-    report_title: str = Field(default="")
     final_synthesis_instruction: str = Field(default="")
     sub_questions: list[AgentTaskPlannerSubQuestionPayload] = Field(default_factory=list)
     confidence: float = Field(default=0.0)
@@ -69,7 +66,8 @@ TASK_PLANNER_SYSTEM_PROMPT = """你是 Agent 多步骤任务规划器。
 你的职责是把复杂用户问题拆解成多个需要被回答的子问题。
 你必须先判断用户问题是否真的需要问题拆解 plan。
 
-当用户要求“生成报告并保存到知识库文档”时，task_kind 输出 knowledge_report_to_document。
+当用户要求新增、修改、删除知识库文档，或要求生成报告并保存为知识库文档时，
+task_kind 输出 knowledge_document_management。你只识别任务类型，不规划文档动作。
 其他复杂问题输出 question_decomposition。
 
 你生成的是“问题拆解 plan”，不是“执行 TODO list”。
@@ -103,12 +101,10 @@ sub_questions[].question 必须是可回答的问题，不能是动作指令。
 你只能输出 JSON object，不要输出 Markdown。
 JSON schema:
 {
-  "task_kind": "knowledge_report_to_document|question_decomposition",
+  "task_kind": "knowledge_document_management|question_decomposition",
   "objective": "用户最终目标",
   "task_type": "qa|comparison|report_generation|analysis|unknown",
   "source_query": "简短 condensed retrieval query，不要机械拼接所有子问题",
-  "target_path": "知识库内相对路径，例如 development/report.md；如果不需要保存文档则为 null",
-  "report_title": "报告标题",
   "final_synthesis_instruction": "最终如何整合多个子问题答案",
   "sub_questions": [
     {
@@ -126,7 +122,7 @@ JSON schema:
 }
 
 如果用户不是复杂问题，也不需要拆解，输出 {"confidence": 0.0}。
-不要输出报告正文、文档 content、授权结论、确认结论或工具执行结果。
+文档动作、目标、正文和工具参数由后续原生 Tool Calling 产生，不得在这里输出。
 """
 
 
@@ -185,6 +181,8 @@ class AgentTaskPlanner:
         )
         if plan is None:
             return self._plan_with_rules(query=query, user_id=user_id)
+        if plan.task_kind == "knowledge_document_management":
+            return plan
 
         missing_topics = _missing_topics(query=query, sub_questions=plan.sub_questions)
         if missing_topics:
@@ -305,18 +303,28 @@ class AgentTaskPlanner:
     ) -> dict[str, Any] | None:
         # 最低兼容路径：要求模型输出 JSON object，再由 json.loads + 本地校验接管。
         json_model = model.bind(response_format={"type": "json_object"})
-        response = await json_model.ainvoke(
-            _build_planner_messages(
-                query=query,
-                history=history,
-                missing_topics=missing_topics,
-            ),
-            config=(
-                langchain_config_factory(child_name)
-                if langchain_config_factory is not None
-                else None
-            ),
-        )
+        try:
+            response = await json_model.ainvoke(
+                _build_planner_messages(
+                    query=query,
+                    history=history,
+                    missing_topics=missing_topics,
+                ),
+                config=(
+                    langchain_config_factory(child_name)
+                    if langchain_config_factory is not None
+                    else None
+                ),
+            )
+        except Exception as exc:
+            logger.warning(
+                "agent_task_planner %s",
+                format_log_fields(
+                    event="agent_task_planner.json.failed",
+                    error_type=type(exc).__name__,
+                ),
+            )
+            return None
         raw = str(getattr(response, "content", ""))
         try:
             payload = json.loads(raw)
@@ -337,29 +345,30 @@ class AgentTaskPlanner:
         query: str,
         user_id: str | None,
     ) -> AgentTaskPlan | None:
-        """本地兜底：复杂问题生成拆解 plan；带保存路径的报告任务保留执行兼容。"""
+        """本地兜底：识别明确文档任务，其他复杂问题生成拆解 plan。"""
 
         # 规则兜底只在 LLM 不可用或输出坏掉时使用，不作为企业场景主判断器。
-        target_path = _extract_target_path(query)
         is_report_to_document = _is_report_to_document_query(query)
-        if not is_report_to_document and not _is_complex_question(query):
+        if is_report_to_document or _detect_document_operation(query) is not None:
+            return self._build_document_management_plan(
+                query=query,
+                user_id=user_id,
+                payload={"objective": query, "source_query": query},
+            )
+        if not _is_complex_question(query):
             return None
 
-        source_query_base = query.split(target_path, 1)[0] if target_path else query
-        source_query = source_query_base
-        # 给旧 executor 的一次检索 query，要短，不要把全部子问题硬拼进去。
+        source_query = query
         source_query = re.sub(r"(请你|请|帮我|生成|一份|报告|并|保存|写入|创建|到|为)", " ", source_query)
         source_query = " ".join(source_query.split()) or "知识库资料"
         return self._build_plan(
             user_id=user_id,
-            task_kind="knowledge_report_to_document"
-            if is_report_to_document
-            else "question_decomposition",
+            task_kind="question_decomposition",
             original_query=query,
             objective=query,
             task_type=_infer_task_type(query),
             source_query=source_query,
-            target_path=target_path,
+            target_path=None,
             report_title=_build_report_title(source_query),
             sub_questions=_build_rule_sub_questions(query),
             final_synthesis_instruction="按子问题顺序回答后，整合模块设计、关系和差异，形成结构化报告。",
@@ -379,13 +388,12 @@ class AgentTaskPlanner:
         if task_kind is None:
             return None
 
-        target_path = str(payload.get("target_path") or "").strip().replace("\\", "/")
-        if target_path and not target_path.endswith((".md", ".txt")):
-            return None
-        if task_kind == "knowledge_report_to_document" and not target_path:
-            # 报告写入任务必须有明确文件路径；路径缺失时回到规则识别，
-            # 防止 LLM 造出一个没有确认目标的写入计划。
-            return self._plan_with_rules(query=query, user_id=user_id)
+        if task_kind == "knowledge_document_management":
+            return self._build_document_management_plan(
+                query=query,
+                payload=payload,
+                user_id=user_id,
+            )
 
         source_query = str(payload.get("source_query") or "").strip()
         if not source_query:
@@ -418,13 +426,40 @@ class AgentTaskPlanner:
             or query,
             task_type=_parse_task_type(payload.get("task_type")),
             source_query=_condense_source_query(source_query),
-            target_path=target_path or None,
-            report_title=str(payload.get("report_title") or _build_report_title(source_query)).strip(),
+            target_path=None,
+            report_title=_build_report_title(source_query),
             sub_questions=sub_questions,
             final_synthesis_instruction=str(
                 payload.get("final_synthesis_instruction")
                 or "按子问题顺序回答后，整合为最终报告。"
             ).strip(),
+        )
+
+    def _build_document_management_plan(
+        self,
+        query: str,
+        payload: dict[str, Any],
+        user_id: str | None,
+    ) -> AgentTaskPlan:
+        """创建空文档任务；动作只能由后续原生 ToolCall 产生。"""
+        now = datetime.now(UTC)
+        task_plan_id = f"task_plan_{now.strftime('%Y%m%d%H%M%S')}_{uuid4().hex[:12]}"
+        return AgentTaskPlan(
+            task_plan_id=task_plan_id,
+            task_kind="knowledge_document_management",
+            user_id=user_id,
+            original_query=query,
+            objective=str(payload.get("objective") or query).strip() or query,
+            task_type="analysis",
+            goal=str(payload.get("objective") or query).strip() or query,
+            sub_questions=[],
+            final_synthesis_instruction="解析目标、生成变更预览并等待人工确认。",
+            source_query=str(payload.get("source_query") or query).strip(),
+            target_path=None,
+            report_title="知识库文档管理计划",
+            created_at=now,
+            updated_at=now,
+            steps=[],
         )
 
     def _build_plan(
@@ -458,30 +493,7 @@ class AgentTaskPlanner:
             report_title=report_title,
             created_at=now,
             updated_at=now,
-            steps=[
-                # 当前执行器只支持报告落文档任务；纯 question_decomposition 不生成执行步骤。
-                AgentToolStep(
-                    step_id="step_1_retrieve",
-                    tool_name="knowledge_retrieval",
-                    input={"query": source_query},
-                    risk_level="low",
-                ),
-                AgentToolStep(
-                    step_id="step_2_summarize",
-                    tool_name="summarize_report",
-                    input={"report_title": report_title},
-                    risk_level="low",
-                ),
-                AgentToolStep(
-                    step_id="step_3_create_document",
-                    tool_name="knowledge_document_create",
-                    input={"target_path": target_path},
-                    risk_level="medium",
-                    requires_confirmation=True,
-                ),
-            ]
-            if task_kind == "knowledge_report_to_document"
-            else [],
+            steps=[],
         )
 
 
@@ -502,6 +514,20 @@ def _is_report_to_document_query(query: str) -> bool:
         and "报告" in query
         and any(word in query for word in ["保存", "写入", "创建"])
     )
+
+
+def _detect_document_operation(query: str) -> str | None:
+    """LLM 不可用时只兜底明确的文档管理动词。"""
+
+    if any(word in query for word in ("删除", "移除", "下线")):
+        return "delete"
+    if any(word in query for word in ("修改", "更新", "改写", "替换")):
+        return "update"
+    if any(word in query for word in ("创建", "新增", "新建")) and (
+        "文档" in query or "知识库" in query or _extract_target_path(query) is not None
+    ):
+        return "create"
+    return None
 
 
 def _build_planner_messages(
@@ -540,7 +566,7 @@ def _parse_task_type(value: Any) -> AgentTaskType:
 
 def _parse_task_kind(value: Any) -> AgentTaskKind | None:
     raw = str(value or "").strip()
-    if raw in {"knowledge_report_to_document", "question_decomposition"}:
+    if raw in {"knowledge_document_management", "question_decomposition"}:
         return raw  # type: ignore[return-value]
     return None
 

@@ -644,6 +644,10 @@ def build_task_plan_answer(plan) -> str:
         lines.append("")
         if plan.task_kind == "question_decomposition":
             lines.append("TaskPlan 已等待人工确认，尚未开始执行子问题。")
+        elif plan.task_kind == "knowledge_document_management":
+            lines.append(
+                f"已解析 {len(plan.steps)} 个文档动作，尚未修改源文件、ES 或 Milvus。"
+            )
         else:
             lines.append("文档创建步骤已停在 TaskPlan 人工确认，尚未执行真实写入。")
         lines.append(

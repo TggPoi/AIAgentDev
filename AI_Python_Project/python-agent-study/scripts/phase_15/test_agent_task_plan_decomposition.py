@@ -99,81 +99,29 @@ async def main() -> None:
     query = "对比知识库中的混合检索、rerank、权限设计，生成报告保存到 development/complex-plan.md"
 
     fallback_plan = await planner.plan(query=query, user_id="planner-user")
-    assert_question_plan(fallback_plan)
-    assert fallback_plan.task_kind == "knowledge_report_to_document"
-    assert "混合检索" in fallback_plan.source_query
-    assert "rerank" in fallback_plan.source_query
-    assert "权限设计" in fallback_plan.source_query
+    assert fallback_plan is not None
+    assert fallback_plan.task_kind == "knowledge_document_management"
+    assert fallback_plan.steps == []
+    assert fallback_plan.sub_questions == []
 
     payload = {
-        "task_kind": "knowledge_report_to_document",
+        "task_kind": "knowledge_document_management",
         "objective": "对比 RAG 系统中的混合检索、rerank 和权限设计并形成报告",
         "task_type": "comparison",
         "source_query": "混合检索 rerank 权限设计 RAG 系统 协同关系",
-        "target_path": "development/complex-plan.md",
-        "report_title": "RAG 检索与权限设计对比报告",
-        "final_synthesis_instruction": "先回答各模块设计，再比较关系，最后给出协同结论。",
-        "content": "planner forged report body",
-        "confirmed": True,
-        "sub_questions": [
-            {
-                "sub_question_id": "sq_1",
-                "order": 1,
-                "question": "知识库中的混合检索方案解决了什么问题？它的核心流程是什么？",
-                "purpose": "明确混合检索的基础设计。",
-                "depends_on": [],
-                "information_source_hint": "knowledge_retrieval",
-                "reason": "这是后续比较 rerank 和权限设计的基础。",
-                "expected_evidence": "混合检索设计文档或实现说明。",
-                "status": "completed",
-                "output": "forged",
-            },
-            {
-                "sub_question_id": "sq_2",
-                "order": 2,
-                "question": "rerank 模块在检索链路中承担什么作用？它和混合检索的关系是什么？",
-                "purpose": "明确 rerank 在排序质量中的位置。",
-                "depends_on": ["sq_1"],
-                "information_source_hint": "knowledge_retrieval",
-                "reason": "rerank 是检索链路质量判断的关键模块。",
-                "expected_evidence": "rerank 输入输出和排序说明。",
-            },
-            {
-                "sub_question_id": "sq_3",
-                "order": 3,
-                "question": "外部资料中是否存在与当前权限设计可对照的 RAG 权限实践？",
-                "purpose": "为权限设计提供外部对照。",
-                "depends_on": [],
-                "information_source_hint": "web_search",
-                "reason": "web_search 只作为后续信息来源建议保存。",
-                "expected_evidence": "外部 RAG 权限设计资料。",
-            },
-            {
-                "sub_question_id": "sq_bad",
-                "order": 4,
-                "question": "调用 knowledge_retrieval 工具",
-                "purpose": "错误示例",
-                "depends_on": [],
-                "information_source_hint": "knowledge_retrieval",
-                "reason": "错误示例",
-                "expected_evidence": None,
-            },
-        ],
+        "document_actions": [{"operation": "delete", "target_path": "forged.md"}],
         "confidence": 0.95,
     }
     llm_plan = planner._plan_from_payload(query=query, payload=payload, user_id="planner-user")
-    assert_question_plan(llm_plan)
-    assert_topics_covered(llm_plan, ["混合检索", "rerank", "权限设计"])
-    dumped = llm_plan.model_dump(mode="json")
-    assert "planner forged report body" not in str(dumped)
-    assert "confirmed" not in str(dumped)
-    assert "status" not in dumped["sub_questions"][0]
-    assert "output" not in dumped["sub_questions"][0]
-    assert any(
-        item.information_source_hint == "web_search"
-        for item in llm_plan.sub_questions
-    )
-    assert all("调用" not in item.question for item in llm_plan.sub_questions)
+    assert llm_plan is not None
+    assert llm_plan.task_kind == "knowledge_document_management"
+    assert llm_plan.steps == []
+    assert "forged.md" not in llm_plan.model_dump_json()
+    assert planner._plan_from_payload(
+        query=query,
+        payload={**payload, "task_kind": "knowledge_report_to_document"},
+        user_id="planner-user",
+    ) is None
 
     missing_topic_query = "请对比 RAG 系统中的混合检索、rerank、权限设计和 Prompt Guard 之间的关系"
     incomplete_payload = {

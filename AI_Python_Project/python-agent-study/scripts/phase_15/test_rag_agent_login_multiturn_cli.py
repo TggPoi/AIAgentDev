@@ -185,7 +185,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--expect-task-kind",
-        choices=["knowledge_report_to_document", "question_decomposition"],
+        choices=["knowledge_document_management", "question_decomposition"],
         default=None,
         help="单轮模式下要求 TaskPlan 的 task_kind 必须等于该值。",
     )

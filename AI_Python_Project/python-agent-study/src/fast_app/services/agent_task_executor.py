@@ -1,20 +1,41 @@
+"""TaskPlan 的运行时执行器。
+
+本文件包含两条互不混用的主线：
+1. question_decomposition：确认后顺序执行子问题，允许只读工具调用，最后综合答案；
+2. knowledge_document_management：LLM 通过原生 ToolCall 收集资料并生成 dry-run，
+   停在 waiting_confirmation，只有 confirm() 才会触发真实文档写入。
+
+这里负责流程编排、工具上下文和计划状态；路径安全、ACL、文件及 ES/Milvus
+一致性由 KnowledgeDocumentManagementService 负责。
+"""
+
 from __future__ import annotations
 
 import json
 import re
+from difflib import unified_diff
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from fast_app.agents.mcp_agent_tools import build_mcp_agent_tools
+from fast_app.agents.document_management_tools import (
+    KNOWLEDGE_DOCUMENT_CREATE_TOOL_NAME,
+    KNOWLEDGE_DOCUMENT_DELETE_TOOL_NAME,
+    KNOWLEDGE_DOCUMENT_READ_TOOL_NAME,
+    KNOWLEDGE_DOCUMENT_UPDATE_TOOL_NAME,
+    KnowledgeDocumentReplacement,
+    build_knowledge_document_management_tools,
+    build_knowledge_document_read_tool,
+)
 from fast_app.agents.mcp_client_boundary import McpStdioClientBoundary
 from fast_app.agents.mcp_tool_contracts import McpStdioServerConfig
 from fast_app.agents.rag_agent_tools import KNOWLEDGE_RETRIEVAL_TOOL_NAME
@@ -38,6 +59,7 @@ from fast_app.domain.agent_task_plan import (
 from fast_app.domain.agent_tool_permissions import (
     AgentToolCallContext,
     AgentToolPermissionAction,
+    PermissionCode,
 )
 from fast_app.domain.knowledge_document_actions import (
     KnowledgeDocumentActionRequest,
@@ -49,7 +71,6 @@ from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.agent_tool_audit_service import AgentToolAuditService
 from fast_app.services.agent_tool_permission_service import (
     AgentToolPermissionService,
-    tool_name_for_document_operation,
 )
 from fast_app.services.exceptions import AppServiceError, ToolPermissionDeniedError
 from fast_app.services.knowledge_document_management_service import (
@@ -57,7 +78,6 @@ from fast_app.services.knowledge_document_management_service import (
 )
 from fast_app.services.rag_pipeline_service import (
     build_content_preview,
-    build_rag_context,
     build_top_doc_ids,
 )
 
@@ -76,7 +96,9 @@ class AgentTaskToolSelectionPayload(BaseModel):
 class AgentTaskKnowledgeRetrievalToolInput(BaseModel):
     """传给 knowledge_retrieval 的最小参数 schema。"""
 
-    query: str = Field(description="用于检索知识库的 query")
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=1, description="用于检索知识库的 query")
     mode: str = Field(default="hybrid", description="vector / keyword / hybrid")
     top_k: int = Field(default=5, ge=1, le=20)
 
@@ -84,7 +106,9 @@ class AgentTaskKnowledgeRetrievalToolInput(BaseModel):
 class AgentTaskWebSearchToolInput(BaseModel):
     """传给 web_search 的最小参数 schema。"""
 
-    query: str = Field(description="用于搜索公开互联网的 query")
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=1, description="用于搜索公开互联网的 query")
     count: int = Field(default=5, ge=1, le=10)
 
 
@@ -104,6 +128,23 @@ TASK_TOOL_SELECTION_PROMPT = """你是 Agent TaskPlan 的工具选择器。
 """
 
 
+DOCUMENT_AGENT_SYSTEM_PROMPT = """你是知识库文档管理 Agent。你必须通过绑定工具完成任务。
+
+每轮只能调用一个工具，并且必须等待 ToolMessage 后再决定下一步。
+- create 可以先调用 knowledge_retrieval、web_search 或 MCP 收集资料，再调用 knowledge_document_create。
+- update/delete 必须先调用 knowledge_retrieval 获得候选 doc_id。
+- update 还必须调用 knowledge_document_read 读取完整原文，再一次性提交全部精确 replacements。
+- 文档工具只生成 dry-run 计划，不会真实写入；不要声称已经执行。
+- 同一文档只能提交一个写动作，不得同时 update/delete 或重复调用。
+
+资料足够且所有文档 dry-run 动作已经提交后，直接返回简短说明，不再调用工具。
+"""
+
+
+class _DocumentActionConflictError(AppServiceError):
+    """同一 TaskPlan 出现相互冲突的文档写动作。"""
+
+
 class AgentTaskPlanStore:
     """用 runtime JSON 文件保存 TaskPlan 的当前快照。"""
 
@@ -113,6 +154,7 @@ class AgentTaskPlanStore:
     def save(self, plan: AgentTaskPlan) -> None:
         """新增或覆盖同一个 task_plan_id 对应的 JSON 文件。"""
 
+        # JSON 是接口读取的事实快照；Markdown 是同一份事实的人类可读视图。
         self._task_plan_dir.mkdir(parents=True, exist_ok=True)
         plan.updated_at = datetime.now(UTC)
         path = self._path_for_new_plan(plan)
@@ -157,7 +199,7 @@ class AgentTaskExecutor:
 
     当前保留两条链路：
     - question_decomposition：确认后按子问题顺序选工具、回答并整合。
-    - knowledge_report_to_document：旧报告生成链路，写文件前仍走权限和确认。
+    - knowledge_document_management：原生 ToolCall 生成 dry-run，确认后真实写入。
     """
 
     def __init__(
@@ -171,6 +213,7 @@ class AgentTaskExecutor:
         tool_audit_service: AgentToolAuditService,
         task_plan_store: AgentTaskPlanStore,
     ) -> None:
+        # Executor 只编排已有依赖，不自行创建数据库、检索器或权限服务，便于请求级依赖注入。
         self._settings = settings
         self._vector_retriever = vector_retriever
         self._keyword_retriever = keyword_retriever
@@ -963,186 +1006,576 @@ class AgentTaskExecutor:
         filters: RetrievalFilters,
         langchain_config_factory: LangChainConfigFactory | None = None,
     ) -> AgentTaskPlan:
-        """执行报告生成并保存到知识库的固定任务链路。"""
+        """运行原生文档 Tool loop，并停在人工确认前。"""
 
-        if plan.task_kind != "knowledge_report_to_document":
+        # 文档任务不能复用问题拆解执行器：前者要冻结可确认的写操作，后者只生成答案。
+        if plan.task_kind != "knowledge_document_management":
             raise AppServiceError(f"不支持的 Agent task kind: {plan.task_kind}")
+        return await self._execute_document_tool_loop(
+            plan=plan,
+            user=user,
+            mode=mode,
+            top_k=top_k,
+            candidate_k=candidate_k,
+            min_score=min_score,
+            filters=filters,
+            langchain_config_factory=langchain_config_factory,
+        )
 
-        # 旧报告链路是固定三步：检索 -> 生成报告 -> 准备文档写入。
+    async def _execute_document_tool_loop(
+        self,
+        *,
+        plan: AgentTaskPlan,
+        user: CurrentUserContext,
+        mode: str,
+        top_k: int,
+        candidate_k: int | None,
+        min_score: float,
+        filters: RetrievalFilters,
+        langchain_config_factory: LangChainConfigFactory | None,
+    ) -> AgentTaskPlan:
+        """执行单 ToolCall、多轮 ToolMessage 的文档 Agent，产出待确认步骤。"""
+
+        if not self._settings.openai_api_key:
+            raise AppServiceError("文档管理任务需要配置 LLM 原生 Tool Calling")
+
         plan.user_id = plan.user_id or user.user_id
         plan.status = AgentTaskPlanStatus.RUNNING
+        plan.steps = []
+        plan.final_output = {"tool_calls": [], "used_tools": []}
         self._task_plan_store.save(plan)
 
+        # 这三个集合是一次 Agent loop 的服务端事实，不交给模型维护：
+        # candidates 限定 update/delete 可选 doc_id；read_doc_ids 强制 update 先读原文；
+        # document_actions 防止同一文档出现重复 update、update+delete 等冲突动作。
+        candidates: dict[str, dict[str, Any]] = {}
+        read_doc_ids: set[str] = set()
+        document_actions: dict[str, str] = {}
+        tools = await self._build_document_agent_tools(
+            plan=plan,
+            user=user,
+            default_mode=mode,
+            default_top_k=top_k,
+            candidate_k=candidate_k,
+            min_score=min_score,
+            filters=filters,
+            candidates=candidates,
+            read_doc_ids=read_doc_ids,
+            document_actions=document_actions,
+        )
+        tools_by_name = {tool.name: tool for tool in tools}
+        # parallel_tool_calls=False 是给模型的协议提示；后面的 raw_calls 数量检查才是强制边界。
+        model = ChatOpenAI(
+            model=self._settings.llm_model_name,
+            api_key=self._settings.openai_api_key,
+            base_url=self._settings.openai_base_url,
+            temperature=0.0,
+        ).bind_tools(tools, parallel_tool_calls=False)
+        messages: list[object] = [
+            SystemMessage(content=DOCUMENT_AGENT_SYSTEM_PROMPT),
+            HumanMessage(content=plan.original_query),
+        ]
+        traces: list[AgentTaskToolCallTrace] = []
+        call_count = 0
+        round_index = 0
+        max_calls = max(self._settings.agent_max_tool_calls, 0)
+
         try:
-            # 第一步：用 planner 生成的 condensed source_query 做一次知识库检索。
-            docs_step = _find_step(plan, "knowledge_retrieval")
-            docs_step.status = AgentToolStepStatus.RUNNING
-            self._task_plan_store.save(plan)
-            docs = await retrieve_knowledge_docs(
-                settings=self._settings,
-                vector_retriever=self._vector_retriever,
-                keyword_retriever=self._keyword_retriever,
-                query=plan.source_query,
-                mode=mode,  # type: ignore[arg-type]
-                top_k=top_k,
-                candidate_k=candidate_k,
-                min_score=min_score,
-                filters=filters,
-                pipeline_provider="rag_agent_task",
-            )
-            docs_step.status = AgentToolStepStatus.COMPLETED
-            docs_step.output = {
-                "doc_count": len(docs),
-                "top_doc_ids": build_top_doc_ids(docs),
-            }
-            self._task_plan_store.save(plan)
+            while True:
+                # 每轮上下文都包含此前 AIMessage 和 ToolMessage，因此依赖工具必须跨轮顺序产生。
+                round_index += 1
+                response = await model.ainvoke(
+                    messages,
+                    config=(
+                        langchain_config_factory(
+                            f"document.tool_loop.round_{round_index}.model"
+                        )
+                        if langchain_config_factory is not None
+                        else None
+                    ),
+                )
+                messages.append(response)
+                raw_calls = getattr(response, "tool_calls", None) or []
+                invalid_calls = getattr(response, "invalid_tool_calls", None) or []
+                if invalid_calls:
+                    # 同轮只要存在无法解析的调用，就拒绝该轮全部调用；错误 ToolMessage 会让模型下一轮修正。
+                    call_count += len(invalid_calls) + len(raw_calls)
+                    for invalid_call in invalid_calls:
+                        call = invalid_call if isinstance(invalid_call, dict) else {}
+                        call_id = str(call.get("id") or f"invalid_{round_index}")
+                        tool_name = str(call.get("name") or "unknown")
+                        error = str(call.get("error") or "ToolCall 参数不是合法结构")
+                        messages.append(
+                            ToolMessage(
+                                content=error,
+                                tool_call_id=call_id,
+                                name=tool_name,
+                                status="error",
+                            )
+                        )
+                        traces.append(
+                            AgentTaskToolCallTrace(
+                                call_id=call_id,
+                                round=round_index,
+                                tool_name=tool_name,
+                                status="failed",
+                                error=error,
+                            )
+                        )
+                    for raw_call in raw_calls:
+                        call = raw_call if isinstance(raw_call, dict) else {}
+                        call_id = str(call.get("id") or f"invalid_{round_index}")
+                        tool_name = str(call.get("name") or "unknown")
+                        error = "同一轮包含非法 ToolCall，本轮所有调用均不执行"
+                        messages.append(
+                            ToolMessage(
+                                content=error,
+                                tool_call_id=call_id,
+                                name=tool_name,
+                                status="error",
+                            )
+                        )
+                        traces.append(
+                            AgentTaskToolCallTrace(
+                                call_id=call_id,
+                                round=round_index,
+                                tool_name=tool_name,
+                                tool_input=_normalize_tool_input(call.get("args")),
+                                status="failed",
+                                error=error,
+                            )
+                        )
+                    self._save_document_tool_progress(plan, traces)
+                    if call_count >= max_calls:
+                        raise AppServiceError("文档 Agent 已达到最大工具调用次数")
+                    continue
+                if not raw_calls:
+                    # 没有 ToolCall 表示模型认为工作已结束；循环外仍会校验至少生成一个文档 dry-run。
+                    break
 
-            # 第二步：基于检索资料生成报告正文。正文来源在这里产生，不来自 planner。
-            report_step = _find_step(plan, "summarize_report")
-            report_step.status = AgentToolStepStatus.RUNNING
-            self._task_plan_store.save(plan)
-            context = build_rag_context(plan.source_query, docs)
-            report_body = await self._generate_with_trace(
-                query=f"请根据检索资料生成报告：{plan.report_title}",
-                context=context,
-                langchain_config=(
-                    langchain_config_factory("report.summarize")
-                    if langchain_config_factory is not None
-                    else None
-                ),
-            )
-            report_content = f"# {plan.report_title}\n\n{report_body.strip()}\n"
-            report_step.status = AgentToolStepStatus.COMPLETED
-            report_step.output = {
-                "content": report_content,
-                "content_length": len(report_content),
-            }
-            self._task_plan_store.save(plan)
+                if len(raw_calls) > 1:
+                    # 不猜测多个调用是否独立，也不挑第一条执行；全部退回可避免破坏工具依赖顺序。
+                    call_count += len(raw_calls)
+                    for raw_call in raw_calls:
+                        call = raw_call if isinstance(raw_call, dict) else {}
+                        call_id = str(call.get("id") or f"invalid_{round_index}")
+                        error = "每轮只允许一个 ToolCall；请按依赖顺序逐个重试"
+                        messages.append(
+                            ToolMessage(
+                                content=error,
+                                tool_call_id=call_id,
+                                name=str(call.get("name") or "unknown"),
+                                status="error",
+                            )
+                        )
+                        traces.append(
+                            AgentTaskToolCallTrace(
+                                call_id=call_id,
+                                round=round_index,
+                                tool_name=str(call.get("name") or "unknown"),
+                                tool_input=_normalize_tool_input(call.get("args")),
+                                status="failed",
+                                error=error,
+                            )
+                        )
+                    self._save_document_tool_progress(plan, traces)
+                    if call_count >= max_calls:
+                        raise AppServiceError("文档 Agent 已达到最大工具调用次数")
+                    continue
 
-            # 第三步：文档写入先 dry-run，再交给权限网关决定是否等待确认。
-            await self._prepare_document_create_step(
-                plan=plan,
-                user=user,
-                report_content=report_content,
+                if call_count >= max_calls:
+                    raise AppServiceError("文档 Agent 已达到最大工具调用次数")
+                call_count += 1
+                call = raw_calls[0]
+                if not isinstance(call, dict):
+                    raise AppServiceError("LLM 返回了无效 ToolCall")
+                call_id = str(call.get("id") or f"tool_{round_index}")
+                tool_name = str(call.get("name") or "")
+                tool_input = _normalize_tool_input(call.get("args"))
+                tool = tools_by_name.get(tool_name)
+                if tool is None:
+                    # 即使模型编造工具名，也只得到错误 ToolMessage，不会进入任意动态调用。
+                    error = f"未注册工具: {tool_name}"
+                    tool_message = ToolMessage(
+                        content=error,
+                        tool_call_id=call_id,
+                        name=tool_name or "unknown",
+                        status="error",
+                    )
+                    messages.append(tool_message)
+                    traces.append(
+                        AgentTaskToolCallTrace(
+                            call_id=call_id,
+                            round=round_index,
+                            tool_name=tool_name or "unknown",
+                            tool_input=tool_input,
+                            status="failed",
+                            error=error,
+                        )
+                    )
+                    self._save_document_tool_progress(plan, traces)
+                    continue
+
+                try:
+                    # 传完整 ToolCall 而非仅 args，LangChain 才能保留原生 tool_call_id 并返回 ToolMessage。
+                    tool_message = await tool.ainvoke(
+                        call,
+                        config=(
+                            langchain_config_factory(
+                                f"document.tool_loop.round_{round_index}.{tool_name}"
+                            )
+                            if langchain_config_factory is not None
+                            else None
+                        ),
+                    )
+                    if not isinstance(tool_message, ToolMessage):
+                        raise AppServiceError("文档工具未返回 ToolMessage")
+                    messages.append(tool_message)
+                    output = _parse_tool_message_content(tool_message.content)
+                    traces.append(
+                        AgentTaskToolCallTrace(
+                            call_id=call_id,
+                            round=round_index,
+                            tool_name=tool_name,
+                            tool_input=tool_input,
+                            tool_output=output,
+                            status="completed",
+                        )
+                    )
+                    if tool_name in {
+                        KNOWLEDGE_DOCUMENT_CREATE_TOOL_NAME,
+                        KNOWLEDGE_DOCUMENT_UPDATE_TOOL_NAME,
+                        KNOWLEDGE_DOCUMENT_DELETE_TOOL_NAME,
+                    }:
+                        # 只把写工具的成功结果冻结成待确认 step；检索/read/web/MCP 只保留在调用轨迹中。
+                        plan.steps.append(
+                            _document_step_from_tool_result(
+                                call_id=call_id,
+                                tool_name=tool_name,
+                                tool_input=tool_input,
+                                output=output,
+                                index=len(plan.steps) + 1,
+                            )
+                        )
+                    self._save_document_tool_progress(plan, traces)
+                except (_DocumentActionConflictError, ToolPermissionDeniedError):
+                    # 动作冲突和权限拒绝属于整个计划无效，不能让模型通过重试规避。
+                    raise
+                except (ValidationError, AppServiceError, ValueError) as exc:
+                    # 普通参数或业务校验错误返回给模型，允许其在剩余调用次数内修正参数。
+                    error = f"{type(exc).__name__}: {exc}"
+                    messages.append(
+                        ToolMessage(
+                            content=error,
+                            tool_call_id=call_id,
+                            name=tool_name,
+                            status="error",
+                        )
+                    )
+                    traces.append(
+                        AgentTaskToolCallTrace(
+                            call_id=call_id,
+                            round=round_index,
+                            tool_name=tool_name,
+                            tool_input=tool_input,
+                            status="failed",
+                            error=error,
+                        )
+                    )
+                    self._save_document_tool_progress(plan, traces)
+
+            if not plan.steps:
+                raise AppServiceError("LLM 未调用任何文档 dry-run 工具")
+            # 到这里仍没有真实写入；TaskPlan 保存了用户确认时需要看到的全部冻结事实。
+            plan.status = AgentTaskPlanStatus.WAITING_CONFIRMATION
+            plan.final_output.update(
+                {
+                    "status": plan.status.value,
+                    "confirm_endpoint": f"/agent/task-plans/{plan.task_plan_id}/confirm",
+                    "document_action_count": len(plan.steps),
+                }
             )
             self._task_plan_store.save(plan)
             return plan
         except Exception as exc:
             plan.status = AgentTaskPlanStatus.FAILED
             plan.error = f"{type(exc).__name__}: {exc}"
+            plan.final_output["status"] = plan.status.value
             self._task_plan_store.save(plan)
             raise
 
-    async def _prepare_document_create_step(
+    def _save_document_tool_progress(
         self,
         plan: AgentTaskPlan,
-        user: CurrentUserContext,
-        report_content: str,
+        traces: list[AgentTaskToolCallTrace],
     ) -> None:
-        """准备文档创建步骤：dry-run、权限裁决、必要时进入等待确认。"""
+        """将每轮原生工具轨迹写回 TaskPlan，供 SSE、页面和 LangSmith 对照查看。"""
 
-        step = _find_step(plan, "knowledge_document_create")
-        step.status = AgentToolStepStatus.RUNNING
-        action_request = KnowledgeDocumentActionRequest(
-            operation=KnowledgeDocumentOperation.CREATE,
-            target_path=plan.target_path,
-            content=report_content,
-            reason=f"AgentTaskPlan {plan.task_plan_id} 生成知识库报告",
+        plan.final_output["tool_calls"] = [
+            item.model_dump(mode="json") for item in traces
+        ]
+        plan.final_output["used_tools"] = list(
+            dict.fromkeys(
+                item.tool_name for item in traces if item.status == "completed"
+            )
+        )
+        self._task_plan_store.save(plan)
+
+    async def _build_document_agent_tools(
+        self,
+        *,
+        plan: AgentTaskPlan,
+        user: CurrentUserContext,
+        default_mode: str,
+        default_top_k: int,
+        candidate_k: int | None,
+        min_score: float,
+        filters: RetrievalFilters,
+        candidates: dict[str, dict[str, Any]],
+        read_doc_ids: set[str],
+        document_actions: dict[str, str],
+    ) -> list[BaseTool]:
+        """构造文档 Agent 的真实只读工具和只生成预览的写工具。"""
+
+        # 闭包共享本轮候选和读取状态，使安全约束由后端状态保证，而不是依赖 Prompt 自觉。
+        async def knowledge_retrieval(
+            query: str,
+            mode: str = default_mode,
+            top_k: int = default_top_k,
+        ) -> str:
+            docs = await retrieve_knowledge_docs(
+                settings=self._settings,
+                vector_retriever=self._vector_retriever,
+                keyword_retriever=self._keyword_retriever,
+                query=query,
+                mode=mode,  # type: ignore[arg-type]
+                top_k=top_k,
+                candidate_k=candidate_k,
+                min_score=min_score,
+                filters=filters,
+                pipeline_provider="rag_agent_document_tool",
+            )
+            found = _document_candidates(docs)
+            # 多轮检索结果按 doc_id 累积；后续 read/update/delete 只能从这个映射取目标。
+            candidates.update({item["doc_id"]: item for item in found})
+            return json.dumps(
+                {
+                    "candidates": found,
+                    "evidence": [_doc_to_evidence(doc) for doc in docs],
+                },
+                ensure_ascii=False,
+            )
+
+        async def read_document(doc_id: str) -> str:
+            # 候选校验先于文件读取，防止模型用猜测的 doc_id/path 读取任意知识库文档。
+            candidate = _require_document_candidate(doc_id, candidates)
+            content = self._document_management_service.read_document_content(
+                candidate["source_path"]
+            )
+            read_doc_ids.add(doc_id)
+            return json.dumps(
+                {
+                    "doc_id": doc_id,
+                    "source_path": candidate["source_path"],
+                    "content": content,
+                },
+                ensure_ascii=False,
+            )
+
+        async def create_document(filename: str, content: str, reason: str) -> str:
+            # LLM 只建议文件名；后端会把它收敛到当前用户可管理的默认目录。
+            target_path = _create_target_path(filename, user, plan.task_plan_id)
+            return await self._prepare_document_dry_run(
+                user=user,
+                operation=KnowledgeDocumentOperation.CREATE,
+                target_path=target_path,
+                content=content,
+                reason=reason,
+                candidate=None,
+                selection_reason="用户要求创建新文档",
+                replacements=[],
+                document_actions=document_actions,
+            )
+
+        async def update_document(
+            doc_id: str,
+            replacements: list[KnowledgeDocumentReplacement],
+            reason: str,
+            selection_reason: str,
+        ) -> str:
+            candidate = _require_document_candidate(doc_id, candidates)
+            # update 必须基于本轮刚读取的完整原文，不能只根据检索摘要自由重写。
+            if doc_id not in read_doc_ids:
+                raise AppServiceError("update 前必须先调用 knowledge_document_read")
+            before = self._document_management_service.read_document_content(
+                candidate["source_path"]
+            )
+            after = _apply_unique_replacements(before, replacements)
+            # diff 是确认页面的审查材料；真正执行仍使用确定性替换后的完整 content。
+            diff = "\n".join(
+                unified_diff(
+                    before.splitlines(),
+                    after.splitlines(),
+                    fromfile=candidate["source_path"],
+                    tofile=candidate["source_path"],
+                    lineterm="",
+                )
+            )
+            return await self._prepare_document_dry_run(
+                user=user,
+                operation=KnowledgeDocumentOperation.UPDATE,
+                target_path=candidate["source_path"],
+                content=after,
+                reason=reason,
+                candidate=candidate,
+                selection_reason=selection_reason,
+                replacements=[item.model_dump(mode="json") for item in replacements],
+                document_actions=document_actions,
+                diff=diff,
+            )
+
+        async def delete_document(
+            doc_id: str,
+            reason: str,
+            selection_reason: str,
+        ) -> str:
+            # delete 同样只能选择权限过滤后的候选；工具参数中没有自由 target_path。
+            candidate = _require_document_candidate(doc_id, candidates)
+            return await self._prepare_document_dry_run(
+                user=user,
+                operation=KnowledgeDocumentOperation.DELETE,
+                target_path=candidate["source_path"],
+                content=None,
+                reason=reason,
+                candidate=candidate,
+                selection_reason=selection_reason,
+                replacements=[],
+                document_actions=document_actions,
+            )
+
+        tools: list[BaseTool] = [
+            StructuredTool.from_function(
+                coroutine=knowledge_retrieval,
+                name=KNOWLEDGE_RETRIEVAL_TOOL_NAME,
+                description=(
+                    "检索当前用户有权读取的知识库资料，并返回可用于 update/delete 的候选 doc_id。"
+                ),
+                args_schema=AgentTaskKnowledgeRetrievalToolInput,
+            ),
+            build_knowledge_document_read_tool(read_document),
+            *build_knowledge_document_management_tools(
+                create=create_document,
+                update=update_document,
+                delete=delete_document,
+            ),
+        ]
+        # 外部资料工具只有在服务已配置且当前用户有权限时才暴露给模型。
+        if self._settings.bocha_api_key and _user_has_permission(
+            user,
+            PermissionCode.AGENT_TOOL_WEB_SEARCH,
+        ):
+            async def web_search(query: str, count: int = 5) -> str:
+                async with httpx.AsyncClient() as http_client:
+                    results = await search_web_with_bocha(
+                        settings=self._settings,
+                        http_client=http_client,
+                        query=query,
+                        count=count,
+                    )
+                return json.dumps(
+                    [item.model_dump(mode="json") for item in results],
+                    ensure_ascii=False,
+                )
+
+            tools.append(
+                StructuredTool.from_function(
+                    coroutine=web_search,
+                    name=WEB_SEARCH_TOOL_NAME,
+                    description="搜索公开互联网，供创建或修改文档前收集资料。",
+                    args_schema=AgentTaskWebSearchToolInput,
+                )
+            )
+        if _user_has_permission(user, PermissionCode.AGENT_TOOL_MCP):
+            tools.extend(await self._build_mcp_task_tools())
+        return tools
+
+    async def _prepare_document_dry_run(
+        self,
+        *,
+        user: CurrentUserContext,
+        operation: KnowledgeDocumentOperation,
+        target_path: str,
+        content: str | None,
+        reason: str,
+        candidate: dict[str, Any] | None,
+        selection_reason: str,
+        replacements: list[dict[str, Any]],
+        document_actions: dict[str, str],
+        diff: str = "",
+    ) -> str:
+        """校验一个写动作并返回可冻结进 TaskPlan 的 dry-run ToolMessage 内容。"""
+
+        # LLM 工具 schema 不包含 ACL、dry_run 或执行开关；这些安全字段只能由后端补齐。
+        request = KnowledgeDocumentActionRequest(
+            operation=operation,
+            target_path=target_path,
+            content=content,
+            reason=reason,
             dry_run=True,
-            expected_department_codes=_infer_departments_from_path(plan.target_path),
+            expected_department_codes=(
+                [user.primary_department_code]
+                if operation == KnowledgeDocumentOperation.CREATE
+                and user.primary_department_code
+                else []
+            ),
         )
-        action_result = await self._document_management_service.plan_action(
-            request=action_request,
-            user=user,
-        )
-        # dry-run preview 是确认阶段重建真实写入请求的事实来源。
-        # 这里还没有写文件，只生成 preview、风险等级和权限元数据。
-        target_departments = list(
-            action_result.preview.permission_metadata.get("allowed_departments", [])
-            or []
-        )
-        requires_confirmation = _requires_confirmation(
-            policy=self._settings.agent_tool_execution_policy,
-            risk_level=action_result.preview.risk_level,
-        ) or self._settings.agent_document_tools_dry_run_only
+        result = await self._document_management_service.plan_action(request, user=user)
+        preview = result.preview
+        doc_id = str(preview.affected_doc_id or "")
+        if not doc_id:
+            raise AppServiceError("文档 dry-run 未返回 doc_id")
+        previous = document_actions.get(doc_id)
+        # 以最终 preview 的 doc_id 判冲突，而不是相信 LLM 提供的路径或候选描述。
+        if previous is not None:
+            raise _DocumentActionConflictError(
+                f"同一文档不能重复或冲突操作: doc_id={doc_id}, {previous}+{operation.value}"
+            )
         context = AgentToolCallContext(
-            tool_name=tool_name_for_document_operation(action_request.operation),
-            operation=action_request.operation,
-            risk_level=action_result.preview.risk_level,
-            target_path=action_request.target_path,
-            target_department_codes=target_departments,
-            requires_confirmation=requires_confirmation,
-            metadata={"source": "rag_agent.task_executor"},
+            tool_name=f"knowledge_document_{operation.value}",
+            operation=operation,
+            risk_level=preview.risk_level,
+            target_path=target_path,
+            target_department_codes=list(
+                preview.permission_metadata.get("allowed_departments", []) or []
+            ),
+            requires_confirmation=True,
+            metadata={"source": "rag_agent.document_native_tool"},
         )
         decision = await self._tool_permission_service.authorize(user=user, context=context)
+        # dry-run 也记录权限决策，便于审计“谁尝试规划了什么高风险操作”。
         await self._tool_audit_service.record_decision(
             user=user,
             context=context,
             decision=decision,
         )
-        # 权限网关返回三类结果：拒绝、等待确认、允许执行；下面按终态分别写回 plan。
         if decision.action == AgentToolPermissionAction.DENY:
-            # 权限拒绝是终态，不进入确认。
-            step.status = AgentToolStepStatus.FAILED
-            step.error = decision.reason
-            plan.status = AgentTaskPlanStatus.FAILED
-            plan.error = decision.reason
-            return
-
-        if decision.action in {
-            AgentToolPermissionAction.CONFIRMATION_REQUIRED,
-            AgentToolPermissionAction.REQUIRE_CONFIRMATION,
-        }:
-            # 保存 dry-run 事实；用户确认后 confirm() 会重新鉴权再真实写入。
-            step.status = AgentToolStepStatus.WAITING_CONFIRMATION
-            step.requires_confirmation = True
-            step.output = {
-                "target_path": plan.target_path,
-                "content": report_content,
-                "action_request": action_request.model_dump(mode="json"),
-                "preview": action_result.preview.model_dump(mode="json"),
+            raise ToolPermissionDeniedError(decision.reason)
+        document_actions[doc_id] = operation.value
+        # 返回值会成为 ToolMessage，并在成功后转换为 WAITING_CONFIRMATION step。
+        return json.dumps(
+            {
+                "operation": operation.value,
+                "target_path": target_path,
+                "action_request": request.model_dump(mode="json"),
+                "preview": preview.model_dump(mode="json"),
                 "permission_decision": decision.model_dump(mode="json"),
-            }
-            plan.status = AgentTaskPlanStatus.WAITING_CONFIRMATION
-            plan.final_output = {
-                "target_path": plan.target_path,
-                "status": plan.status.value,
-                "confirm_endpoint": f"/agent/task-plans/{plan.task_plan_id}/confirm",
-            }
-            return
-
-        if (
-            self._settings.agent_tool_execution_policy == "risk_based"
-            and not self._settings.agent_document_tools_dry_run_only
-        ):
-            # risk_based 且权限允许时可以直接执行，其余策略统一等待确认。
-            executed = await self._document_management_service.execute_confirmed_action(
-                request=KnowledgeDocumentActionRequest(
-                    **{**action_request.model_dump(), "dry_run": False},
-                ),
-                user=user,
-            )
-            step.status = AgentToolStepStatus.COMPLETED
-            step.output = executed.model_dump(mode="json")
-            plan.status = AgentTaskPlanStatus.COMPLETED
-            plan.final_output = {"target_path": plan.target_path, "executed": True}
-            return
-
-        step.status = AgentToolStepStatus.WAITING_CONFIRMATION
-        step.requires_confirmation = True
-        step.output = {
-            "target_path": plan.target_path,
-            "content": report_content,
-            "action_request": action_request.model_dump(mode="json"),
-            "preview": action_result.preview.model_dump(mode="json"),
-            "permission_decision": decision.model_dump(mode="json"),
-        }
-        plan.status = AgentTaskPlanStatus.WAITING_CONFIRMATION
-        plan.final_output = {
-            "target_path": plan.target_path,
-            "status": plan.status.value,
-            "confirm_endpoint": f"/agent/task-plans/{plan.task_plan_id}/confirm",
-        }
+                "candidate": candidate,
+                "selection_reason": selection_reason,
+                "replacements": replacements,
+                "diff": diff,
+            },
+            ensure_ascii=False,
+        )
 
     async def confirm(
         self,
@@ -1152,11 +1585,11 @@ class AgentTaskExecutor:
     ) -> AgentTaskPlan:
         """用户确认 TaskPlan 后的统一入口。
 
-        question_decomposition 在确认后开始执行子问题；
-        knowledge_report_to_document 在确认后执行 dry-run 中冻结的文档写入。
+        question_decomposition 在确认后开始执行子问题；文档任务执行冻结的 dry-run。
         """
 
         plan = self._task_plan_store.load(task_plan_id)
+        # 管理员可代为确认；普通用户只能确认自己创建且仍等待确认的计划。
         if plan.user_id != user.user_id and user.role != "admin":
             raise ToolPermissionDeniedError("只能确认自己创建的 Agent task plan")
         if plan.status != AgentTaskPlanStatus.WAITING_CONFIRMATION:
@@ -1180,85 +1613,255 @@ class AgentTaskExecutor:
                 langchain_config_factory=langchain_config_factory,
             )
 
-        step = _find_step(plan, "knowledge_document_create")
-        if step.status != AgentToolStepStatus.WAITING_CONFIRMATION:
-            raise AppServiceError("文档创建步骤状态不是 waiting_confirmation，拒绝执行")
+        if plan.task_kind == "knowledge_document_management":
+            return await self._confirm_document_management_plan(
+                plan=plan,
+                user=user,
+            )
 
-        action_payload = step.output.get("action_request")
-        preview_payload = step.output.get("preview")
-        if not isinstance(action_payload, dict) or not isinstance(preview_payload, dict):
-            raise AppServiceError("Agent task plan 缺少确认执行所需的 dry-run 事实")
+        raise AppServiceError(f"不支持的 Agent task kind: {plan.task_kind}")
 
-        # 确认阶段不信任旧裁决结果，必须用当前用户和当前权限重新鉴权。
-        # 这样可以覆盖“用户权限在确认前发生变化”的场景。
-        action_request = KnowledgeDocumentActionRequest.model_validate(
-            {
-                **action_payload,
-                "dry_run": False,
+    async def _confirm_document_management_plan(
+        self,
+        plan: AgentTaskPlan,
+        user: CurrentUserContext,
+    ) -> AgentTaskPlan:
+        """重新鉴权全部文档步骤，再交给 service 做整批执行和补偿。"""
+
+        actions: list[tuple[KnowledgeDocumentActionRequest, str | None]] = []
+        contexts: list[AgentToolCallContext] = []
+        try:
+            # 先完成整批事实解析和二次鉴权，任何一步失败都不会调用真实写入 Service。
+            for step in plan.steps:
+                if step.status != AgentToolStepStatus.WAITING_CONFIRMATION:
+                    raise AppServiceError("文档管理步骤状态不是 waiting_confirmation")
+                action_payload = step.output.get("action_request")
+                preview_payload = step.output.get("preview")
+                if not isinstance(action_payload, dict) or not isinstance(
+                    preview_payload, dict
+                ):
+                    raise AppServiceError("文档管理步骤缺少 dry-run 事实")
+                request = KnowledgeDocumentActionRequest.model_validate(
+                    # dry-run 标志不沿用模型结果；只有 confirm 路径能在本地改为 False。
+                    {**action_payload, "dry_run": False}
+                )
+                target_departments = list(
+                    preview_payload.get("permission_metadata", {}).get(
+                        "allowed_departments", []
+                    )
+                    or []
+                )
+                context = AgentToolCallContext(
+                    tool_name=step.tool_name,
+                    operation=request.operation,
+                    risk_level=KnowledgeDocumentRiskLevel(
+                        preview_payload["risk_level"]
+                    ),
+                    target_path=request.target_path,
+                    target_department_codes=target_departments,
+                    requires_confirmation=False,
+                    confirmation_text="confirmed",
+                    metadata={
+                        "source": "agent_task_plan.confirm",
+                        "task_plan_id": plan.task_plan_id,
+                    },
+                )
+                decision = await self._tool_permission_service.authorize(
+                    user=user,
+                    context=context,
+                )
+                await self._tool_audit_service.record_decision(
+                    user=user,
+                    context=context,
+                    decision=decision,
+                )
+                if decision.action != AgentToolPermissionAction.EXECUTE_ALLOWED:
+                    raise ToolPermissionDeniedError(decision.reason)
+                # before_hash 把确认页面看到的旧版本带入 Service，执行前会再次比较。
+                actions.append((request, preview_payload.get("before_hash")))
+                contexts.append(context)
+
+            results = await self._document_management_service.execute_confirmed_actions(
+                actions=actions,
+                user=user,
+            )
+            for step, result, context in zip(
+                plan.steps, results, contexts, strict=True
+            ):
+                # Service 整批成功后才统一把步骤标记完成，避免页面看到部分成功状态。
+                step.status = AgentToolStepStatus.COMPLETED
+                step.requires_confirmation = False
+                step.output["execution_result"] = result.model_dump(mode="json")
+                await self._tool_audit_service.record_execution(
+                    user=user,
+                    task_plan_id=plan.task_plan_id,
+                    tool_name=context.tool_name,
+                    executed=True,
+                    message=result.message,
+                )
+            plan.status = AgentTaskPlanStatus.COMPLETED
+            plan.final_output = {
+                **plan.final_output,
+                "status": plan.status.value,
+                "executed": True,
+                "document_action_count": len(results),
+                "affected_doc_ids": [
+                    result.preview.affected_doc_id for result in results
+                ],
             }
-        )
-        target_departments = list(
-            preview_payload.get("permission_metadata", {}).get("allowed_departments", [])
-            or []
-        )
-        context = AgentToolCallContext(
-            tool_name=tool_name_for_document_operation(action_request.operation),
-            operation=action_request.operation,
-            risk_level=KnowledgeDocumentRiskLevel(preview_payload["risk_level"]),
-            target_path=action_request.target_path,
-            target_department_codes=target_departments,
-            requires_confirmation=False,
-            confirmation_text="confirmed",
-            metadata={"source": "agent_task_plan.confirm", "task_plan_id": task_plan_id},
-        )
-        decision = await self._tool_permission_service.authorize(user=user, context=context)
-        await self._tool_audit_service.record_decision(
-            user=user,
-            context=context,
-            decision=decision,
-        )
-        if decision.action != AgentToolPermissionAction.EXECUTE_ALLOWED:
-            raise ToolPermissionDeniedError(decision.reason)
-
-        # expected_before_hash 防止确认到执行之间文件内容被别人改过。
-        # 如果目标文件已变化，document_management_service 会拒绝基于旧 preview 写入。
-        result = await self._document_management_service.execute_confirmed_action(
-            request=action_request,
-            user=user,
-            expected_before_hash=preview_payload.get("before_hash"),
-        )
-        step.status = AgentToolStepStatus.COMPLETED
-        step.requires_confirmation = False
-        step.output = {
-            **step.output,
-            "execution_result": result.model_dump(mode="json"),
-        }
-        plan.status = AgentTaskPlanStatus.COMPLETED
-        plan.final_output = {
-            "target_path": plan.target_path,
-            "status": plan.status.value,
-            "executed": True,
-        }
-
-        # 日志记录 任务执行操作
-        await self._tool_audit_service.record_execution(
-            user=user,
-            task_plan_id=plan.task_plan_id,
-            tool_name=context.tool_name,
-            executed=True,
-            message=result.message,
-        )
-        self._task_plan_store.save(plan)
-        return plan
+            self._task_plan_store.save(plan)
+            return plan
+        except Exception as exc:
+            # Service 会负责数据补偿；Executor 只持久化计划失败状态和可展示的回滚摘要。
+            plan.status = AgentTaskPlanStatus.FAILED
+            plan.error = f"{type(exc).__name__}: {exc}"
+            plan.final_output = {
+                **plan.final_output,
+                "status": plan.status.value,
+                "rollback_status": "completed"
+                if "已完成补偿回滚" in str(exc)
+                else "not_required_or_failed",
+            }
+            self._task_plan_store.save(plan)
+            raise
 
 
-def _find_step(plan: AgentTaskPlan, tool_name: str) -> AgentToolStep:
-    """按工具名找到固定任务链路中的步骤。"""
+def _parse_tool_message_content(content: object) -> dict[str, Any]:
+    """把 ToolMessage 的字符串或结构化正文统一收敛成可保存的字典。"""
 
-    for step in plan.steps:
-        if step.tool_name == tool_name:
-            return step
-    raise AppServiceError(f"Agent task plan 缺少步骤: {tool_name}")
+    if isinstance(content, str):
+        try:
+            value = json.loads(content)
+        except json.JSONDecodeError:
+            return {"content": content}
+        return value if isinstance(value, dict) else {"content": value}
+    return {"content": content}
+
+
+def _user_has_permission(
+    user: CurrentUserContext,
+    permission: PermissionCode,
+) -> bool:
+    """判断用户是否可看到某个可选工具；真正执行时仍会经过权限服务。"""
+
+    return user.role in {"admin", "system_admin"} or permission.value in user.permissions
+
+
+def _require_document_candidate(
+    doc_id: str,
+    candidates: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """只允许选择本轮权限过滤检索产生的 doc_id。"""
+
+    candidate = candidates.get(doc_id)
+    if candidate is None:
+        raise AppServiceError("doc_id 不在本轮权限过滤后的检索候选中")
+    return candidate
+
+
+def _document_step_from_tool_result(
+    *,
+    call_id: str,
+    tool_name: str,
+    tool_input: dict[str, Any],
+    output: dict[str, Any],
+    index: int,
+) -> AgentToolStep:
+    """把成功的原生文档 ToolCall 冻结成一个待人工确认步骤。"""
+
+    preview = output.get("preview")
+    action_request = output.get("action_request")
+    if not isinstance(preview, dict) or not isinstance(action_request, dict):
+        raise AppServiceError("文档 dry-run ToolMessage 缺少 preview 或 action_request")
+    operation = str(output.get("operation") or "")
+    return AgentToolStep(
+        step_id=f"step_{index}_{operation}_document",
+        tool_name=tool_name,
+        status=AgentToolStepStatus.WAITING_CONFIRMATION,
+        input={**tool_input, "target_path": output.get("target_path")},
+        output={
+            "tool_call_id": call_id,
+            "action_request": action_request,
+            "preview": preview,
+            "permission_decision": output.get("permission_decision", {}),
+            "candidate": output.get("candidate"),
+            "selection_reason": output.get("selection_reason", ""),
+            "replacements": output.get("replacements", []),
+            "diff": output.get("diff", ""),
+        },
+        risk_level=str(preview.get("risk_level") or "high"),
+        requires_confirmation=True,
+    )
+
+
+def _document_candidates(docs: list[RetrievedDoc]) -> list[dict[str, Any]]:
+    """把 chunk 命中按 doc_id 收敛成 LLM 可选择的文档候选。"""
+
+    candidates: dict[str, dict[str, Any]] = {}
+    for doc in docs:
+        doc_id = str(doc.metadata.get("doc_id") or "").strip()
+        source_path = str(doc.metadata.get("source_path") or "").strip()
+        if not doc_id or not source_path:
+            continue
+        item = candidates.setdefault(
+            doc_id,
+            {
+                "doc_id": doc_id,
+                "source_path": source_path,
+                "title": doc.title,
+                "chunk_count": 0,
+                "matched_chunks": [],
+                "permission_metadata": {
+                    "visibility": doc.metadata.get("visibility"),
+                    "allowed_departments": doc.metadata.get(
+                        "allowed_departments", []
+                    ),
+                    "allowed_users": doc.metadata.get("allowed_users", []),
+                    "permission_source": doc.metadata.get("permission_source"),
+                },
+            },
+        )
+        item["chunk_count"] += 1
+        item["matched_chunks"].append(build_content_preview(doc.content))
+    return list(candidates.values())
+
+
+def _apply_unique_replacements(
+    content: str,
+    replacements: list[KnowledgeDocumentReplacement],
+) -> str:
+    """只应用在当前文本中唯一出现的精确替换。"""
+
+    updated = content
+    for replacement in replacements:
+        count = updated.count(replacement.old_text)
+        if count != 1:
+            raise AppServiceError(
+                "精确修改片段必须在目标文档中唯一出现: "
+                f"matches={count} old_text={replacement.old_text[:80]!r}"
+            )
+        updated = updated.replace(
+            replacement.old_text,
+            replacement.new_text,
+            1,
+        )
+    if updated == content:
+        raise AppServiceError("文档修改计划没有产生内容变化")
+    return updated
+
+
+def _create_target_path(
+    requested_path: str,
+    user: CurrentUserContext,
+    task_plan_id: str,
+) -> str:
+    """把 LLM 建议文件名限制在当前用户默认作用域目录。"""
+
+    requested_name = Path(requested_path).name if requested_path else ""
+    if not requested_name.endswith((".md", ".txt")):
+        requested_name = f"agent-{task_plan_id.rsplit('_', 1)[-1]}.md"
+    directory = user.primary_department_code or f"users/{user.user_id}"
+    return f"{directory}/{requested_name}"
 
 
 def _as_text(value: object) -> str:
@@ -1299,70 +1902,157 @@ def _render_task_plan_markdown(plan: AgentTaskPlan) -> str:
         f"- 原始问题: {plan.original_query}",
         f"- 检索 query: `{plan.source_query}`",
         f"- 确认接口: `/agent/task-plans/{plan.task_plan_id}/confirm`",
-        "",
-        "## 子问题拆解",
     ]
-    for item in sorted(plan.sub_questions, key=lambda sub: sub.order):
-        depends_on = ", ".join(item.depends_on) if item.depends_on else "无"
-        lines.extend(
-            [
-                "",
-                f"### {item.order}. {item.question}",
-                "",
-                f"- sub_question_id: `{item.sub_question_id}`",
-                f"- 目的: {item.purpose}",
-                f"- 依赖: {depends_on}",
-                f"- 建议信息来源: `{item.information_source_hint}`",
-                f"- 拆解原因: {item.reason}",
-                f"- 期望证据: {item.expected_evidence or '无'}",
-            ]
-        )
 
-    lines.extend(["", "## 最终整合要求", "", plan.final_synthesis_instruction])
-
-    results = plan.final_output.get("sub_question_results", [])
-    if isinstance(results, list) and results:
-        lines.extend(["", "## 执行结果"])
-        for result in results:
-            if not isinstance(result, dict):
-                continue
+    if plan.task_kind == "question_decomposition":
+        lines.extend(["", "## 子问题拆解"])
+        for item in sorted(plan.sub_questions, key=lambda sub: sub.order):
+            depends_on = ", ".join(item.depends_on) if item.depends_on else "无"
             lines.extend(
                 [
                     "",
-                    f"### {result.get('sub_question_id')} - {result.get('question')}",
+                    f"### {item.order}. {item.question}",
                     "",
-                    f"- 状态: `{result.get('status')}`",
-                    f"- 使用工具: `{result.get('selected_tool')}`",
+                    f"- sub_question_id: `{item.sub_question_id}`",
+                    f"- 目的: {item.purpose}",
+                    f"- 依赖: {depends_on}",
+                    f"- 建议信息来源: `{item.information_source_hint}`",
+                    f"- 拆解原因: {item.reason}",
+                    f"- 期望证据: {item.expected_evidence or '无'}",
+                ]
+            )
+        lines.extend(["", "## 最终整合要求", "", plan.final_synthesis_instruction])
+
+        results = plan.final_output.get("sub_question_results", [])
+        if isinstance(results, list) and results:
+            lines.extend(["", "## 执行结果"])
+            for result in results:
+                if not isinstance(result, dict):
+                    continue
+                lines.extend(
+                    [
+                        "",
+                        f"### {result.get('sub_question_id')} - {result.get('question')}",
+                        "",
+                        f"- 状态: `{result.get('status')}`",
+                        f"- 使用工具: `{result.get('selected_tool')}`",
+                        "",
+                        result.get("answer") or result.get("error") or "",
+                    ]
+                )
+
+        final_answer = plan.final_output.get("final_answer")
+        if isinstance(final_answer, str) and final_answer.strip():
+            lines.extend(["", "## 最终答案", "", final_answer.strip()])
+    else:
+        lines.extend(["", "## 文档动作"])
+        for step in plan.steps:
+            preview = step.output.get("preview")
+            preview = preview if isinstance(preview, dict) else {}
+            action_request = step.output.get("action_request")
+            action_request = action_request if isinstance(action_request, dict) else {}
+            operation = str(action_request.get("operation") or "")
+            target_path = action_request.get("target_path") or step.input.get("target_path")
+            warnings = preview.get("warnings")
+            warnings = warnings if isinstance(warnings, list) else []
+            lines.extend(
+                [
                     "",
-                    result.get("answer") or result.get("error") or "",
+                    f"### {step.tool_name}: {target_path}",
+                    "",
+                    f"- 状态: `{step.status.value}`",
+                    f"- tool_call_id: `{step.output.get('tool_call_id', '')}`",
+                    f"- 操作: `{operation}`",
+                    f"- 目标路径: `{target_path}`",
+                    f"- doc_id: `{preview.get('affected_doc_id', '')}`",
+                    f"- 风险等级: `{step.risk_level}`",
+                    f"- 需要确认: `{step.requires_confirmation}`",
+                    f"- 选择理由: {step.output.get('selection_reason') or '用户明确指定或创建任务'}",
+                    f"- 操作原因: {action_request.get('reason') or '无'}",
+                    f"- 权限: `{json.dumps(preview.get('permission_metadata', {}), ensure_ascii=False)}`",
+                    f"- 影响 chunk 数: `{preview.get('affected_chunk_count', 0)}`",
+                    f"- before_hash: `{preview.get('before_hash') or ''}`",
+                    f"- after_hash: `{preview.get('after_hash') or ''}`",
+                    f"- warnings: `{json.dumps(warnings, ensure_ascii=False)}`",
                 ]
             )
 
-    final_answer = plan.final_output.get("final_answer")
-    if isinstance(final_answer, str) and final_answer.strip():
-        lines.extend(["", "## 最终答案", "", final_answer.strip()])
+            content = action_request.get("content")
+            if operation == KnowledgeDocumentOperation.CREATE.value and isinstance(content, str):
+                lines.extend(["", "#### 候选正文", "", *_markdown_fenced_block(content, "markdown")])
+
+            replacements = step.output.get("replacements")
+            if operation == KnowledgeDocumentOperation.UPDATE.value and isinstance(replacements, list):
+                for index, replacement in enumerate(replacements, start=1):
+                    if not isinstance(replacement, dict):
+                        continue
+                    lines.extend(
+                        [
+                            "",
+                            f"#### 精确替换 {index}",
+                            "",
+                            "##### old_text",
+                            "",
+                            *_markdown_fenced_block(str(replacement.get("old_text") or ""), "text"),
+                            "",
+                            "##### new_text",
+                            "",
+                            *_markdown_fenced_block(str(replacement.get("new_text") or ""), "text"),
+                        ]
+                    )
+
+            diff = step.output.get("diff")
+            if isinstance(diff, str) and diff.strip():
+                lines.extend(["", "#### 差异", "", *_markdown_fenced_block(diff, "diff")])
+
+            candidate = step.output.get("candidate")
+            if operation == KnowledgeDocumentOperation.DELETE.value and isinstance(candidate, dict):
+                lines.extend(
+                    [
+                        "",
+                        "#### 删除候选证据",
+                        "",
+                        f"- 标题: {candidate.get('title') or '无'}",
+                        f"- source_path: `{candidate.get('source_path') or ''}`",
+                    ]
+                )
+                matched_chunks = candidate.get("matched_chunks")
+                if isinstance(matched_chunks, list):
+                    for index, chunk in enumerate(matched_chunks, start=1):
+                        lines.extend(
+                            [
+                                "",
+                                f"##### 匹配片段 {index}",
+                                "",
+                                *_markdown_fenced_block(str(chunk), "text"),
+                            ]
+                        )
+
+            execution_result = step.output.get("execution_result")
+            if isinstance(execution_result, dict):
+                lines.extend(
+                    [
+                        "",
+                        "#### 执行结果",
+                        "",
+                        f"- executed: `{execution_result.get('executed', False)}`",
+                        f"- message: {execution_result.get('message') or '无'}",
+                    ]
+                )
+            elif step.error:
+                lines.extend(["", "#### 执行错误", "", step.error])
+
+    if plan.status == AgentTaskPlanStatus.FAILED and plan.error:
+        lines.extend(["", "## 计划错误", "", plan.error])
     return "\n".join(lines) + "\n"
 
 
-def _infer_departments_from_path(target_path: str) -> list[str]:
-    """用知识库路径第一段推断目标部门编码。"""
+def _markdown_fenced_block(text: str, language: str) -> list[str]:
+    """生成不会被正文内部反引号提前闭合的 Markdown 代码块。"""
 
-    first = target_path.replace("\\", "/").split("/", 1)[0].strip()
-    return [first] if first else []
-
-
-def _requires_confirmation(
-    policy: str,
-    risk_level: KnowledgeDocumentRiskLevel,
-) -> bool:
-    """根据执行策略和风险等级判断是否必须人工确认。"""
-
-    if policy in {"confirmation_required", "dry_run_only"}:
-        return True
-    return risk_level in {
-        KnowledgeDocumentRiskLevel.HIGH,
-        KnowledgeDocumentRiskLevel.CRITICAL,
-    }
+    longest_run = max((len(match.group(0)) for match in re.finditer(r"`+", text)), default=0)
+    fence = "`" * max(3, longest_run + 1)
+    return [f"{fence}{language}", text, fence]
 
 
 def _build_tool_selection_messages(

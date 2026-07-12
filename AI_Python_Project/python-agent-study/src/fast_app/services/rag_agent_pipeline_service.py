@@ -895,6 +895,9 @@ class RagAgentPipeline:
                             for item in task_plan.sub_questions
                         ],
                         "final_synthesis_instruction": task_plan.final_synthesis_instruction,
+                        "steps": [
+                            item.model_dump(mode="json") for item in task_plan.steps
+                        ],
                     },
                 )
                 for step in task_plan.steps:
@@ -943,6 +946,36 @@ class RagAgentPipeline:
                             "confirm_endpoint": f"/agent/task-plans/{task_plan.task_plan_id}/confirm",
                         },
                     )
+                document_tool_calls = task_plan.final_output.get("tool_calls", [])
+                if (
+                    task_plan.task_kind == "knowledge_document_management"
+                    and isinstance(document_tool_calls, list)
+                ):
+                    for call in document_tool_calls:
+                        if not isinstance(call, dict):
+                            continue
+                        common = {
+                            "task_plan_id": task_plan.task_plan_id,
+                            "call_id": call.get("call_id"),
+                            "round": call.get("round"),
+                            "tool_name": call.get("tool_name"),
+                        }
+                        yield RagStreamEvent(
+                            event="agent_task_tool_call_started",
+                            data={**common, "tool_input": call.get("tool_input", {})},
+                        )
+                        yield RagStreamEvent(
+                            event=(
+                                "agent_task_tool_call_completed"
+                                if call.get("status") == "completed"
+                                else "agent_task_tool_call_failed"
+                            ),
+                            data={
+                                **common,
+                                "tool_output": call.get("tool_output", {}),
+                                "error": call.get("error"),
+                            },
+                        )
                 sub_question_results = task_plan.final_output.get(
                     "sub_question_results",
                     [],

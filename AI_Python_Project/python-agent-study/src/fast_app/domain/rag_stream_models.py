@@ -14,6 +14,7 @@ RagStreamEventName = Literal[
     "agent_task_plan_created",
     "agent_task_step_started",
     "agent_task_step_completed",
+    "agent_task_step_failed",
     "agent_task_waiting_confirmation",
     "agent_task_status",
     "agent_task_execution_started",

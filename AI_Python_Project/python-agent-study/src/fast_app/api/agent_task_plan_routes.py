@@ -237,6 +237,7 @@ async def _confirm_task_plan_sse_generator(
 
         # 轮询会重复读到已经完成的子问题；用 id 去重，确保前端每题只收到一次完成事件。
         seen_sub_questions: set[str] = set()
+        seen_steps: set[str] = set()
         yield _format_sse_event(
             "agent_task_execution_started",
             {"task_plan_id": task_plan_id},
@@ -258,7 +259,9 @@ async def _confirm_task_plan_sse_generator(
                     plan = task_plan_store.load(task_plan_id)
 
                     # 把当前读取到的 任务快照进度 转换为 sse事件 响应给前端显示任务状态
-                    for event in _task_plan_progress_events(plan, seen_sub_questions):
+                    for event in _task_plan_progress_events(
+                        plan, seen_sub_questions, seen_steps
+                    ):
                         yield event
                 
                 # 轮询快照的异常被忽略 例如后台任务刚启动、快照文件还没写好时，`load()` 可能暂时失败。这里不让一次短暂读取失败直接断开 SSE；等一秒后再试。
@@ -270,7 +273,9 @@ async def _confirm_task_plan_sse_generator(
             # confirm 已结束，await 取得最终 plan，并补发最后一次快照中尚未发送的子问题事件。
             plan = await task
 
-            for event in _task_plan_progress_events(plan, seen_sub_questions):
+            for event in _task_plan_progress_events(
+                plan, seen_sub_questions, seen_steps
+            ):
                 yield event
 
             # prompt_guard 开始校验 最终回答
@@ -325,6 +330,7 @@ async def _confirm_task_plan_sse_generator(
 def _task_plan_progress_events(
     plan: Any,
     seen_sub_questions: set[str],
+    seen_steps: set[str] | None = None,
 ) -> list[str]:
     """把一次 TaskPlan 快照中可观察到的状态和新增子问题结果转为 SSE。
 
@@ -338,6 +344,29 @@ def _task_plan_progress_events(
             {"task_plan_id": plan.task_plan_id, "status": plan.status.value},
         )
     ]
+    seen_steps = seen_steps if seen_steps is not None else set()
+    for step in getattr(plan, "steps", []):
+        if step.step_id in seen_steps or step.status.value not in {
+            "completed",
+            "failed",
+        }:
+            continue
+        seen_steps.add(step.step_id)
+        events.append(
+            _format_sse_event(
+                "agent_task_step_completed"
+                if step.status.value == "completed"
+                else "agent_task_step_failed",
+                {
+                    "task_plan_id": plan.task_plan_id,
+                    "step_id": step.step_id,
+                    "tool_name": step.tool_name,
+                    "status": step.status.value,
+                    "output": step.output,
+                    "error": step.error,
+                },
+            )
+        )
     # question_decomposition 执行器将每个已完成子问题的字典追加到这里并保存快照。
     results = plan.final_output.get("sub_question_results", [])
 

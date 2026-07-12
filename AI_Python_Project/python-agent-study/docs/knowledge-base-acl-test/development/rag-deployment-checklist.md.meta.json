@@ -1,0 +1,8 @@
+{
+  "visibility": "department",
+  "allowed_departments": [
+    "development"
+  ],
+  "allowed_users": [],
+  "permission_source": "creator_scope"
+}

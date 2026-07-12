@@ -7,7 +7,10 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-AgentTaskKind = Literal["knowledge_report_to_document", "question_decomposition"]
+AgentTaskKind = Literal[
+    "knowledge_document_management",
+    "question_decomposition",
+]
 AgentTaskType = Literal["qa", "comparison", "report_generation", "analysis", "unknown"]
 AgentTaskInformationSourceHint = Literal["knowledge_retrieval", "web_search", "none"]
 AgentTaskSubQuestionResultStatus = Literal["completed", "failed"]
@@ -142,7 +145,7 @@ class AgentTaskPlan(BaseModel):
 
     # 一个 plan 同时服务两类前端展示：
     # - question_decomposition：展示问题拆解，用户确认后按子问题执行工具循环。
-    # - knowledge_report_to_document：沿用 steps 执行和人工确认链路。
+    # - knowledge_document_management：保存原生文档 ToolCall 形成的待确认步骤。
     task_plan_id: str = Field(description="任务计划唯一 ID。")
     task_kind: AgentTaskKind = Field(
         description="任务计划类型；question_decomposition 表达复杂问题拆解并在确认后执行。",

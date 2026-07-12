@@ -283,8 +283,8 @@ def get_knowledge_document_management_service(
 ) -> KnowledgeDocumentManagementService:
     """提供 Agent 文档管理工具的后端服务边界。
 
-    15-6.5 只使用 dry-run 主线，所以 ES / Milvus client 可以为空。这里仍优先从
-    app.state 读取外部 client，是为了后续 15-7 放开受控执行时复用同一套依赖注入。
+    dry-run 只读取预览；TaskPlan 确认执行会使用这里注入的 embedding、ES、Milvus
+    client 做单文档同步。生产装配缺任一 client 时，真实写入会被 service 拒绝。
     """
 
     return KnowledgeDocumentManagementService(
