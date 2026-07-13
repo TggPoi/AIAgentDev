@@ -50,6 +50,14 @@ class AgentTaskPlanConfirmResponse(BaseModel):
     trace_id: str | None = None
 
 
+class AgentTaskPlanControlResponse(BaseModel):
+    task_plan_id: str
+    status: str
+    message: str
+    request_id: str | None = None
+    trace_id: str | None = None
+
+
 def _agent_task_plan_trace(
     settings: Settings,
     *,
@@ -65,7 +73,7 @@ def _agent_task_plan_trace(
         run_type="chain",
         inputs={
             "task_plan_id": task_plan_id,
-            "confirmed": True,
+            "confirmed": operation.startswith("confirm"),
             "stream": operation == "confirm_stream",
         },
         metadata=build_langsmith_metadata(
@@ -113,6 +121,64 @@ async def get_agent_task_plan_markdown_endpoint(
     if plan.user_id != user.user_id and user.role != "admin":
         raise ToolPermissionDeniedError("只能查看自己创建的 Agent task plan")
     return task_plan_store.load_markdown(task_plan_id)
+
+
+@router.post("/{task_plan_id}/cancel", response_model=AgentTaskPlanControlResponse)
+async def cancel_agent_task_plan_endpoint(
+    task_plan_id: str,
+    user: CurrentUserContext = Depends(get_current_user_context),
+    task_executor: AgentTaskExecutor = Depends(get_agent_task_executor),
+    settings: Settings = Depends(get_settings),
+) -> AgentTaskPlanControlResponse:
+    """取消 TaskPlan；运行中的 Tool Loop 会在当前轮次屏障后停止。"""
+
+    async with _agent_task_plan_trace(
+        settings,
+        operation="cancel",
+        task_plan_id=task_plan_id,
+        user_id=user.user_id,
+    ) as trace_run:
+        plan = task_executor.cancel(task_plan_id, user=user)
+        if trace_run is not None:
+            trace_run.add_outputs(
+                {"task_plan_id": plan.task_plan_id, "status": plan.status.value}
+            )
+    return AgentTaskPlanControlResponse(
+        task_plan_id=plan.task_plan_id,
+        status=plan.status.value,
+        message="Agent task plan 已取消",
+        request_id=get_request_id(),
+        trace_id=get_trace_id(),
+    )
+
+
+@router.post("/{task_plan_id}/retry", response_model=AgentTaskPlanControlResponse)
+async def retry_agent_task_plan_endpoint(
+    task_plan_id: str,
+    user: CurrentUserContext = Depends(get_current_user_context),
+    task_executor: AgentTaskExecutor = Depends(get_agent_task_executor),
+    settings: Settings = Depends(get_settings),
+) -> AgentTaskPlanControlResponse:
+    """从最近完整检查点恢复失败或进程中断的文档 Tool Loop。"""
+
+    async with _agent_task_plan_trace(
+        settings,
+        operation="retry",
+        task_plan_id=task_plan_id,
+        user_id=user.user_id,
+    ) as trace_run:
+        plan = await task_executor.resume(task_plan_id, user=user)
+        if trace_run is not None:
+            trace_run.add_outputs(
+                {"task_plan_id": plan.task_plan_id, "status": plan.status.value}
+            )
+    return AgentTaskPlanControlResponse(
+        task_plan_id=plan.task_plan_id,
+        status=plan.status.value,
+        message="Agent task plan 已从最近完整轮次恢复",
+        request_id=get_request_id(),
+        trace_id=get_trace_id(),
+    )
 
 
 @router.post("/{task_plan_id}/confirm", response_model=AgentTaskPlanConfirmResponse)

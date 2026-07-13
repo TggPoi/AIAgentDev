@@ -206,6 +206,8 @@
       <button id="streamBtn">流式 /rag/chat/stream/events</button>
       <button id="stopStreamBtn" class="danger" disabled>停止流式请求</button>
       <button id="confirmBtn" class="secondary" disabled>确认并执行 TaskPlan</button>
+      <button id="cancelPlanBtn" class="danger" disabled>取消 TaskPlan</button>
+      <button id="retryPlanBtn" class="secondary" disabled>重试 TaskPlan</button>
       <button id="loadPlanBtn" class="secondary" disabled>读取 TaskPlan</button>
       <span class="status" id="taskStatus">无 TaskPlan</span>
     </div>
@@ -282,6 +284,8 @@
       currentConfirmEndpoint = "";
       $("taskStatus").textContent = "无 TaskPlan";
       $("confirmBtn").disabled = true;
+      $("cancelPlanBtn").disabled = true;
+      $("retryPlanBtn").disabled = true;
       $("loadPlanBtn").disabled = true;
       $("planBox").textContent = "暂无 TaskPlan";
       return;
@@ -294,6 +298,8 @@
       ? `${status || "task_plan"}: ${currentTaskPlanId}`
       : "无 TaskPlan";
     $("confirmBtn").disabled = !currentTaskPlanId;
+    $("cancelPlanBtn").disabled = !currentTaskPlanId;
+    $("retryPlanBtn").disabled = !currentTaskPlanId;
     $("loadPlanBtn").disabled = !currentTaskPlanId;
     if (currentTaskPlanId) {
       loadTaskPlanMarkdown();
@@ -428,6 +434,38 @@
         throw new Error(`${response.status} ${response.statusText}\n${await response.text()}`);
       }
       await readSse(response.body);
+    } catch (error) {
+      log(String(error), false);
+    }
+  });
+
+  $("cancelPlanBtn").addEventListener("click", async () => {
+    if (!currentTaskPlanId) return;
+    log(`取消 ${currentTaskPlanId} ...`, false);
+    try {
+      const response = await fetch(
+        `${baseUrl()}/agent/task-plans/${currentTaskPlanId}/cancel`,
+        {method: "POST", headers: headers()}
+      );
+      const data = await readJsonResponse(response);
+      log(data, false);
+      setTaskPlan(data.task_plan_id, "", data.status);
+    } catch (error) {
+      log(String(error), false);
+    }
+  });
+
+  $("retryPlanBtn").addEventListener("click", async () => {
+    if (!currentTaskPlanId) return;
+    log(`从最近完整检查点重试 ${currentTaskPlanId} ...`, false);
+    try {
+      const response = await fetch(
+        `${baseUrl()}/agent/task-plans/${currentTaskPlanId}/retry`,
+        {method: "POST", headers: headers()}
+      );
+      const data = await readJsonResponse(response);
+      log(data, false);
+      setTaskPlan(data.task_plan_id, "", data.status);
     } catch (error) {
       log(String(error), false);
     }

@@ -73,11 +73,13 @@ def build_seed_messages(conversation_id: str) -> list[ConversationMessage]:
             "README 应该包含环境变量、启动命令和验收方式。",
         ),
     ]
+    created_at = utc_now()
     return [
         ConversationMessage(
             conversation_id=conversation_id,
             role=role,
             content=content,
+            created_at=created_at,
         )
         for role, content in contents
     ]
@@ -147,6 +149,15 @@ async def main_async() -> None:
             messages = await seed_conversation(
                 repository=repository,
                 conversation_id=conversation_id,
+            )
+            stored_messages = await repository.list_messages(
+                conversation_id=conversation_id,
+                limit=len(messages),
+            )
+            require(
+                [message.id for message in stored_messages]
+                == [message.id for message in messages],
+                "conversation messages must preserve database insertion order",
             )
             recent_window = build_recent_window(
                 conversation_id=conversation_id,

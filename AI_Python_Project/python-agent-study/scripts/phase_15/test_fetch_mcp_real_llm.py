@@ -90,21 +90,9 @@ async def main() -> None:
             task_plan_store=AgentTaskPlanStore(settings=settings),
         )
         plan = build_plan()
-        sub_question = plan.sub_questions[0]
         tools = await executor._build_available_task_tools()
         tool_names = {tool.name for tool in tools}
         assert "mcp__fetch" in tool_names, f"未注册 mcp__fetch，可用工具: {sorted(tool_names)}"
-
-        selection = await executor._select_tool_for_sub_question(
-            plan=plan,
-            sub_question=sub_question,
-            previous_results=[],
-            default_mode="hybrid",
-            default_top_k=3,
-            available_tools=tools,
-            tool_calls=[],
-        )
-        assert selection["selected_tool"] == "mcp__fetch", selection
 
         try:
             result = await executor.execute_question_decomposition_plan(
@@ -127,7 +115,7 @@ async def main() -> None:
         assert "Example Domain" in payload["tool_calls"][0]["tool_output"]["content"]
 
         print("fetch_mcp_real_llm=passed")
-        print(f"selected_tool={selection['selected_tool']}")
+        print(f"selected_tool={payload['tool_calls'][0]['tool_name']}")
         print(f"answer_preview={payload['answer'][:240]}")
 
 

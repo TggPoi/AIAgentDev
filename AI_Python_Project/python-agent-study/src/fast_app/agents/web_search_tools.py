@@ -2,7 +2,7 @@ from typing import Any
 
 import httpx
 from langchain_core.tools import BaseTool, StructuredTool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from fast_app.core.config import Settings
 from fast_app.core.logging import format_log_fields, get_logger
@@ -17,8 +17,15 @@ WEB_SEARCH_TOOL_NAME = "web_search"
 class WebSearchToolInput(BaseModel):
     """互联网搜索工具输入。"""
 
-    query: str = Field(description="需要搜索的互联网问题或关键词")
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=1, description="需要搜索的互联网问题或关键词")
     count: int = Field(default=5, ge=1, le=10, description="返回网页结果数量")
+    site: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z0-9.-]+$",
+        description="可选的可信站点域名；查询官方资料时用于 site: 精确限定，不含协议和路径",
+    )
 
 
 class WebSearchResult(BaseModel):
@@ -142,6 +149,7 @@ async def search_web_with_bocha(
     http_client: httpx.AsyncClient,
     query: str,
     count: int,
+    site: str | None = None,
 ) -> list[WebSearchResult]:
     """调用博查 Web Search API，并把响应归一化成内部模型。"""
     if not settings.bocha_api_key:
@@ -156,6 +164,8 @@ async def search_web_with_bocha(
         ),
     )
 
+    search_query = f"site:{site} {query}" if site else query
+
     try:
         response = await http_client.post(
             settings.bocha_web_search_url,
@@ -164,7 +174,8 @@ async def search_web_with_bocha(
                 "Content-Type": "application/json",
             },
             json={
-                "query": query,
+                "query": search_query,
+                "summary": True,
                 "count": count,
             },
             timeout=settings.bocha_web_search_timeout_seconds,
@@ -198,12 +209,13 @@ def build_web_search_tool(
 ) -> BaseTool:
     """构造公开互联网搜索工具，不接入当前 RAG Graph 主线。"""
 
-    async def web_search(query: str, count: int = 5) -> str:
+    async def web_search(query: str, count: int = 5, site: str | None = None) -> str:
         results = await search_web_with_bocha(
             settings=settings,
             http_client=http_client,
             query=query,
             count=count,
+            site=site,
         )
         return summarize_web_search_results(results)
 
@@ -212,7 +224,7 @@ def build_web_search_tool(
         name=WEB_SEARCH_TOOL_NAME,
         description=(
             "搜索公开互联网，适合回答当前知识库没有覆盖、需要最新网页信息的问题。"
-            "返回网页标题、URL 和摘要。"
+            "查询官方资料时优先使用官方网站或官方文档关键词；返回网页标题、URL 和摘要。"
         ),
         args_schema=WebSearchToolInput,
     )

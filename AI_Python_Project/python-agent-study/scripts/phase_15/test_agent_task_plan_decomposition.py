@@ -38,6 +38,11 @@ class LowConfidencePlanner(AgentTaskPlanner):
         raise AssertionError("structured planner already returned payload")
 
 
+class UnexpectedLLMPlanner(AgentTaskPlanner):
+    def _build_model(self):
+        raise AssertionError("确定性路由不应调用 LLM Planner")
+
+
 def assert_question_plan(plan) -> None:
     # 这个脚本主要保护“子问题必须是问题，不是工具 TODO”这条边界。
     assert plan is not None
@@ -73,6 +78,25 @@ def assert_topics_covered(plan, topics: list[str]) -> None:
 
 
 async def main() -> None:
+    deterministic_planner = UnexpectedLLMPlanner(
+        settings=Settings(OPENAI_API_KEY="fake-key")
+    )
+    assert await deterministic_planner.plan(query="FastAPI 负责什么？") is None
+    assert await deterministic_planner.plan(query="FastAPI 最近更新了什么？") is None
+    document_plan = await deterministic_planner.plan(
+        query="请删除知识库中与旧部署说明相关的文档",
+        user_id="planner-user",
+    )
+    assert document_plan is not None
+    assert document_plan.task_kind == "knowledge_document_management"
+    follow_up_plan = await deterministic_planner.plan(
+        query="请删除它",
+        history=["刚才找到一篇知识库文档"],
+        user_id="planner-user",
+    )
+    assert follow_up_plan is not None
+    assert follow_up_plan.task_kind == "knowledge_document_management"
+
     low_confidence_planner = LowConfidencePlanner(
         settings=Settings(OPENAI_API_KEY="fake-key")
     )

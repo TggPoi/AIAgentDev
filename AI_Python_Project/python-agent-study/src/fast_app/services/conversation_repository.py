@@ -95,8 +95,7 @@ class PostgresConversationRepository:
             select(ConversationMessageTable)
             .where(ConversationMessageTable.conversation_id == conversation_id)
             .order_by(
-                ConversationMessageTable.created_at.asc(),
-                ConversationMessageTable.id.asc(),
+                ConversationMessageTable.sequence_no.asc(),
             )
             .offset(max(offset, 0))
             .limit(limit)
@@ -125,8 +124,7 @@ class PostgresConversationRepository:
                 ConversationTable.user_id == user_id,
             )
             .order_by(
-                ConversationMessageTable.created_at.asc(),
-                ConversationMessageTable.id.asc(),
+                ConversationMessageTable.sequence_no.asc(),
             )
             .offset(max(offset, 0))
             .limit(limit)
@@ -211,8 +209,7 @@ class PostgresConversationRepository:
             select(ConversationMessageTable)
             .where(ConversationMessageTable.conversation_id == conversation_id)
             .order_by(
-                ConversationMessageTable.created_at.asc(),
-                ConversationMessageTable.id.asc(),
+                ConversationMessageTable.sequence_no.asc(),
             )
         )
         rows = list((await self._session.scalars(stmt)).all())

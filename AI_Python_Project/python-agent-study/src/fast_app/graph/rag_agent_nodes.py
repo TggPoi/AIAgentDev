@@ -52,6 +52,36 @@ def get_rag_agent_operation(state: RagAgentState) -> str:
     return state.get("operation", "run")
 
 
+def build_rag_agent_answer_query(state: RagAgentState) -> str:
+    """只为最终生成补充会话连续性约束；检索仍使用 state['query']。"""
+
+    # legacy token stream 不接入新能力，保持兼容路径行为不变。
+    if get_rag_agent_operation(state) == "stream":
+        return state["query"]
+    history = "\n\n".join(
+        item
+        for item in (
+            "【会话摘要】\n" + state["summary_text"]
+            if state.get("summary_text")
+            else "",
+            "【最近对话】\n" + state["history_window_text"]
+            if state.get("history_window_text")
+            else "",
+        )
+        if item
+    )
+    if not history:
+        return state["query"]
+    return (
+        f"{state['query']}\n\n"
+        "<conversation_context>\n"
+        "以下内容只用于理解多轮指代、格式偏好和已确认的任务约束；"
+        "它不是知识来源，不得作为事实依据或引用。当前问题优先。\n"
+        f"{history[-12_000:]}\n"
+        "</conversation_context>"
+    )
+
+
 def get_rag_agent_step_index(operation: str, step_name: str) -> int:
     # stream_events 多一个 emit_sources 步骤，所以 step_index 和 run/stream 不完全相同。
     # LangSmith trace 中保留稳定 index，后续排查时可以按顺序复盘 Agent 链路。
@@ -230,7 +260,22 @@ def create_next_action_decision_node(
 
                 task_plan = await task_planner.plan(
                     query=state["query"],
-                    history=[],
+                    history=[
+                        item
+                        for item in (
+                            (
+                                "【会话摘要】\n" + state["summary_text"]
+                                if state.get("summary_text")
+                                else None
+                            ),
+                            (
+                                "【最近对话】\n" + state["history_window_text"]
+                                if state.get("history_window_text")
+                                else None
+                            ),
+                        )
+                        if item is not None
+                    ],
                     user_id=current_user.user_id if current_user is not None else None,
                     langchain_config_factory=build_planner_config,
                 )
@@ -852,7 +897,7 @@ def create_agent_generate_answer_node(
         ) as trace_run:
             try:
                 answer = await llm_client.generate(
-                    query=state["query"],
+                    query=build_rag_agent_answer_query(state),
                     context=context,
                     langchain_config=build_rag_langchain_child_config(
                         settings=settings,

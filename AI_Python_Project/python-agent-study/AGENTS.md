@@ -57,6 +57,19 @@ The FastAPI module is `fast_app`.
 
 Before file-level modifications, read the real code and dependency files. If docs and code disagree, code is the source of truth.
 
+## Conversation context and Agent state rules
+
+Use conversation history as scoped input, not as global implicit Agent state:
+
+1. Load the Redis recent window and PostgreSQL summary once at the RAG pipeline boundary, then pass the frozen request snapshot through `RagAgentState`. Do not make downstream nodes independently reread conversation storage.
+2. The current rewritten query always takes precedence over older conversation content. Keep history bounded and prefer recent messages over the summary when they conflict.
+3. Only Planner, final answer generation, and the document Agent's frozen initial task context may consume conversation context. Do not automatically inject it into every LLM call.
+4. Keep document Tool Loops task-local: initialize them from the frozen TaskPlan query/objective, then append only that task's `AIMessage` and `ToolMessage` values.
+5. Conversation history is never an authorization or execution fact. Prompt Guard, permission checks, candidate `doc_id` scope, path validation, exact replacements, confirm, rollback, ES, and Milvus synchronization must continue to use current server-side facts.
+6. Prompt Guard must classify the explicit boundary text it is given, such as the current raw query, rewritten query, retrieved document, or output. Do not silently prepend the full conversation history to classifier inputs.
+7. Resume, cancel, retry, and confirm unfinished Agent work by `task_plan_id` and a dedicated backend control API/checkpoint. Do not infer these control actions only from natural-language conversation memory.
+8. Conversation text included in custom LangSmith data must use the shared sensitive-field policy in `fast_app.core.langsmith`. SDK-instrumented model prompts remain subject to the platform-level tracing warning below.
+
 ## LangSmith observability rules
 
 Use the pattern "centralized tracing policy, distributed business instrumentation":

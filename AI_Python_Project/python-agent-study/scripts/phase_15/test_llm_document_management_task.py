@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 from pathlib import Path
@@ -38,6 +39,7 @@ from fast_app.domain.user_context import CurrentUserContext
 from fast_app.ingestion.metadata_models import build_document_metadata
 from fast_app.services.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
 from fast_app.services.agent_task_planner import AgentTaskPlanner
+from fast_app.services.exceptions import AppServiceError
 from fast_app.services.knowledge_document_management_service import (
     KnowledgeDocumentManagementService,
 )
@@ -121,6 +123,11 @@ class FakeBoundModel:
         self.calls += 1
         self.messages.append(list(messages))
         if self.calls == 1:
+            task_context = json.loads(messages[1].content)
+            assert task_context == {
+                "original_query": "创建一篇原生 Tool Calling 测试文档",
+                "objective": "创建测试文档",
+            }
             return AIMessage(
                 content="",
                 tool_calls=[
@@ -224,6 +231,67 @@ class FakeChatOpenAI:
 
     def bind_tools(self, tools, **kwargs):
         FakeChatOpenAI.parallel_tool_calls = kwargs.get("parallel_tool_calls")
+        return self.bound_model
+
+
+class InterruptAfterRetrievalModel:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def ainvoke(self, messages, config=None):
+        self.calls += 1
+        if self.calls == 1:
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "knowledge_retrieval",
+                        "args": {"query": "恢复测试资料"},
+                        "id": "resume_search",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+        raise asyncio.CancelledError
+
+
+class ResumeCreateModel:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def ainvoke(self, messages, config=None):
+        self.calls += 1
+        if self.calls == 1:
+            assert any(
+                isinstance(message, ToolMessage)
+                and message.tool_call_id == "resume_search"
+                for message in messages
+            )
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "knowledge_document_create",
+                        "args": {
+                            "filename": "resumed.md",
+                            "content": "# 恢复后的候选正文",
+                            "reason": "验证轮次检查点恢复",
+                        },
+                        "id": "resume_create",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+        return AIMessage(content="恢复完成", tool_calls=[])
+
+
+class ModelWrapper:
+    bound_model = None
+
+    def __init__(self, **kwargs):
+        pass
+
+    def bind_tools(self, tools, **kwargs):
         return self.bound_model
 
 
@@ -393,6 +461,11 @@ async def main() -> None:
             "completed",
         ]
         assert [item["round"] for item in traces[:2]] == [1, 1]
+        checkpoint = result.final_output["checkpoint"]
+        assert checkpoint["completed"] is True
+        assert checkpoint["round"] == 4
+        assert checkpoint["call_count"] == 6
+        assert checkpoint["messages"]
         assert executor_module._document_batch_dependency_error(
             calls=[
                 {"name": "knowledge_retrieval", "args": {"query": "x"}},
@@ -426,6 +499,64 @@ async def main() -> None:
             max_parallel_calls=4,
             remaining_calls=12,
         ) is not None
+
+        resumable_plan = planner._plan_from_payload(
+            query="检索资料后创建一篇可恢复测试文档",
+            user_id=user.user_id,
+            payload={
+                "task_kind": "knowledge_document_management",
+                "objective": "验证文档 Tool Loop 轮次恢复",
+                "confidence": 0.99,
+            },
+        )
+        assert resumable_plan is not None
+        ModelWrapper.bound_model = InterruptAfterRetrievalModel()
+        executor_module.ChatOpenAI = ModelWrapper
+        try:
+            await executor.execute(
+                plan=resumable_plan,
+                user=user,
+                mode="hybrid",
+                top_k=5,
+                candidate_k=None,
+                min_score=0.0,
+                filters=RetrievalFilters(
+                    user_id=user.user_id,
+                    department_codes=user.department_codes,
+                ),
+            )
+            raise AssertionError("expected document loop interruption")
+        except asyncio.CancelledError:
+            pass
+        interrupted = executor._task_plan_store.load(resumable_plan.task_plan_id)
+        assert interrupted.status == AgentTaskPlanStatus.FAILED
+        assert interrupted.final_output["checkpoint"]["round"] == 1
+        assert interrupted.final_output["checkpoint"]["call_count"] == 1
+        assert interrupted.final_output["checkpoint"]["candidates"]
+
+        ModelWrapper.bound_model = ResumeCreateModel()
+        executor_module.ChatOpenAI = ModelWrapper
+        resumed = await executor.resume(interrupted.task_plan_id, user=user)
+        assert resumed.status == AgentTaskPlanStatus.WAITING_CONFIRMATION
+        assert [
+            item["tool_name"] for item in resumed.final_output["tool_calls"]
+        ] == ["knowledge_retrieval", "knowledge_document_create"]
+        assert resumed.final_output["checkpoint"]["call_count"] == 2
+        assert resumed.final_output["checkpoint"]["completed"] is True
+        resumed_markdown = executor._task_plan_store.load_markdown(resumed.task_plan_id)
+        assert "## Tool Loop 检查点" in resumed_markdown
+        assert "最近完整轮次: `2`" in resumed_markdown
+        assert "已消耗 ToolCall: `2`" in resumed_markdown
+        cancelled = executor.cancel(resumed.task_plan_id, user=user)
+        assert cancelled.status == AgentTaskPlanStatus.CANCELLED
+        assert all(step.status.value == "skipped" for step in cancelled.steps)
+        try:
+            await executor.confirm(cancelled.task_plan_id, user=user)
+            raise AssertionError("expected cancelled plan confirmation to fail")
+        except AppServiceError:
+            pass
+        executor_module.ChatOpenAI = original
+
         confirmed = await executor.confirm(result.task_plan_id, user=user)
         assert confirmed.status == AgentTaskPlanStatus.COMPLETED
         created = kb / "development" / "native-tool-call.md"

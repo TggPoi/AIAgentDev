@@ -25,6 +25,7 @@ class AgentTaskPlanStatus(StrEnum):
     WAITING_CONFIRMATION = "waiting_confirmation"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class AgentToolStepStatus(StrEnum):

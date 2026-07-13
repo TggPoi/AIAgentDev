@@ -17,6 +17,7 @@ from fast_app.domain.conversation_models import ConversationMessage, Conversatio
 from fast_app.domain.rag_stream_models import RagStreamEvent
 from fast_app.graph.rag_agent_builder import build_rag_agent_graph
 from fast_app.graph.rag_agent_nodes import (
+    build_rag_agent_answer_query,
     build_rag_agent_step_inputs,
     create_agent_build_context_node,
     create_agent_error_answer_node,
@@ -795,7 +796,7 @@ class RagAgentPipeline:
             # 真正需要知识库回答时，仍然使用 LLM client 的 stream 能力逐 token 输出。
             answer_parts: list[str] = []
             async for token in self.llm_client.stream(
-                state["query"],
+                build_rag_agent_answer_query(state),
                 context,
                 langchain_config=build_rag_langchain_child_config(
                     settings=self.settings,
@@ -1189,7 +1190,7 @@ class RagAgentPipeline:
             stream_state = GuardedStreamState()
             async for event in guarded_answer_delta_events(
                 self.llm_client.stream(
-                    state["query"],
+                    build_rag_agent_answer_query(state),
                     context,
                     langchain_config=build_rag_langchain_child_config(
                         settings=self.settings,

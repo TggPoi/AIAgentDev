@@ -3,7 +3,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func, text
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Identity,
+    Index,
+    Integer,
+    String,
+    Text,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -52,6 +63,11 @@ class ConversationMessageTable(Base):
     __tablename__ = "conversation_messages"
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    sequence_no: Mapped[int] = mapped_column(
+        BigInteger,
+        Identity(),
+        nullable=False,
+    )
     conversation_id: Mapped[str] = mapped_column(
         String(128),
         ForeignKey("conversations.id", ondelete="CASCADE"),
@@ -80,6 +96,11 @@ class ConversationMessageTable(Base):
             "idx_conversation_messages_conversation_created_at",
             "conversation_id",
             "created_at",
+        ),
+        Index(
+            "idx_conversation_messages_conversation_sequence",
+            "conversation_id",
+            "sequence_no",
         ),
     )
 

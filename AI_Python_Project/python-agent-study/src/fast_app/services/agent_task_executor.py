@@ -21,7 +21,13 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+    messages_from_dict,
+    messages_to_dict,
+)
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 from langchain_openai import ChatOpenAI
@@ -43,6 +49,7 @@ from fast_app.agents.rag_agent_tools import KNOWLEDGE_RETRIEVAL_TOOL_NAME
 from fast_app.agents.rag_agent_tools import retrieve_knowledge_docs
 from fast_app.agents.web_search_tools import (
     WEB_SEARCH_TOOL_NAME,
+    WebSearchToolInput,
     search_web_with_bocha,
 )
 from fast_app.components.llms.base import BaseLLMClient
@@ -119,15 +126,6 @@ class AgentTaskKnowledgeRetrievalToolInput(BaseModel):
     top_k: int = Field(default=5, ge=1, le=20)
 
 
-class AgentTaskWebSearchToolInput(BaseModel):
-    """传给 web_search 的最小参数 schema。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    query: str = Field(min_length=1, description="用于搜索公开互联网的 query")
-    count: int = Field(default=5, ge=1, le=10)
-
-
 TASK_TOOL_SELECTION_PROMPT = """你是 Agent TaskPlan 的工具选择器。
 
 你只负责为当前子问题选择一个或多个已绑定工具。
@@ -140,6 +138,7 @@ TASK_TOOL_SELECTION_PROMPT = """你是 Agent TaskPlan 的工具选择器。
 选择原则：
 - 项目知识库、已有工程实现、内部文档相关问题，优先 knowledge_retrieval。
 - 当前知识库可能没有、需要公开互联网或最新资料时，选择 web_search。
+- 查询官方资料且已知官方域名时，把不含协议和路径的域名传入 web_search.site。
 - 子问题中已经给出明确 URL，且存在 mcp__fetch 工具时，优先 mcp__fetch 读取网页正文。
 - 综合性问题如果已有前置答案足够，可以不调用工具。
 """
@@ -151,6 +150,7 @@ DOCUMENT_AGENT_SYSTEM_PROMPT = """你是知识库文档管理 Agent。你必须�
 - 有依赖的工具必须跨轮调用，不要在同一轮组合 retrieval→read 或 read→update。
 - 文档 create/update/delete dry-run 和 MCP 工具每轮只能单独调用一个。
 - create 可以先调用 knowledge_retrieval、web_search 或 MCP 收集资料，再调用 knowledge_document_create。
+- 使用 web_search 查询官方资料且已知官方域名时，必须填写 site；site 不含协议和路径。
 - update/delete 必须先调用 knowledge_retrieval 获得候选 doc_id。
 - update 还必须调用 knowledge_document_read 读取完整原文，再一次性提交全部精确 replacements。
 - 文档工具只生成 dry-run 计划，不会真实写入；不要声称已经执行。
@@ -162,6 +162,13 @@ DOCUMENT_AGENT_SYSTEM_PROMPT = """你是知识库文档管理 Agent。你必须�
 
 class _DocumentActionConflictError(AppServiceError):
     """同一 TaskPlan 出现相互冲突的文档写动作。"""
+
+
+class _TaskPlanCancelledError(AppServiceError):
+    """当前轮次屏障检测到用户已经取消 TaskPlan。"""
+
+
+_ACTIVE_DOCUMENT_TASK_PLAN_IDS: set[str] = set()
 
 
 class AgentTaskPlanStore:
@@ -247,6 +254,46 @@ class AgentTaskExecutor:
 
         self._task_plan_store.save(plan)
 
+    def cancel(self, task_plan_id: str, user: CurrentUserContext) -> AgentTaskPlan:
+        """取消尚未完成的 TaskPlan；运行中任务会在下一轮屏障停止。"""
+
+        plan = self._task_plan_store.load(task_plan_id)
+        if plan.user_id != user.user_id and user.role != "admin":
+            raise ToolPermissionDeniedError("只能取消自己创建的 Agent task plan")
+        if plan.status in {AgentTaskPlanStatus.COMPLETED, AgentTaskPlanStatus.CANCELLED}:
+            raise AppServiceError("已完成或已取消的 Agent task plan 不能再次取消")
+        plan.status = AgentTaskPlanStatus.CANCELLED
+        plan.error = None
+        for step in plan.steps:
+            if step.status in {
+                AgentToolStepStatus.PENDING,
+                AgentToolStepStatus.RUNNING,
+                AgentToolStepStatus.WAITING_CONFIRMATION,
+            }:
+                step.status = AgentToolStepStatus.SKIPPED
+                step.requires_confirmation = False
+                step.error = "TaskPlan 已由用户取消"
+        plan.final_output.update(
+            {
+                "status": plan.status.value,
+                "cancelled_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        self._task_plan_store.save(plan)
+        return plan
+
+    def _sync_cancelled_state(self, plan: AgentTaskPlan) -> bool:
+        """把控制 API 写入的 cancelled 快照同步到当前执行对象。"""
+
+        latest = self._task_plan_store.load(plan.task_plan_id)
+        if latest.status != AgentTaskPlanStatus.CANCELLED:
+            return False
+        plan.status = latest.status
+        plan.steps = latest.steps
+        plan.final_output = {**plan.final_output, **latest.final_output}
+        plan.error = None
+        return True
+
     async def _generate_with_trace(
         self,
         query: str,
@@ -300,6 +347,9 @@ class AgentTaskExecutor:
         try:
             # sub_questions 是规划事实；执行结果单独写入 final_output，避免污染 plan。
             for sub_question in sorted(plan.sub_questions, key=lambda item: item.order):
+                if self._sync_cancelled_state(plan):
+                    self._task_plan_store.save(plan)
+                    return plan
                 # 开始执行子任务
                 result = await self._execute_sub_question(
                     plan=plan,
@@ -313,6 +363,9 @@ class AgentTaskExecutor:
                     langchain_config_factory=langchain_config_factory,
                 )
                 results.append(result)
+                if self._sync_cancelled_state(plan):
+                    self._task_plan_store.save(plan)
+                    return plan
                 # 每完成一个子问题就保存一次，便于接口或页面看到中间进度。
                 plan.final_output["sub_question_results"] = [
                     item.model_dump(mode="json") for item in results
@@ -667,7 +720,11 @@ class AgentTaskExecutor:
 
         if self._settings.bocha_api_key:
             # Bocha 未配置时不把 web_search 暴露给 LLM，避免模型选择不可执行工具。
-            async def web_search(query: str, count: int = 5) -> str:
+            async def web_search(
+                query: str,
+                count: int = 5,
+                site: str | None = None,
+            ) -> str:
                 # 同上：这里只参与 LLM tool calling，不直接承载业务执行。
                 return ""
 
@@ -675,8 +732,8 @@ class AgentTaskExecutor:
                 StructuredTool.from_function(
                     coroutine=web_search,
                     name=WEB_SEARCH_TOOL_NAME,
-                    description="搜索公开互联网，适合回答知识库缺失、需要公开网页或较新信息的子问题。",
-                    args_schema=AgentTaskWebSearchToolInput,
+                    description="搜索公开互联网；查询官方资料时应在 site 中传入已知官方域名。",
+                    args_schema=WebSearchToolInput,
                 )
             )
         tools.extend(await self._build_mcp_task_tools())
@@ -941,12 +998,14 @@ class AgentTaskExecutor:
 
         query = str(tool_input.get("query") or sub_question.question).strip()
         count = _coerce_int(tool_input.get("count"), default=5, minimum=1, maximum=10)
+        site = str(tool_input.get("site") or "").strip() or None
         async with httpx.AsyncClient() as http_client:
             results = await search_web_with_bocha(
                 settings=self._settings,
                 http_client=http_client,
                 query=query,
                 count=count,
+                site=site,
             )
         docs = [
             RetrievedDoc(
@@ -1096,6 +1155,44 @@ class AgentTaskExecutor:
             langchain_config_factory=langchain_config_factory,
         )
 
+    async def resume(
+        self,
+        task_plan_id: str,
+        user: CurrentUserContext,
+        langchain_config_factory: LangChainConfigFactory | None = None,
+    ) -> AgentTaskPlan:
+        """从最近完整轮次继续确认前的文档 Tool Loop。"""
+
+        plan = self._task_plan_store.load(task_plan_id)
+        if plan.user_id != user.user_id and user.role != "admin":
+            raise ToolPermissionDeniedError("只能恢复自己创建的 Agent task plan")
+        if plan.task_kind != "knowledge_document_management":
+            raise AppServiceError("当前只支持恢复文档管理 Tool Loop")
+        if plan.status not in {AgentTaskPlanStatus.RUNNING, AgentTaskPlanStatus.FAILED}:
+            raise AppServiceError("只有 running 或 failed 的文档 TaskPlan 可以恢复")
+        checkpoint = plan.final_output.get("checkpoint")
+        if not isinstance(checkpoint, dict) or checkpoint.get("completed") is True:
+            raise AppServiceError("Agent task plan 没有可恢复的轮次检查点")
+        if task_plan_id in _ACTIVE_DOCUMENT_TASK_PLAN_IDS:
+            raise AppServiceError("Agent task plan 当前仍在执行，不能重复恢复")
+        # ponytail: runtime 文件快照没有跨进程租约；部署多 worker 时升级为 PostgreSQL lease。
+        return await self._execute_document_tool_loop(
+            plan=plan,
+            user=user,
+            mode="hybrid",
+            top_k=self._settings.rag_default_top_k,
+            candidate_k=None,
+            min_score=self._settings.rag_default_min_score,
+            filters=RetrievalFilters(
+                user_id=user.user_id,
+                department_codes=user.department_codes,
+                can_read_all="knowledge:read_all" in user.permissions,
+                allow_public=True,
+            ),
+            langchain_config_factory=langchain_config_factory,
+            resume=True,
+        )
+
     async def _execute_document_tool_loop(
         self,
         *,
@@ -1107,6 +1204,7 @@ class AgentTaskExecutor:
         min_score: float,
         filters: RetrievalFilters,
         langchain_config_factory: LangChainConfigFactory | None,
+        resume: bool = False,
     ) -> AgentTaskPlan:
         """执行支持安全只读并行、多轮 ToolMessage 的文档 Agent，产出待确认步骤。"""
 
@@ -1114,17 +1212,63 @@ class AgentTaskExecutor:
             raise AppServiceError("文档管理任务需要配置 LLM 原生 Tool Calling")
 
         plan.user_id = plan.user_id or user.user_id
-        plan.status = AgentTaskPlanStatus.RUNNING
-        plan.steps = []
-        plan.final_output = {"tool_calls": [], "used_tools": []}
-        self._task_plan_store.save(plan)
-
-        # 这三个集合是一次 Agent loop 的服务端事实，不交给模型维护：
-        # candidates 限定 update/delete 可选 doc_id；read_doc_ids 强制 update 先读原文；
-        # document_actions 防止同一文档出现重复 update、update+delete 等冲突动作。
-        candidates: dict[str, dict[str, Any]] = {}
-        read_doc_ids: set[str] = set()
-        document_actions: dict[str, str] = {}
+        checkpoint = plan.final_output.get("checkpoint") if resume else None
+        if resume:
+            if not isinstance(checkpoint, dict):
+                raise AppServiceError("文档 TaskPlan 缺少可恢复检查点")
+            try:
+                candidates = {
+                    str(key): dict(value)
+                    for key, value in dict(checkpoint.get("candidates") or {}).items()
+                }
+                read_doc_ids = {str(item) for item in checkpoint.get("read_doc_ids", [])}
+                document_actions = {
+                    str(key): str(value)
+                    for key, value in dict(
+                        checkpoint.get("document_actions") or {}
+                    ).items()
+                }
+                messages = list(messages_from_dict(checkpoint.get("messages") or []))
+                traces = [
+                    AgentTaskToolCallTrace.model_validate(item)
+                    for item in plan.final_output.get("tool_calls", [])
+                ]
+                call_count = int(checkpoint.get("call_count", 0))
+                round_index = int(checkpoint.get("round", 0))
+            except (TypeError, ValueError, ValidationError) as exc:
+                raise AppServiceError("文档 TaskPlan 检查点结构无效") from exc
+            if len(messages) < 2:
+                raise AppServiceError("文档 TaskPlan 检查点缺少模型消息")
+            plan.status = AgentTaskPlanStatus.RUNNING
+            plan.error = None
+            plan.final_output["status"] = plan.status.value
+            self._task_plan_store.save(plan)
+        else:
+            plan.status = AgentTaskPlanStatus.RUNNING
+            plan.steps = []
+            plan.final_output = {"tool_calls": [], "used_tools": []}
+            # 这三个集合是一次 Agent loop 的服务端事实，不交给模型维护：
+            # candidates 限定 update/delete 可选 doc_id；read_doc_ids 强制 update 先读原文；
+            # document_actions 防止同一文档出现重复 update、update+delete 等冲突动作。
+            candidates: dict[str, dict[str, Any]] = {}
+            read_doc_ids: set[str] = set()
+            document_actions: dict[str, str] = {}
+            messages: list[object] = [
+                SystemMessage(content=DOCUMENT_AGENT_SYSTEM_PROMPT),
+                HumanMessage(
+                    content=json.dumps(
+                        {
+                            "original_query": plan.original_query,
+                            "objective": plan.objective,
+                        },
+                        ensure_ascii=False,
+                    )
+                ),
+            ]
+            traces: list[AgentTaskToolCallTrace] = []
+            call_count = 0
+            round_index = 0
+            self._task_plan_store.save(plan)
         tools = await self._build_document_agent_tools(
             plan=plan,
             user=user,
@@ -1145,15 +1289,23 @@ class AgentTaskExecutor:
             base_url=self._settings.openai_base_url,
             temperature=0.0,
         ).bind_tools(tools, parallel_tool_calls=True)
-        messages: list[object] = [
-            SystemMessage(content=DOCUMENT_AGENT_SYSTEM_PROMPT),
-            HumanMessage(content=plan.original_query),
-        ]
-        traces: list[AgentTaskToolCallTrace] = []
-        call_count = 0
-        round_index = 0
         max_calls = max(self._settings.agent_max_tool_calls, 0)
+        if call_count >= max_calls:
+            raise AppServiceError("文档 Agent 已达到最大工具调用次数")
+        self._save_document_tool_progress(
+            plan,
+            traces,
+            round_index=round_index,
+            call_count=call_count,
+            messages=messages,
+            candidates=candidates,
+            read_doc_ids=read_doc_ids,
+            document_actions=document_actions,
+        )
 
+        if plan.task_plan_id in _ACTIVE_DOCUMENT_TASK_PLAN_IDS:
+            raise AppServiceError("Agent task plan 当前仍在执行")
+        _ACTIVE_DOCUMENT_TASK_PLAN_IDS.add(plan.task_plan_id)
         try:
             while True:
                 # 每轮上下文都包含此前 AIMessage 和 ToolMessage，因此依赖工具必须跨轮顺序产生。
@@ -1219,7 +1371,16 @@ class AgentTaskExecutor:
                                 error=error,
                             )
                         )
-                    self._save_document_tool_progress(plan, traces)
+                    self._save_document_tool_progress(
+                        plan,
+                        traces,
+                        round_index=round_index,
+                        call_count=call_count,
+                        messages=messages,
+                        candidates=candidates,
+                        read_doc_ids=read_doc_ids,
+                        document_actions=document_actions,
+                    )
                     if call_count >= max_calls:
                         raise AppServiceError("文档 Agent 已达到最大工具调用次数")
                     continue
@@ -1270,7 +1431,16 @@ class AgentTaskExecutor:
                                 error=batch_error,
                             )
                         )
-                    self._save_document_tool_progress(plan, traces)
+                    self._save_document_tool_progress(
+                        plan,
+                        traces,
+                        round_index=round_index,
+                        call_count=call_count,
+                        messages=messages,
+                        candidates=candidates,
+                        read_doc_ids=read_doc_ids,
+                        document_actions=document_actions,
+                    )
                     if call_count >= max_calls:
                         raise AppServiceError("文档 Agent 已达到最大工具调用次数")
                     continue
@@ -1362,7 +1532,16 @@ class AgentTaskExecutor:
                             )
                         )
                 # 所有同批结果先汇总，再保存进度；这些新状态只会在下一轮成为可依赖的事实。
-                self._save_document_tool_progress(plan, traces)
+                self._save_document_tool_progress(
+                    plan,
+                    traces,
+                    round_index=round_index,
+                    call_count=call_count,
+                    messages=messages,
+                    candidates=candidates,
+                    read_doc_ids=read_doc_ids,
+                    document_actions=document_actions,
+                )
 
             if not plan.steps:
                 raise AppServiceError("LLM 未调用任何文档 dry-run 工具")
@@ -1375,22 +1554,46 @@ class AgentTaskExecutor:
                     "document_action_count": len(plan.steps),
                 }
             )
+            plan.final_output["checkpoint"]["completed"] = True
             self._task_plan_store.save(plan)
             return plan
+        except _TaskPlanCancelledError:
+            plan.status = AgentTaskPlanStatus.CANCELLED
+            plan.error = None
+            plan.final_output["status"] = plan.status.value
+            self._task_plan_store.save(plan)
+            return plan
+        except asyncio.CancelledError:
+            plan.status = AgentTaskPlanStatus.FAILED
+            plan.error = "AgentTaskInterrupted: 文档 Agent 在完整轮次边界外中断"
+            plan.final_output["status"] = plan.status.value
+            self._task_plan_store.save(plan)
+            raise
         except Exception as exc:
             plan.status = AgentTaskPlanStatus.FAILED
             plan.error = f"{type(exc).__name__}: {exc}"
             plan.final_output["status"] = plan.status.value
             self._task_plan_store.save(plan)
             raise
+        finally:
+            _ACTIVE_DOCUMENT_TASK_PLAN_IDS.discard(plan.task_plan_id)
 
     def _save_document_tool_progress(
         self,
         plan: AgentTaskPlan,
         traces: list[AgentTaskToolCallTrace],
+        *,
+        round_index: int,
+        call_count: int,
+        messages: list[object],
+        candidates: dict[str, dict[str, Any]],
+        read_doc_ids: set[str],
+        document_actions: dict[str, str],
     ) -> None:
         """将每轮原生工具轨迹写回 TaskPlan，供 SSE、页面和 LangSmith 对照查看。"""
 
+        if self._sync_cancelled_state(plan):
+            raise _TaskPlanCancelledError("Agent task plan 已取消")
         plan.final_output["tool_calls"] = [
             item.model_dump(mode="json") for item in traces
         ]
@@ -1399,6 +1602,16 @@ class AgentTaskExecutor:
                 item.tool_name for item in traces if item.status == "completed"
             )
         )
+        plan.final_output["checkpoint"] = {
+            "version": 1,
+            "round": round_index,
+            "call_count": call_count,
+            "messages": messages_to_dict(messages),
+            "candidates": candidates,
+            "read_doc_ids": sorted(read_doc_ids),
+            "document_actions": document_actions,
+            "completed": False,
+        }
         self._task_plan_store.save(plan)
 
     async def _build_document_agent_tools(
@@ -1554,13 +1767,18 @@ class AgentTaskExecutor:
             user,
             PermissionCode.AGENT_TOOL_WEB_SEARCH,
         ):
-            async def web_search(query: str, count: int = 5) -> str:
+            async def web_search(
+                query: str,
+                count: int = 5,
+                site: str | None = None,
+            ) -> str:
                 async with httpx.AsyncClient() as http_client:
                     results = await search_web_with_bocha(
                         settings=self._settings,
                         http_client=http_client,
                         query=query,
                         count=count,
+                        site=site,
                     )
                 return json.dumps(
                     [item.model_dump(mode="json") for item in results],
@@ -1571,8 +1789,8 @@ class AgentTaskExecutor:
                 StructuredTool.from_function(
                     coroutine=web_search,
                     name=WEB_SEARCH_TOOL_NAME,
-                    description="搜索公开互联网，供创建或修改文档前收集资料。",
-                    args_schema=AgentTaskWebSearchToolInput,
+                    description="搜索公开互联网；查询官方资料时应在 site 中传入已知官方域名。",
+                    args_schema=WebSearchToolInput,
                 )
             )
         if _user_has_permission(user, PermissionCode.AGENT_TOOL_MCP):
@@ -1981,7 +2199,10 @@ def _render_task_plan_markdown(plan: AgentTaskPlan) -> str:
         f"- 用户目标: {plan.objective}",
         f"- 原始问题: {plan.original_query}",
         f"- 检索 query: `{plan.source_query}`",
+        f"- 查询接口: `/agent/task-plans/{plan.task_plan_id}`",
         f"- 确认接口: `/agent/task-plans/{plan.task_plan_id}/confirm`",
+        f"- 取消接口: `/agent/task-plans/{plan.task_plan_id}/cancel`",
+        f"- 重试接口: `/agent/task-plans/{plan.task_plan_id}/retry`",
     ]
 
     if plan.task_kind == "question_decomposition":
@@ -2025,6 +2246,21 @@ def _render_task_plan_markdown(plan: AgentTaskPlan) -> str:
         if isinstance(final_answer, str) and final_answer.strip():
             lines.extend(["", "## 最终答案", "", final_answer.strip()])
     else:
+        checkpoint = plan.final_output.get("checkpoint")
+        if isinstance(checkpoint, dict):
+            lines.extend(
+                [
+                    "",
+                    "## Tool Loop 检查点",
+                    "",
+                    f"- 版本: `{checkpoint.get('version', '')}`",
+                    f"- 最近完整轮次: `{checkpoint.get('round', 0)}`",
+                    f"- 已消耗 ToolCall: `{checkpoint.get('call_count', 0)}`",
+                    f"- 候选 doc_id: `{json.dumps(list((checkpoint.get('candidates') or {}).keys()), ensure_ascii=False)}`",
+                    f"- 已读取 doc_id: `{json.dumps(checkpoint.get('read_doc_ids', []), ensure_ascii=False)}`",
+                    f"- Tool Loop 已完成: `{checkpoint.get('completed', False)}`",
+                ]
+            )
         lines.extend(["", "## 文档动作"])
         for step in plan.steps:
             preview = step.output.get("preview")
