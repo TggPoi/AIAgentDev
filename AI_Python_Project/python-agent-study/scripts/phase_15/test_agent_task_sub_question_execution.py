@@ -54,6 +54,8 @@ class FakeLLM(BaseLLMClient):
 class SelectingExecutor(AgentTaskExecutor):
     async def _select_tool_for_sub_question(self, *args, **kwargs) -> dict[str, Any]:
         sub_question = kwargs["sub_question"]
+        if kwargs.get("tool_calls"):
+            return {"selected_tool": "none", "tool_input": {}}
         if sub_question.sub_question_id == "sq_1":
             return {
                 "selected_tool": "knowledge_retrieval",
@@ -181,7 +183,9 @@ async def main() -> None:
             "web_search",
             "none",
         ]
-        assert all(item.status == "completed" for item in results)
+        assert all(item.status == "completed" for item in results), [
+            item.model_dump(mode="json") for item in results
+        ]
         assert "final_answer" in plan.final_output
         assert plan.final_output["used_tools"] == ["knowledge_retrieval", "web_search"]
 

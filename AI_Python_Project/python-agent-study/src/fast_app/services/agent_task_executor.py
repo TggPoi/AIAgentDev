@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from difflib import unified_diff
@@ -78,11 +79,26 @@ from fast_app.services.knowledge_document_management_service import (
 )
 from fast_app.services.rag_pipeline_service import (
     build_content_preview,
+    build_rag_context,
     build_top_doc_ids,
 )
 
 
 LangChainConfigFactory = Callable[[str], RunnableConfig]
+
+# 同一轮只能并行彼此独立、不会修改共享业务状态的只读工具；是否允许由后端集合裁决，
+# 不能只相信 LLM 声称这些调用互不依赖。
+# 用于普通的 question_decomposition 任务，普通问题拆解链路允许并行的工具
+PARALLEL_SAFE_TASK_TOOL_NAMES = {
+    KNOWLEDGE_RETRIEVAL_TOOL_NAME,
+    WEB_SEARCH_TOOL_NAME,
+}
+# 用于 knowledge_document_management 任务。文档管理链路允许并行的工具。
+# 其他操作文档的tool没有定义在这里，因为它们必须单独一轮串行执行。这里的 create/update/delete 虽然只是 dry-run，但会形成 TaskPlan step、进行冲突预占，并影响后续计划状态，所以不能和其他 ToolCall 混在同一个并行批次中。
+PARALLEL_SAFE_DOCUMENT_TOOL_NAMES = {
+    *PARALLEL_SAFE_TASK_TOOL_NAMES,
+    KNOWLEDGE_DOCUMENT_READ_TOOL_NAME,
+}
 
 
 class AgentTaskToolSelectionPayload(BaseModel):
@@ -114,9 +130,10 @@ class AgentTaskWebSearchToolInput(BaseModel):
 
 TASK_TOOL_SELECTION_PROMPT = """你是 Agent TaskPlan 的工具选择器。
 
-你只负责为当前子问题选择一个已绑定工具。
+你只负责为当前子问题选择一个或多个已绑定工具。
 可用工具只来自 bound tools，不允许编造工具名。
-每一轮最多选择一个工具；如果已有工具结果足够回答当前子问题，选择 none。
+同一轮可以选择多个彼此独立的只读工具；存在依赖时必须等待上一轮结果。
+如果已有工具结果足够回答当前子问题，不再调用工具。
 如果当前子问题可以只依赖已有子问题答案进行推理，可以不调用工具。
 如果系统进入结构化输出模式，必须返回符合 schema 的 JSON 对象。
 
@@ -130,7 +147,9 @@ TASK_TOOL_SELECTION_PROMPT = """你是 Agent TaskPlan 的工具选择器。
 
 DOCUMENT_AGENT_SYSTEM_PROMPT = """你是知识库文档管理 Agent。你必须通过绑定工具完成任务。
 
-每轮只能调用一个工具，并且必须等待 ToolMessage 后再决定下一步。
+同一轮可以并行调用多个彼此独立的只读工具，并且必须等待本轮全部 ToolMessage 后再决定下一步。
+- 有依赖的工具必须跨轮调用，不要在同一轮组合 retrieval→read 或 read→update。
+- 文档 create/update/delete dry-run 和 MCP 工具每轮只能单独调用一个。
 - create 可以先调用 knowledge_retrieval、web_search 或 MCP 收集资料，再调用 knowledge_document_create。
 - update/delete 必须先调用 knowledge_retrieval 获得候选 doc_id。
 - update 还必须调用 knowledge_document_read 读取完整原文，再一次性提交全部精确 replacements。
@@ -356,14 +375,15 @@ class AgentTaskExecutor:
         available_tools = await self._build_available_task_tools()
         max_tool_calls = max(self._settings.agent_max_tool_calls, 0)
         tool_calls: list[AgentTaskToolCallTrace] = []
+        call_count = 0
+        round_index = 0
 
         try:
-            # 每个子问题最多调用 agent_max_tool_calls 次工具；每轮只允许一个工具，
-            # 这样 trace 和 runtime JSON 都能清楚表达“第几轮调用了什么”。
-            for round_index in range(1, max_tool_calls + 1):
+            while call_count < max_tool_calls:
+                round_index += 1
                 # 让 LLM 基于原始问题、当前子问题、前置子问题答案、当前子问题已调用过的工具，
-                # 判断下一步是否还需要工具。selected_tool="none" 表示信息已足够，可以收口。
-                selection = await self._select_tool_for_sub_question(
+                # 判断下一步是否还需要工具；同一轮返回的只读工具可以并行执行。
+                selected = await self._select_tool_for_sub_question(
                     plan=plan,
                     sub_question=sub_question,
                     previous_results=previous_results,
@@ -373,34 +393,74 @@ class AgentTaskExecutor:
                     tool_calls=tool_calls,
                     langchain_config_factory=langchain_config_factory,
                 )
-                selected_tool = str(selection.get("selected_tool") or "none")
-                tool_input = _normalize_tool_input(selection.get("tool_input"))
-                reason = str(selection.get("reason") or "")
-                
-                # 已经不需要调用tool时，退出循环
-                if selected_tool == "none":
+                selections = selected if isinstance(selected, list) else [selected]
+                # 兼容 JSON fallback 的单个字典和原生 Tool Calling 的多个字典；
+                # ``none`` 不是实际调用，过滤后为空即表示本轮不再需要工具。
+                selections = [item for item in selections if isinstance(item, dict)]
+                selections = [
+                    item
+                    for item in selections
+                    if str(item.get("selected_tool") or "none") != "none"
+                ]
+                if not selections:
                     break
 
-                call_id = f"{sub_question.sub_question_id}_tool_{round_index}"
-                try:
-                    # 工具真正执行前会再次通过后端白名单查找；LLM 只能“建议”工具名和参数，
-                    # 不能绕过 _run_task_tool_for_sub_question 里的本地校验和工具分发。
-                    tool_output, answer, evidence = await self._run_task_tool_for_sub_question(
-                        selected_tool=selected_tool,
-                        tool_input=tool_input,
-                        available_tools=available_tools,
-                        sub_question=sub_question,
-                        previous_results=previous_results,
-                        mode=mode,
-                        top_k=top_k,
-                        candidate_k=candidate_k,
-                        min_score=min_score,
-                        filters=filters,
-                        tool_call_round=round_index,
-                        langchain_config_factory=langchain_config_factory,
+                batch_size = len(selections)
+                # 一个批次中的每个 ToolCall 都计入总预算，即使该批次随后因不安全而被拒绝，
+                # 也避免模型反复提交同一非法批次而无限消耗轮次。
+                call_count += batch_size
+                # 先整体校验再启动协程：未知工具、超额调用或含串行工具时，本轮一个也不执行。
+                batch_error = _parallel_batch_error(
+                    tool_names=[
+                        str(item.get("selected_tool") or "") for item in selections
+                    ],
+                    registered_tool_names={tool.name for tool in available_tools},
+                    parallel_safe_tool_names=PARALLEL_SAFE_TASK_TOOL_NAMES,
+                    max_parallel_calls=self._settings.agent_max_parallel_tool_calls,
+                    remaining_calls=max_tool_calls - (call_count - batch_size),
+                )
+                if batch_error:
+                    # 被拒绝的调用仍写入 trace，供下一轮模型根据 ToolMessage/轨迹调整方案。
+                    tool_calls.extend(
+                        _failed_batch_traces(
+                            selections=selections,
+                            sub_question_id=sub_question.sub_question_id,
+                            round_index=round_index,
+                            error=batch_error,
+                        )
                     )
-                    tool_calls.append(
-                        AgentTaskToolCallTrace(
+                    continue
+
+                async def run_selection(
+                    selection: dict[str, Any],
+                    index: int,
+                ) -> AgentTaskToolCallTrace:
+                    """负责执行“一个”问题拆解工具调用，并把成功或失败转换成一条 AgentTaskToolCallTrace"""
+
+                    # 每个协程只返回自己的 trace，不并发修改外层 tool_calls，避免共享列表写入竞态。
+                    selected_tool = str(selection.get("selected_tool") or "")
+                    tool_input = _normalize_tool_input(selection.get("tool_input"))
+                    call_id = str(
+                        selection.get("call_id")
+                        or f"{sub_question.sub_question_id}_tool_{round_index}_{index}"
+                    )
+                    reason = str(selection.get("reason") or "")
+                    try:
+                        tool_output, answer, evidence = await self._run_task_tool_for_sub_question(
+                            selected_tool=selected_tool,
+                            tool_input=tool_input,
+                            available_tools=available_tools,
+                            sub_question=sub_question,
+                            previous_results=previous_results,
+                            mode=mode,
+                            top_k=top_k,
+                            candidate_k=candidate_k,
+                            min_score=min_score,
+                            filters=filters,
+                            tool_call_round=round_index,
+                            langchain_config_factory=langchain_config_factory,
+                        )
+                        return AgentTaskToolCallTrace(
                             call_id=call_id,
                             round=round_index,
                             tool_name=selected_tool,
@@ -413,12 +473,8 @@ class AgentTaskExecutor:
                             status="completed",
                             reason=reason,
                         )
-                    )
-                except Exception as exc:
-                    # 单轮工具失败只结束当前子问题的 tool loop，不直接终止整个 TaskPlan。
-                    # 外层 execute_question_decomposition_plan 会继续尝试后续子问题。
-                    tool_calls.append(
-                        AgentTaskToolCallTrace(
+                    except Exception as exc:
+                        return AgentTaskToolCallTrace(
                             call_id=call_id,
                             round=round_index,
                             tool_name=selected_tool,
@@ -427,8 +483,17 @@ class AgentTaskExecutor:
                             error=f"{type(exc).__name__}: {exc}",
                             reason=reason,
                         )
+
+                # --------------------------------------------------开始普通任务 并行tool 执行--------------------------------------------------
+                # 校验通过的只读调用同时开始；gather 按输入顺序返回，即使工具完成先后不同，
+                tool_calls.extend(
+                    await asyncio.gather(
+                        *(
+                            run_selection(selection, index)
+                            for index, selection in enumerate(selections, start=1)
+                        )
                     )
-                    break
+                )
 
             completed_calls = [item for item in tool_calls if item.status == "completed"]
             if completed_calls:
@@ -510,7 +575,7 @@ class AgentTaskExecutor:
         available_tools: list[BaseTool] | None = None,
         tool_calls: list[AgentTaskToolCallTrace] | None = None,
         langchain_config_factory: LangChainConfigFactory | None = None,
-    ) -> dict[str, Any]:
+    ) -> list[dict[str, Any]]:
         """选择子问题需要调用的 tool 工具。
 
         优先级：
@@ -523,11 +588,11 @@ class AgentTaskExecutor:
         available_tools = available_tools if available_tools is not None else await self._build_available_task_tools()
         tool_calls = tool_calls or []
         if not available_tools:
-            return {"selected_tool": "none", "tool_input": {}}
+            return []
 
         if self._settings.openai_api_key:
             # 获取 llm 根据子问题 选择要使用的tool
-            selection = await self._select_tool_with_bound_tools(
+            selections = await self._select_tool_with_bound_tools(
                 tools=available_tools,
                 plan=plan,
                 sub_question=sub_question,
@@ -535,7 +600,7 @@ class AgentTaskExecutor:
                 tool_calls=tool_calls,
                 langchain_config_factory=langchain_config_factory,
             )
-            if selection is None:
+            if selections is None:
                 selection = await self._select_tool_with_json(
                     plan=plan,
                     sub_question=sub_question,
@@ -543,37 +608,46 @@ class AgentTaskExecutor:
                     tool_calls=tool_calls,
                     langchain_config_factory=langchain_config_factory,
                 )
-            
+                selections = [selection] if selection is not None else None
+
             # 当前模型明确需要调用tool，判断question里面有没有包含明确的url，如果有，强制绑定 mcp__fetch 调用
             # 避免 子问题里已经有明确 URL ，但 LLM 没有选 fetch，或者选了 fetch 但没把 url 参数填好
-            if selection is not None:
-                selection = _validate_tool_selection(selection, available_tools)
-                if tool_calls:
-                    return selection
-                return _repair_fetch_tool_selection(
-                    selection=selection,
-                    sub_question=sub_question,
-                    tools=available_tools,
-                )
+            if selections is not None:
+                validated = [
+                    _validate_tool_selection(selection, available_tools)
+                    for selection in selections
+                    if isinstance(selection, dict)
+                ]
+                if not tool_calls and _extract_first_url(sub_question.question):
+                    return [
+                        _repair_fetch_tool_selection(
+                            selection={"selected_tool": "none", "tool_input": {}},
+                            sub_question=sub_question,
+                            tools=available_tools,
+                        )
+                    ]
+                return validated
 
         # LLM 不可用时的兜底，不作为正常企业场景的主判断器。
         if tool_calls:
-            return {"selected_tool": "none", "tool_input": {}}
+            return []
         fallback_tool = sub_question.information_source_hint
         if fallback_tool not in {tool.name for tool in available_tools}:
             fallback_tool = KNOWLEDGE_RETRIEVAL_TOOL_NAME
-        return _repair_fetch_tool_selection(
-            selection={
-                "selected_tool": fallback_tool,
-                "tool_input": {
-                    "query": sub_question.question,
-                    "mode": default_mode,
-                    "top_k": default_top_k,
+        return [
+            _repair_fetch_tool_selection(
+                selection={
+                    "selected_tool": fallback_tool,
+                    "tool_input": {
+                        "query": sub_question.question,
+                        "mode": default_mode,
+                        "top_k": default_top_k,
+                    },
                 },
-            },
-            sub_question=sub_question,
-            tools=available_tools,
-        )
+                sub_question=sub_question,
+                tools=available_tools,
+            )
+        ]
 
     async def _build_available_task_tools(self) -> list[BaseTool]:
         """构造本阶段允许 LLM 选择的工具白名单。"""
@@ -639,8 +713,8 @@ class AgentTaskExecutor:
         previous_results: list[AgentTaskSubQuestionResult],
         tool_calls: list[AgentTaskToolCallTrace],
         langchain_config_factory: LangChainConfigFactory | None = None,
-    ) -> dict[str, Any] | None:
-        """给llm绑定bind_tools，让llm根据 query 选择要调用哪些tool完成任务，每次默认只获取 tool_calls 数组中的第一个tool"""
+    ) -> list[dict[str, Any]] | None:
+        """返回 LLM 本轮选择的全部原生 ToolCall。"""
 
         try:
             model = ChatOpenAI(
@@ -648,7 +722,7 @@ class AgentTaskExecutor:
                 api_key=self._settings.openai_api_key,
                 base_url=self._settings.openai_base_url,
                 temperature=0.0,
-            ).bind_tools(tools)
+            ).bind_tools(tools, parallel_tool_calls=True)
             response = await model.ainvoke(
                 # 开始由llm选择当前任务需要调用哪些tool
                 _build_tool_selection_messages(
@@ -671,17 +745,17 @@ class AgentTaskExecutor:
         tool_calls = getattr(response, "tool_calls", None) or []
         if not tool_calls:
             # 模型明确不调用工具时，允许子问题走已有答案推理。
-            return {"selected_tool": "none", "tool_input": {}}
-        
-        # 这里只取第一条 tool call，保证“每轮最多一个工具”的执行边界。
-        first_call = tool_calls[0]
-        if not isinstance(first_call, dict):
-            return None
-        
-        return {
-            "selected_tool": first_call.get("name"),
-            "tool_input": first_call.get("args") or {},
-        }
+            return []
+
+        return [
+            {
+                "call_id": call.get("id"),
+                "selected_tool": call.get("name"),
+                "tool_input": call.get("args") or {},
+            }
+            for call in tool_calls
+            if isinstance(call, dict)
+        ]
 
     async def _select_tool_with_json(
         self,
@@ -1034,7 +1108,7 @@ class AgentTaskExecutor:
         filters: RetrievalFilters,
         langchain_config_factory: LangChainConfigFactory | None,
     ) -> AgentTaskPlan:
-        """执行单 ToolCall、多轮 ToolMessage 的文档 Agent，产出待确认步骤。"""
+        """执行支持安全只读并行、多轮 ToolMessage 的文档 Agent，产出待确认步骤。"""
 
         if not self._settings.openai_api_key:
             raise AppServiceError("文档管理任务需要配置 LLM 原生 Tool Calling")
@@ -1064,13 +1138,13 @@ class AgentTaskExecutor:
             document_actions=document_actions,
         )
         tools_by_name = {tool.name: tool for tool in tools}
-        # parallel_tool_calls=False 是给模型的协议提示；后面的 raw_calls 数量检查才是强制边界。
+        # 模型可以同轮返回多个调用；后端仍按白名单和轮次开始时的状态强制校验。
         model = ChatOpenAI(
             model=self._settings.llm_model_name,
             api_key=self._settings.openai_api_key,
             base_url=self._settings.openai_base_url,
             temperature=0.0,
-        ).bind_tools(tools, parallel_tool_calls=False)
+        ).bind_tools(tools, parallel_tool_calls=True)
         messages: list[object] = [
             SystemMessage(content=DOCUMENT_AGENT_SYSTEM_PROMPT),
             HumanMessage(content=plan.original_query),
@@ -1153,18 +1227,36 @@ class AgentTaskExecutor:
                     # 没有 ToolCall 表示模型认为工作已结束；循环外仍会校验至少生成一个文档 dry-run。
                     break
 
-                if len(raw_calls) > 1:
-                    # 不猜测多个调用是否独立，也不挑第一条执行；全部退回可避免破坏工具依赖顺序。
-                    call_count += len(raw_calls)
-                    for raw_call in raw_calls:
-                        call = raw_call if isinstance(raw_call, dict) else {}
-                        call_id = str(call.get("id") or f"invalid_{round_index}")
-                        error = "每轮只允许一个 ToolCall；请按依赖顺序逐个重试"
+                calls = [call if isinstance(call, dict) else {} for call in raw_calls]
+                batch_size = len(calls)
+                # 先记录本轮开始时还可用的总预算；当前批次无论执行或拒绝都消耗 batch_size。
+                remaining_calls = max_calls - call_count
+                call_count += batch_size
+
+                # 判断目前模型选择的多个并行工具 能不能允许 并行执行
+                # 如果不行，返回error实例
+                batch_error = _parallel_batch_error(
+                    tool_names=[str(call.get("name") or "") for call in calls],
+                    registered_tool_names=set(tools_by_name),
+                    parallel_safe_tool_names=PARALLEL_SAFE_DOCUMENT_TOOL_NAMES,
+                    max_parallel_calls=self._settings.agent_max_parallel_tool_calls,
+                    remaining_calls=remaining_calls,
+                ) or _document_batch_dependency_error( # 校验工具之间是否存在依赖关系
+                    calls=calls,
+                    candidates=set(candidates), # set(candidates)：哪些文档已经被检索确认过，存此前 knowledge_retrieval 找到的候选文档及其 metadata。
+                    read_doc_ids=set(read_doc_ids), # set(read_doc_ids)：哪些候选文档已经读过完整原文；表示此前已经执行过：knowledge_document_read(doc_001)
+                )
+                if batch_error:
+                    # 整批拒绝但为每个原生 ToolCall 补一条失败 ToolMessage，模型下一轮可据此改正。
+                    for index, call in enumerate(calls, start=1):
+                        call_id = str(call.get("id") or f"invalid_{round_index}_{index}")
+                        tool_name = str(call.get("name") or "unknown")
+                        tool_input = _normalize_tool_input(call.get("args"))
                         messages.append(
                             ToolMessage(
-                                content=error,
+                                content=batch_error,
                                 tool_call_id=call_id,
-                                name=str(call.get("name") or "unknown"),
+                                name=tool_name,
                                 status="error",
                             )
                         )
@@ -1172,10 +1264,10 @@ class AgentTaskExecutor:
                             AgentTaskToolCallTrace(
                                 call_id=call_id,
                                 round=round_index,
-                                tool_name=str(call.get("name") or "unknown"),
-                                tool_input=_normalize_tool_input(call.get("args")),
+                                tool_name=tool_name,
+                                tool_input=tool_input,
                                 status="failed",
-                                error=error,
+                                error=batch_error,
                             )
                         )
                     self._save_document_tool_progress(plan, traces)
@@ -1183,106 +1275,94 @@ class AgentTaskExecutor:
                         raise AppServiceError("文档 Agent 已达到最大工具调用次数")
                     continue
 
-                if call_count >= max_calls:
-                    raise AppServiceError("文档 Agent 已达到最大工具调用次数")
-                call_count += 1
-                call = raw_calls[0]
-                if not isinstance(call, dict):
-                    raise AppServiceError("LLM 返回了无效 ToolCall")
-                call_id = str(call.get("id") or f"tool_{round_index}")
-                tool_name = str(call.get("name") or "")
-                tool_input = _normalize_tool_input(call.get("args"))
-                tool = tools_by_name.get(tool_name)
-                if tool is None:
-                    # 即使模型编造工具名，也只得到错误 ToolMessage，不会进入任意动态调用。
-                    error = f"未注册工具: {tool_name}"
-                    tool_message = ToolMessage(
-                        content=error,
-                        tool_call_id=call_id,
-                        name=tool_name or "unknown",
-                        status="error",
-                    )
-                    messages.append(tool_message)
-                    traces.append(
-                        AgentTaskToolCallTrace(
-                            call_id=call_id,
-                            round=round_index,
-                            tool_name=tool_name or "unknown",
-                            tool_input=tool_input,
-                            status="failed",
-                            error=error,
-                        )
-                    )
-                    self._save_document_tool_progress(plan, traces)
-                    continue
+                async def run_call(
+                    call: dict[str, Any],
+                    index: int,
+                ) -> tuple[ToolMessage, AgentTaskToolCallTrace, dict[str, Any] | None]:
+                    """负责 文档管理任务的并行 tool； 只有批次校验已经确认的并行安全工具会走到这里。"""
 
-                try:
-                    # 传完整 ToolCall 而非仅 args，LangChain 才能保留原生 tool_call_id 并返回 ToolMessage。
-                    tool_message = await tool.ainvoke(
-                        call,
-                        config=(
-                            langchain_config_factory(
-                                f"document.tool_loop.round_{round_index}.{tool_name}"
-                            )
-                            if langchain_config_factory is not None
-                            else None
-                        ),
-                    )
-                    if not isinstance(tool_message, ToolMessage):
-                        raise AppServiceError("文档工具未返回 ToolMessage")
-                    messages.append(tool_message)
-                    output = _parse_tool_message_content(tool_message.content)
-                    traces.append(
-                        AgentTaskToolCallTrace(
-                            call_id=call_id,
-                            round=round_index,
-                            tool_name=tool_name,
-                            tool_input=tool_input,
-                            tool_output=output,
-                            status="completed",
+                    call_id = str(call.get("id") or f"tool_{round_index}_{index}")
+                    tool_name = str(call.get("name") or "")
+                    tool_input = _normalize_tool_input(call.get("args"))
+                    tool = tools_by_name[tool_name]
+                    try:
+                        tool_message = await tool.ainvoke(
+                            call,
+                            config=(
+                                langchain_config_factory(
+                                    f"document.tool_loop.round_{round_index}.{tool_name}.{call_id}"
+                                )
+                                if langchain_config_factory is not None
+                                else None
+                            ),
                         )
-                    )
-                    if tool_name in {
+                        if not isinstance(tool_message, ToolMessage):
+                            raise AppServiceError("文档工具未返回 ToolMessage")
+                        output = _parse_tool_message_content(tool_message.content)
+                        return (
+                            tool_message,
+                            AgentTaskToolCallTrace(
+                                call_id=call_id,
+                                round=round_index,
+                                tool_name=tool_name,
+                                tool_input=tool_input,
+                                tool_output=output,
+                                status="completed",
+                            ),
+                            output,
+                        )
+                    except (_DocumentActionConflictError, ToolPermissionDeniedError):
+                        raise
+                    except Exception as exc:
+                        error = f"{type(exc).__name__}: {exc}"
+                        return (
+                            ToolMessage(
+                                content=error,
+                                tool_call_id=call_id,
+                                name=tool_name,
+                                status="error",
+                            ),
+                            AgentTaskToolCallTrace(
+                                call_id=call_id,
+                                round=round_index,
+                                tool_name=tool_name,
+                                tool_input=tool_input,
+                                status="failed",
+                                error=error,
+                            ),
+                            None,
+                        )
+
+                # --------------------------文档管理任务的并行tool位置--------------------------
+
+                # 并行执行整批独立只读调用；return_exceptions=True 让冲突/权限这类终态错误
+                # 在所有已启动协程结束后集中处理，而普通工具错误已在 run_call 中转为 ToolMessage。
+                batch_results = await asyncio.gather(
+                    *(run_call(call, index) for index, call in enumerate(calls, start=1)),
+                    return_exceptions=True,
+                )
+                for result in batch_results:
+                    if isinstance(result, BaseException):
+                        raise result
+                    tool_message, trace, output = result
+                    messages.append(tool_message)
+                    traces.append(trace)
+                    if output is not None and trace.tool_name in {
                         KNOWLEDGE_DOCUMENT_CREATE_TOOL_NAME,
                         KNOWLEDGE_DOCUMENT_UPDATE_TOOL_NAME,
                         KNOWLEDGE_DOCUMENT_DELETE_TOOL_NAME,
                     }:
-                        # 只把写工具的成功结果冻结成待确认 step；检索/read/web/MCP 只保留在调用轨迹中。
                         plan.steps.append(
                             _document_step_from_tool_result(
-                                call_id=call_id,
-                                tool_name=tool_name,
-                                tool_input=tool_input,
+                                call_id=trace.call_id,
+                                tool_name=trace.tool_name,
+                                tool_input=trace.tool_input,
                                 output=output,
                                 index=len(plan.steps) + 1,
                             )
                         )
-                    self._save_document_tool_progress(plan, traces)
-                except (_DocumentActionConflictError, ToolPermissionDeniedError):
-                    # 动作冲突和权限拒绝属于整个计划无效，不能让模型通过重试规避。
-                    raise
-                except (ValidationError, AppServiceError, ValueError) as exc:
-                    # 普通参数或业务校验错误返回给模型，允许其在剩余调用次数内修正参数。
-                    error = f"{type(exc).__name__}: {exc}"
-                    messages.append(
-                        ToolMessage(
-                            content=error,
-                            tool_call_id=call_id,
-                            name=tool_name,
-                            status="error",
-                        )
-                    )
-                    traces.append(
-                        AgentTaskToolCallTrace(
-                            call_id=call_id,
-                            round=round_index,
-                            tool_name=tool_name,
-                            tool_input=tool_input,
-                            status="failed",
-                            error=error,
-                        )
-                    )
-                    self._save_document_tool_progress(plan, traces)
+                # 所有同批结果先汇总，再保存进度；这些新状态只会在下一轮成为可依赖的事实。
+                self._save_document_tool_progress(plan, traces)
 
             if not plan.steps:
                 raise AppServiceError("LLM 未调用任何文档 dry-run 工具")
@@ -2095,17 +2175,102 @@ def _validate_tool_selection(
     selection: dict[str, Any],
     tools: list[BaseTool],
 ) -> dict[str, Any]:
-    """本地校验 LLM 工具选择，未知工具一律降级为 none。"""
+    """规范化 LLM 工具选择；未知名称留给批次校验生成明确错误。"""
 
-    available = {tool.name for tool in tools}
+    del tools
     selected_tool = str(selection.get("selected_tool") or "none").strip()
-    if selected_tool not in available and selected_tool != "none":
-        return {"selected_tool": "none", "tool_input": {}}
     return {
+        "call_id": selection.get("call_id"),
         "selected_tool": selected_tool,
         "tool_input": _normalize_tool_input(selection.get("tool_input")),
         "reason": str(selection.get("reason") or ""),
     }
+
+
+def _parallel_batch_error(
+    *,
+    tool_names: list[str],
+    registered_tool_names: set[str],
+    parallel_safe_tool_names: set[str],
+    max_parallel_calls: int,
+    remaining_calls: int,
+) -> str | None:
+    """校验一轮 ToolCall 是否能作为独立只读批次并行执行。
+
+    单调用无需并行限制；多个调用则必须都已注册、未超预算/并行上限，且全部位于
+    ``parallel_safe_tool_names``。调用之间的业务依赖由调用方追加的专用校验处理。
+    """
+
+    if len(tool_names) > remaining_calls:
+        return f"本轮 ToolCall 数超过剩余总调用预算: {len(tool_names)}>{remaining_calls}"
+    unknown = [name for name in tool_names if name not in registered_tool_names]
+    if unknown:
+        return "本轮包含未注册工具: " + ", ".join(unknown)
+    if len(tool_names) <= 1:
+        return None
+    if len(tool_names) > max_parallel_calls:
+        return f"本轮 ToolCall 数超过并行上限: {len(tool_names)}>{max_parallel_calls}"
+    serial = [name for name in tool_names if name not in parallel_safe_tool_names]
+    if serial:
+        return "同轮包含必须串行执行的工具，请按依赖分轮重试: " + ", ".join(serial)
+    return None
+
+
+def _failed_batch_traces(
+    *,
+    selections: list[dict[str, Any]],
+    sub_question_id: str,
+    round_index: int,
+    error: str,
+) -> list[AgentTaskToolCallTrace]:
+    """把整轮拒绝转换成顺序稳定的失败轨迹。"""
+
+    return [
+        AgentTaskToolCallTrace(
+            call_id=str(
+                selection.get("call_id")
+                or f"{sub_question_id}_tool_{round_index}_{index}"
+            ),
+            round=round_index,
+            tool_name=str(selection.get("selected_tool") or "unknown"),
+            tool_input=_normalize_tool_input(selection.get("tool_input")),
+            status="failed",
+            error=error,
+            reason=str(selection.get("reason") or ""),
+        )
+        for index, selection in enumerate(selections, start=1)
+    ]
+
+
+def _document_batch_dependency_error(
+    *,
+    calls: list[dict[str, Any]],
+    candidates: set[str],
+    read_doc_ids: set[str],
+) -> str | None:
+    """校验要并行的tool 之间是否存在依赖。只使用本轮开始前的状态校验文档工具依赖。
+
+    因为同批工具会并发运行，不能让本批 ``retrieval`` 的输出立即授权本批 ``read``，
+    也不能让本批 ``read`` 立即授权本批 ``update``；否则执行顺序不确定且会绕过审查链。
+    """
+
+    for call in calls:
+        tool_name = str(call.get("name") or "")
+        tool_input = _normalize_tool_input(call.get("args"))
+        doc_id = str(tool_input.get("doc_id") or "")
+
+        # 如果触发 read 工具的调用，必须保证 阅读的这个 doc_id 是通过 knowledge_retrieval检索出来的，不能允许随意编造一个id
+        if tool_name == KNOWLEDGE_DOCUMENT_READ_TOOL_NAME and doc_id not in candidates:
+            return "knowledge_document_read 依赖前一轮 knowledge_retrieval 候选"
+        # 更新文档操作 和上面同理
+        if tool_name == KNOWLEDGE_DOCUMENT_UPDATE_TOOL_NAME:
+            if doc_id not in candidates:
+                return "knowledge_document_update 依赖前一轮 knowledge_retrieval 候选"
+            if doc_id not in read_doc_ids:
+                return "knowledge_document_update 依赖前一轮 knowledge_document_read 结果"
+        if tool_name == KNOWLEDGE_DOCUMENT_DELETE_TOOL_NAME and doc_id not in candidates:
+            return "knowledge_document_delete 依赖前一轮 knowledge_retrieval 候选"
+    return None
 
 
 # 【URL 场景下的稳定性补丁】LLM tool calling 不稳定

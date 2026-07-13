@@ -186,10 +186,16 @@ class Settings(BaseSettings):
     # Agent Loop 循环次数配置
     agent_max_steps: int = Field(default=6, ge=1, le=50, alias="AGENT_MAX_STEPS")
     agent_max_tool_calls: int = Field(
-        default=4,
+        default=12,
         ge=0,
         le=50,
         alias="AGENT_MAX_TOOL_CALLS",
+    )
+    agent_max_parallel_tool_calls: int = Field(
+        default=4,
+        ge=1,
+        le=20,
+        alias="AGENT_MAX_PARALLEL_TOOL_CALLS",
     )
     # Agent 文档管理工具默认关闭，并且默认只允许 dry-run。
     # 真实写入需要通过 TaskPlan 确认接口重新校验权限后再放开。

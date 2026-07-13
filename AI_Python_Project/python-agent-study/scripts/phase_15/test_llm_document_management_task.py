@@ -45,7 +45,19 @@ from fast_app.services.knowledge_document_management_service import (
 
 class FakeRetriever(BaseRetriever):
     async def retrieve(self, query: str, options: RetrievalOptions):
-        return []
+        return [
+            RetrievedDoc(
+                id=f"chunk_{query}",
+                content=f"fake evidence: {query}",
+                score=0.9,
+                source="fake",
+                title="fake",
+                metadata={
+                    "doc_id": "doc_fake",
+                    "source_path": "development/source.md",
+                },
+            )
+        ]
 
 
 class StaticRetriever(BaseRetriever):
@@ -113,6 +125,29 @@ class FakeBoundModel:
                 content="",
                 tool_calls=[
                     {
+                        "name": "knowledge_retrieval",
+                        "args": {"query": "internal-a"},
+                        "id": "parallel_read_a",
+                        "type": "tool_call",
+                    },
+                    {
+                        "name": "knowledge_retrieval",
+                        "args": {"query": "internal-b"},
+                        "id": "parallel_read_b",
+                        "type": "tool_call",
+                    },
+                ],
+            )
+        if self.calls == 2:
+            previous = messages[-2:]
+            assert all(isinstance(item, ToolMessage) for item in previous)
+            assert all(item.status == "success" for item in previous), [
+                (item.status, item.content) for item in previous
+            ]
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
                         "name": "knowledge_document_create",
                         "args": {
                             "filename": "bad-a.md",
@@ -134,7 +169,7 @@ class FakeBoundModel:
                     },
                 ],
             )
-        if self.calls == 2:
+        if self.calls == 3:
             previous = messages[-2:]
             assert all(isinstance(item, ToolMessage) for item in previous)
             assert all(item.status == "error" for item in previous)
@@ -154,7 +189,7 @@ class FakeBoundModel:
                     }
                 ],
             )
-        if self.calls == 3:
+        if self.calls == 4:
             assert isinstance(messages[-1], ToolMessage)
             assert messages[-1].tool_call_id == "invalid_schema"
             assert messages[-1].status == "error"
@@ -173,7 +208,7 @@ class FakeBoundModel:
                     }
                 ],
             )
-        assert self.calls == 4
+        assert self.calls == 5
         assert isinstance(messages[-1], ToolMessage)
         assert messages[-1].tool_call_id == "create_1"
         assert messages[-1].status == "success"
@@ -269,7 +304,7 @@ async def main() -> None:
             KNOWLEDGE_BASE_DIR=kb.as_posix(),
             AGENT_DOCUMENT_TOOLS_ENABLED=True,
             AGENT_DOCUMENT_TOOLS_DRY_RUN_ONLY=False,
-            AGENT_MAX_TOOL_CALLS=4,
+            AGENT_MAX_TOOL_CALLS=12,
             AGENT_TASK_PLAN_DIR=(root / "plans").as_posix(),
             MARKDOWN_CHUNK_MIN_CHARS=1,
         )
@@ -326,7 +361,7 @@ async def main() -> None:
         finally:
             executor_module.ChatOpenAI = original
 
-        assert FakeChatOpenAI.parallel_tool_calls is False
+        assert FakeChatOpenAI.parallel_tool_calls is True
         assert result.status == AgentTaskPlanStatus.WAITING_CONFIRMATION
         assert len(result.steps) == 1
         assert result.steps[0].output["tool_call_id"] == "create_1"
@@ -342,17 +377,55 @@ async def main() -> None:
         assert result.steps[0].output["preview"]["affected_doc_id"] in create_markdown
         traces = result.final_output["tool_calls"]
         assert [item["call_id"] for item in traces] == [
+            "parallel_read_a",
+            "parallel_read_b",
             "parallel_a",
             "parallel_b",
             "invalid_schema",
             "create_1",
         ]
         assert [item["status"] for item in traces] == [
+            "completed",
+            "completed",
             "failed",
             "failed",
             "failed",
             "completed",
         ]
+        assert [item["round"] for item in traces[:2]] == [1, 1]
+        assert executor_module._document_batch_dependency_error(
+            calls=[
+                {"name": "knowledge_retrieval", "args": {"query": "x"}},
+                {
+                    "name": "knowledge_document_read",
+                    "args": {"doc_id": "future_doc"},
+                },
+            ],
+            candidates=set(),
+            read_doc_ids=set(),
+        ) is not None
+        assert executor_module._document_batch_dependency_error(
+            calls=[
+                {"name": "knowledge_document_read", "args": {"doc_id": "a"}},
+                {"name": "knowledge_document_read", "args": {"doc_id": "b"}},
+            ],
+            candidates={"a", "b"},
+            read_doc_ids=set(),
+        ) is None
+        assert executor_module._parallel_batch_error(
+            tool_names=["knowledge_retrieval", "knowledge_document_create"],
+            registered_tool_names={"knowledge_retrieval", "knowledge_document_create"},
+            parallel_safe_tool_names=executor_module.PARALLEL_SAFE_DOCUMENT_TOOL_NAMES,
+            max_parallel_calls=4,
+            remaining_calls=12,
+        ) is not None
+        assert executor_module._parallel_batch_error(
+            tool_names=["knowledge_retrieval"] * 5,
+            registered_tool_names={"knowledge_retrieval"},
+            parallel_safe_tool_names=executor_module.PARALLEL_SAFE_DOCUMENT_TOOL_NAMES,
+            max_parallel_calls=4,
+            remaining_calls=12,
+        ) is not None
         confirmed = await executor.confirm(result.task_plan_id, user=user)
         assert confirmed.status == AgentTaskPlanStatus.COMPLETED
         created = kb / "development" / "native-tool-call.md"

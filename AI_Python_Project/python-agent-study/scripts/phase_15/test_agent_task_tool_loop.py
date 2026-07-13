@@ -12,6 +12,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
+from langchain_core.messages import AIMessage
+
+import fast_app.services.agent_task_executor as executor_module
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
@@ -94,6 +97,45 @@ class LoopExecutor(AgentTaskExecutor):
             {"result_count": 1, "top_urls": ["https://example.com/rag"]},
             f"web answer for {sub_question.question}",
             [{"id": "web_1", "source": "web_search"}],
+        )
+
+
+class ParallelLoopExecutor(LoopExecutor):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.started = 0
+        self.both_started = asyncio.Event()
+        self.web_finished = asyncio.Event()
+
+    async def _select_tool_for_sub_question(self, *args, **kwargs):
+        if kwargs.get("tool_calls"):
+            return []
+        return [
+            {
+                "call_id": "parallel_knowledge",
+                "selected_tool": "knowledge_retrieval",
+                "tool_input": {"query": "internal"},
+            },
+            {
+                "call_id": "parallel_web",
+                "selected_tool": "web_search",
+                "tool_input": {"query": "external"},
+            },
+        ]
+
+    async def _run_task_tool_for_sub_question(self, *args, **kwargs):
+        self.started += 1
+        if self.started == 2:
+            self.both_started.set()
+        await asyncio.wait_for(self.both_started.wait(), timeout=1)
+        if kwargs["selected_tool"] == "web_search":
+            self.web_finished.set()
+            raise RuntimeError("parallel web failed")
+        await asyncio.wait_for(self.web_finished.wait(), timeout=1)
+        return (
+            {"doc_count": 1},
+            "parallel knowledge answer",
+            [{"id": "parallel_doc", "source": "knowledge_retrieval"}],
         )
 
 
@@ -181,6 +223,49 @@ async def main() -> None:
         store = AgentTaskPlanStore(settings=settings)
         executor = build_executor(settings, store)
 
+        class FakeBoundBatchModel:
+            async def ainvoke(self, messages, config=None):
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "native_a",
+                            "name": "knowledge_retrieval",
+                            "args": {"query": "a"},
+                            "type": "tool_call",
+                        },
+                        {
+                            "id": "native_b",
+                            "name": "web_search",
+                            "args": {"query": "b"},
+                            "type": "tool_call",
+                        },
+                    ],
+                )
+
+        class FakeChatOpenAI:
+            def __init__(self, **kwargs):
+                pass
+
+            def bind_tools(self, tools, **kwargs):
+                assert kwargs["parallel_tool_calls"] is True
+                return FakeBoundBatchModel()
+
+        original_chat_openai = executor_module.ChatOpenAI
+        executor_module.ChatOpenAI = FakeChatOpenAI
+        try:
+            native_calls = await executor._select_tool_with_bound_tools(
+                tools=await executor._build_available_task_tools(),
+                plan=build_plan("task_plan_native_batch"),
+                sub_question=build_plan("task_plan_native_batch").sub_questions[0],
+                previous_results=[],
+                tool_calls=[],
+            )
+        finally:
+            executor_module.ChatOpenAI = original_chat_openai
+        assert native_calls is not None
+        assert [call["call_id"] for call in native_calls] == ["native_a", "native_b"]
+
         plan = await executor.execute_question_decomposition_plan(
             plan=build_plan("task_plan_202607080001_tool_loop"),
             user=build_user(),
@@ -215,6 +300,44 @@ async def main() -> None:
         assert len(saved) == 1
         payload = json.loads(saved[0].read_text(encoding="utf-8"))
         assert "tool_calls" in payload["final_output"]["sub_question_results"][0]
+
+        parallel_executor = ParallelLoopExecutor(
+            settings=Settings(
+                OPENAI_API_KEY="",
+                BOCHA_API_KEY="fake",
+                AGENT_TASK_PLAN_DIR=temp_dir,
+                AGENT_MAX_TOOL_CALLS=12,
+                AGENT_MAX_PARALLEL_TOOL_CALLS=4,
+            ),
+            vector_retriever=FakeRetriever(),
+            keyword_retriever=FakeRetriever(),
+            llm_client=FakeLLM(),
+            document_management_service=object(),
+            tool_permission_service=object(),
+            tool_audit_service=object(),
+            task_plan_store=store,
+        )
+        parallel_result = await parallel_executor._execute_sub_question(
+            plan=build_plan("task_plan_parallel"),
+            sub_question=build_plan("task_plan_parallel").sub_questions[0],
+            previous_results=[],
+            mode="hybrid",
+            top_k=3,
+            candidate_k=None,
+            min_score=0.0,
+            filters=RetrievalFilters(),
+        )
+        assert parallel_executor.started == 2
+        assert [call.call_id for call in parallel_result.tool_calls] == [
+            "parallel_knowledge",
+            "parallel_web",
+        ]
+        assert [call.round for call in parallel_result.tool_calls] == [1, 1]
+        assert [call.status for call in parallel_result.tool_calls] == [
+            "completed",
+            "failed",
+        ]
+        assert parallel_result.status == "completed"
 
         server_path = ROOT / "scripts" / "mcp_demo_server.py"
         mcp_settings = Settings(
