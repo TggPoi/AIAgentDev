@@ -48,6 +48,7 @@ logger = get_logger(__name__)
 
 
 def get_rag_agent_operation(state: RagAgentState) -> str:
+    """读取当前入口类型；旧状态缺失时按非流式 run 处理。"""
     # operation 用于区分同一个节点当前服务于 run / stream / stream_events 哪个入口。
     # 如果旧 state 或测试 state 没传 operation，就默认按 run 处理。
     return state.get("operation", "run")
@@ -84,6 +85,7 @@ def build_rag_agent_answer_query(state: RagAgentState) -> str:
 
 
 def get_rag_agent_step_index(operation: str, step_name: str) -> int:
+    """返回节点在指定入口链路中的稳定追踪序号。"""
     # stream_events 多一个 emit_sources 步骤，所以 step_index 和 run/stream 不完全相同。
     # LangSmith trace 中保留稳定 index，后续排查时可以按顺序复盘 Agent 链路。
     if operation == "stream_events":
@@ -127,6 +129,7 @@ def build_rag_agent_step_inputs(
     state: RagAgentState,
     **extra: object,
 ) -> dict[str, object]:
+    """汇总状态中的公共字段，并合并当前节点专属的追踪输入。"""
     # 所有节点统一用这个 helper 构造 trace inputs，避免每个节点各自拼字段。
     # extra 用于追加当前节点独有的信息，例如 tool_name、doc_count、error_kind。
     return {
@@ -156,6 +159,7 @@ def rag_agent_langsmith_step_trace(
     run_type: str,
     inputs: dict[str, object],
 ):
+    """根据 Agent 状态创建单个节点的 LangSmith trace 上下文。"""
     # Agent 节点内部拿到的是 RagAgentState，不是 RagChatRequest。
     # 所以这里使用 from_state 版本的 metadata builder，把 state 转成 LangSmith 可读的 step 元数据。
     operation = get_rag_agent_operation(state)
@@ -172,6 +176,7 @@ def rag_agent_langsmith_step_trace(
 
 
 def build_rag_agent_retrieval_filters(state: RagAgentState) -> RetrievalFilters:
+    """把 state 中序列化的筛选条件还原为检索器使用的内部模型。"""
     # HTTP schema 的 filters 在 initial_state 中已经 model_dump 成 dict。
     # 这里再转回内部 RetrievalFilters，供 knowledge_retrieval helper 使用。
     raw_filters = state.get("filters", {})
@@ -180,6 +185,7 @@ def build_rag_agent_retrieval_filters(state: RagAgentState) -> RetrievalFilters:
 
 
 def build_loop_limit_error_decision(reason: str) -> AgentErrorDecision:
+    """把主动触发的循环上限转换为统一的可恢复错误决策。"""
     # loop limit 不是底层异常，而是 Agent 控制层主动停止。
     # 因此这里手动构造 AgentErrorDecision，让后续错误回答节点可以统一处理。
     return AgentErrorDecision(
@@ -194,6 +200,7 @@ def build_loop_limit_error_decision(reason: str) -> AgentErrorDecision:
 
 
 def route_after_loop_check(state: RagAgentState) -> RagAgentRoute:
+    """根据循环检查结果，选择直接回答、任务执行、澄清或检索分支。"""
     # check_loop_limits 之后的条件边：
     # - 有 error_decision：说明已经触发 loop/error 控制，进入错误回答。
     # - route 是 direct_answer：不调用工具。
@@ -214,6 +221,7 @@ def route_after_loop_check(state: RagAgentState) -> RagAgentRoute:
 
 
 def route_after_tool_call(state: RagAgentState) -> RagAgentRoute:
+    """根据工具调用产生的错误决策，选择错误回答或请求失败分支。"""
     # 工具节点不会直接抛出所有错误，而是先写入 error_decision。
     # 这里根据 error action 决定是给用户一个可解释最终回答，还是让请求失败。
     decision = state.get("error_decision")
@@ -230,8 +238,10 @@ def create_next_action_decision_node(
     task_router: AgentTaskRouter | None = None,
     task_planner: AgentTaskPlanner | None = None,
 ) -> Callable[[RagAgentState], dict[str, object]]:
+    """构造意图路由节点：Router 定意图，Planner 为复杂任务创建计划。"""
     # Router 只选择业务意图；Planner 只为已确定的分支创建 TaskPlan。
     async def decide_next_action_node(state: RagAgentState) -> dict[str, object]:
+        """读取查询和冻结会话上下文，返回下一条 Graph 路由及其状态更新。"""
         async with rag_agent_langsmith_step_trace(
             settings=settings,
             state=state,
@@ -242,6 +252,7 @@ def create_next_action_decision_node(
             operation = get_rag_agent_operation(state)
 
             def build_child_config(child_name: str):
+                """为 Router 或 Planner 的 LLM 子调用继承当前节点的追踪上下文。"""
                 return build_rag_langchain_child_config(
                     settings=settings,
                     state=state,
@@ -256,6 +267,7 @@ def create_next_action_decision_node(
                     ),
                 )
 
+            # 组装历史对话的上下文
             history = [
                 item
                 for item in (
@@ -272,6 +284,7 @@ def create_next_action_decision_node(
                 )
                 if item is not None
             ]
+            # Router 仅消费冻结的摘要和最近窗口，不能自行读取会话存储。
             if task_router is None:
                 raise RuntimeError("AgentTaskRouter 未配置")
 
@@ -289,6 +302,7 @@ def create_next_action_decision_node(
                 "route_latency_ms": round(route_result.latency_ms, 2),
                 "route_rule_matched": route_result.source == "rule",
             }
+            # 需要用户补充query信息
             if decision.intent == "clarification_required":
                 result = {
                     "route": "clarification_required",
@@ -308,6 +322,8 @@ def create_next_action_decision_node(
             current_user = state.get("current_user")
             user_id = current_user.user_id if current_user is not None else None
             task_plan = None
+
+            # 进入需要 Planner 拆解的复杂任务
             if decision.intent == "question_decomposition":
                 if task_planner is None:
                     raise RuntimeError("AgentTaskPlanner 未配置")
@@ -317,6 +333,8 @@ def create_next_action_decision_node(
                     user_id=user_id,
                     langchain_config_factory=build_child_config,
                 )
+
+            # 进入Planner文档操作任务
             elif decision.intent == "knowledge_document_management":
                 if task_planner is None:
                     raise RuntimeError("AgentTaskPlanner 未配置")
@@ -324,6 +342,7 @@ def create_next_action_decision_node(
                     query=state["query"],
                     user_id=user_id,
                 )
+            # 进入Planner网络搜索任务
             elif decision.intent == "web_research":
                 if task_planner is None:
                     raise RuntimeError("AgentTaskPlanner 未配置")
@@ -332,6 +351,7 @@ def create_next_action_decision_node(
                     user_id=user_id,
                 )
 
+            # 任务已生成，开始执行 拆解后的子任务
             if task_plan is not None:
                 route: RagAgentRoute = "execute_task_plan"
                 step_count = state["step_count"] + 1
@@ -366,6 +386,7 @@ def create_next_action_decision_node(
                     )
                 return result
 
+            # 上面的复杂节点都没有触发，表示当前任务为简单的检索任务，判断是直接回答，还是检索知识库
             need_retrieval, route_reason = should_retrieve_for_query(state["query"])
             # 当前最小 Agent 只有两个动作：直接回答，或调用 knowledge_retrieval。
             # 后续多工具 Agent 可以在这里扩展 calculator / web_search / MCP tool 的选择。
@@ -406,6 +427,7 @@ def create_agent_clarification_node(
     """把 Router 的澄清决定转换成正常回答，要求用户补充上下文，不触发 Planner 或 Tool。"""
 
     async def clarification_node(state: RagAgentState) -> dict[str, object]:
+        """将 Router 给出的澄清问题写为最终回答，并标记正常结束原因。"""
         question = state.get("clarification_question") or (
             "请明确希望进行普通问答、复杂分析、联网检索，"
             "还是创建、修改或删除知识库文档。"
@@ -435,7 +457,9 @@ def create_agent_clarification_node(
 def create_check_loop_limits_node(
     settings: Settings,
 ) -> Callable[[RagAgentState], dict[str, object]]:
+    """构造把循环次数和工具调用次数限制到配置范围内的节点。"""
     async def check_loop_limits_node(state: RagAgentState) -> dict[str, object]:
+        """将当前状态投影为循环快照，并在到达上限时写入错误决策。"""
         async with rag_agent_langsmith_step_trace(
             settings=settings,
             state=state,
@@ -499,9 +523,11 @@ def create_check_loop_limits_node(
 def create_rag_agent_direct_answer_node(
     settings: Settings,
 ) -> Callable[[RagAgentState], dict[str, str]]:
+    """构造无需检索或 LLM 的固定直接回答节点。"""
     # 直接回答节点用于问候、能力说明等不需要知识库的 query。
     # 它不调用 LLM，避免把简单系统能力说明变成不稳定的模型输出。
     async def direct_answer_node(state: RagAgentState) -> dict[str, str]:
+        """写入固定系统回答和结束原因，供 Graph 直接结束本次请求。"""
         async with rag_agent_langsmith_step_trace(
             settings=settings,
             state=state,
@@ -546,11 +572,13 @@ def create_call_knowledge_retrieval_node(
     vector_retriever: BaseRetriever,
     keyword_retriever: BaseRetriever,
 ) -> Callable[[RagAgentState], dict[str, object]]:
+    """构造调用向量/关键词检索工具并把结果写回状态的节点。"""
     # 这是 13-11 的核心工具节点。
     # 它不通过 LangChain Tool 字符串摘要，而是直接复用底层 helper 拿结构化 RetrievedDoc。
     async def call_knowledge_retrieval_node(
         state: RagAgentState,
     ) -> dict[str, object]:
+        """执行知识检索；将成功文档或分类后的工具错误更新写入 state。"""
         async with rag_agent_langsmith_step_trace(
             settings=settings,
             state=state,
@@ -651,6 +679,7 @@ def create_execute_task_plan_node(
     """构造 AgentTaskPlan 执行节点。"""
 
     async def execute_task_plan_node(state: RagAgentState) -> dict[str, object]:
+        """执行已生成的计划，或把需要人工确认的计划保存后返回。"""
         plan = state.get("agent_task_plan")
         user = state.get("current_user")
         if plan is None or user is None:
@@ -699,6 +728,7 @@ def create_execute_task_plan_node(
             operation = get_rag_agent_operation(state)
 
             def build_executor_config(child_name: str):
+                """为 TaskExecutor 的每次模型调用建立当前任务的子 trace 配置。"""
                 return build_rag_langchain_child_config(
                     settings=settings,
                     state=state,
@@ -749,6 +779,7 @@ def create_execute_task_plan_node(
 
 
 def build_task_plan_answer(plan) -> str:
+    """把结构化任务计划渲染为聊天兼容的摘要文本。"""
     # 这里的文本是 chat 回答；结构化字段仍通过 response.agent_task_plan
     # 和 stream_events 的 agent_task_plan_created 给前端消费。
     lines = [
@@ -796,9 +827,11 @@ def create_agent_rerank_node(
     reranker: BaseReranker,
     rerank_top_k: int,
 ) -> Callable[[RagAgentState], dict[str, object]]:
+    """构造对检索候选文档重排序，并在服务异常时降级的节点。"""
     # rerank 是质量增强层，不是唯一事实来源。
     # 所以 rerank 的 ExternalServiceError 会降级为 fallback docs，而不是直接中断 Agent。
     async def rerank_node(state: RagAgentState) -> dict[str, object]:
+        """重排 state 中的文档，或保留截断候选文档作为可恢复降级结果。"""
         docs = state["docs"]
         async with rag_agent_langsmith_step_trace(
             settings=settings,
@@ -913,9 +946,11 @@ def create_agent_build_context_node(
     settings: Settings,
     prompt_guard: PromptGuardService | None = None,
 ) -> Callable[[RagAgentState], dict[str, object]]:
+    """构造将安全检索文档转换为 LLM 上下文的节点。"""
     # build_context 是 RAG 和 LLM 之间的适配层：
     # 输入是结构化 docs，输出是 LLM client 能消费的 RagContext。
     async def build_context_node(state: RagAgentState) -> dict[str, object]:
+        """过滤不安全文档并生成包含查询与文档的 RagContext。"""
         docs = state["docs"]
         async with rag_agent_langsmith_step_trace(
             settings=settings,
@@ -964,9 +999,11 @@ def create_agent_generate_answer_node(
     llm_client: BaseLLMClient,
     prompt_guard: PromptGuardService | None = None,
 ) -> Callable[[RagAgentState], dict[str, str]]:
+    """构造非流式最终回答生成节点。"""
     # 非流式 run 使用这个节点一次性生成完整 answer。
     # stream / stream_events 为了保持 token-only，会在 service 层手写到 llm_client.stream。
     async def generate_answer_node(state: RagAgentState) -> dict[str, str]:
+        """调用 LLM 生成完整回答，完成输出 Guard 后写入最终状态。"""
         context = state["context"]
         if context is None:
             raise ExternalServiceError("RAG Agent 上下文为空，无法生成回答")
@@ -1058,9 +1095,11 @@ def create_agent_generate_answer_node(
 def create_agent_error_answer_node(
     settings: Settings,
 ) -> Callable[[RagAgentState], dict[str, str]]:
+    """构造把可解释错误决策转换为用户可见回答的节点。"""
     # 可恢复或可解释的错误会进入这里，例如知识库无结果、loop 达上限。
     # 这个节点把错误决策转换成面向用户的最终回答。
     async def error_answer_node(state: RagAgentState) -> dict[str, str]:
+        """读取错误决策，生成安全的最终回答并标记结束原因。"""
         decision = state.get("error_decision")
         if decision is None:
             raise ExternalServiceError("RAG Agent 错误分支缺少错误决策")
@@ -1096,9 +1135,11 @@ def create_agent_error_answer_node(
 def create_agent_fail_request_node(
     settings: Settings,
 ) -> Callable[[RagAgentState], dict[str, object]]:
+    """构造把不可恢复错误继续抛给 API 或 SSE 错误层的节点。"""
     # 不可恢复错误进入这里，并继续抛 AppServiceError 体系内的异常。
     # 这样 HTTP / SSE 层仍然复用现有全局错误响应和 error event 包装。
     async def fail_request_node(state: RagAgentState) -> dict[str, object]:
+        """记录不可恢复错误的 trace 后抛出统一服务异常。"""
         decision = state.get("error_decision")
         if decision is None:
             raise ExternalServiceError("RAG Agent 请求失败")

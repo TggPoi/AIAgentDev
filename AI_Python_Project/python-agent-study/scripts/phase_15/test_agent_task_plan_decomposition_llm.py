@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from fast_app.core.config import Settings
-from fast_app.services.agent_task_planner import AgentTaskPlanner, _missing_topics
+from fast_app.services.agent_task_planner import AgentTaskPlanner
 
 
 QUERY = (
@@ -31,10 +31,6 @@ async def main() -> None:
         print("plan=None")
         return
 
-    missing_topics = _missing_topics(
-        query=QUERY,
-        sub_questions=plan.sub_questions,
-    )
     print(
         json.dumps(
             {
@@ -47,7 +43,6 @@ async def main() -> None:
                 "target_path": plan.target_path,
                 "steps_count": len(plan.steps),
                 "source_query": plan.source_query,
-                "missing_topics": missing_topics,
                 "sub_questions": [
                     item.model_dump(mode="json") for item in plan.sub_questions
                 ],

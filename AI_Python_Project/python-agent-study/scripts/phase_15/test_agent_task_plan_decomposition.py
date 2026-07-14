@@ -132,7 +132,7 @@ async def main() -> None:
     assert llm_plan.steps == []
     assert "forged.md" not in llm_plan.model_dump_json()
 
-    missing_topic_query = "请对比 RAG 系统中的混合检索、rerank、权限设计和 Prompt Guard 之间的关系"
+    incomplete_query = "请对比 RAG 系统中的混合检索、rerank、权限设计和 Prompt Guard 之间的关系"
     incomplete_payload = {
         "objective": "对比 RAG 系统中的多个模块关系",
         "task_type": "comparison",
@@ -164,18 +164,16 @@ async def main() -> None:
         ],
         "confidence": 0.95,
     }
-    repaired_plan = planner._plan_from_payload(
-        query=missing_topic_query,
+    parsed_plan = planner._plan_from_payload(
+        query=incomplete_query,
         payload=incomplete_payload,
         user_id="planner-user",
     )
-    assert repaired_plan.task_kind == "question_decomposition"
-    assert repaired_plan.target_path is None
-    assert repaired_plan.steps == []
-    assert_topics_covered(
-        repaired_plan,
-        ["混合检索", "rerank", "权限设计", "Prompt Guard"],
-    )
+    assert parsed_plan.task_kind == "question_decomposition"
+    assert parsed_plan.target_path is None
+    assert parsed_plan.steps == []
+    assert len(parsed_plan.sub_questions) == 2
+    assert parsed_plan.source_query == "rerank Prompt Guard 协同机制"
 
     print("agent_task_plan_decomposition=passed")
 

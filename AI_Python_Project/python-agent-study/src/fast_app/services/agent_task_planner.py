@@ -70,7 +70,7 @@ TASK_PLANNER_SYSTEM_PROMPT = """你是 Agent 多步骤问题拆解规划器。
 
 你生成的是“问题拆解 plan”，不是“执行 TODO list”。
 sub_questions[].question 必须是可回答的问题，不能是动作指令。
-输入中的 explicit_topics 是用户显式提到的主题，必须全部被 sub_questions 覆盖。
+当前 query 中用户明确提出的要求必须全部被 sub_questions 覆盖。
 
 禁止把下面这些内容作为子问题：
 - 检索资料
@@ -166,68 +166,13 @@ class AgentTaskPlanner:
             # Router 已确认需要拆解；Planner 低置信度时用本地拆解兜底，不能改变路由。
             return self._plan_with_rules(query=query, user_id=user_id)
 
-        # 先不自动补题，保留一轮“缺失主题”检测机会；这样可以让 LLM 自己修复，
-        # 只有修复仍不完整时才用本地规则补齐，避免把兜底问题过早混进优质拆解。
         plan = self._plan_from_payload(
             query=query,
             payload=payload,
             user_id=user_id,
-            repair_missing_topics=False,
         )
         if plan is None:
             return self._plan_with_rules(query=query, user_id=user_id)
-        missing_topics = _missing_topics(query=query, sub_questions=plan.sub_questions)
-        if missing_topics:
-            # explicit_topics 是用户明说的主题，不能因为 LLM 漏掉就静默丢失。
-            # 这里带着 missing_topics 重试一次，比直接重写整个 plan 更低侵入。
-            retry_payload = await self._invoke_structured_planner(
-                model=model,
-                query=query,
-                history=history,
-                missing_topics=missing_topics,
-                langchain_config_factory=langchain_config_factory,
-                child_name_prefix="task_planner.repair.structured",
-            )
-            if retry_payload is None:
-                retry_payload = await self._invoke_json_planner(
-                    model=model,
-                    query=query,
-                    history=history,
-                    missing_topics=missing_topics,
-                    langchain_config_factory=langchain_config_factory,
-                    child_name="task_planner.repair.json_object",
-                )
-            if retry_payload is not None:
-                retry_plan = self._plan_from_payload(
-                    query=query,
-                    payload=retry_payload,
-                    user_id=user_id,
-                    repair_missing_topics=False,
-                )
-                if retry_plan is not None:
-                    retry_missing_topics = _missing_topics(
-                        query=query,
-                        sub_questions=retry_plan.sub_questions,
-                    )
-                    if len(retry_missing_topics) < len(missing_topics):
-                        plan = retry_plan
-                        missing_topics = retry_missing_topics
-
-        if missing_topics:
-            # 二次 LLM 修复后仍遗漏时，才追加规则生成的 topic repair 子问题。
-            # 这保证最终 plan 至少覆盖用户显式提到的每个主题。
-            plan.sub_questions.extend(
-                _build_missing_topic_sub_questions(
-                    missing_topics=missing_topics,
-                    start_index=len(plan.sub_questions) + 1,
-                )
-            )
-            plan.sub_questions = sorted(plan.sub_questions, key=lambda item: item.order)
-            _set_plan_source_query(
-                plan,
-                _condense_source_query(" ".join([plan.source_query, *missing_topics])),
-            )
-
         return plan
 
     def _build_model(self) -> ChatOpenAI:
@@ -244,9 +189,7 @@ class AgentTaskPlanner:
         model: ChatOpenAI,
         query: str,
         history: list[object] | None,
-        missing_topics: list[str] | None = None,
         langchain_config_factory: LangChainConfigFactory | None = None,
-        child_name_prefix: str = "task_planner.structured",
     ) -> dict[str, Any] | None:
         # 不同 OpenAI 兼容服务对 structured output 支持不一致：
         # 先走 json_schema，失败再试 function_calling，最后由调用方降级到普通 JSON。
@@ -260,10 +203,9 @@ class AgentTaskPlanner:
                     _build_planner_messages(
                         query=query,
                         history=history,
-                        missing_topics=missing_topics,
                     ),
                     config=(
-                        langchain_config_factory(f"{child_name_prefix}.{method}")
+                        langchain_config_factory(f"task_planner.structured.{method}")
                         if langchain_config_factory is not None
                         else None
                     ),
@@ -289,9 +231,7 @@ class AgentTaskPlanner:
         model: ChatOpenAI,
         query: str,
         history: list[object] | None,
-        missing_topics: list[str] | None = None,
         langchain_config_factory: LangChainConfigFactory | None = None,
-        child_name: str = "task_planner.json_object",
     ) -> dict[str, Any] | None:
         # 最低兼容路径：要求模型输出 JSON object，再由 json.loads + 本地校验接管。
         json_model = model.bind(response_format={"type": "json_object"})
@@ -300,10 +240,9 @@ class AgentTaskPlanner:
                 _build_planner_messages(
                     query=query,
                     history=history,
-                    missing_topics=missing_topics,
                 ),
                 config=(
-                    langchain_config_factory(child_name)
+                    langchain_config_factory("task_planner.json_object")
                     if langchain_config_factory is not None
                     else None
                 ),
@@ -360,7 +299,6 @@ class AgentTaskPlanner:
         query: str,
         payload: dict[str, Any],
         user_id: str | None = None,
-        repair_missing_topics: bool = True,
     ) -> AgentTaskPlan | None:
         """把 LLM JSON 收敛成问题拆解计划，忽略任何正文类字段。"""
 
@@ -373,20 +311,6 @@ class AgentTaskPlanner:
         if not sub_questions:
             # 没有合法子问题时不能继续信任 LLM plan，否则后续只能执行空壳任务。
             return self._plan_with_rules(query=query, user_id=user_id)
-
-        if repair_missing_topics:
-            missing_topics = _missing_topics(query=query, sub_questions=sub_questions)
-            sub_questions.extend(
-                _build_missing_topic_sub_questions(
-                    missing_topics=missing_topics,
-                    start_index=len(sub_questions) + 1,
-                )
-            )
-            sub_questions = sorted(sub_questions, key=lambda item: item.order)
-            if missing_topics:
-                source_query = _condense_source_query(
-                    " ".join([source_query, *missing_topics])
-                )
 
         return self._build_plan(
             user_id=user_id,
@@ -499,22 +423,16 @@ class AgentTaskPlanner:
 def _build_planner_messages(
     query: str,
     history: list[object] | None,
-    missing_topics: list[str] | None = None,
 ) -> list[SystemMessage | HumanMessage]:
-    """构造 planner prompt 输入；显式主题会作为覆盖约束传给 LLM。"""
+    """构造 planner prompt 输入。"""
 
+    # 构造历史对话的上下文
     history_text = "\n\n".join(str(item) for item in (history or [])[-6:])
     payload: dict[str, object] = {
         "query": query,
-        # 最近对话比摘要更靠后；超长时保留尾部即可优先保住最新上下文。
+        # 最近对话比摘要更靠后；超长时保留尾部即可优先保住最新上下文。最多保留最后 12,000 个字符
         "history": history_text[-12_000:],
-        "explicit_topics": _extract_explicit_topics(query),
     }
-    if missing_topics:
-        payload["repair_instruction"] = (
-            "上一次拆解遗漏了这些显式主题，请补齐并确保每个主题至少被一个子问题覆盖。"
-        )
-        payload["missing_topics"] = missing_topics
     return [
         SystemMessage(content=TASK_PLANNER_SYSTEM_PROMPT),
         HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
@@ -593,64 +511,10 @@ def _parse_sub_questions(value: Any) -> list[AgentTaskSubQuestion]:
     return sorted(result, key=lambda item: item.order)
 
 
-def _missing_topics(
-    query: str,
-    sub_questions: list[AgentTaskSubQuestion],
-) -> list[str]:
-    """检查用户显式主题是否已经被子问题覆盖。"""
-
-    topics = _extract_explicit_topics(query)
-    question_text = " ".join(
-        " ".join(
-            [
-                item.question,
-                item.purpose,
-                item.reason,
-                item.expected_evidence or "",
-            ]
-        )
-        for item in sub_questions
-    )
-    return [topic for topic in topics if topic.lower() not in question_text.lower()]
-
-
-def _build_missing_topic_sub_questions(
-    missing_topics: list[str],
-    start_index: int,
-) -> list[AgentTaskSubQuestion]:
-    """LLM 重试后仍漏主题时，用本地规则补最低限度的子问题。"""
-
-    result: list[AgentTaskSubQuestion] = []
-    for offset, topic in enumerate(missing_topics):
-        order = start_index + offset
-        result.append(
-            AgentTaskSubQuestion(
-                sub_question_id=f"sq_{order}_topic_repair",
-                order=order,
-                question=f"{topic}在原始复杂问题中承担什么作用？它与其他主题有什么关系？",
-                purpose=f"补齐 LLM 拆解时遗漏的显式主题：{topic}。",
-                depends_on=[],
-                information_source_hint="knowledge_retrieval",
-                reason=f"用户原始问题明确提到了{topic}，最终答案不能遗漏该主题。",
-                expected_evidence=f"{topic}相关的设计说明、实现记录或对比资料。",
-            )
-        )
-    return result
-
-
-def _set_plan_source_query(plan: AgentTaskPlan, source_query: str) -> None:
-    """同步 plan.source_query 和报告任务中的 knowledge_retrieval step 输入。"""
-
-    plan.source_query = source_query
-    for step in plan.steps:
-        if step.tool_name == "knowledge_retrieval":
-            step.input["query"] = source_query
-
-
 def _build_rule_sub_questions(query: str) -> list[AgentTaskSubQuestion]:
     """无 LLM 兜底：按显式主题生成基础子问题和一个综合问题。"""
 
-    topics = _extract_explicit_topics(query) or _extract_topics(query)
+    topics = _extract_topics(query)
     questions: list[AgentTaskSubQuestion] = []
     for index, topic in enumerate(topics, start=1):
         questions.append(
@@ -698,38 +562,6 @@ def _extract_topics(query: str) -> list[str]:
         if topic not in topics:
             topics.append(topic)
     return topics[:5] or ["知识库资料"]
-
-
-def _extract_explicit_topics(query: str) -> list[str]:
-    """抽取当前测试知识库中常见的显式主题，用于覆盖检查和规则兜底。"""
-
-    known_topics = [
-        "混合检索",
-        "Hybrid Retrieval",
-        "rerank",
-        "Rerank",
-        "权限设计",
-        "Prompt Guard",
-        "prompt guard",
-        "输入防护",
-        "RAG",
-        "MCP",
-        "web_search",
-    ]
-    found: list[str] = []
-    lowered = query.lower()
-    for topic in known_topics:
-        if topic.lower() in lowered and topic not in found:
-            found.append(topic)
-
-    if found:
-        return found
-
-    return [
-        topic
-        for topic in _extract_topics(query)
-        if topic not in {"RAG 系统", "系统", "关系"}
-    ]
 
 
 def _condense_source_query(value: str) -> str:
