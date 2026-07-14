@@ -1338,6 +1338,7 @@ class RagPipeline:
             req.top_k,
             req.min_score,
         )
+        # prompt_guard 检测 Prompt注入
         await self._ensure_query_allowed(
             req.query,
             source="classic.stream_events.input",

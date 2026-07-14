@@ -644,6 +644,19 @@ class AgentTaskExecutor:
             return []
 
         if self._settings.openai_api_key:
+            # 明确 web_research 计划的第一轮必须产生原生 Web Search ToolCall。
+            # URL 场景仍交给下面既有的 mcp__fetch 强制修正规则。
+            required_tool_name = (
+                WEB_SEARCH_TOOL_NAME
+                if not tool_calls
+                and sub_question.information_source_hint == WEB_SEARCH_TOOL_NAME
+                and _extract_first_url(sub_question.question) is None
+                else None
+            )
+            if required_tool_name is not None and required_tool_name not in {
+                tool.name for tool in available_tools
+            }:
+                raise AppServiceError("Web Search 工具未配置或当前不可用")
             # 获取 llm 根据子问题 选择要使用的tool
             selections = await self._select_tool_with_bound_tools(
                 tools=available_tools,
@@ -651,9 +664,12 @@ class AgentTaskExecutor:
                 sub_question=sub_question,
                 previous_results=previous_results,
                 tool_calls=tool_calls,
+                required_tool_name=required_tool_name,
                 langchain_config_factory=langchain_config_factory,
             )
             if selections is None:
+                if required_tool_name is not None:
+                    raise AppServiceError("模型未能生成必需的原生 Web Search ToolCall")
                 selection = await self._select_tool_with_json(
                     plan=plan,
                     sub_question=sub_question,
@@ -769,17 +785,28 @@ class AgentTaskExecutor:
         sub_question: AgentTaskSubQuestion,
         previous_results: list[AgentTaskSubQuestionResult],
         tool_calls: list[AgentTaskToolCallTrace],
+        required_tool_name: str | None = None,
         langchain_config_factory: LangChainConfigFactory | None = None,
     ) -> list[dict[str, Any]] | None:
         """返回 LLM 本轮选择的全部原生 ToolCall。"""
 
         try:
+            bound_tools = (
+                [tool for tool in tools if tool.name == required_tool_name]
+                if required_tool_name is not None
+                else tools
+            )
+            bind_options: dict[str, Any] = {
+                "parallel_tool_calls": required_tool_name is None,
+            }
+            if required_tool_name is not None:
+                bind_options["tool_choice"] = required_tool_name
             model = ChatOpenAI(
                 model=self._settings.llm_model_name,
                 api_key=self._settings.openai_api_key,
                 base_url=self._settings.openai_base_url,
                 temperature=0.0,
-            ).bind_tools(tools, parallel_tool_calls=True)
+            ).bind_tools(bound_tools, **bind_options)
             response = await model.ainvoke(
                 # 开始由llm选择当前任务需要调用哪些tool
                 _build_tool_selection_messages(

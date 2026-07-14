@@ -132,14 +132,18 @@ async def main() -> None:
         )
         planner = AgentTaskPlanner(settings=settings)
         query = "请你查询混合检索资料，生成一份报告，并保存到 development/task-report.md"
-        plan = await planner.plan(query=query, user_id=user.user_id)
-        assert plan is not None
+        plan = planner.build_document_management_plan(
+            query=query,
+            user_id=user.user_id,
+        )
         assert plan.task_kind == "knowledge_document_management"
         assert plan.steps == []
 
         single_tool_query = "新增 development/single.md 内容是：# 单工具"
-        single_plan = await planner.plan(query=single_tool_query, user_id=user.user_id)
-        assert single_plan is not None
+        single_plan = planner.build_document_management_plan(
+            query=single_tool_query,
+            user_id=user.user_id,
+        )
         assert single_plan.task_kind == "knowledge_document_management"
         assert single_plan.steps == []
 

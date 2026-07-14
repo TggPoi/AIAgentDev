@@ -23,7 +23,10 @@ async def main() -> None:
     settings = Settings()
     planner = AgentTaskPlanner(settings=settings)
     # 手动观察真实 LLM 拆解结果：不做断言，避免模型表述变化导致验收脚本不稳定。
-    plan = await planner.plan(query=QUERY, user_id="manual-llm-test-user")
+    plan = await planner.plan_question_decomposition(
+        query=QUERY,
+        user_id="manual-llm-test-user",
+    )
     if plan is None:
         print("plan=None")
         return

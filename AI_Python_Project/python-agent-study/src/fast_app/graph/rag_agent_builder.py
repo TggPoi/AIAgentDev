@@ -6,6 +6,7 @@ from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.graph.rag_agent_nodes import (
     create_agent_build_context_node,
+    create_agent_clarification_node,
     create_agent_error_answer_node,
     create_agent_fail_request_node,
     create_agent_generate_answer_node,
@@ -21,6 +22,7 @@ from fast_app.graph.rag_agent_nodes import (
 from fast_app.graph.rag_agent_state import RagAgentState
 from fast_app.services.agent_task_executor import AgentTaskExecutor
 from fast_app.services.agent_task_planner import AgentTaskPlanner
+from fast_app.services.agent_task_router import AgentTaskRouter
 from fast_app.services.prompt_guard_service import PromptGuardService
 
 
@@ -32,6 +34,7 @@ def build_rag_agent_graph(
     reranker: BaseReranker,
     rerank_top_k: int,
     prompt_guard: PromptGuardService | None = None,
+    task_router: AgentTaskRouter | None = None,
     task_planner: AgentTaskPlanner | None = None,
     task_executor: AgentTaskExecutor | None = None,
 ):
@@ -45,6 +48,7 @@ def build_rag_agent_graph(
         "decide_next_action",
         create_next_action_decision_node(
             settings=settings,
+            task_router=task_router,
             task_planner=task_planner,
         ),
     )
@@ -99,6 +103,10 @@ def build_rag_agent_graph(
         create_rag_agent_direct_answer_node(settings=settings),
     )
     builder.add_node(
+        "clarification_required",
+        create_agent_clarification_node(settings=settings),
+    )
+    builder.add_node(
         "final_error_answer",
         create_agent_error_answer_node(settings=settings),
     )
@@ -114,6 +122,7 @@ def build_rag_agent_graph(
     # 这样“判断”和“执行”保持分离，便于 trace 和后续测试。
     next_action_routes = {
         "direct_answer": "direct_answer",
+        "clarification_required": "clarification_required",
         "knowledge_retrieval": "call_knowledge_retrieval",
         "final_error_answer": "final_error_answer",
     }
@@ -143,6 +152,9 @@ def build_rag_agent_graph(
     builder.add_edge("build_context", "generate_answer")
     # 终止路径：直接回答、可解释错误回答、不可恢复错误、正常生成回答。
     builder.add_edge("direct_answer", END)
+
+    # 触发clarification_required节点，需要用户明确补充上下文，直接结束
+    builder.add_edge("clarification_required", END)
     if task_executor is not None:
         builder.add_edge("execute_task_plan", END)
     builder.add_edge("final_error_answer", END)

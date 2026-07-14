@@ -38,11 +38,6 @@ class LowConfidencePlanner(AgentTaskPlanner):
         raise AssertionError("structured planner already returned payload")
 
 
-class UnexpectedLLMPlanner(AgentTaskPlanner):
-    def _build_model(self):
-        raise AssertionError("确定性路由不应调用 LLM Planner")
-
-
 def assert_question_plan(plan) -> None:
     # 这个脚本主要保护“子问题必须是问题，不是工具 TODO”这条边界。
     assert plan is not None
@@ -78,41 +73,31 @@ def assert_topics_covered(plan, topics: list[str]) -> None:
 
 
 async def main() -> None:
-    deterministic_planner = UnexpectedLLMPlanner(
-        settings=Settings(OPENAI_API_KEY="fake-key")
-    )
-    assert await deterministic_planner.plan(query="FastAPI 负责什么？") is None
-    assert await deterministic_planner.plan(query="FastAPI 最近更新了什么？") is None
-    document_plan = await deterministic_planner.plan(
+    deterministic_planner = AgentTaskPlanner(settings=Settings(OPENAI_API_KEY=""))
+    document_plan = deterministic_planner.build_document_management_plan(
         query="请删除知识库中与旧部署说明相关的文档",
         user_id="planner-user",
     )
-    assert document_plan is not None
     assert document_plan.task_kind == "knowledge_document_management"
-    follow_up_plan = await deterministic_planner.plan(
-        query="请删除它",
-        history=["刚才找到一篇知识库文档"],
-        user_id="planner-user",
-    )
-    assert follow_up_plan is not None
-    assert follow_up_plan.task_kind == "knowledge_document_management"
+    assert document_plan.steps == []
 
     low_confidence_planner = LowConfidencePlanner(
         settings=Settings(OPENAI_API_KEY="fake-key")
     )
-    assert (
-        await low_confidence_planner.plan(
-            query="请对比混合检索和 rerank 的关系",
-            user_id="planner-user",
-        )
-        is None
+    low_confidence_plan = await low_confidence_planner.plan_question_decomposition(
+        query="请对比混合检索和 rerank 的关系",
+        user_id="planner-user",
     )
+    assert low_confidence_plan.task_kind == "question_decomposition"
 
     settings = Settings(OPENAI_API_KEY="")
     planner = AgentTaskPlanner(settings=settings)
     # OPENAI_API_KEY 置空时走规则兜底，保证没有真实 LLM 也能验证 plan 收敛规则。
     plain_complex_query = "请对比 RAG 系统中的混合检索、rerank、权限设计和 Prompt Guard 之间的关系"
-    plain_plan = await planner.plan(query=plain_complex_query, user_id="planner-user")
+    plain_plan = await planner.plan_question_decomposition(
+        query=plain_complex_query,
+        user_id="planner-user",
+    )
     assert_question_plan(plain_plan)
     assert plain_plan.task_kind == "question_decomposition"
     assert plain_plan.target_path is None
@@ -122,34 +107,33 @@ async def main() -> None:
 
     query = "对比知识库中的混合检索、rerank、权限设计，生成报告保存到 development/complex-plan.md"
 
-    fallback_plan = await planner.plan(query=query, user_id="planner-user")
-    assert fallback_plan is not None
+    fallback_plan = planner.build_document_management_plan(
+        query=query,
+        user_id="planner-user",
+    )
     assert fallback_plan.task_kind == "knowledge_document_management"
     assert fallback_plan.steps == []
     assert fallback_plan.sub_questions == []
 
     payload = {
-        "task_kind": "knowledge_document_management",
         "objective": "对比 RAG 系统中的混合检索、rerank 和权限设计并形成报告",
         "task_type": "comparison",
         "source_query": "混合检索 rerank 权限设计 RAG 系统 协同关系",
         "document_actions": [{"operation": "delete", "target_path": "forged.md"}],
         "confidence": 0.95,
     }
-    llm_plan = planner._plan_from_payload(query=query, payload=payload, user_id="planner-user")
+    llm_plan = planner._plan_from_payload(
+        query=query,
+        payload=payload,
+        user_id="planner-user",
+    )
     assert llm_plan is not None
-    assert llm_plan.task_kind == "knowledge_document_management"
+    assert llm_plan.task_kind == "question_decomposition"
     assert llm_plan.steps == []
     assert "forged.md" not in llm_plan.model_dump_json()
-    assert planner._plan_from_payload(
-        query=query,
-        payload={**payload, "task_kind": "knowledge_report_to_document"},
-        user_id="planner-user",
-    ) is None
 
     missing_topic_query = "请对比 RAG 系统中的混合检索、rerank、权限设计和 Prompt Guard 之间的关系"
     incomplete_payload = {
-        "task_kind": "question_decomposition",
         "objective": "对比 RAG 系统中的多个模块关系",
         "task_type": "comparison",
         "source_query": "rerank Prompt Guard 协同机制",

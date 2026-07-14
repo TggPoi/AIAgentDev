@@ -25,6 +25,7 @@ RagStreamEventName = Literal[
     "agent_task_tool_call_completed",
     "agent_task_tool_call_failed",
     "agent_task_final_synthesis_completed",
+    "agent_route_clarification_required",
 ]
 
 # 在 Pipeline 层和 API 层之间传递结构化事件。

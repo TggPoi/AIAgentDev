@@ -22,6 +22,10 @@ from fast_app.services.conversation_memory import InMemoryConversationMemoryStor
 from fast_app.services.conversation_scope import scope_rag_chat_request
 from fast_app.services.query_rewrite import QueryRewriteResult
 from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
+from fast_app.services.agent_task_router import (
+    AgentRouteDecision,
+    AgentTaskRouteResult,
+)
 
 
 class RecordingRewriter:
@@ -60,10 +64,23 @@ class RecordingPlanner:
         self.query = None
         self.history = None
 
-    async def plan(self, query: str, history=None, **_kwargs):
+    async def plan_question_decomposition(self, query: str, history=None, **_kwargs):
         self.query = query
         self.history = history
         return None
+
+
+class QuestionRouter:
+    async def route(self, **_kwargs):
+        return AgentTaskRouteResult(
+            decision=AgentRouteDecision(
+                intent="question_decomposition",
+                confidence=0.99,
+                reason="test",
+            ),
+            source="model",
+            latency_ms=1.0,
+        )
 
 
 class RecordingPromptGuard:
@@ -112,6 +129,7 @@ async def main() -> None:
         query_rewriter=cast(Any, rewriter),
         conversation_summary_service=cast(Any, FixedSummaryService(summary)),
         prompt_guard=cast(Any, prompt_guard),
+        task_router=cast(Any, QuestionRouter()),
     )
 
     state = await pipeline._prepare_initial_state(
@@ -141,6 +159,7 @@ async def main() -> None:
     planner = RecordingPlanner()
     await create_next_action_decision_node(
         settings,
+        task_router=cast(Any, QuestionRouter()),
         task_planner=cast(Any, planner),
     )(state)
     assert planner.query == state["query"]
@@ -169,6 +188,7 @@ async def main() -> None:
     empty_planner = RecordingPlanner()
     await create_next_action_decision_node(
         settings,
+        task_router=cast(Any, QuestionRouter()),
         task_planner=cast(Any, empty_planner),
     )(empty_state)
     assert empty_planner.history == []

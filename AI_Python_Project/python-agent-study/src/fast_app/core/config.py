@@ -181,6 +181,39 @@ class Settings(BaseSettings):
     llm_model_name: str = Field(default="qwen-plus", alias="LLM_MODEL_NAME")
     llm_provider: str = Field(default="mock", alias="LLM_PROVIDER")
 
+    # Agent Router 使用独立连接配置，不能在代码中隐式继承主 LLM 的凭据。
+    # 本地开发可以在 .env 中显式填入相同值，生产环境则可单独切换低延迟模型。
+    agent_router_api_key: str = Field(default="", alias="AGENT_ROUTER_API_KEY")
+    agent_router_base_url: str = Field(default="", alias="AGENT_ROUTER_BASE_URL")
+    agent_router_model_name: str = Field(default="", alias="AGENT_ROUTER_MODEL_NAME")
+    agent_router_temperature: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=2.0,
+        alias="AGENT_ROUTER_TEMPERATURE",
+    )
+    agent_router_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0.0,
+        alias="AGENT_ROUTER_TIMEOUT_SECONDS",
+    )
+    agent_router_max_retries: int = Field(
+        default=0,
+        ge=0,
+        le=10,
+        alias="AGENT_ROUTER_MAX_RETRIES",
+    )
+    agent_router_confidence_threshold: float = Field(
+        default=0.75,
+        ge=0.0,
+        le=1.0,
+        alias="AGENT_ROUTER_CONFIDENCE_THRESHOLD",
+    )
+    agent_router_structured_output_method: str = Field(
+        default="function_calling",
+        alias="AGENT_ROUTER_STRUCTURED_OUTPUT_METHOD",
+    )
+
     rag_pipeline_provider: str = Field(default="classic", alias="RAG_PIPELINE_PROVIDER")
 
     # Agent Loop 循环次数配置
@@ -508,6 +541,34 @@ class Settings(BaseSettings):
             )
 
         return normalized
+
+    @field_validator("agent_router_structured_output_method", mode="before")
+    @classmethod
+    def normalize_agent_router_structured_output_method(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip().lower()
+        if normalized not in {"function_calling", "json_mode", "json_schema"}:
+            raise ValueError(
+                "AGENT_ROUTER_STRUCTURED_OUTPUT_METHOD 只支持 "
+                "function_calling、json_mode 或 json_schema"
+            )
+        return normalized
+
+    def validate_agent_router_config(self) -> None:
+        """在应用启动阶段一次性拒绝缺失的 Router 连接配置。"""
+
+        required = {
+            "AGENT_ROUTER_API_KEY": self.agent_router_api_key,
+            "AGENT_ROUTER_BASE_URL": self.agent_router_base_url,
+            "AGENT_ROUTER_MODEL_NAME": self.agent_router_model_name,
+        }
+        missing = [name for name, value in required.items() if not value.strip()]
+        if missing:
+            raise ValueError(
+                "Agent Router 配置缺失: " + ", ".join(missing)
+            )
 
     @field_validator("agent_document_tools_allowed_extensions", mode="before")
     @classmethod

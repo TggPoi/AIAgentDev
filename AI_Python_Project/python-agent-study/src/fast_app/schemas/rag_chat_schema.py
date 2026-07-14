@@ -134,6 +134,28 @@ class RagChatResponse(BaseModel):
     sources: list[RagSource] = Field(
         description="本次回答引用或检索到的来源列表；无检索时为空列表。",
     )
+    clarification_required: bool = Field(
+        default=False,
+        description="Router 是否要求用户补充任务意图。",
+    )
+    clarification_code: str | None = Field(
+        default=None,
+        description="澄清原因：ambiguous_intent / router_low_confidence / router_unavailable。",
+    )
+    clarification_question: str | None = Field(
+        default=None,
+        description="需要用户回答的澄清问题。",
+    )
+    route_intent: str | None = Field(
+        default=None,
+        description="结构化 Router 选择的业务意图。",
+    )
+    route_confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="结构化 Router 的置信度。",
+    )
     agent_task_plan_id: str | None = Field(
         default=None,
         description="当 Agent 生成多步骤任务计划时返回的 task_plan_id",

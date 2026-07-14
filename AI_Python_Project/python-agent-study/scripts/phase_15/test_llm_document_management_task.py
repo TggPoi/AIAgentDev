@@ -126,7 +126,7 @@ class FakeBoundModel:
             task_context = json.loads(messages[1].content)
             assert task_context == {
                 "original_query": "创建一篇原生 Tool Calling 测试文档",
-                "objective": "创建测试文档",
+                "objective": "创建一篇原生 Tool Calling 测试文档",
             }
             return AIMessage(
                 content="",
@@ -377,19 +377,10 @@ async def main() -> None:
             MARKDOWN_CHUNK_MIN_CHARS=1,
         )
         planner = AgentTaskPlanner(settings)
-        plan = planner._plan_from_payload(
+        plan = planner.build_document_management_plan(
             query="创建一篇原生 Tool Calling 测试文档",
             user_id="u1",
-            payload={
-                "task_kind": "knowledge_document_management",
-                "objective": "创建测试文档",
-                "source_query": "不应映射",
-                "document_actions": [
-                    {"operation": "delete", "target_path": "forged.md"}
-                ],
-            },
         )
-        assert plan is not None
         assert plan.steps == []
 
         user = CurrentUserContext(
@@ -500,16 +491,10 @@ async def main() -> None:
             remaining_calls=12,
         ) is not None
 
-        resumable_plan = planner._plan_from_payload(
+        resumable_plan = planner.build_document_management_plan(
             query="检索资料后创建一篇可恢复测试文档",
             user_id=user.user_id,
-            payload={
-                "task_kind": "knowledge_document_management",
-                "objective": "验证文档 Tool Loop 轮次恢复",
-                "confidence": 0.99,
-            },
         )
-        assert resumable_plan is not None
         ModelWrapper.bound_model = InterruptAfterRetrievalModel()
         executor_module.ChatOpenAI = ModelWrapper
         try:
@@ -590,11 +575,10 @@ async def main() -> None:
             title="existing",
             metadata=metadata,
         )
-        update_plan = planner._plan_with_rules(
+        update_plan = planner.build_document_management_plan(
             query="修改和旧内容相关的文档，将旧内容修改为新内容",
             user_id=user.user_id,
         )
-        assert update_plan is not None
         update_executor = AgentTaskExecutor(
             settings=settings.model_copy(update={"agent_max_tool_calls": 4}),
             vector_retriever=StaticRetriever(retrieved),

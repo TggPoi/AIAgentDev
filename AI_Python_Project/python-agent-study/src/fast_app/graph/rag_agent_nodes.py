@@ -36,6 +36,7 @@ from fast_app.graph.rag_graph_nodes import (
 from fast_app.services.exceptions import ExternalServiceError
 from fast_app.services.agent_task_executor import AgentTaskExecutor
 from fast_app.services.agent_task_planner import AgentTaskPlanner
+from fast_app.services.agent_task_router import AgentTaskRouter
 from fast_app.services.knowledge_permission_policy import (
     build_retrieval_filters_from_mapping,
 )
@@ -91,6 +92,7 @@ def get_rag_agent_step_index(operation: str, step_name: str) -> int:
             "decide_next_action": 1,
             "check_loop_limits": 2,
             "direct_answer": 3,
+            "clarification_required": 3,
             "execute_task_plan": 3,
             "call_knowledge_retrieval": 3,
             "rerank": 4,
@@ -108,6 +110,7 @@ def get_rag_agent_step_index(operation: str, step_name: str) -> int:
         "decide_next_action": 1,
         "check_loop_limits": 2,
         "direct_answer": 3,
+        "clarification_required": 3,
         "execute_task_plan": 3,
         "call_knowledge_retrieval": 3,
         "rerank": 4,
@@ -203,6 +206,7 @@ def route_after_loop_check(state: RagAgentState) -> RagAgentRoute:
         "direct_answer",
         "knowledge_retrieval",
         "execute_task_plan",
+        "clarification_required",
     ):
         return route
 
@@ -223,9 +227,10 @@ def route_after_tool_call(state: RagAgentState) -> RagAgentRoute:
 
 def create_next_action_decision_node(
     settings: Settings,
+    task_router: AgentTaskRouter | None = None,
     task_planner: AgentTaskPlanner | None = None,
 ) -> Callable[[RagAgentState], dict[str, object]]:
-    # decide_next_action 节点是 Agent 的“判断”步骤：先决定是否需要知识库，或是否需要调用工具。
+    # Router 只选择业务意图；Planner 只为已确定的分支创建 TaskPlan。
     async def decide_next_action_node(state: RagAgentState) -> dict[str, object]:
         async with rag_agent_langsmith_step_trace(
             settings=settings,
@@ -234,50 +239,97 @@ def create_next_action_decision_node(
             run_type="chain",
             inputs=build_rag_agent_step_inputs(state),
         ) as trace_run:
+            operation = get_rag_agent_operation(state)
+
+            def build_child_config(child_name: str):
+                return build_rag_langchain_child_config(
+                    settings=settings,
+                    state=state,
+                    pipeline_provider="rag_agent",
+                    operation=operation,
+                    step_name="decide_next_action",
+                    step_index=get_rag_agent_step_index(operation, "decide_next_action"),
+                    child_name=child_name,
+                    run_name=(
+                        f"rag_agent_pipeline.{operation}."
+                        f"decide_next_action.{child_name}"
+                    ),
+                )
+
+            history = [
+                item
+                for item in (
+                    (
+                        "【会话摘要】\n" + state["summary_text"]
+                        if state.get("summary_text")
+                        else None
+                    ),
+                    (
+                        "【最近对话】\n" + state["history_window_text"]
+                        if state.get("history_window_text")
+                        else None
+                    ),
+                )
+                if item is not None
+            ]
+            if task_router is None:
+                raise RuntimeError("AgentTaskRouter 未配置")
+
+            route_result = await task_router.route(
+                query=state["query"],
+                history=history,
+                langchain_config_factory=build_child_config,
+            )
+            decision = route_result.decision
+            route_fields: dict[str, object] = {
+                "route_intent": decision.intent,
+                "route_confidence": decision.confidence,
+                "route_source": route_result.source,
+                "route_model": settings.agent_router_model_name,
+                "route_latency_ms": round(route_result.latency_ms, 2),
+                "route_rule_matched": route_result.source == "rule",
+            }
+            if decision.intent == "clarification_required":
+                result = {
+                    "route": "clarification_required",
+                    "route_reason": route_result.clarification_code
+                    or "ambiguous_intent",
+                    "clarification_required": True,
+                    "clarification_code": route_result.clarification_code
+                    or "ambiguous_intent",
+                    "clarification_question": decision.clarification_question,
+                    "step_count": state["step_count"] + 1,
+                    **route_fields,
+                }
+                if trace_run is not None:
+                    trace_run.add_outputs(result)
+                return result
+
+            current_user = state.get("current_user")
+            user_id = current_user.user_id if current_user is not None else None
             task_plan = None
-            if task_planner is not None:
-                # 开始判断拆解多步骤任务
-                current_user = state.get("current_user")
-                operation = get_rag_agent_operation(state)
-
-                def build_planner_config(child_name: str):
-                    return build_rag_langchain_child_config(
-                        settings=settings,
-                        state=state,
-                        pipeline_provider="rag_agent",
-                        operation=operation,
-                        step_name="decide_next_action",
-                        step_index=get_rag_agent_step_index(
-                            operation,
-                            "decide_next_action",
-                        ),
-                        child_name=child_name,
-                        run_name=(
-                            f"rag_agent_pipeline.{operation}."
-                            f"decide_next_action.{child_name}"
-                        ),
-                    )
-
-                task_plan = await task_planner.plan(
+            if decision.intent == "question_decomposition":
+                if task_planner is None:
+                    raise RuntimeError("AgentTaskPlanner 未配置")
+                task_plan = await task_planner.plan_question_decomposition(
                     query=state["query"],
-                    history=[
-                        item
-                        for item in (
-                            (
-                                "【会话摘要】\n" + state["summary_text"]
-                                if state.get("summary_text")
-                                else None
-                            ),
-                            (
-                                "【最近对话】\n" + state["history_window_text"]
-                                if state.get("history_window_text")
-                                else None
-                            ),
-                        )
-                        if item is not None
-                    ],
-                    user_id=current_user.user_id if current_user is not None else None,
-                    langchain_config_factory=build_planner_config,
+                    history=history,
+                    user_id=user_id,
+                    langchain_config_factory=build_child_config,
+                )
+            elif decision.intent == "knowledge_document_management":
+                if task_planner is None:
+                    raise RuntimeError("AgentTaskPlanner 未配置")
+                task_plan = task_planner.build_document_management_plan(
+                    query=state["query"],
+                    user_id=user_id,
+                )
+            elif decision.intent == "web_research":
+                if task_planner is None:
+                    raise RuntimeError("AgentTaskPlanner 未配置")
+                task_plan = task_planner.build_web_research_plan(
+                    query=state["query"],
+                    user_id=user_id,
                 )
 
             if task_plan is not None:
@@ -289,6 +341,7 @@ def create_next_action_decision_node(
                     "step_count": step_count,
                     "agent_task_plan": task_plan,
                     "agent_task_plan_id": task_plan.task_plan_id,
+                    **route_fields,
                 }
                 logger.info(
                     "rag_agent_decision %s",
@@ -308,6 +361,7 @@ def create_next_action_decision_node(
                             "route": route,
                             "task_plan_id": task_plan.task_plan_id,
                             "task_kind": task_plan.task_kind,
+                            **route_fields,
                         }
                     )
                 return result
@@ -324,6 +378,7 @@ def create_next_action_decision_node(
                 "route": route,
                 "route_reason": route_reason,
                 "step_count": step_count,
+                **route_fields,
             }
 
             logger.info(
@@ -345,6 +400,38 @@ def create_next_action_decision_node(
     return decide_next_action_node
 
 
+def create_agent_clarification_node(
+    settings: Settings,
+) -> Callable[[RagAgentState], dict[str, object]]:
+    """把 Router 的澄清决定转换成正常回答，要求用户补充上下文，不触发 Planner 或 Tool。"""
+
+    async def clarification_node(state: RagAgentState) -> dict[str, object]:
+        question = state.get("clarification_question") or (
+            "请明确希望进行普通问答、复杂分析、联网检索，"
+            "还是创建、修改或删除知识库文档。"
+        )
+        async with rag_agent_langsmith_step_trace(
+            settings=settings,
+            state=state,
+            step_name="clarification_required",
+            run_type="chain",
+            inputs=build_rag_agent_step_inputs(
+                state,
+                clarification_code=state.get("clarification_code"),
+            ),
+        ) as trace_run:
+            result = {
+                "answer": question,
+                "final_reason": state.get("clarification_code")
+                or "ambiguous_intent",
+            }
+            if trace_run is not None:
+                trace_run.add_outputs(result)
+            return result
+
+    return clarification_node
+
+
 def create_check_loop_limits_node(
     settings: Settings,
 ) -> Callable[[RagAgentState], dict[str, object]]:
@@ -357,7 +444,7 @@ def create_check_loop_limits_node(
             inputs=build_rag_agent_step_inputs(state, route=state.get("route")),
         ) as trace_run:
             limits = build_agent_loop_limits_from_settings(settings)
-            if state.get("route") == "direct_answer":
+            if state.get("route") in {"direct_answer", "clarification_required"}:
                 # direct_answer 不会调用工具，不应该因为 AGENT_MAX_TOOL_CALLS=0 被误拦截。
                 # 这里只对直接回答路径放宽工具调用上限，检索路径仍严格遵守配置。
                 limits = AgentLoopLimits(

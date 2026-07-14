@@ -80,3 +80,10 @@ Use the pattern "centralized tracing policy, distributed business instrumentatio
 4. Domain-specific trace fields belong to the domain module. If the same trace assembly appears twice, extract the smallest local helper or extend an existing core helper instead of creating another tracing layer.
 5. Custom LangSmith inputs, metadata, and outputs must pass through the shared sensitive-field policy before including query text, retrieval filters, or user IDs. `LANGSMITH_INCLUDE_SENSITIVE_DATA=true` may enable those custom fields only in a controlled environment. SDK-instrumented LangChain calls can still upload prompts and model outputs when tracing is enabled, so do not enable LangSmith against sensitive production traffic without an explicit platform-level redaction policy.
 6. Any change to shared LangSmith builders or naming conventions must update and run `scripts/test_langsmith_tracing.py`.
+
+## Agent intent routing rules
+
+1. New business intents must extend the structured `AgentTaskRouter` schema and its tests. Do not grow `_is_complex_question()`-style keyword routing into the production mainline.
+2. The Router only decides intent. It must not generate trusted document steps, paths, doc IDs, ACL values, or Tool arguments.
+3. Knowledge-document TaskPlan steps may only be created from document dry-run ToolCalls that passed server-side validation.
+4. A Router decision never replaces authorization, candidate-scope checks, path validation, document preview, or human confirmation.

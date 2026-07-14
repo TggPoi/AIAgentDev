@@ -33,6 +33,7 @@ from fast_app.services.permission_repository import PermissionRepository
 from fast_app.services.permission_service import PermissionService
 from fast_app.services.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
 from fast_app.services.agent_task_planner import AgentTaskPlanner
+from fast_app.services.agent_task_router import AgentTaskRouter
 from fast_app.services.agent_tool_audit_service import AgentToolAuditService
 from fast_app.services.agent_tool_permission_service import AgentToolPermissionService
 
@@ -246,6 +247,14 @@ def get_agent_task_planner(
     return AgentTaskPlanner(settings=settings)
 
 
+def get_agent_task_router(
+    settings: Settings = Depends(get_settings),
+) -> AgentTaskRouter:
+    """提供使用独立连接配置的 Agent 语义 Router。"""
+
+    return AgentTaskRouter(settings=settings)
+
+
 def get_agent_task_plan_store(
     settings: Settings = Depends(get_settings),
 ) -> AgentTaskPlanStore:
@@ -333,6 +342,7 @@ def get_rag_pipeline(
     llm_client: BaseLLMClient = Depends(get_llm_client),
     reranker: BaseReranker = Depends(get_reranker),
     prompt_guard: PromptGuardService = Depends(get_prompt_guard_service),
+    task_router: AgentTaskRouter = Depends(get_agent_task_router),
     task_planner: AgentTaskPlanner = Depends(get_agent_task_planner),
     task_executor: AgentTaskExecutor = Depends(get_agent_task_executor),
     conversation_persistence: ConversationPersistenceService = Depends(
@@ -383,6 +393,7 @@ def get_rag_pipeline(
             conversation_persistence=conversation_persistence,
             conversation_summary_service=conversation_summary_service,
             prompt_guard=prompt_guard,
+            task_router=task_router,
             task_planner=task_planner,
             task_executor=task_executor,
         )

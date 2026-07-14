@@ -266,6 +266,70 @@ async def main() -> None:
         assert native_calls is not None
         assert [call["call_id"] for call in native_calls] == ["native_a", "native_b"]
 
+        class RequiredWebModel:
+            async def ainvoke(self, messages, config=None):
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "required_web",
+                            "name": "web_search",
+                            "args": {"query": "FastAPI deployment"},
+                            "type": "tool_call",
+                        }
+                    ],
+                )
+
+        class RequiredWebChatOpenAI:
+            def __init__(self, **kwargs):
+                pass
+
+            def bind_tools(self, tools, **kwargs):
+                assert [tool.name for tool in tools] == ["web_search"]
+                assert kwargs == {
+                    "parallel_tool_calls": False,
+                    "tool_choice": "web_search",
+                }
+                return RequiredWebModel()
+
+        web_sub_question = AgentTaskSubQuestion(
+            sub_question_id="sq_web",
+            order=1,
+            question="请联网搜索 FastAPI 部署建议",
+            purpose="验证原生 Web Search ToolCall。",
+            information_source_hint="web_search",
+            reason="用户明确要求联网搜索。",
+        )
+        required_executor = AgentTaskExecutor(
+            settings=Settings(
+                OPENAI_API_KEY="fake-key",
+                BOCHA_API_KEY="fake",
+                AGENT_TASK_PLAN_DIR=temp_dir,
+            ),
+            vector_retriever=FakeRetriever(),
+            keyword_retriever=FakeRetriever(),
+            llm_client=FakeLLM(),
+            document_management_service=object(),
+            tool_permission_service=object(),
+            tool_audit_service=object(),
+            task_plan_store=store,
+        )
+        executor_module.ChatOpenAI = RequiredWebChatOpenAI
+        try:
+            required_web_calls = await AgentTaskExecutor._select_tool_for_sub_question(
+                required_executor,
+                plan=build_plan("task_plan_required_web"),
+                sub_question=web_sub_question,
+                previous_results=[],
+                default_mode="hybrid",
+                default_top_k=3,
+                tool_calls=[],
+            )
+        finally:
+            executor_module.ChatOpenAI = original_chat_openai
+        assert required_web_calls[0]["call_id"] == "required_web"
+        assert required_web_calls[0]["selected_tool"] == "web_search"
+
         plan = await executor.execute_question_decomposition_plan(
             plan=build_plan("task_plan_202607080001_tool_loop"),
             user=build_user(),

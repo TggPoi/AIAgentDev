@@ -37,6 +37,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     setup_logging(settings)
     configure_langsmith(settings)
+    settings.validate_agent_router_config()
 
     logger.info("应用启动: app_name=%s, env=%s", settings.app_name, settings.app_env)
 

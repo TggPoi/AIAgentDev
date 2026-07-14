@@ -1,4 +1,4 @@
-# 多轮上下文与 Agent 任务状态增强：实施与人工验收记录
+# 【任务1】多轮上下文与 Agent 任务状态增强：实施与人工验收记录
 
 ## 1. 文档用途
 
@@ -1099,3 +1099,1445 @@ $env:PYTHONPATH = "src"
 完整验收记录在 [多轮上下文与Agent任务状态增强-实施验收.md (line 584)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/docs/多轮上下文与Agent任务状态增强-实施验收.md:584)。
 
 本轮只进行了代码与实现审查，没有修改文件。当前最需要继续补齐的是“明确 web_search 请求的确定性路由”。
+
+# 拆分Planner职责：
+
+## 目前Planner的职责：
+
+~~~cpp
+//目前工程中如果query涉及文档操作，应该还是由planner输出steps，你的计划中提到“Planner 不再判断 task_kind，只负责为已经确定的 question_decomposition 生成子问题”，按照你的计划，原本的文档操作steps应该由哪个模块完成？
+~~~
+
+
+
+不是。你这里混淆了“创建 TaskPlan 外壳”和“生成文档操作 steps”。
+
+当前真实职责是：
+
+```
+Planner
+→ 创建 steps=[] 的文档 TaskPlan
+
+AgentTaskExecutor 文档 Tool Loop
+→ LLM 调用文档 dry-run Tool
+→ 根据 Tool 结果生成 steps
+
+confirm API
+→ 根据冻结的 steps 真实写入
+```
+
+### 当前代码证据
+
+Planner 的 [_build_document_management_plan() (line 455)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_planner.py:455)明确写着：
+
+```
+"""创建空文档任务；动作只能由后续原生 ToolCall 产生。"""
+```
+
+创建出来的是：
+
+```
+AgentTaskPlan(
+    task_kind="knowledge_document_management",
+    sub_questions=[],
+    steps=[],
+)
+```
+
+因此，Planner 当前只生成文档 TaskPlan 外壳，并没有生成 create/update/delete steps。
+
+### steps 实际由谁生成
+
+Graph 发现文档 TaskPlan 后进入 [execute_task_plan_node (line 560)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent_nodes.py:560)，然后调用：
+
+```
+AgentTaskExecutor.execute(...)
+```
+
+文档任务进入 [_execute_document_tool_loop() (line 1196)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:1196)。
+
+运行时流程是：
+
+```
+LLM 调用 knowledge_document_create/update/delete
+→ 后端执行 dry-run
+→ 返回 preview、diff、权限裁决、action_request
+→ _document_step_from_tool_result()
+→ plan.steps.append(...)
+```
+
+追加 step 的代码在 [agent_task_executor.py (line 1520)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:1520)。
+
+转换函数在 [_document_step_from_tool_result() (line 2060)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:2060)，生成：
+
+```
+AgentToolStep(
+    status=WAITING_CONFIRMATION,
+    input=...,
+    output={
+        "tool_call_id": ...,
+        "action_request": ...,
+        "preview": ...,
+        "permission_decision": ...,
+        "replacements": ...,
+        "diff": ...,
+    },
+    requires_confirmation=True,
+)
+```
+
+最后要求至少产生一个 dry-run step，否则报错；成功后 TaskPlan 进入 `WAITING_CONFIRMATION`。
+
+## 新方案中的职责
+
+之前计划中的表述应该修正为：
+
+```
+AgentTaskRouter
+→ 只判断 intent
+→ 不创建 steps
+
+AgentTaskPlanner
+→ Router 判断为文档任务后，创建 steps=[] 的 TaskPlan 外壳
+→ 不决定 task_kind，不生成文档动作
+
+AgentTaskExecutor
+→ 运行文档 Agent 原生 Tool Loop
+→ 调用 dry-run Tool
+→ 将成功 ToolCall 冻结为 steps
+
+confirm API
+→ 按 steps 顺序执行真实写入
+```
+
+这里“Planner 不再判断 `task_kind`”的意思是：
+
+- Planner 不再决定用户是不是文档任务；
+- 这个决定交给 Router；
+- Router 判定为文档任务后，Planner仍可复用现有方法创建空 TaskPlan；
+- 文档 `steps` 仍由 `AgentTaskExecutor` 生成。
+
+这个边界很重要，因为不能让 Router 或 Planner 直接编造可信 steps。steps 必须来自服务端校验过的 dry-run 结果，才能冻结权限、目标 `doc_id`、diff、before hash 和确认参数。
+
+# 【任务2】独立语义 Router 与 Agent TaskPlan 路由改造
+
+## Summary
+
+将当前 `AgentTaskPlanner` 同时承担的“意图判断”和“计划生成”拆开：
+
+```text
+Prompt Guard
+→ 高置信度确定性规则
+→ 独立 Router 模型
+→ 根据 intent 进入对应链路
+```
+
+职责固定为：
+
+```text
+AgentTaskRouter
+→ 判断任务类型
+
+AgentTaskPlanner
+→ 生成 question_decomposition
+→ 或创建 steps=[] 的文档 TaskPlan 外壳
+
+AgentTaskExecutor
+→ 运行文档原生 Tool Loop
+→ 将 dry-run ToolCall 冻结为文档 steps
+
+confirm API
+→ 根据冻结 steps 顺序执行真实写入
+```
+
+`_is_complex_question()` 不再参与生产主路由。Router 使用 `.env` 中完全独立的 OpenAI-compatible 连接配置；低置信度、超时或结构化输出失败时返回结构化澄清结果。
+
+## Implementation Changes
+
+### 独立 AgentTaskRouter
+
+- 新增 `AgentTaskRouter`，由 `decide_next_action` 在 Planner 前调用。
+- Router 只判断 intent，不生成 TaskPlan、sub_questions、steps、路径、doc_id、权限或 Tool 参数。
+- 使用 Pydantic 结构化输出，不提供普通 JSON 文本解析兜底：
+
+```python
+class AgentRouteDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    intent: Literal[
+        "simple_rag",
+        "question_decomposition",
+        "knowledge_document_management",
+        "web_research",
+        "clarification_required",
+    ]
+    confidence: float
+    reason: str
+    clarification_question: str | None
+```
+
+- 本地进一步校验：
+  - `confidence` 必须在 `0.0-1.0`。
+  - `reason` 最多 200 字。
+  - `clarification_question` 最多 300 字。
+  - `clarification_required` 必须提供澄清问题。
+  - 其他 intent 不接受文档目标、Tool 参数等额外字段。
+- Router 输入只包含：
+  - 当前 query。
+  - 最近 6 条、有 12000 字符上限的会话上下文。
+- 当前 query 始终优先；历史不能授予权限，也不能提供可信 doc_id、路径或候选范围。
+
+### 高置信度规则边界
+
+Router 模型前只保留范围很窄的确定性规则：
+
+- 当前 query 明确包含命令式文档动作，并同时包含文档目标或 `.md/.txt` 路径时，直接判定 `knowledge_document_management`。
+- 明确要求生成报告并保存为知识库文档时，直接判定 `knowledge_document_management`。
+- 明确出现 `web_search`、联网搜索、网络搜索时，直接判定 `web_research`。
+- 当前 query 包含公开 URL 时，直接判定 `web_research`，后续保留现有 `mcp__fetch` 优先规则。
+- “删除它”“修改刚才找到的内容”等依赖历史的模糊请求交给 Router 模型。
+- 规则不得把历史中的“文档”关键字直接拼入当前 query 判断。
+- 删除 `_is_complex_question()` 的生产调用；可以删除函数，或仅保留在不联网的独立测试辅助代码中。
+
+### 独立 Router 配置
+
+在 `Settings` 和 `.env` 增加：
+
+```env
+AGENT_ROUTER_API_KEY=...
+AGENT_ROUTER_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+AGENT_ROUTER_MODEL_NAME=qwen-plus
+AGENT_ROUTER_TEMPERATURE=0
+AGENT_ROUTER_TIMEOUT_SECONDS=10
+AGENT_ROUTER_MAX_RETRIES=0
+AGENT_ROUTER_CONFIDENCE_THRESHOLD=0.75
+AGENT_ROUTER_STRUCTURED_OUTPUT_METHOD=function_calling
+```
+
+规则如下：
+
+- Router 不自动回退到 `OPENAI_API_KEY`、`OPENAI_BASE_URL` 或 `LLM_MODEL_NAME`。
+- 本地首次配置允许填入与现有 LLM 相同的值，但字段保持独立，后续可单独切换模型和供应商连接。
+- 应用 lifespan 启动时校验 Key、Base URL 和 Model。
+- 配置缺失时启动失败，并明确列出缺失字段；不把服务端配置错误转换成用户澄清。
+- Router API Key 不进入日志、SSE、TaskPlan 或 LangSmith 自定义字段。
+
+### Router 后续分支
+
+- `simple_rag`
+  - 不调用 Planner。
+  - 继续使用现有 `should_retrieve_for_query()` 判断知识库检索或直接回答。
+
+- `question_decomposition`
+  - 调用 Planner 主模型生成 `sub_questions`。
+  - Planner 结构化 schema 不再输出或判断 `task_kind`。
+  - 继续使用现有 TaskPlan 人工确认和子问题 Tool Loop。
+
+- `knowledge_document_management`
+  - Planner 不再判断用户是不是文档任务。
+  - Router 判定完成后，调用公开化的 `build_document_management_plan()` 创建：
+
+```text
+task_kind = knowledge_document_management
+sub_questions = []
+steps = []
+```
+
+  - Graph 随后进入现有 `AgentTaskExecutor.execute()`。
+  - 文档 Agent 调用 create/update/delete dry-run Tool。
+  - 每个成功 ToolCall 继续由 `_document_step_from_tool_result()` 转换为 `WAITING_CONFIRMATION` step。
+  - Router 和 Planner 永远不能直接生成文档 steps。
+
+- `web_research`
+  - 创建一个 `question_decomposition` TaskPlan。
+  - 只生成一个与用户 query 等价的子问题。
+  - `information_source_hint="web_search"`。
+  - 首轮只绑定 `web_search`，并通过原生 `tool_choice` 要求模型产生 Web Search ToolCall。
+  - 子问题包含 URL 且用户具有 MCP 权限时，保留现有 `mcp__fetch` 强制修正规则。
+  - 后续 ToolCall 继续使用现有轮次屏障和工具预算。
+
+- `clarification_required`
+  - 不创建 TaskPlan。
+  - 不调用 Planner 或任何 Tool。
+  - 进入专用澄清节点。
+
+### 澄清状态与 API
+
+Router 出现以下情况时进入澄清：
+
+```text
+模型主动判断意图不明确
+confidence < 0.75
+调用超时
+结构化输出非法
+模型服务临时不可用
+```
+
+Graph State 增加：
+
+```text
+route_intent
+route_confidence
+clarification_required
+clarification_code
+clarification_question
+```
+
+`clarification_code` 固定为：
+
+```text
+ambiguous_intent
+router_low_confidence
+router_unavailable
+```
+
+处理规则：
+
+- 模型返回有效澄清问题时使用该问题。
+- 超时、异常或澄清问题为空时使用服务端固定文本。
+- 澄清问题写入 `answer`，并作为 assistant 消息持久化，供下一轮用户回答继续路由。
+- 澄清是正常业务结果，HTTP 返回 200，不使用 `error` SSE。
+
+## Public Interfaces
+
+`RagAgentRoute` 增加：
+
+```text
+clarification_required
+```
+
+`RagChatResponse` 增加：
+
+```python
+clarification_required: bool = False
+clarification_code: str | None = None
+clarification_question: str | None = None
+route_intent: str | None = None
+route_confidence: float | None = None
+```
+
+`RagStreamEventName` 增加：
+
+```text
+agent_route_clarification_required
+```
+
+SSE 数据格式：
+
+```json
+{
+  "event": "agent_route_clarification_required",
+  "data": {
+    "code": "router_low_confidence",
+    "question": "请明确希望进行普通问答、联网检索还是文档操作。",
+    "confidence": 0.52
+  }
+}
+```
+
+SSE 顺序固定为：
+
+```text
+agent_route_clarification_required
+→ sources（空数组）
+→ 经过 Prompt Guard 的 answer_delta
+→ done
+```
+
+不新增 HTTP endpoint，不修改：
+
+```text
+AgentTaskKind
+TaskPlan confirm API
+文档 steps schema
+文档权限、ACL、dry-run、回滚和 ES/Milvus 同步
+legacy /rag/chat/stream
+```
+
+## Observability and Project Rules
+
+- Router 使用现有 LangSmith child config，run name 固定为：
+
+```text
+rag_agent_pipeline.<operation>.decide_next_action.task_router.structured
+```
+
+- trace 记录：
+  - intent
+  - confidence
+  - model
+  - latency
+  - clarification_code
+  - 是否命中确定性规则
+- query 和 history 继续经过共享敏感字段策略。
+- 不新建 LangSmith Manager 或额外追踪抽象。
+- 根 `AGENTS.md` 增加规则：
+  - 新增业务 intent 应扩展结构化 Router schema，不继续扩张 `_is_complex_question` 式关键词路由。
+  - Router 只做意图判断，不能生成可信文档 steps。
+  - 文档 steps 必须来自服务端校验通过的 dry-run ToolCall。
+  - Router 决策不能替代权限、候选范围、路径和人工确认。
+
+## Test Plan
+
+### 无网络测试
+
+- 配置完整时 Router 正常构建。
+- Key、Base URL 或 Model 缺失时应用启动失败。
+- 非法 threshold、timeout、temperature 和 structured method 被拒绝。
+- Pydantic 拒绝未知 intent、多余字段和错误类型。
+- 明确文档路径操作命中确定性规则，不调用 Router 模型。
+- “删除它”由 Router 结合历史判断。
+- 历史中出现“文档”不会把“删除 Redis 缓存”误判为文档任务。
+- 简单问答只调用 Router，不调用 Planner。
+- 复杂问题调用顺序为 `Router → Planner`。
+- 文档任务初始 `steps=[]`。
+- 文档 dry-run ToolCall 成功后才生成 step。
+- Router 和 Planner 输出无法直接注入文档 step。
+- Web Search query 创建单子问题计划，并产生原生 Web Search ToolCall。
+- 低置信度、超时和非法结构化结果进入澄清，不创建 TaskPlan 或 ToolCall。
+- Prompt Injection 在 Router 前被阻断。
+
+### API 与会话测试
+
+- `/rag/chat` 返回澄清结构化字段，并在 `answer` 中保留澄清问题。
+- `/rag/chat/stream/events` 按固定顺序发送澄清事件、空 sources、安全 answer_delta 和 done。
+- 澄清 assistant 消息被持久化。
+- 用户下一轮补充信息后能够重新进入 Router 并选择正确分支。
+- 文档 TaskPlan 的 steps、confirm、ACL 和同步逻辑不回退。
+- legacy `/rag/chat/stream` 协议不变化。
+
+### 真实模型验收
+
+至少准备 20 条 query，覆盖：
+
+```text
+简单知识问答
+复杂分析与对比
+文档 create/update/delete
+模糊文档指代
+明确 Web Search
+公开 URL
+普通非文档删除操作
+意图不明确请求
+```
+
+验收标准：
+
+- 总体路由准确率不低于 90%。
+- 文档操作和明确 Web Search 不得路由为 `simple_rag`。
+- 模糊高风险文档操作必须进入文档任务或澄清，不得直接执行。
+- 简单问答 LangSmith 中只有 Router run，没有 Planner run。
+- 复杂问题同时包含 Router 和 Planner run。
+- Router 单次调用受 10 秒 timeout 限制；超时稳定返回澄清。
+- 文档 steps 仍只出现在 dry-run ToolCall 之后。
+- 运行 Planner、Tool Loop、文档管理、Prompt Guard、多轮会话、SSE、LangSmith、`py_compile` 和 `git diff --check` 回归。
+
+## Assumptions
+
+- Router 使用 OpenAI-compatible `ChatOpenAI` 协议，但拥有独立连接配置。
+- 当前默认 Router 模型为 `qwen-plus`，温度为 0，超时 10 秒，不自动重试。
+- Router 失败返回澄清；Router 配置缺失导致应用启动失败。
+- Planner 主模型继续使用当前 `LLM_MODEL_NAME`，只服务真正的复杂问题拆解。
+- 文档 steps 的唯一生产者仍是 `AgentTaskExecutor` 的文档 dry-run Tool Loop。
+
+# 推荐的Router模型：
+
+最适合当前 Agent Router 的模型，我推荐：
+
+```
+AGENT_ROUTER_MODEL_NAME=qwen3.6-flash-2026-04-16
+```
+
+原因：
+
+- Router 只做意图分类，不需要复杂推理能力。
+- `qwen3.6-flash` 面向低延迟、低成本任务。
+- 支持 Function Calling 和结构化输出，符合当前 `Pydantic + function_calling` 实现。[阿里云模型列表](https://help.aliyun.com/zh/model-studio/text-generation-model)
+- 固定快照版本比 `qwen3.6-flash` 浮动别名更稳定，避免模型升级导致路由结果漂移。
+
+**需要注意：Qwen3.6 Flash 默认开启思考模式，而结构化输出应关闭思考模式。切换时还应在 `AgentTaskRouter` 的 `ChatOpenAI` 参数中加入：**
+
+```
+extra_body={"enable_thinking": False}
+```
+
+否则可能出现结构化输出错误或增加不必要的延迟。[阿里云结构化输出说明](https://help.aliyun.com/zh/model-studio/qwen-structured-output)、[思考模式说明](https://help.aliyun.com/zh/model-studio/deep-thinking/)
+
+建议配置：
+
+```
+AGENT_ROUTER_MODEL_NAME=qwen3.6-flash-2026-04-16
+AGENT_ROUTER_TEMPERATURE=0
+AGENT_ROUTER_TIMEOUT_SECONDS=10
+AGENT_ROUTER_MAX_RETRIES=0
+AGENT_ROUTER_CONFIDENCE_THRESHOLD=0.75
+AGENT_ROUTER_STRUCTURED_OUTPUT_METHOD=function_calling
+```
+
+当前 `qwen-plus` 在工程的 20 条真实测试中已经达到 `100%`，所以它是已验证的稳妥选择；`qwen3.6-flash-2026-04-16` 则是更适合长期承担 Router 工作的成本与延迟优化选择。
+
+
+
+# Router 模块讲解：
+
+## Router 模块：它解决什么问题
+
+当前未提交代码新增的是“意图路由层”：
+
+```
+用户 query
+→ Router 判断任务类型
+→ Graph 选择后续分支
+→ Planner（必要时）生成 TaskPlan
+→ Executor 执行已有计划
+```
+
+Router 只回答“这是什么任务”，不回答问题、不生成 `doc_id`、路径、替换文本或工具参数。核心文件是新建的 [agent_task_router.py (line 123)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:123)。
+
+它把之前“是否复杂问题”的隐式判断，变成稳定的结构化结果。
+
+## 先看整体调用链
+
+```mermaid
+flowchart TD
+    A["RagChatRequest"]
+    B["query rewrite"]
+    C["state['query']"]
+    D["AgentTaskRouter.route"]
+    E["simple_rag"]
+    F["question_decomposition"]
+    G["knowledge_document_management"]
+    H["web_research"]
+    I["clarification_required"]
+    J["原有 direct answer 或 retrieval"]
+    K["Planner 创建 TaskPlan"]
+    L["execute_task_plan"]
+    M["澄清问题作为 answer 返回"]
+
+    A --> B --> C --> D
+    D --> E --> J
+    D --> F --> K --> L
+    D --> G --> K --> L
+    D --> H --> K --> L
+    D --> I --> M
+```
+
+图中真正调用 Router 的位置是 [rag_agent_nodes.py (line 278)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:278)，位于 `decide_next_action` 节点内。
+
+## 1. Router 能返回哪些意图
+
+定义在 [agent_task_router.py (line 21)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:21)：
+
+```
+AgentRouteIntent = Literal[
+    "simple_rag",
+    "question_decomposition",
+    "knowledge_document_management",
+    "web_research",
+    "clarification_required",
+]
+```
+
+| intent                          | 后续行为                                                    |
+| ------------------------------- | ----------------------------------------------------------- |
+| `simple_rag`                    | 不创建 TaskPlan，继续旧的“直接回答或知识库检索”逻辑。       |
+| `question_decomposition`        | 调用 Planner，将复杂问题拆成子问题，生成 TaskPlan。         |
+| `knowledge_document_management` | 创建文档管理 TaskPlan；真正写入仍要经过工具校验与人工确认。 |
+| `web_research`                  | 创建联网研究 TaskPlan。                                     |
+| `clarification_required`        | 不调用 Planner 或工具，直接向用户追问。                     |
+
+关键点：`simple_rag` 不等于“一定不检索”。Router 只是表示“无需多步骤 TaskPlan”；后面仍由已有的 `should_retrieve_for_query(...)` 决定走 `direct_answer` 还是 `knowledge_retrieval`，见 [rag_agent_nodes.py (line 369)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:369)。
+
+## 2. 为什么要有 `AgentRouteDecision`
+
+Router 的模型输出被限制为这个 Pydantic schema，见 [agent_task_router.py (line 79)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:79)：
+
+```
+class AgentRouteDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    intent: AgentRouteIntent
+    confidence: float = Field(ge=0.0, le=1.0)
+    reason: str = Field(min_length=1, max_length=200)
+    clarification_question: str | None = Field(default=None, max_length=300)
+```
+
+它有三个保护作用：
+
+1. `extra="forbid"`：模型不能额外塞入 `tool_input`、文件路径或 TaskPlan 等字段。
+2. `intent` 必须是预定义值，不能发明新任务类型。
+3. `clarification_question` 只允许出现在 `clarification_required` 分支；否则校验失败。
+
+所以 Router 的输出只是：
+
+```
+{
+  "intent": "question_decomposition",
+  "confidence": 0.91,
+  "reason": "需要比较多个组件并分析协作关系",
+  "clarification_question": null
+}
+```
+
+它不是执行授权。即使 Router 判定为文档管理，后续仍要经过候选文档范围、路径校验、权限、dry-run 与确认 API。
+
+## 3. `route()` 的核心决策顺序
+
+主函数位于 [agent_task_router.py (line 123)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:123)。
+
+它的逻辑顺序是：
+
+```
+高置信规则
+→ Router 模型
+→ 模型明确澄清
+→ 低置信度澄清
+→ Router 故障澄清
+```
+
+### 3.1 第一步：高置信规则优先
+
+```
+rule_decision = _route_with_high_confidence_rules(query)
+if rule_decision is not None:
+    return AgentTaskRouteResult(
+        decision=rule_decision,
+        source="rule",
+        ...
+    )
+```
+
+位置：[agent_task_router.py (line 135)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:135)
+
+规则实现位于 [agent_task_router.py (line 237)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:237)。
+
+当前规则只短路两类足够明确的请求：
+
+- 明确文档目标 + 明确动作，例如“修改 `docs/rag.md` 文档”；
+- 明确联网请求，例如包含 `联网搜索`、`web_search` 或公开 URL。
+
+例如：
+
+```
+if document_target and document_action and not explanatory_question:
+    return AgentRouteDecision(
+        intent="knowledge_document_management",
+        confidence=1.0,
+        reason="explicit_document_operation",
+    )
+```
+
+`not explanatory_question` 很关键：像“如何修改文档？”虽然出现“修改”和“文档”，本质可能是知识问答，不应被规则直接当成写文档动作。
+
+### 3.2 第二步：规则未命中才调用模型
+
+```
+model = ChatOpenAI(...).with_structured_output(
+    AgentRouteDecision,
+    method=self._settings.agent_router_structured_output_method,
+)
+
+response = await asyncio.wait_for(
+    model.ainvoke(...),
+    timeout=self._settings.agent_router_timeout_seconds,
+)
+```
+
+位置：[agent_task_router.py (line 145)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:145)
+
+这里有两层约束：
+
+- `with_structured_output(AgentRouteDecision)`：要求模型按 schema 返回；
+- `asyncio.wait_for(...)`：即使底层 provider 没有正确结束，也在 Router 配置的超时时间后停止等待。
+
+Router 使用独立配置，而不是自动复用主 RAG LLM：
+
+```
+agent_router_api_key
+agent_router_base_url
+agent_router_model_name
+```
+
+字段在 [config.py (line 184)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\core\\config.py:184)，应用启动时会调用 `validate_agent_router_config()` 检查这些配置，见 [main.py (line 40)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\main.py:40)。
+
+### 3.3 第三步：不确定时安全收口为澄清
+
+模型失败：
+
+```
+except Exception:
+    return AgentTaskRouteResult(
+        decision=_clarification_decision(
+            reason="router_unavailable",
+            confidence=0.0,
+        ),
+        source="fallback",
+        clarification_code="router_unavailable",
+    )
+```
+
+模型置信度不足：
+
+```
+if decision.confidence < self._settings.agent_router_confidence_threshold:
+    return AgentTaskRouteResult(
+        decision=_clarification_decision(
+            reason="router_low_confidence",
+            confidence=decision.confidence,
+        ),
+        source="fallback",
+        clarification_code="router_low_confidence",
+    )
+```
+
+位置：[agent_task_router.py (line 174)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:174)。
+
+默认阈值是 `0.75`，见 [config.py (line 208)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\core\\config.py:208)。
+
+这体现的不是“模型答错了就报错”，而是：
+
+```
+不能可靠决定是否触发复杂任务或高风险文档操作
+→ 不猜
+→ 返回澄清问题
+```
+
+## 4. Router 结果如何进入 LangGraph 状态
+
+`decide_next_action_node` 收到 Router 结果后，先写入状态字段：
+
+```
+route_fields = {
+    "route_intent": decision.intent,
+    "route_confidence": decision.confidence,
+    "route_source": route_result.source,
+    "route_model": settings.agent_router_model_name,
+    "route_latency_ms": round(route_result.latency_ms, 2),
+    "route_rule_matched": route_result.source == "rule",
+}
+```
+
+位置：[rag_agent_nodes.py (line 284)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:284)。
+
+这些字段的用途是可观测性和 API 返回；真正控制图分支的是 `route`。
+
+### 复杂任务分支
+
+```
+if decision.intent == "question_decomposition":
+    task_plan = await task_planner.plan_question_decomposition(...)
+elif decision.intent == "knowledge_document_management":
+    task_plan = task_planner.build_document_management_plan(...)
+elif decision.intent == "web_research":
+    task_plan = task_planner.build_web_research_plan(...)
+```
+
+位置：[rag_agent_nodes.py (line 315)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:315)。
+
+三种情况只是在“如何创建 TaskPlan”上不同；只要 `task_plan is not None`，图状态统一写为：
+
+```
+"route": "execute_task_plan"
+```
+
+因此 Router 与 Planner 的职责边界是：
+
+```
+Router：确定需要哪一类任务
+Planner：为该类任务生成计划
+Executor：执行已生成计划
+```
+
+## 5. 澄清分支为何不是错误
+
+如果 Router 返回 `clarification_required`，节点不会调用 Planner：
+
+```
+result = {
+    "route": "clarification_required",
+    "clarification_required": True,
+    "clarification_code": ...,
+    "clarification_question": decision.clarification_question,
+    ...
+}
+```
+
+位置：[rag_agent_nodes.py (line 292)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:292)。
+
+随后图进入专用节点 [rag_agent_nodes.py (line 403)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:403)：
+
+```
+result = {
+    "answer": question,
+    "final_reason": state.get("clarification_code")
+    or "ambiguous_intent",
+}
+```
+
+也就是说，澄清问题就是普通 `answer`，但响应还额外携带：
+
+```
+{
+  "clarification_required": true,
+  "clarification_code": "router_low_confidence",
+  "clarification_question": "请明确希望……",
+  "route_intent": "clarification_required"
+}
+```
+
+响应字段组装在 [rag_agent_pipeline_service.py (line 632)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\rag_agent_pipeline_service.py:632)，schema 定义在 [rag_chat_schema.py (line 137)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\schemas\\rag_chat_schema.py:137)。
+
+React 可以据此展示一个澄清输入框，而不是把它误当系统异常。
+
+## 6. Router 与会话历史的当前实现
+
+图节点将冻结后的摘要和最近消息窗口传给 Router：
+
+```
+route_result = await task_router.route(
+    query=state["query"],
+    history=history,
+    ...
+)
+```
+
+位置：[rag_agent_nodes.py (line 278)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:278)。
+
+Router 内部只保留最近 6 项、最多 12,000 字符：
+
+```
+history_text = "\n\n".join(
+    str(item) for item in (history or [])[-6:]
+)[-12_000:]
+```
+
+位置：[agent_task_router.py (line 224)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:224)。
+
+并且系统提示明确规定“当前 query 优先，history 只用于理解指代”。
+
+不过，最新 `AGENTS.md` 规定：Router 不应消费会话上下文，只有 Planner、最终回答生成和文档 Agent 的冻结初始上下文可使用。因此这里当前“向 Router 传入 `history`”与最新工程规则存在冲突；学习当前实现时应把它视为待对齐点，而不是权限或执行依据。
+
+## 7. 建议代码的阅读顺序
+
+1. [agent_task_router.py (line 21)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:21)
+   先理解意图枚举和 prompt 边界。
+2. [agent_task_router.py (line 79)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:79)
+   理解 Router 为什么只能返回结构化意图。
+3. [agent_task_router.py (line 123)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:123)
+   按“规则 → 模型 → 低置信度/异常澄清”读主流程。
+4. [agent_task_router.py (line 237)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:237)
+   看哪些请求无需模型就能确定。
+5. [rag_agent_nodes.py (line 228)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:228)
+   看 Router 结果如何分派给 Planner 或旧 RAG 分支。
+6. [rag_agent_nodes.py (line 403)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:403)
+   看澄清如何成为正常响应，而非错误。
+7. [test_agent_task_router.py (line 83)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\scripts\\phase_15\\test_agent_task_router.py:83)
+   看 schema、规则、低置信度和故障回退的离线验证。
+8. [test_agent_router_clarification_flow.py (line 47)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\scripts\\phase_15\\test_agent_router_clarification_flow.py:47)
+   看澄清从 Router 贯通到非流式响应和 SSE 的集成验证。
+
+可运行离线验证：
+
+```
+$env:PYTHONPATH="src"
+python scripts\phase_15\test_agent_task_router.py
+python scripts\phase_15\test_agent_router_clarification_flow.py
+```
+
+真实模型验收则使用：
+
+```
+$env:PYTHONPATH="src"
+python scripts\phase_15\test_agent_task_router_real_llm.py
+```
+
+## 8. 使用 asyncio.wait_for 包裹LLM调用的原因：
+
+~~~py
+# SDK timeout 之外再包一层 wait_for，即使底层 provider 没有正确结束，也在 Router 配置的超时时间后停止等待
+            response = await asyncio.wait_for(
+                model.ainvoke(
+                    _build_router_messages(query=query, history=history),
+                    config=(
+                        langchain_config_factory("task_router.structured")
+                        if langchain_config_factory is not None
+                        else None
+                    ),
+                ),
+                timeout=self._settings.agent_router_timeout_seconds,
+            )
+~~~
+
+### 作用：给 Router 加一层“总等待上限”
+
+当前代码：
+
+```py
+response = await asyncio.wait_for(
+    model.ainvoke(...),
+    timeout=self._settings.agent_router_timeout_seconds,
+)
+```
+
+位置：[agent_task_router.py (line 161)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:161)。
+
+含义是：
+
+> 最多等待 Router 模型调用这么久；超时仍未得到结构化路由结果，就中断等待并走安全澄清分支。
+
+默认上限是 10 秒，见 [config.py (line 198)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\core\\config.py:198)。
+
+### 为什么已有 `timeout=` 还要再包一层
+
+创建 `ChatOpenAI` 时已经有：
+
+```
+timeout=self._settings.agent_router_timeout_seconds
+```
+
+它主要是传给底层 LLM provider / HTTP 客户端的请求超时配置。
+
+而 `asyncio.wait_for(...)` 是 Python 协程层面的总时限。它不依赖 provider 是否正确实现 timeout，能覆盖：
+
+- provider 网络请求卡住；
+- SDK 内部等待异常；
+- structured output 解析或 runnable 链路迟迟不返回；
+- 以后打开重试后，多个尝试累计耗时过长。
+
+所以两层职责不同：
+
+```py
+ChatOpenAI timeout
+→ 希望底层 HTTP 请求及时失败
+
+asyncio.wait_for
+→ 无论底层发生什么，Router 协程整体最多等待 N 秒
+```
+
+### 超时后会发生什么
+
+`wait_for` 超时时会抛出 `TimeoutError`，被 `route()` 外层捕获：
+
+```py
+except Exception as exc:
+    return AgentTaskRouteResult(
+        decision=_clarification_decision(
+            reason="router_unavailable",
+            confidence=0.0,
+        ),
+        source="fallback",
+        clarification_code="router_unavailable",
+    )
+```
+
+位置：[agent_task_router.py (line 179)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:179)。
+
+最终不会猜测用户想执行什么，而是返回：
+
+```
+clarification_required
+clarification_code = router_unavailable
+```
+
+也就是：“Router 暂时不可用，请用户明确任务类型”。
+
+如果没有 `wait_for`，Router 调用意外卡住时，整个 `/rag/chat` 或 SSE 请求可能一直占着连接，后续图节点也无法继续。
+
+
+
+## 9. `clarification_required` 的实际执行流程：
+
+### `clarification_required` 的实际执行流程
+
+它不是异常路径，而是“任务意图不明确时的正常回答路径”。
+
+触发来源有三类：
+
+```
+1. 模型主动判断 intent = clarification_required
+2. 模型置信度低于阈值
+3. Router 调用超时或失败
+```
+
+触发后不会创建 TaskPlan、不会调用检索、不会调用文档工具；系统只返回一个澄清问题。
+
+```mermaid
+flowchart TD
+    A["AgentTaskRouter.route"] --> B["decision.intent = clarification_required"]
+    B --> C["decide_next_action_node 写入 RagAgentState"]
+    C --> D["check_loop_limits"]
+    D --> E["route_after_loop_check"]
+    E --> F["clarification_required 节点"]
+    F --> G["answer = 澄清问题"]
+    G --> H["LangGraph END 或手写流式返回"]
+    H --> I["RagChatResponse 或 SSE 事件"]
+```
+
+### 1. Router 先返回澄清决定
+
+核心位置：[agent_task_router.py (line 123)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:123)
+
+例如模型明确说无法判断时：
+
+```python
+if decision.intent == "clarification_required":
+    return AgentTaskRouteResult(
+        decision=decision,
+        source="model",
+        latency_ms=...,
+        clarification_code="ambiguous_intent",
+    )
+```
+
+低置信度或 Router 故障时，也会构造统一的澄清结果：
+
+```
+decision=_clarification_decision(
+    reason="router_low_confidence",
+    confidence=decision.confidence,
+)
+```
+
+位置：[agent_task_router.py (line 174)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:174)
+
+最终 `AgentTaskRouteResult` 中有：
+
+```
+decision.intent
+decision.clarification_question
+clarification_code
+source
+latency_ms
+```
+
+------
+
+### 2. `decide_next_action_node` 将结果写入 State
+
+位置：[rag_agent_nodes.py (line 228)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:228)
+
+Router 调用完成后，先写入公共路由信息：
+
+```python
+route_fields = {
+    "route_intent": decision.intent,
+    "route_confidence": decision.confidence,
+    "route_source": route_result.source,
+    "route_model": settings.agent_router_model_name,
+    "route_latency_ms": round(route_result.latency_ms, 2),
+    "route_rule_matched": route_result.source == "rule",
+}
+```
+
+位置：[rag_agent_nodes.py (line 284)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:284)
+
+若是澄清分支，立即返回下面这份 state 更新，而不会进入 Planner：
+
+```python
+result = {
+    "route": "clarification_required",
+    "route_reason": route_result.clarification_code
+    or "ambiguous_intent",
+    "clarification_required": True,
+    "clarification_code": route_result.clarification_code
+    or "ambiguous_intent",
+    "clarification_question": decision.clarification_question,
+    "step_count": state["step_count"] + 1,
+    **route_fields,
+}
+```
+
+位置：[rag_agent_nodes.py (line 292)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:292)
+
+这里最重要的字段是：
+
+```
+route = "clarification_required"
+→ 给 LangGraph 选择下一个节点
+
+clarification_required = True
+→ 告诉 API / SSE / React：这是澄清，不是普通问答
+
+clarification_code
+→ 机器可读原因，例如 ambiguous_intent、router_low_confidence
+
+clarification_question
+→ 实际展示给用户的问题
+```
+
+因此 `return result` 后，下面的 `question_decomposition`、文档管理、联网研究 Planner 分支完全不会执行。
+
+------
+
+### 3. 循环检查后保留该路由
+
+Router 返回后，图仍会先经过 `check_loop_limits`，因为图的公共结构固定为：
+
+```
+decide_next_action
+→ check_loop_limits
+→ 根据 route 决定下一节点
+```
+
+`route_after_loop_check(...)` 位于 [rag_agent_nodes.py (line 196)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:196)：
+
+```python
+route = state.get("route")
+if route in (
+    "direct_answer",
+    "knowledge_retrieval",
+    "execute_task_plan",
+    "clarification_required",
+):
+    return route
+```
+
+因此只要循环控制没有先写入 `error_decision`，它会原样返回：
+
+```
+"clarification_required"
+```
+
+并且循环检查对 `direct_answer` 和 `clarification_required` 都放宽工具调用上限，因为它们本身不应调用工具，见 [rag_agent_nodes.py (line 447)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:447)。
+
+------
+
+### 4. LangGraph 进入澄清节点后立刻结束
+
+图定义在 [rag_agent_builder.py (line 106)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_builder.py:106)。
+
+先注册节点：
+
+```python
+builder.add_node(
+    "clarification_required",
+    create_agent_clarification_node(settings=settings),
+)
+```
+
+再把条件路由映射到该节点：
+
+```python
+next_action_routes = {
+    "direct_answer": "direct_answer",
+    "clarification_required": "clarification_required",
+    "knowledge_retrieval": "call_knowledge_retrieval",
+    "final_error_answer": "final_error_answer",
+}
+```
+
+最后定义终止边：
+
+```
+builder.add_edge("clarification_required", END)
+```
+
+位置：[rag_agent_builder.py (line 154)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_builder.py:154)。
+
+所以正常 LangGraph 路径是：
+
+```
+START
+→ decide_next_action
+→ check_loop_limits
+→ clarification_required
+→ END
+```
+
+不会经过：
+
+```python
+call_knowledge_retrieval
+→ rerank
+→ build_context
+→ generate_answer
+```
+
+------
+
+### 5. 澄清节点具体做什么
+
+实现位于 [rag_agent_nodes.py (line 403)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:403)。
+
+它首先取得 Router 的问题；若模型没有提供，就使用固定后备问题：
+
+```python
+question = state.get("clarification_question") or (
+    "请明确希望进行普通问答、复杂分析、联网检索，"
+    "还是创建、修改或删除知识库文档。"
+)
+```
+
+随后它只更新两个字段：
+
+```python
+result = {
+    "answer": question,
+    "final_reason": state.get("clarification_code")
+    or "ambiguous_intent",
+}
+```
+
+也就是说：
+
+```
+clarification_question
+→ 给前端的结构化澄清字段
+
+answer
+→ 兼容现有 chat UI 的普通回答正文
+
+final_reason
+→ trace / 日志中的最终收口原因
+```
+
+这使旧前端即使暂时不识别 `clarification_required`，仍能在 `answer` 中显示问题；新 React 前端则可以依据结构化字段渲染专门的澄清交互。
+
+------
+
+### 6. 非流式 `/rag/chat` 如何返回
+
+非流式主链路通过：
+
+```
+final_state = await self.graph.ainvoke(...)
+```
+
+执行整张图，位置：[rag_agent_pipeline_service.py (line 538)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\rag_agent_pipeline_service.py:538)。
+
+最终将 state 映射为 `RagChatResponse`：
+
+```python
+return RagChatResponse(
+    query=final_state["query"],
+    answer=answer,
+    sources=docs_to_sources(docs),
+    clarification_required=final_state.get(
+        "clarification_required",
+        False,
+    ),
+    clarification_code=final_state.get("clarification_code"),
+    clarification_question=final_state.get("clarification_question"),
+    route_intent=final_state.get("route_intent"),
+    route_confidence=final_state.get("route_confidence"),
+    ...
+)
+```
+
+位置：[rag_agent_pipeline_service.py (line 632)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:632)。
+
+由于澄清分支没有检索，`docs` 保持为空，因此：
+
+```python
+{
+  "answer": "请明确希望……",
+  "sources": [],
+  "clarification_required": true,
+  "clarification_code": "router_low_confidence",
+  "clarification_question": "请明确希望……",
+  "agent_task_plan_id": null
+}
+```
+
+------
+
+### 7. 流式 `stream_events()` 如何处理
+
+流式路径不直接调用整张 Graph，而是在 `_prepare_stream_state(...)` 中手动模拟前半段状态流转：
+
+```python
+decision_update = await self.decide_next_action_node(state)
+state.update(decision_update)
+
+loop_update = await self.check_loop_limits_node(state)
+state.update(loop_update)
+
+next_route = route_after_loop_check(state)
+```
+
+位置：[rag_agent_pipeline_service.py (line 665)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:665)。
+
+若路由为澄清：
+
+```python
+if next_route == "clarification_required":
+    clarification_update = await self.clarification_node(state)
+    state.update(clarification_update)
+    return state
+```
+
+位置：[rag_agent_pipeline_service.py (line 694)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:694)。
+
+之后 `_stream_events(...)` 会先发送专用事件：
+
+```python
+yield RagStreamEvent(
+    event="agent_route_clarification_required",
+    data={
+        "code": state.get("clarification_code"),
+        "question": state.get("clarification_question"),
+        "confidence": state.get("route_confidence"),
+    },
+)
+```
+
+位置：[rag_agent_pipeline_service.py (line 900)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:900)。
+
+然后沿用现有响应协议：
+
+```
+agent_route_clarification_required
+→ sources（空列表）
+→ answer_delta（澄清问题正文）
+→ done
+```
+
+所以前端既能立刻切换到“请补充意图”的 UI，也不会破坏原先的 `answer_delta` 消费逻辑。
+
+### 建议配合测试理解
+
+先读集成测试：[test_agent_router_clarification_flow.py (line 47)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\scripts\\phase_15\\test_agent_router_clarification_flow.py:47)。
+
+它验证了整个闭环：
+
+```
+Router 返回澄清
+→ 不创建 TaskPlan
+→ 非流式 response 带 clarification 字段
+→ SSE 先出现 agent_route_clarification_required
+→ sources 为空
+→ 最后正常 done，而不是 error
+```
+
+运行：
+
+```
+$env:PYTHONPATH="src"
+python scripts\phase_15\test_agent_router_clarification_flow.py
+```
+
+# 流式接口如何触发Router机制？
+
+## 主流式接口的 Router 触发点
+
+结构化 SSE 主链路是：
+
+```
+POST /rag/chat/stream/events
+→ pipeline.stream_events(req)
+→ pipeline._stream_events(req)
+→ _prepare_stream_state(req, operation="stream_events")
+→ decide_next_action_node(state)
+→ task_router.route(...)
+```
+
+### 1. API 层调用 `pipeline.stream_events`
+
+位置：[rag_chat_routes.py (line 169)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\api\\rag_chat_routes.py:169)
+
+```
+async for stream_event in pipeline.stream_events(req):
+    yield format_sse_event(
+        event=stream_event.event,
+        ...
+    )
+```
+
+API 层只负责将业务事件包装为 SSE 文本；它不直接调用 Router。
+
+### 2. `stream_events()` 进入内部生成器
+
+位置：[rag_agent_pipeline_service.py (line 881)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\rag_agent_pipeline_service.py:881)
+
+```
+async def stream_events(self, req):
+    async with self._langsmith_trace(req, "stream_events"):
+        async for event in self._stream_events(req):
+            yield event
+```
+
+### 3. `_stream_events()` 准备流式 State 时触发 Router
+
+真正关键的一行在 [rag_agent_pipeline_service.py (line 896)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:896)：
+
+```
+state = await self._prepare_stream_state(
+    req,
+    operation="stream_events",
+)
+```
+
+`_prepare_stream_state(...)` 的开头会依次执行：
+
+```
+decision_update = await self.decide_next_action_node(state)
+state.update(decision_update)
+
+loop_update = await self.check_loop_limits_node(state)
+state.update(loop_update)
+```
+
+位置：[rag_agent_pipeline_service.py (line 670)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:670)。
+
+其中第一行 `await self.decide_next_action_node(state)` 就是流式请求触发 Router 的入口。
+
+### 4. 决策节点调用 `task_router.route(...)`
+
+位置：[rag_agent_nodes.py (line 278)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\graph\\rag_agent_nodes.py:278)：
+
+```
+route_result = await task_router.route(
+    query=state["query"],
+    history=history,
+    langchain_config_factory=build_child_config,
+)
+```
+
+所以 Router 发生在：
+
+```
+开始 SSE 响应
+→ 尚未发送 sources
+→ 尚未开始 answer_delta
+→ 先决定应直接回答、检索、创建 TaskPlan，还是要求澄清
+```
+
+如果结果是 `clarification_required`，`_prepare_stream_state(...)` 会调用 `clarification_node` 并直接返回状态，不会进入检索：
+
+```
+if next_route == "clarification_required":
+    clarification_update = await self.clarification_node(state)
+    state.update(clarification_update)
+    return state
+```
+
+位置：[rag_agent_pipeline_service.py (line 694)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:694)。
+
+随后 `_stream_events(...)` 发送：
+
+```
+agent_route_clarification_required
+→ sources（空）
+→ answer_delta（澄清问题）
+→ done
+```
+
+------
+
+## 兼容旧流式接口也会触发
+
+当前代码中，兼容 token stream 的：
+
+```
+pipeline.stream(req)
+```
+
+也在 [rag_agent_pipeline_service.py (line 748)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:748) 调用：
+
+```
+state = await self._prepare_stream_state(req, operation="stream")
+```
+
+因此它同样会执行 Router。
+
+但这与最新 `AGENTS.md`“不要将新的 Agent 功能接入 legacy `/rag/chat/stream`”的约束不一致。当前实现的 Router 已同时进入 `stream_events` 和旧 `stream`；学习当前代码时，应将这点视为需要后续对齐的边界。

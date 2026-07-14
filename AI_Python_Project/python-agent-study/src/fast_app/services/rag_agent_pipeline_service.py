@@ -20,6 +20,7 @@ from fast_app.graph.rag_agent_nodes import (
     build_rag_agent_answer_query,
     build_rag_agent_step_inputs,
     create_agent_build_context_node,
+    create_agent_clarification_node,
     create_agent_error_answer_node,
     create_agent_fail_request_node,
     create_call_knowledge_retrieval_node,
@@ -52,6 +53,7 @@ from fast_app.services.conversation_summary import ConversationSummaryService
 from fast_app.services.exceptions import ExternalServiceError
 from fast_app.services.agent_task_executor import AgentTaskExecutor
 from fast_app.services.agent_task_planner import AgentTaskPlanner
+from fast_app.services.agent_task_router import AgentTaskRouter
 from fast_app.services.guarded_streaming import (
     GuardedStreamState,
     guarded_answer_delta_events,
@@ -82,9 +84,11 @@ class RagAgentPipeline:
         conversation_summary_service: ConversationSummaryService | None = None,
         prompt_guard: PromptGuardService | None = None,
         current_user: CurrentUserContext | None = None,
+        task_router: AgentTaskRouter | None = None,
         task_planner: AgentTaskPlanner | None = None,
         task_executor: AgentTaskExecutor | None = None,
     ):
+        """保存依赖并构建非流式图与流式路径共用的 Agent 节点。"""
         # 保存底层组件引用，方便非流式 graph 和流式手写路径复用同一批依赖。
         self.settings = settings
         self.vector_retriever = vector_retriever
@@ -97,6 +101,7 @@ class RagAgentPipeline:
         self.conversation_summary_service = conversation_summary_service
         self.prompt_guard = prompt_guard
         self.current_user = current_user
+        self.task_router = task_router
         self.task_planner = task_planner
         self.task_executor = task_executor
         # run() 使用 compiled graph，完整展示 LangGraph Agent 状态机。
@@ -108,6 +113,7 @@ class RagAgentPipeline:
             reranker=reranker,
             rerank_top_k=settings.rerank_top_k,
             prompt_guard=prompt_guard,
+            task_router=task_router,
             task_planner=task_planner,
             task_executor=task_executor,
         )
@@ -117,12 +123,14 @@ class RagAgentPipeline:
         # 让流式入口可以手动按同样顺序推进 state，但不改变 pipeline.stream() 的 token-only 协议。
         self.decide_next_action_node = create_next_action_decision_node(
             settings=settings,
+            task_router=task_router,
             task_planner=task_planner,
         )
         self.check_loop_limits_node = create_check_loop_limits_node(settings=settings)
         self.direct_answer_node = create_rag_agent_direct_answer_node(
             settings=settings
         )
+        self.clarification_node = create_agent_clarification_node(settings=settings)
         self.call_knowledge_retrieval_node = create_call_knowledge_retrieval_node(
             settings=settings,
             vector_retriever=vector_retriever,
@@ -149,6 +157,7 @@ class RagAgentPipeline:
         self.fail_request_node = create_agent_fail_request_node(settings=settings)
 
     async def _ensure_query_allowed(self, query: str, *, source: str) -> None:
+        """在启用 Prompt Guard 时校验指定边界上的用户查询。"""
         if self.prompt_guard is not None:
             await self.prompt_guard.ensure_user_input_allowed(query, source=source)
 
@@ -158,16 +167,19 @@ class RagAgentPipeline:
         *,
         source: str,
     ) -> list:
+        """在启用 Prompt Guard 时过滤检索结果中的不安全文档。"""
         if self.prompt_guard is None:
             return docs
 
         return await self.prompt_guard.filter_retrieved_docs(docs, source=source)
 
     async def _audit_stream_output(self, answer: str, *, source: str) -> None:
+        """在 legacy token 流结束后审计完整回答内容。"""
         if self.prompt_guard is not None:
             await self.prompt_guard.audit_stream_output(answer, source=source)
 
     def _langsmith_trace(self, req: RagChatRequest, operation: str):
+        """为一次 pipeline 调用创建统一的 LangSmith 顶层 trace 上下文。"""
         # pipeline 级 trace 记录一次完整请求；节点级 trace 在 rag_agent_nodes.py 中完成。
         return rag_langsmith_pipeline_trace(
             self.settings,
@@ -181,6 +193,7 @@ class RagAgentPipeline:
         req: RagChatRequest,
         operation: RagAgentOperation,
     ) -> RagAgentState:
+        """根据请求、操作类型和当前用户创建所有入口共用的初始状态。"""
         # 所有入口统一走同一个 initial_state builder，避免 run/stream/events 初始字段不一致。
         return build_rag_agent_initial_state(
             req=req,
@@ -193,7 +206,7 @@ class RagAgentPipeline:
         req: RagChatRequest,
         operation: RagAgentOperation,
     ) -> RagAgentState:
-        """prompt_guard + 构造 Agent 初始 state，并在进入 graph 前完成 query rewrite。"""
+        """校验原始查询、加载一次会话快照并改写查询后返回初始 Agent 状态。"""
 
         state = self._build_initial_state(req=req, operation=operation)
 
@@ -504,11 +517,13 @@ class RagAgentPipeline:
                 raise
 
     async def run(self, req: RagChatRequest) -> RagChatResponse:
+        """执行完整 LangGraph，并返回包含回答、来源和任务状态的非流式响应。"""
         # 非流式入口可以直接运行 compiled graph，最后把 final_state 转成 API response。
         async with self._langsmith_trace(req, "run"):
             return await self._run(req)
 
     async def _run(self, req: RagChatRequest) -> RagChatResponse:
+        """实现非流式主链路：准备状态、运行图、保存会话并组装 API 响应。"""
         start_time = perf_counter()
         logger.info(
             "rag_agent_pipeline %s",
@@ -632,6 +647,14 @@ class RagAgentPipeline:
             query=final_state["query"],
             answer=answer,
             sources=docs_to_sources(docs),
+            clarification_required=final_state.get(
+                "clarification_required",
+                False,
+            ),
+            clarification_code=final_state.get("clarification_code"),
+            clarification_question=final_state.get("clarification_question"),
+            route_intent=final_state.get("route_intent"),
+            route_confidence=final_state.get("route_confidence"),
             agent_task_plan_id=final_state.get("agent_task_plan_id"),
             agent_task_status=(
                 final_state["agent_task_plan"].status.value
@@ -657,6 +680,7 @@ class RagAgentPipeline:
         req: RagChatRequest,
         operation: RagAgentOperation,
     ) -> RagAgentState:
+        """手动推进流式入口的前置 Agent 节点，并在构建上下文前返回状态。"""
         # 流式入口和 run 共享前半段 Agent 决策链路：
         # decide -> loop check -> direct/error/tool -> rerank。
         # 这里停在 build_context 之前，是为了让 stream_events 可以先发 sources。
@@ -674,6 +698,11 @@ class RagAgentPipeline:
             # 直接回答路径没有 sources，也不需要进入检索和 LLM。
             direct_update = await self.direct_answer_node(state)
             state.update(direct_update)
+            return state
+
+        if next_route == "clarification_required":
+            clarification_update = await self.clarification_node(state)
+            state.update(clarification_update)
             return state
 
         if next_route == "final_error_answer":
@@ -714,6 +743,7 @@ class RagAgentPipeline:
         self,
         req: RagChatRequest,
     ) -> AsyncGenerator[str, None]:
+        """提供兼容旧接口的 token-only 流，并包裹整次调用的顶层 trace。"""
         # 对外契约：pipeline.stream() 只能 yield str token。
         # SSE 的 event/data 包装仍由 API 层负责。
         async with self._langsmith_trace(req, "stream"):
@@ -724,6 +754,7 @@ class RagAgentPipeline:
         self,
         req: RagChatRequest,
     ) -> AsyncGenerator[str, None]:
+        """实现 legacy token 流：处理提前回答或流式生成，再保存并审计完整回答。"""
         start_time = perf_counter()
         state = await self._prepare_stream_state(req, operation="stream")
 
@@ -862,6 +893,7 @@ class RagAgentPipeline:
         self,
         req: RagChatRequest,
     ) -> AsyncGenerator[RagStreamEvent, None]:
+        """提供 React 主链路使用的结构化 RAG SSE 业务事件流。"""
         # 结构化流式入口仍只产生业务事件 sources/token。
         # done/error 继续由 API SSE 包装层处理，保持和现有协议一致。
         async with self._langsmith_trace(req, "stream_events"):
@@ -872,11 +904,22 @@ class RagAgentPipeline:
         self,
         req: RagChatRequest,
     ) -> AsyncGenerator[RagStreamEvent, None]:
+        """实现结构化事件流：先发送任务或来源事件，再发送受 Guard 保护的回答增量。"""
         start_time = perf_counter()
         state = await self._prepare_stream_state(req, operation="stream_events")
 
         if state.get("answer") is not None:
-            # 直接回答或错误回答没有检索来源，但 stream_events 协议仍先发 sources。
+            # 澄清是正常业务结果，先发送专用状态，再走空 sources 和安全正文通道。
+            if state.get("clarification_required", False):
+                yield RagStreamEvent(
+                    event="agent_route_clarification_required",
+                    data={
+                        "code": state.get("clarification_code"),
+                        "question": state.get("clarification_question"),
+                        "confidence": state.get("route_confidence"),
+                    },
+                )
+            # 直接回答、澄清或错误回答没有检索来源，但协议仍会发送 sources。
             task_plan = state.get("agent_task_plan")
             if task_plan is not None:
                 # Agent task plan 是 React 前端需要单独渲染的结构化状态，
