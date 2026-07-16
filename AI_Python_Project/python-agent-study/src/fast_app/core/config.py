@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # BaseSettings 读取环境变量
@@ -127,11 +127,23 @@ class Settings(BaseSettings):
         ge=1024,
         alias="MAX_REQUEST_BODY_BYTES",
     )
+    max_upload_file_bytes: int = Field(
+        default=20 * 1024 * 1024,
+        ge=1024,
+        alias="MAX_UPLOAD_FILE_BYTES",
+    )
+    # multipart 请求还包含边界和普通表单字段，因此路由前上限要略大于文件上限。
+    max_upload_request_body_bytes: int = Field(
+        default=21 * 1024 * 1024,
+        ge=1024,
+        alias="MAX_UPLOAD_REQUEST_BODY_BYTES",
+    )
     # Prompt Injection 分层防护配置。当前先落地规则检测和上下文隔离。
     prompt_guard_enabled: bool = Field(
         default=True,
         alias="PROMPT_GUARD_ENABLED",
     )
+
     prompt_guard_mode: str = Field(
         default="rule",
         alias="PROMPT_GUARD_MODE",
@@ -461,6 +473,16 @@ class Settings(BaseSettings):
         alias="MARKDOWN_CHUNK_MIN_CHARS",
     )
     # ingestion 的基础配置 end
+
+    @model_validator(mode="after")
+    def validate_upload_size_limits(self) -> "Settings":
+        """确保 multipart 请求上限为文件内容之外的边界和表单字段预留空间。"""
+
+        if self.max_upload_request_body_bytes <= self.max_upload_file_bytes:
+            raise ValueError(
+                "MAX_UPLOAD_REQUEST_BODY_BYTES 必须大于 MAX_UPLOAD_FILE_BYTES"
+            )
+        return self
 
     @field_validator("calculator_mode", mode="before")
     @classmethod

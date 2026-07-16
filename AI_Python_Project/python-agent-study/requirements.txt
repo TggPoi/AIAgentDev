@@ -19,6 +19,7 @@ cryptography==49.0.0
 distro==1.9.0
 elasticsearch==8.17.0
 elastic-transport==8.17.1
+et-xmlfile==2.0.0
 fastapi==0.136.1
 frozenlist==1.8.0
 grpcio==1.81.0
@@ -53,6 +54,10 @@ orjson==3.11.9
 ormsgpack==1.12.2
 packaging==26.2
 pandas==3.0.3
+openpyxl==3.1.5
+python-pptx==1.0.2
+defusedxml==0.7.1
+Pillow==12.3.0
 propcache==0.5.2
 protego==0.6.2
 protobuf==7.35.0
@@ -92,6 +97,7 @@ uuid_utils==0.16.0
 uvicorn==0.47.0
 webencodings==0.5.1
 websockets==16.0
+XlsxWriter==3.2.9
 xxhash==3.7.0
 yarl==1.24.2
 zstandard==0.25.0

@@ -17,9 +17,7 @@ from fast_app.core.config import Settings, get_settings
 from fast_app.domain.knowledge_models import KnowledgeChunk, LoadedDocument
 from fast_app.ingestion.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
 from fast_app.ingestion.document_loaders import (
-    CompositeDocumentLoader,
-    MarkdownDocumentLoader,
-    TextDocumentLoader,
+    build_default_document_loader,
 )
 from fast_app.ingestion.markdown_ingestion_service import MarkdownIngestionService
 from fast_app.ingestion.ingestion_validation import validate_ingestion_result
@@ -127,12 +125,7 @@ def build_chunks(settings: Settings) -> tuple[list[LoadedDocument], list[Knowled
     if not root.is_dir():
         raise RuntimeError(f"知识库路径不是目录: {root}")
 
-    document_loader = CompositeDocumentLoader(
-        loaders=[
-            MarkdownDocumentLoader(),
-            TextDocumentLoader(),
-        ]
-    )
+    document_loader = build_default_document_loader()
     # Loader 负责把本地文件读成 LoadedDocument。
     # ChunkBuilder 再负责把 LoadedDocument 切成 KnowledgeChunk。
     documents = document_loader.load(settings.knowledge_base_dir)

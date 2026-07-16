@@ -18,7 +18,7 @@ from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingClient
 from fast_app.components.retrievers.milvus_vector_retriever import build_milvus_uri
 from fast_app.core.config import Settings, get_settings
-from fast_app.domain.knowledge_models import KnowledgeChunk
+from fast_app.domain.knowledge_models import KnowledgeChunk, LoadedDocument
 from fast_app.ingestion.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
 from fast_app.ingestion.markdown_chunker import read_markdown_documents
 from fast_app.ingestion.markdown_ingestion_service import MarkdownIngestionService
@@ -130,6 +130,25 @@ def assert_chunks(chunks: list[KnowledgeChunk]) -> None:
             raise AssertionError(f"expected metadata.chunk_index positive int: {chunk.id}")
 
 
+def assert_heading_paths() -> None:
+    """验证缺少一级标题时，同级二级标题仍保持同级 section_path。"""
+
+    document = LoadedDocument(
+        source_path="knowledge/test.md",
+        content="## One\nalpha\n## Two\nbeta\n### Child\ngamma",
+        document_type="markdown",
+    )
+    chunks = MarkdownChunkBuilder().build(
+        [document],
+        ChunkBuildOptions("test", 1000, 0, 1000, 1),
+    )
+    assert [chunk.metadata["section_path"] for chunk in chunks] == [
+        ["One"],
+        ["Two"],
+        ["Two", "Child"],
+    ]
+
+
 def print_chunk_summary(
     settings: Settings,
     chunks: list[KnowledgeChunk],
@@ -181,6 +200,7 @@ def build_chunks(settings: Settings) -> list[KnowledgeChunk]:
 
 
 async def run_dry_run(settings: Settings, sample_size: int) -> None:
+    assert_heading_paths()
     chunks = build_chunks(settings)
     print_chunk_summary(settings, chunks, sample_size)
 

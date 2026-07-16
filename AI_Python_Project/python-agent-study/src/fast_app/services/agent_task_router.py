@@ -10,7 +10,7 @@ from typing import Literal
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from fast_app.core.config import Settings
 from fast_app.core.logging import format_log_fields, get_logger
@@ -97,6 +97,17 @@ class AgentRouteDecision(BaseModel):
     # 仅当 intent 为 clarification_required 时允许出现的用户追问。
     clarification_question: str | None = Field(default=None, max_length=300)
 
+    @field_validator("clarification_question", mode="before")
+    @classmethod
+    def normalize_empty_clarification_question(cls, value: object) -> object:
+        """把结构化模型常见的空字符串占位统一成未提供。"""
+
+        # Function Calling 模型常会为可选字段返回 ""。它与 JSON null 的业务语义
+        # 相同；先归一化后，下面的 model validator 仍会拒绝非澄清意图携带非空追问。
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @model_validator(mode="after")
     def validate_clarification(self) -> AgentRouteDecision:
         # 用 schema 强制澄清分支一定有可展示的问题，其他分支则不能混入无意义追问。
@@ -154,6 +165,14 @@ class AgentTaskRouter:
                 temperature=self._settings.agent_router_temperature,
                 timeout=self._settings.agent_router_timeout_seconds,
                 max_retries=self._settings.agent_router_max_retries,
+                # Qwen3.6 默认开启 thinking，但 DashScope 不允许 thinking 模式与
+                # function-calling 的 required tool_choice 同时使用。Router 只做分类，
+                # 关闭思考模式还能减少延迟；其他 OpenAI 兼容模型不注入供应商参数。
+                **(
+                    {"extra_body": {"enable_thinking": False}}
+                    if self._settings.agent_router_model_name.lower().startswith("qwen")
+                    else {}
+                ),
             ).with_structured_output(
                 AgentRouteDecision,
                 method=self._settings.agent_router_structured_output_method,

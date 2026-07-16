@@ -8,6 +8,7 @@ from fast_app.api.chat_routes import router as chat_router
 from fast_app.api.auth_routes import router as auth_router
 from fast_app.api.agent_task_plan_routes import router as agent_task_plan_router
 from fast_app.api.health_routes import router as health_router
+from fast_app.api.knowledge_import_routes import router as knowledge_import_router
 from fast_app.api.rag_chat_routes import router as rag_chat_router
 from fast_app.api.rag_routes import router as rag_router
 from fast_app.api.stream_routes import router as stream_router
@@ -121,6 +122,7 @@ app.add_middleware(
 app.add_middleware(
     RequestSizeLimitMiddleware,
     max_body_bytes=settings.max_request_body_bytes,
+    max_upload_body_bytes=settings.max_upload_request_body_bytes,
 )
 app.add_middleware(
     RequestIdMiddleware,
@@ -130,6 +132,7 @@ app.add_middleware(
 register_exception_handlers(app)
 
 app.include_router(health_router)
+app.include_router(knowledge_import_router)
 app.include_router(auth_router)
 app.include_router(agent_task_plan_router)
 app.include_router(chat_router)

@@ -38,9 +38,10 @@ class FakeStructuredModel:
 class FakeChatOpenAI:
     response = None
     error: Exception | None = None
+    init_kwargs: dict[str, object] = {}
 
-    def __init__(self, **_kwargs) -> None:
-        pass
+    def __init__(self, **kwargs) -> None:
+        type(self).init_kwargs = kwargs
 
     def with_structured_output(self, _schema, method):
         assert method == "function_calling"
@@ -129,6 +130,16 @@ async def main() -> None:
         else:
             raise AssertionError(f"非法 Router 输出未被拒绝: {invalid}")
 
+    empty_optional_field = AgentRouteDecision.model_validate(
+        {
+            "intent": "simple_rag",
+            "confidence": 1.0,
+            "reason": "single fact",
+            "clarification_question": "  ",
+        }
+    )
+    assert empty_optional_field.clarification_question is None
+
     assert _route_with_high_confidence_rules(
         "请修改 docs/development/rag.md 文档"
     ).intent == "knowledge_document_management"
@@ -149,6 +160,15 @@ async def main() -> None:
         result = await AgentTaskRouter(settings).route(query="FastAPI 是什么？")
         assert result.decision.intent == "simple_rag"
         assert result.source == "model"
+        assert "extra_body" not in FakeChatOpenAI.init_kwargs
+
+        result = await AgentTaskRouter(
+            build_settings(AGENT_ROUTER_MODEL_NAME="qwen3.6-flash")
+        ).route(query="FastAPI 是什么？")
+        assert result.decision.intent == "simple_rag"
+        assert FakeChatOpenAI.init_kwargs["extra_body"] == {
+            "enable_thinking": False
+        }
 
         FakeChatOpenAI.response = AgentRouteDecision(
             intent="question_decomposition",

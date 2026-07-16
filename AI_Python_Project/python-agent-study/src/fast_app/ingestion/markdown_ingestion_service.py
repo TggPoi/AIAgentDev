@@ -10,9 +10,7 @@ from fast_app.ingestion.chunk_builders import ChunkBuildOptions, MarkdownChunkBu
 from fast_app.ingestion.rag_store_writer import write_rag_stores
 from fast_app.ingestion.document_loaders import (
     BaseDocumentLoader,
-    CompositeDocumentLoader,
-    MarkdownDocumentLoader,
-    TextDocumentLoader,
+    build_default_document_loader,
 )
 
 
@@ -58,14 +56,8 @@ class MarkdownIngestionService:
         self.elasticsearch_client = elasticsearch_client
         self.milvus_client = milvus_client
 
-        # document_loader 支持外部传入，是为了保留扩展性：
-        # 例如测试时可以传入假 loader，将来接入 PDF loader 时也不用改 ingest 主流程。
-        self.document_loader = document_loader or CompositeDocumentLoader(
-            loaders=[
-                MarkdownDocumentLoader(),
-                TextDocumentLoader(),
-            ]
-        )
+        # document_loader 支持外部传入，测试可注入假 Loader；默认工厂统一装配文本和 Office Loader。
+        self.document_loader = document_loader or build_default_document_loader()
 
         # chunk_builder 负责把领域文档切成 KnowledgeChunk，并生成稳定的 chunk_id / metadata。
         # 主流程只消费它的结果，不在这里写具体切分规则。

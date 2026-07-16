@@ -109,7 +109,7 @@ class MarkdownChunkBuilder:
 
     def _build_sections(self, document: LoadedDocument) -> list[MarkdownSection]:
         sections: list[MarkdownSection] = []
-        heading_stack: list[str] = []
+        heading_stack: list[tuple[int, str]] = []
         section_lines: list[str] = []
         section_index = 0
         current_title = Path(document.source_path).stem
@@ -121,7 +121,7 @@ class MarkdownChunkBuilder:
             if not content:
                 return
 
-            section_path = heading_stack[:] or [current_title]
+            section_path = [title for _, title in heading_stack] or [current_title]
 
             sections.append(
                 MarkdownSection(
@@ -146,8 +146,9 @@ class MarkdownChunkBuilder:
                 level, title = heading
                 current_heading_level = level
                 current_title = title
-                heading_stack = heading_stack[: level - 1]
-                heading_stack.append(title)
+                # 按标题级别而非列表长度回退；文档即使从 ## 开始，同级标题也不会嵌套。
+                heading_stack = [item for item in heading_stack if item[0] < level]
+                heading_stack.append((level, title))
                 continue
 
             section_lines.append(line)

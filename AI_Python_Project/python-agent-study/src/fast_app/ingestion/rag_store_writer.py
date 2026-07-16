@@ -29,6 +29,7 @@ from fast_app.ingestion.rag_store_schema import (
     MILVUS_SOURCE_PATH_FIELD,
     MILVUS_TITLE_FIELD,
     build_es_mapping,
+    build_es_mappings,
     build_milvus_index_params,
     build_milvus_schema,
 )
@@ -122,6 +123,14 @@ async def ensure_es_index(
     await verify_es_ik_analyzers(client)
 
     if await client.indices.exists(index=settings.elasticsearch_index_name):
+        # 旧索引不会经过 create；显式补充可兼容新增 keyword metadata 字段。
+        mappings = build_es_mappings()
+        await client.indices.put_mapping(
+            index=settings.elasticsearch_index_name,
+            properties={
+                ES_METADATA_FIELD: mappings["properties"][ES_METADATA_FIELD]
+            },
+        )
         return
 
     await client.indices.create(

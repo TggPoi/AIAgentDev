@@ -21,6 +21,11 @@ from fast_app.db.conversation_tables import (
     ConversationSummaryTable,
     ConversationTable,
 )
+from fast_app.db.ingestion_tables import (
+    KnowledgeDocumentTable,
+    KnowledgeExcelImportProfileTable,
+    KnowledgeIngestionJobTable,
+)
 from fast_app.db.session import create_database_engine, create_session_factory
 
 __all__ = [
@@ -30,6 +35,9 @@ __all__ = [
     "ConversationSummaryTable",
     "ConversationTable",
     "DepartmentTable",
+    "KnowledgeDocumentTable",
+    "KnowledgeExcelImportProfileTable",
+    "KnowledgeIngestionJobTable",
     "PermissionTable",
     "RefreshTokenTable",
     "RolePermissionTable",

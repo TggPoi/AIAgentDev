@@ -19,6 +19,7 @@ from fast_app.core.config import get_settings  # noqa: E402
 from fast_app.db.base import Base  # noqa: E402
 from fast_app.db import auth_tables  # noqa: F401,E402
 from fast_app.db import conversation_tables  # noqa: F401,E402
+from fast_app.db import ingestion_tables  # noqa: F401,E402
 
 config = context.config
 

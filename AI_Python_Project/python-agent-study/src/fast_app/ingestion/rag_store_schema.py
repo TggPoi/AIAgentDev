@@ -74,6 +74,12 @@ def build_es_mappings() -> dict[str, Any]:
                     "allowed_departments": {"type": "keyword"},
                     "allowed_users": {"type": "keyword"},
                     "permission_source": {"type": "keyword"},
+                    # Office 增量同步直接读取这些字段比较版本，不依赖全文分析器。
+                    "content_hash": {"type": "keyword"},
+                    "index_hash": {"type": "keyword"},
+                    "identity_key": {"type": "keyword"},
+                    "builder_schema_version": {"type": "keyword"},
+                    "embedding_fingerprint": {"type": "keyword"},
                     "file_name": {"type": "keyword"},
                     "file_extension": {"type": "keyword"},
                     "heading_level": {"type": "integer"},
