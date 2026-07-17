@@ -26,14 +26,14 @@ from fast_app.core.request_context import reset_request_context, set_request_con
 from fast_app.db.ingestion_tables import KnowledgeIngestionJobTable
 from fast_app.db.session import create_database_engine, create_session_factory
 from fast_app.domain.knowledge_models import LoadedDocument
-from fast_app.ingestion.chunk_builders import ChunkBuildOptions
+from fast_app.ingestion.processing.chunk_builders import ChunkBuildOptions
 from fast_app.ingestion.cli import (
     apply_arg_overrides,
     build_elasticsearch_client,
     build_embedding_client,
     build_milvus_client,
 )
-from fast_app.ingestion.document_loaders import (
+from fast_app.ingestion.processing.document_loaders import (
     ExcelDocumentLoader,
     PowerPointDocumentLoader,
 )
@@ -42,23 +42,23 @@ from fast_app.ingestion.import_jobs import (
     ClaimedImportJob,
     KnowledgeImportJobRepository,
 )
-from fast_app.ingestion.incremental_store import (
+from fast_app.ingestion.stores.incremental_store import (
     apply_chunk_diff,
     build_chunk_diff,
     load_es_chunk_states,
     load_milvus_chunk_states,
     verify_chunk_convergence,
 )
-from fast_app.ingestion.ingestion_validation import validate_ingestion_result
-from fast_app.ingestion.ooxml_validation import OOXMLValidationError, validate_ooxml_package
-from fast_app.ingestion.office_chunk_builders import (
+from fast_app.ingestion.validation.ingestion_validation import validate_ingestion_result
+from fast_app.ingestion.validation.ooxml_validation import OOXMLValidationError, validate_ooxml_package
+from fast_app.ingestion.processing.office_chunk_builders import (
     ExcelChunkBuilder,
     ExcelConfigurationRequired,
     PowerPointChunkBuilder,
     build_embedding_fingerprint,
     build_excel_preview,
 )
-from fast_app.ingestion.rag_store_writer import (
+from fast_app.ingestion.stores.rag_store_writer import (
     delete_es_docs_by_doc_ids,
     delete_milvus_docs_by_doc_ids,
     replace_docs_rag_stores,

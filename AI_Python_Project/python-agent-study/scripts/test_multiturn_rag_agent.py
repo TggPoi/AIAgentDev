@@ -12,18 +12,18 @@ from fast_app.core.config import Settings, get_settings
 from fast_app.domain.conversation_models import ConversationMessage, ConversationRole
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.schemas.rag_chat_schema import RagChatRequest
-from fast_app.services.conversation_history import (
+from fast_app.services.conversation.conversation_history import (
     ConversationHistoryWindow,
     format_history_messages,
 )
-from fast_app.services.conversation_memory import InMemoryConversationMemoryStore
-from fast_app.services.conversation_scope import (
+from fast_app.services.conversation.conversation_memory import InMemoryConversationMemoryStore
+from fast_app.services.conversation.conversation_scope import (
     get_request_external_session_id,
     get_request_user_id,
     scope_rag_chat_request,
 )
-from fast_app.services.query_rewrite import ConversationQueryRewriter
-from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
+from fast_app.services.conversation.query_rewrite import ConversationQueryRewriter
+from fast_app.services.rag.rag_agent_pipeline_service import RagAgentPipeline
 
 
 FIRST_TURN_QUERY = "什么是混合检索？"

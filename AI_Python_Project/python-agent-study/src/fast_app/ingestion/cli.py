@@ -15,13 +15,13 @@ from fast_app.components.embeddings.mock_embedding_client import MockEmbeddingCl
 from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingClient
 from fast_app.core.config import Settings, get_settings
 from fast_app.domain.knowledge_models import KnowledgeChunk, LoadedDocument
-from fast_app.ingestion.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
-from fast_app.ingestion.document_loaders import (
+from fast_app.ingestion.processing.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
+from fast_app.ingestion.processing.document_loaders import (
     build_default_document_loader,
 )
 from fast_app.ingestion.markdown_ingestion_service import MarkdownIngestionService
-from fast_app.ingestion.ingestion_validation import validate_ingestion_result
-from fast_app.ingestion.rag_store_admin import StoreResetOptions, reset_rag_stores
+from fast_app.ingestion.validation.ingestion_validation import validate_ingestion_result
+from fast_app.ingestion.stores.rag_store_admin import StoreResetOptions, reset_rag_stores
 
 
 def apply_arg_overrides(args: argparse.Namespace) -> None:

@@ -20,7 +20,7 @@ from fast_app.domain.conversation_models import (
     ConversationRole,
     utc_now,
 )
-from fast_app.services.conversation_repository import PostgresConversationRepository
+from fast_app.services.conversation.conversation_repository import PostgresConversationRepository
 
 
 async def main() -> None:

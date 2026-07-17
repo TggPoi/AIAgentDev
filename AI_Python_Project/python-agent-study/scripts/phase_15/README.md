@@ -40,7 +40,7 @@ POST /rag/chat/stream/events
 文件：
 
 ```text
-src/fast_app/services/knowledge_permission_policy.py
+src/fast_app/services/knowledge/knowledge_permission_policy.py
 ```
 
 关键内容：
@@ -82,8 +82,8 @@ admin / "*" / knowledge:read:all
 src/fast_app/domain/auth_models.py
 src/fast_app/domain/user_context.py
 src/fast_app/db/auth_tables.py
-src/fast_app/services/user_repository.py
-src/fast_app/services/auth_service.py
+src/fast_app/services/auth/user_repository.py
+src/fast_app/services/auth/auth_service.py
 ```
 
 关键内容：
@@ -170,9 +170,9 @@ or array_contains(metadata["allowed_users"], "user_dev_001")
 文件：
 
 ```text
-src/fast_app/ingestion/metadata_models.py
-src/fast_app/ingestion/rag_store_schema.py
-src/fast_app/ingestion/rag_store_writer.py
+src/fast_app/ingestion/processing/metadata_models.py
+src/fast_app/ingestion/stores/rag_store_schema.py
+src/fast_app/ingestion/stores/rag_store_writer.py
 ```
 
 关键函数：
@@ -302,7 +302,7 @@ HTTP Header / JWT / API Key
 再看：
 
 ```text
-src/fast_app/services/knowledge_permission_policy.py
+src/fast_app/services/knowledge/knowledge_permission_policy.py
 ```
 
 重点理解：
@@ -318,21 +318,21 @@ admin 如何跳过权限过滤
 Classic：
 
 ```text
-src/fast_app/services/rag_pipeline_service.py
+src/fast_app/services/rag/rag_pipeline_service.py
 ```
 
 LangGraph：
 
 ```text
-src/fast_app/graph/rag_graph_state.py
-src/fast_app/graph/rag_graph_nodes.py
+src/fast_app/graph/rag/rag_graph_state.py
+src/fast_app/graph/rag/rag_graph_nodes.py
 ```
 
 RAG Agent：
 
 ```text
-src/fast_app/graph/rag_agent_state.py
-src/fast_app/graph/rag_agent_nodes.py
+src/fast_app/graph/rag_agent/rag_agent_state.py
+src/fast_app/graph/rag_agent/rag_agent_nodes.py
 ```
 
 重点理解：
@@ -365,9 +365,9 @@ src/fast_app/components/retrievers/milvus_vector_retriever.py
 最后看：
 
 ```text
-src/fast_app/ingestion/metadata_models.py
-src/fast_app/ingestion/rag_store_schema.py
-src/fast_app/ingestion/rag_store_writer.py
+src/fast_app/ingestion/processing/metadata_models.py
+src/fast_app/ingestion/stores/rag_store_schema.py
+src/fast_app/ingestion/stores/rag_store_writer.py
 ```
 
 重点理解：
@@ -1115,7 +1115,7 @@ KEYWORD_RETRIEVER_PROVIDER=elasticsearch
 
 # 关键函数讲解：match_permission_rule_from_file
 
-src\fast_app\ingestion\metadata_models.py
+src\fast_app\ingestion\processing\metadata_models.py
 
 ~~~py
 def match_permission_rule_from_file(

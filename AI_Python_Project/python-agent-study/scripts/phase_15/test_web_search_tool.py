@@ -11,7 +11,7 @@ import httpx
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from fast_app.agents.web_search_tools import search_web_with_bocha
+from fast_app.agents.tools.web_search_tools import search_web_with_bocha
 from fast_app.core.config import Settings
 
 

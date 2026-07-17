@@ -10,7 +10,7 @@ from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.services.exceptions import ExternalServiceError
 from fast_app.domain.rag_models import RetrievalFilters, RetrievalOptions, RetrievedDoc, ScoreBreakdown
-from fast_app.ingestion.rag_store_schema import (
+from fast_app.ingestion.stores.rag_store_schema import (
     MILVUS_CHUNK_INDEX_FIELD,
     MILVUS_DOC_ID_FIELD,
     MILVUS_DOCUMENT_TYPE_FIELD,

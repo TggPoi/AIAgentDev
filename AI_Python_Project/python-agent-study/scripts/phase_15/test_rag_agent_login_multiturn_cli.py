@@ -571,7 +571,7 @@ async def seed_15_7_tool_users() -> None:
 
     from fast_app.core.config import get_settings
     from fast_app.db.session import create_database_engine, create_session_factory
-    from fast_app.services.auth_crypto import hash_password
+    from fast_app.services.auth.auth_crypto import hash_password
 
     settings = get_settings()
     engine = create_database_engine(settings)

@@ -11,12 +11,12 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from fast_app.core.config import Settings
-from fast_app.graph.rag_agent_nodes import create_next_action_decision_node
-from fast_app.graph.rag_agent_state import build_rag_agent_initial_state
+from fast_app.graph.rag_agent.rag_agent_nodes import create_next_action_decision_node
+from fast_app.graph.rag_agent.rag_agent_state import build_rag_agent_initial_state
 from fast_app.schemas.rag_chat_schema import RagChatRequest
-from fast_app.services import agent_task_router as router_module
-from fast_app.services.agent_task_planner import AgentTaskPlanner
-from fast_app.services.agent_task_router import (
+from fast_app.services.agent_tasks import agent_task_router as router_module
+from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
+from fast_app.services.agent_tasks.agent_task_router import (
     AgentRouteDecision,
     AgentTaskRouteResult,
     AgentTaskRouter,

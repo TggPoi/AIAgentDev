@@ -13,8 +13,10 @@ os.environ["LANGSMITH_TRACING"] = "false"
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-import fast_app.services.agent_task_executor as executor_module
-import fast_app.services.knowledge_document_management_service as management_module
+import fast_app.services.agent_tasks.document_task_executor as document_module
+from fast_app.services.agent_tasks import agent_task_plan_store as plan_store_module
+from fast_app.services.agent_tasks.agent_task_tool_support import parallel_batch_error
+import fast_app.services.knowledge.knowledge_document_management_service as management_module
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
@@ -36,11 +38,11 @@ from fast_app.domain.rag_models import (
     RetrievedDoc,
 )
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.ingestion.metadata_models import build_document_metadata
-from fast_app.services.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
-from fast_app.services.agent_task_planner import AgentTaskPlanner
+from fast_app.ingestion.processing.metadata_models import build_document_metadata
+from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
+from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 from fast_app.services.exceptions import AppServiceError
-from fast_app.services.knowledge_document_management_service import (
+from fast_app.services.knowledge.knowledge_document_management_service import (
     KnowledgeDocumentManagementService,
 )
 
@@ -402,8 +404,8 @@ async def main() -> None:
             tool_audit_service=FakeAuditService(),
             task_plan_store=AgentTaskPlanStore(settings),
         )
-        original = executor_module.ChatOpenAI
-        executor_module.ChatOpenAI = FakeChatOpenAI
+        original = document_module.ChatOpenAI
+        document_module.ChatOpenAI = FakeChatOpenAI
         try:
             result = await executor.execute(
                 plan=plan,
@@ -418,7 +420,7 @@ async def main() -> None:
                 ),
             )
         finally:
-            executor_module.ChatOpenAI = original
+            document_module.ChatOpenAI = original
 
         assert FakeChatOpenAI.parallel_tool_calls is True
         assert result.status == AgentTaskPlanStatus.WAITING_CONFIRMATION
@@ -457,7 +459,7 @@ async def main() -> None:
         assert checkpoint["round"] == 4
         assert checkpoint["call_count"] == 6
         assert checkpoint["messages"]
-        assert executor_module._document_batch_dependency_error(
+        assert document_module._document_batch_dependency_error(
             calls=[
                 {"name": "knowledge_retrieval", "args": {"query": "x"}},
                 {
@@ -468,7 +470,7 @@ async def main() -> None:
             candidates=set(),
             read_doc_ids=set(),
         ) is not None
-        assert executor_module._document_batch_dependency_error(
+        assert document_module._document_batch_dependency_error(
             calls=[
                 {"name": "knowledge_document_read", "args": {"doc_id": "a"}},
                 {"name": "knowledge_document_read", "args": {"doc_id": "b"}},
@@ -476,17 +478,17 @@ async def main() -> None:
             candidates={"a", "b"},
             read_doc_ids=set(),
         ) is None
-        assert executor_module._parallel_batch_error(
+        assert parallel_batch_error(
             tool_names=["knowledge_retrieval", "knowledge_document_create"],
             registered_tool_names={"knowledge_retrieval", "knowledge_document_create"},
-            parallel_safe_tool_names=executor_module.PARALLEL_SAFE_DOCUMENT_TOOL_NAMES,
+            parallel_safe_tool_names=document_module.PARALLEL_SAFE_DOCUMENT_TOOL_NAMES,
             max_parallel_calls=4,
             remaining_calls=12,
         ) is not None
-        assert executor_module._parallel_batch_error(
+        assert parallel_batch_error(
             tool_names=["knowledge_retrieval"] * 5,
             registered_tool_names={"knowledge_retrieval"},
-            parallel_safe_tool_names=executor_module.PARALLEL_SAFE_DOCUMENT_TOOL_NAMES,
+            parallel_safe_tool_names=document_module.PARALLEL_SAFE_DOCUMENT_TOOL_NAMES,
             max_parallel_calls=4,
             remaining_calls=12,
         ) is not None
@@ -496,7 +498,7 @@ async def main() -> None:
             user_id=user.user_id,
         )
         ModelWrapper.bound_model = InterruptAfterRetrievalModel()
-        executor_module.ChatOpenAI = ModelWrapper
+        document_module.ChatOpenAI = ModelWrapper
         try:
             await executor.execute(
                 plan=resumable_plan,
@@ -520,7 +522,7 @@ async def main() -> None:
         assert interrupted.final_output["checkpoint"]["candidates"]
 
         ModelWrapper.bound_model = ResumeCreateModel()
-        executor_module.ChatOpenAI = ModelWrapper
+        document_module.ChatOpenAI = ModelWrapper
         resumed = await executor.resume(interrupted.task_plan_id, user=user)
         assert resumed.status == AgentTaskPlanStatus.WAITING_CONFIRMATION
         assert [
@@ -540,7 +542,7 @@ async def main() -> None:
             raise AssertionError("expected cancelled plan confirmation to fail")
         except AppServiceError:
             pass
-        executor_module.ChatOpenAI = original
+        document_module.ChatOpenAI = original
 
         confirmed = await executor.confirm(result.task_plan_id, user=user)
         assert confirmed.status == AgentTaskPlanStatus.COMPLETED
@@ -590,7 +592,7 @@ async def main() -> None:
             task_plan_store=AgentTaskPlanStore(settings),
         )
         FakeChatOpenAI.bound_model = FakeUpdateModel(str(metadata["doc_id"]))
-        executor_module.ChatOpenAI = FakeChatOpenAI
+        document_module.ChatOpenAI = FakeChatOpenAI
         try:
             updated = await update_executor.execute(
                 plan=update_plan,
@@ -605,7 +607,7 @@ async def main() -> None:
                 ),
             )
         finally:
-            executor_module.ChatOpenAI = original
+            document_module.ChatOpenAI = original
         assert updated.status == AgentTaskPlanStatus.WAITING_CONFIRMATION
         assert updated.steps[0].output["tool_call_id"] == "update_1"
         assert "-旧内容" in updated.steps[0].output["diff"]
@@ -640,7 +642,7 @@ async def main() -> None:
         delete_step.output["selection_reason"] = "检索结果与删除主题一致"
         delete_step.output["replacements"] = []
         delete_step.output["diff"] = ""
-        delete_markdown = executor_module._render_task_plan_markdown(delete_review)
+        delete_markdown = plan_store_module._render_task_plan_markdown(delete_review)
         assert "#### 删除候选证据" in delete_markdown
         assert "existing" in delete_markdown
         assert target.as_posix() in delete_markdown
@@ -649,13 +651,13 @@ async def main() -> None:
         question_review = updated.model_copy(deep=True)
         question_review.task_kind = "question_decomposition"
         question_review.final_output = {"final_answer": "综合答案"}
-        question_markdown = executor_module._render_task_plan_markdown(question_review)
+        question_markdown = plan_store_module._render_task_plan_markdown(question_review)
         assert "## 子问题拆解" in question_markdown
         assert "## 最终整合要求" in question_markdown
         assert "## 最终答案\n\n综合答案" in question_markdown
 
         seen_actions: dict[str, str] = {}
-        await executor._prepare_document_dry_run(
+        await executor._document_executor._prepare_document_dry_run(
             user=user,
             operation=KnowledgeDocumentOperation.CREATE,
             target_path="development/conflict.md",
@@ -667,7 +669,7 @@ async def main() -> None:
             document_actions=seen_actions,
         )
         try:
-            await executor._prepare_document_dry_run(
+            await executor._document_executor._prepare_document_dry_run(
                 user=user,
                 operation=KnowledgeDocumentOperation.CREATE,
                 target_path="development/conflict.md",

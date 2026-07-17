@@ -11,13 +11,13 @@ from fast_app.domain.conversation_models import (
     ConversationRole,
     utc_now,
 )
-from fast_app.services.conversation_history import (
+from fast_app.services.conversation.conversation_history import (
     ConversationHistoryWindow,
     format_history_messages,
 )
-from fast_app.services.conversation_repository import PostgresConversationRepository
-from fast_app.services.conversation_summary import ConversationSummaryService
-from fast_app.services.query_rewrite import ConversationQueryRewriter
+from fast_app.services.conversation.conversation_repository import PostgresConversationRepository
+from fast_app.services.conversation.conversation_summary import ConversationSummaryService
+from fast_app.services.conversation.query_rewrite import ConversationQueryRewriter
 
 
 def print_field(name: str, value: object) -> None:

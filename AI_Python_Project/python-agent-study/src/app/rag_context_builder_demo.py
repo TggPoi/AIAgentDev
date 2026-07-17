@@ -1,5 +1,5 @@
 from fast_app.domain.rag_models import RetrievedDoc
-from fast_app.services.rag_context_builder import build_rag_context
+from fast_app.services.rag.rag_context_builder import build_rag_context
 
 
 def main() -> None:

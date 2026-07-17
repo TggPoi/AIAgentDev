@@ -6858,7 +6858,7 @@ PPTX 的稳定措施：
 - GroupShape 每层递归并重新排序。
 - warning 使用集合收集，最后排序。
 
-代码位于 [document_loaders.py (line 79)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/ingestion/document_loaders.py:79)。
+代码位于 [document_loaders.py (line 79)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/ingestion/processing/document_loaders.py:79)。
 
 XLSX 的稳定措施：
 
@@ -6868,7 +6868,7 @@ XLSX 的稳定措施：
 - 行块和列坐标都会排序。
 - 公式和缓存值按相同工作表、单元格坐标配对。
 
-代码位于 [document_loaders.py (line 199)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/ingestion/document_loaders.py:199)。
+代码位于 [document_loaders.py (line 199)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/ingestion/processing/document_loaders.py:199)。
 
 所以，同一个文件重复解析通常会产生完全相同的 Markdown-like 内容和 Chunk ID。
 
@@ -6888,7 +6888,7 @@ doc_id = hash(source_path)
 chunk_id = hash(doc_id + section_path + 全局chunk_index)
 ```
 
-见 [metadata_models.py (line 21)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/ingestion/metadata_models.py:21)。
+见 [metadata_models.py (line 21)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/ingestion/processing/metadata_models.py:21)。
 
 这里有一个关键问题：`chunk_index` 是整个文档范围内递增，不是每个 Slide 或 Rows 区段独立递增：
 
@@ -6900,7 +6900,7 @@ for section in sections:
         chunk_index += 1
 ```
 
-见 [chunk_builders.py (line 83)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/ingestion/chunk_builders.py:83)。
+见 [chunk_builders.py (line 83)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/ingestion/processing/chunk_builders.py:83)。
 
 因此局部修改可能产生两种结果：
 
@@ -6940,7 +6940,7 @@ await replace_docs_rag_stores(...)
 → 写入全部新 Chunk
 ```
 
-ES 删除逻辑见 [rag_store_writer.py (line 206)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/ingestion/rag_store_writer.py:206)，Milvus 删除逻辑见 [rag_store_writer.py (line 339)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/ingestion/rag_store_writer.py:339)。
+ES 删除逻辑见 [rag_store_writer.py (line 206)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/ingestion/stores/rag_store_writer.py:206)，Milvus 删除逻辑见 [rag_store_writer.py (line 339)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/ingestion/stores/rag_store_writer.py:339)。
 
 因此，即使只修改 PPT 的一页或 Excel 的一行：
 

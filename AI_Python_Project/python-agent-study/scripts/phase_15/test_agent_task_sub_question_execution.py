@@ -24,7 +24,11 @@ from fast_app.domain.agent_task_plan import (
 )
 from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievalOptions, RetrievedDoc
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.services.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
+from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
+from fast_app.services.research.agentic_research_executor import AgenticResearchExecutor
+from fast_app.services.research.research_evidence_evaluator import ResearchEvidenceEvaluator
+from fast_app.services.research.research_tool_loop import ResearchToolLoop
+from fast_app.services.research.research_worker_agent import ResearchWorkerAgent
 
 
 class FakeRetriever(BaseRetriever):
@@ -52,7 +56,7 @@ class FakeLLM(BaseLLMClient):
         yield await self.generate(query, context)
 
 
-class SelectingExecutor(AgentTaskExecutor):
+class SelectingResearchToolLoop(ResearchToolLoop):
     async def _select_tool_for_sub_question(self, *args, **kwargs) -> dict[str, Any]:
         sub_question = kwargs["sub_question"]
         if kwargs.get("tool_calls"):
@@ -85,6 +89,32 @@ class SelectingExecutor(AgentTaskExecutor):
                 }
             ],
         )
+
+
+class SelectingExecutor:
+    def __init__(self, **kwargs) -> None:
+        settings = kwargs["settings"]
+        tool_loop = SelectingResearchToolLoop(
+            settings=settings,
+            vector_retriever=kwargs["vector_retriever"],
+            keyword_retriever=kwargs["keyword_retriever"],
+            llm_client=kwargs["llm_client"],
+        )
+        worker = ResearchWorkerAgent(
+            settings,
+            tool_loop,
+            ResearchEvidenceEvaluator(settings),
+        )
+        research = AgenticResearchExecutor(
+            settings,
+            kwargs["llm_client"],
+            kwargs["task_plan_store"],
+            worker,
+        )
+        self._executor = AgentTaskExecutor(**kwargs, research_executor=research)
+
+    def __getattr__(self, name):
+        return getattr(self._executor, name)
 
 
 def build_plan(task_plan_id: str) -> AgentTaskPlan:

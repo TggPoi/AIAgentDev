@@ -45,9 +45,9 @@
 
 | 缺陷 | 修复文件 | 修复方式 | 回归证据 |
 |---|---|---|---|
-| 默认 Markdown ingestion 接收 Office | `src/fast_app/ingestion/document_loaders.py` | `build_default_document_loader()` 恢复为仅组合 `MarkdownDocumentLoader`、`TextDocumentLoader` | 新增 `test_default_loader_excludes_office()` |
-| 无标题占位符时 PPT 标题退化 | `src/fast_app/ingestion/document_loaders.py` | 按 `(top,left,shape_id)` 递归查找首个有效文本 Shape，并从正文提取中排除该 Shape | 真实生成无占位符 PPT，断言标题为 `Inferred title` 且正文不重复 |
-| Excel Section 切断整行 | `src/fast_app/ingestion/office_chunk_builders.py` | 表头加完整数据行贪心装箱；仅单行本身超限时调用行内 splitter | 构造两个无法同箱但可分别容纳的行，断言完整行文本各出现一次 |
+| 默认 Markdown ingestion 接收 Office | `src/fast_app/ingestion/processing/document_loaders.py` | `build_default_document_loader()` 恢复为仅组合 `MarkdownDocumentLoader`、`TextDocumentLoader` | 新增 `test_default_loader_excludes_office()` |
+| 无标题占位符时 PPT 标题退化 | `src/fast_app/ingestion/processing/document_loaders.py` | 按 `(top,left,shape_id)` 递归查找首个有效文本 Shape，并从正文提取中排除该 Shape | 真实生成无占位符 PPT，断言标题为 `Inferred title` 且正文不重复 |
+| Excel Section 切断整行 | `src/fast_app/ingestion/processing/office_chunk_builders.py` | 表头加完整数据行贪心装箱；仅单行本身超限时调用行内 splitter | 构造两个无法同箱但可分别容纳的行，断言完整行文本各出现一次 |
 
 回归命令：
 
@@ -165,7 +165,7 @@ ACL 抽查：PPTX 为 `allowed_departments=[product_planning]`；XLSX、Markdown
 
 真实更新首先发现一个生产缺陷：openpyxl 的 read-only Worksheet 在部分文件上会出现
 `max_column=None`，导致 `source_columns` 不稳定。已在
-`src/fast_app/ingestion/document_loaders.py` 中对该情况调用
+`src/fast_app/ingestion/processing/document_loaders.py` 中对该情况调用
 `calculate_dimension(force=True)`，新增回归后先按旧文件回滚索引，再重新提交修改文件。
 
 最终更新任务：

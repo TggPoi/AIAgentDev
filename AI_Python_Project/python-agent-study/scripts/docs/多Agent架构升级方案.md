@@ -65,7 +65,7 @@ Supervisor / Orchestrator
 
 位置：
 
-[agent_task_router.py (line 136)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_router.py:136)
+[agent_task_router.py (line 136)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_router.py:136)
 
 但它目前只是 Router，不是完整 Supervisor。
 
@@ -93,7 +93,7 @@ final_synthesis_instruction
 
 位置：
 
-[agent_task_planner.py (line 40)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_planner.py:40)
+[agent_task_planner.py (line 40)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_planner.py:40)
 
 因此不需要重新设计另一套 Multi-Agent Plan。
 
@@ -108,11 +108,11 @@ for sub_question in sorted(plan.sub_questions, key=lambda item: item.order):
 
 位置：
 
-[agent_task_executor.py (line 319)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:319)
+[agent_task_executor.py (line 319)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:319)
 
 实际循环位置：
 
-[agent_task_executor.py (line 349)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:349)
+[agent_task_executor.py (line 349)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:349)
 
 这意味着即使计划是：
 
@@ -138,7 +138,7 @@ sq_3：比较 sq_1 和 sq_2
 
 同一个子问题中，如果模型同一轮选择多个允许并行的只读工具，会通过 `asyncio.gather()` 并行调用：
 
-[agent_task_executor.py (line 540)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:540)
+[agent_task_executor.py (line 540)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:540)
 
 所以当前状态是：
 
@@ -160,15 +160,15 @@ none
 
 分派位置：
 
-[agent_task_executor.py (line 882)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:882)
+[agent_task_executor.py (line 882)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:882)
 
 本地知识库检索：
 
-[agent_task_executor.py (line 964)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:964)
+[agent_task_executor.py (line 964)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:964)
 
 联网搜索：
 
-[agent_task_executor.py (line 1017)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:1017)
+[agent_task_executor.py (line 1017)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:1017)
 
 因此未来不需要重新实现 Retriever 和 WebSearch，只需要把现有能力放进新的 Worker 编排闭环。
 
@@ -740,15 +740,15 @@ knowledge_document_management
 
 路由位置：
 
-[rag_agent_nodes.py (line 338)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent_nodes.py:338)
+[rag_agent_nodes.py (line 338)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py:338)
 
 Planner 已经可以创建文档管理计划：
 
-[agent_task_planner.py (line 332)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_planner.py:332)
+[agent_task_planner.py (line 332)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_planner.py:332)
 
 执行器已有文档 Tool Loop：
 
-[agent_task_executor.py (line 1223)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:1223)
+[agent_task_executor.py (line 1223)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:1223)
 
 当前文档 Agent 可以：
 
@@ -761,11 +761,11 @@ Planner 已经可以创建文档管理计划：
 
 进入确认状态的位置：
 
-[agent_task_executor.py (line 1576)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:1576)
+[agent_task_executor.py (line 1576)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:1576)
 
 用户确认后，真正写入继续由：
 
-[knowledge_document_management_service.py (line 168)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/knowledge_document_management_service.py:168)
+[knowledge_document_management_service.py (line 168)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/knowledge/knowledge_document_management_service.py:168)
 
 中的 `execute_confirmed_actions()` 负责。
 

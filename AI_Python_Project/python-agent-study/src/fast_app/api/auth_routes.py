@@ -13,7 +13,7 @@ from fast_app.schemas.auth_schema import (
     RevokeApiKeyResponse,
     TokenPairResponse,
 )
-from fast_app.services.auth_service import AuthService
+from fast_app.services.auth.auth_service import AuthService
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])

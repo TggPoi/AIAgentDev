@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from fast_app.core.config import Settings
-from fast_app.graph.rag_agent_nodes import build_task_plan_answer
-from fast_app.services.agent_task_planner import AgentTaskPlanner
+from fast_app.graph.rag_agent.rag_agent_nodes import build_task_plan_answer
+from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 
 
 TODO_PREFIXES = (

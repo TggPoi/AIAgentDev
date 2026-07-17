@@ -1,4 +1,4 @@
-﻿from fast_app.components.rerankers.base import BaseReranker
+from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.retrievers.elasticsearch_keyword_retriever import (
     ElasticsearchKeywordRetriever,
 )
@@ -19,7 +19,7 @@ from fast_app.evaluation.retrieval.comparison_models import (
 )
 from fast_app.evaluation.retrieval.models import RetrievalDatasetReport
 from fast_app.evaluation.retrieval.metrics import evaluate_retrieval_dataset
-from fast_app.services.retrieval_fusion import reciprocal_rank_fusion
+from fast_app.services.rag.retrieval_fusion import reciprocal_rank_fusion
 
 
 async def retrieve_rrf_hybrid_docs_for_case(

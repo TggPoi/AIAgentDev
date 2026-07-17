@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from langchain_core.messages import AIMessage
 
-import fast_app.services.agent_task_executor as executor_module
+import fast_app.services.research.research_tool_loop as tool_loop_module
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
@@ -26,7 +26,11 @@ from fast_app.domain.agent_task_plan import (
 )
 from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievalOptions, RetrievedDoc
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.services.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
+from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
+from fast_app.services.research.agentic_research_executor import AgenticResearchExecutor
+from fast_app.services.research.research_evidence_evaluator import ResearchEvidenceEvaluator
+from fast_app.services.research.research_tool_loop import ResearchToolLoop
+from fast_app.services.research.research_worker_agent import ResearchWorkerAgent
 
 
 class FakeRetriever(BaseRetriever):
@@ -54,7 +58,7 @@ class FakeLLM(BaseLLMClient):
         yield await self.generate(query, context)
 
 
-class LoopExecutor(AgentTaskExecutor):
+class LoopResearchToolLoop(ResearchToolLoop):
     async def _select_tool_for_sub_question(self, *args, **kwargs) -> dict[str, Any]:
         sub_question = kwargs["sub_question"]
         tool_calls = kwargs.get("tool_calls") or []
@@ -101,7 +105,7 @@ class LoopExecutor(AgentTaskExecutor):
         )
 
 
-class ParallelLoopExecutor(LoopExecutor):
+class ParallelResearchToolLoop(LoopResearchToolLoop):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.started = 0
@@ -201,8 +205,38 @@ def build_user() -> CurrentUserContext:
     )
 
 
-def build_executor(settings: Settings, store: AgentTaskPlanStore) -> AgentTaskExecutor:
-    return LoopExecutor(
+class ResearchHarness:
+    """测试组合根：私有 Tool Loop 测试不再穿过统一 Executor。"""
+
+    def __init__(self, *, tool_loop_class=LoopResearchToolLoop, **kwargs) -> None:
+        settings = kwargs["settings"]
+        self.tool_loop = tool_loop_class(
+            settings=settings,
+            vector_retriever=kwargs["vector_retriever"],
+            keyword_retriever=kwargs["keyword_retriever"],
+            llm_client=kwargs["llm_client"],
+        )
+        worker = ResearchWorkerAgent(
+            settings,
+            self.tool_loop,
+            ResearchEvidenceEvaluator(settings),
+        )
+        research = AgenticResearchExecutor(
+            settings,
+            kwargs["llm_client"],
+            kwargs["task_plan_store"],
+            worker,
+        )
+        self.executor = AgentTaskExecutor(**kwargs, research_executor=research)
+
+    def __getattr__(self, name):
+        if hasattr(self.tool_loop, name):
+            return getattr(self.tool_loop, name)
+        return getattr(self.executor, name)
+
+
+def build_executor(settings: Settings, store: AgentTaskPlanStore) -> ResearchHarness:
+    return ResearchHarness(
         settings=settings,
         vector_retriever=FakeRetriever(),
         keyword_retriever=FakeRetriever(),
@@ -254,8 +288,8 @@ async def main() -> None:
                 assert kwargs["parallel_tool_calls"] is True
                 return FakeBoundBatchModel()
 
-        original_chat_openai = executor_module.ChatOpenAI
-        executor_module.ChatOpenAI = FakeChatOpenAI
+        original_chat_openai = tool_loop_module.ChatOpenAI
+        tool_loop_module.ChatOpenAI = FakeChatOpenAI
         try:
             native_calls = await executor._select_tool_with_bound_tools(
                 tools=await executor._build_available_task_tools(),
@@ -265,7 +299,7 @@ async def main() -> None:
                 tool_calls=[],
             )
         finally:
-            executor_module.ChatOpenAI = original_chat_openai
+            tool_loop_module.ChatOpenAI = original_chat_openai
         assert native_calls is not None
         assert [call["call_id"] for call in native_calls] == ["native_a", "native_b"]
 
@@ -303,7 +337,7 @@ async def main() -> None:
             information_source_hint="web_search",
             reason="用户明确要求联网搜索。",
         )
-        required_executor = AgentTaskExecutor(
+        required_executor = ResearchToolLoop(
             settings=Settings(
                 OPENAI_API_KEY="fake-key",
                 BOCHA_API_KEY="fake",
@@ -312,15 +346,10 @@ async def main() -> None:
             vector_retriever=FakeRetriever(),
             keyword_retriever=FakeRetriever(),
             llm_client=FakeLLM(),
-            document_management_service=object(),
-            tool_permission_service=object(),
-            tool_audit_service=object(),
-            task_plan_store=store,
         )
-        executor_module.ChatOpenAI = RequiredWebChatOpenAI
+        tool_loop_module.ChatOpenAI = RequiredWebChatOpenAI
         try:
-            required_web_calls = await AgentTaskExecutor._select_tool_for_sub_question(
-                required_executor,
+            required_web_calls = await required_executor._select_tool_for_sub_question(
                 plan=build_plan("task_plan_required_web"),
                 sub_question=web_sub_question,
                 previous_results=[],
@@ -329,7 +358,7 @@ async def main() -> None:
                 tool_calls=[],
             )
         finally:
-            executor_module.ChatOpenAI = original_chat_openai
+            tool_loop_module.ChatOpenAI = original_chat_openai
         assert required_web_calls[0]["call_id"] == "required_web"
         assert required_web_calls[0]["selected_tool"] == "web_search"
 
@@ -340,10 +369,9 @@ async def main() -> None:
             def bind_tools(self, tools, **kwargs):
                 raise RuntimeError("provider does not support required tool choice")
 
-        executor_module.ChatOpenAI = FailingRequiredWebChatOpenAI
+        tool_loop_module.ChatOpenAI = FailingRequiredWebChatOpenAI
         try:
-            enforced_web_calls = await AgentTaskExecutor._select_tool_for_sub_question(
-                required_executor,
+            enforced_web_calls = await required_executor._select_tool_for_sub_question(
                 plan=build_plan("task_plan_required_web_fallback"),
                 sub_question=web_sub_question,
                 previous_results=[],
@@ -352,7 +380,7 @@ async def main() -> None:
                 tool_calls=[],
             )
         finally:
-            executor_module.ChatOpenAI = original_chat_openai
+            tool_loop_module.ChatOpenAI = original_chat_openai
         assert enforced_web_calls == [
             {
                 "selected_tool": "web_search",
@@ -399,7 +427,8 @@ async def main() -> None:
         payload = json.loads(saved[0].read_text(encoding="utf-8"))
         assert "tool_calls" in payload["final_output"]["sub_question_results"][0]
 
-        parallel_executor = ParallelLoopExecutor(
+        parallel_executor = ResearchHarness(
+            tool_loop_class=ParallelResearchToolLoop,
             settings=Settings(
                 OPENAI_API_KEY="",
                 BOCHA_API_KEY="fake",
@@ -415,7 +444,7 @@ async def main() -> None:
             tool_audit_service=object(),
             task_plan_store=store,
         )
-        parallel_result = await parallel_executor._execute_sub_question(
+        parallel_result = await parallel_executor.run_attempt(
             plan=build_plan("task_plan_parallel"),
             sub_question=build_plan("task_plan_parallel").sub_questions[0],
             previous_results=[],
@@ -454,15 +483,11 @@ async def main() -> None:
             ),
         )
         mcp_store = AgentTaskPlanStore(settings=mcp_settings)
-        mcp_executor = AgentTaskExecutor(
+        mcp_executor = ResearchToolLoop(
             settings=mcp_settings,
             vector_retriever=FakeRetriever(),
             keyword_retriever=FakeRetriever(),
             llm_client=FakeLLM(),
-            document_management_service=object(),
-            tool_permission_service=object(),
-            tool_audit_service=object(),
-            task_plan_store=mcp_store,
         )
         tools = await mcp_executor._build_available_task_tools()
         assert "mcp__add" in {tool.name for tool in tools}

@@ -3,8 +3,8 @@ import asyncio
 from fast_app.components.llms.mock_llm_client import MockLLMClient
 from fast_app.components.retrievers.mock_keyword_retriever import MockKeywordRetriever
 from fast_app.components.retrievers.mock_vector_retriever import MockVectorRetriever
-from fast_app.graph.rag_graph_builder import build_rag_graph
-from fast_app.graph.rag_graph_state import GraphRagState
+from fast_app.graph.rag.rag_graph_builder import build_rag_graph
+from fast_app.graph.rag.rag_graph_state import GraphRagState
 
 
 async def main() -> None:

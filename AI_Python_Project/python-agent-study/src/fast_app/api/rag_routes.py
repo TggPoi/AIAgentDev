@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 
 from fast_app.schemas.rag_schema import RetrievedDocument, SearchRequest, SearchResponse
 from fast_app.services.exceptions import DocumentNotFoundError, NoSearchResultError
-from fast_app.services.rag_service import get_document, search, stream_search
+from fast_app.services.rag.rag_service import get_document, search, stream_search
 
 
 router = APIRouter(prefix="/rag", tags=["rag"])

@@ -6,8 +6,8 @@ import asyncio
 from fast_app.core.config import get_settings
 from fast_app.db.session import create_database_engine, create_session_factory
 from fast_app.domain.auth_models import DepartmentCode, UserRole
-from fast_app.services.auth_service import AuthService
-from fast_app.services.user_repository import UserRepository
+from fast_app.services.auth.auth_service import AuthService
+from fast_app.services.auth.user_repository import UserRepository
 
 
 def parse_args() -> argparse.Namespace:

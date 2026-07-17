@@ -1,4 +1,4 @@
-﻿import argparse
+import argparse
 import asyncio
 import json
 import os
@@ -36,8 +36,8 @@ from fast_app.evaluation.thresholds.models import (
 from fast_app.evaluation.pipeline.runner import run_offline_rag_eval
 from fast_app.evaluation.reports.serialization import to_jsonable
 from fast_app.evaluation.reports.writer import write_offline_eval_report
-from fast_app.services.langgraph_rag_pipeline_service import LangGraphRagPipeline
-from fast_app.services.rag_pipeline_service import RagPipeline
+from fast_app.services.rag.langgraph_rag_pipeline_service import LangGraphRagPipeline
+from fast_app.services.rag.rag_pipeline_service import RagPipeline
 
 
 def parse_args() -> argparse.Namespace:

@@ -3,12 +3,12 @@ import asyncio
 from fast_app.components.llms.mock_llm_client import MockLLMClient
 from fast_app.components.retrievers.mock_keyword_retriever import MockKeywordRetriever
 from fast_app.components.retrievers.mock_vector_retriever import MockVectorRetriever
-from fast_app.graph.rag_graph_nodes import (
+from fast_app.graph.rag.rag_graph_nodes import (
     create_build_context_node,
     create_generate_node,
     create_retrieve_node,
 )
-from fast_app.graph.rag_graph_state import GraphRagState
+from fast_app.graph.rag.rag_graph_state import GraphRagState
 
 # 测试rag_graph_nodes里面实现的node节点
 

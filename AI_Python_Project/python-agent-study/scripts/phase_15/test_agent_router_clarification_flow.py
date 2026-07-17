@@ -17,12 +17,12 @@ from fast_app.components.retrievers.mock_keyword_retriever import MockKeywordRet
 from fast_app.components.retrievers.mock_vector_retriever import MockVectorRetriever
 from fast_app.core.config import Settings
 from fast_app.schemas.rag_chat_schema import RagChatRequest
-from fast_app.services.agent_task_router import (
+from fast_app.services.agent_tasks.agent_task_router import (
     AgentRouteDecision,
     AgentTaskRouteResult,
 )
-from fast_app.services.conversation_memory import InMemoryConversationMemoryStore
-from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
+from fast_app.services.conversation.conversation_memory import InMemoryConversationMemoryStore
+from fast_app.services.rag.rag_agent_pipeline_service import RagAgentPipeline
 
 
 class ClarificationRouter:

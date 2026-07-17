@@ -19,8 +19,8 @@ from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingCl
 from fast_app.components.retrievers.milvus_vector_retriever import build_milvus_uri
 from fast_app.core.config import Settings, get_settings
 from fast_app.domain.knowledge_models import KnowledgeChunk, LoadedDocument
-from fast_app.ingestion.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
-from fast_app.ingestion.markdown_chunker import read_markdown_documents
+from fast_app.ingestion.processing.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
+from fast_app.ingestion.processing.markdown_chunker import read_markdown_documents
 from fast_app.ingestion.markdown_ingestion_service import MarkdownIngestionService
 
 

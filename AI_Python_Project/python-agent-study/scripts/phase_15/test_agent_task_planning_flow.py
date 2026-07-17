@@ -23,9 +23,9 @@ from fast_app.domain.agent_tool_permissions import (
 from fast_app.domain.knowledge_document_actions import KnowledgeDocumentRiskLevel
 from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievalOptions, RetrievedDoc
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.services.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
-from fast_app.services.agent_task_planner import AgentTaskPlanner
-from fast_app.services.knowledge_document_management_service import (
+from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
+from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
+from fast_app.services.knowledge.knowledge_document_management_service import (
     KnowledgeDocumentManagementService,
 )
 

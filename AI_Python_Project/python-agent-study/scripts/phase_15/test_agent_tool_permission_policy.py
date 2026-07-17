@@ -21,12 +21,12 @@ from fast_app.domain.knowledge_document_actions import (
     KnowledgeDocumentRiskLevel,
 )
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.services.agent_tool_permission_service import (
+from fast_app.services.agent_tasks.agent_tool_permission_service import (
     AgentToolPermissionService,
     tool_name_for_document_operation,
 )
-from fast_app.services.permission_repository import PermissionRepository
-from fast_app.services.permission_service import PermissionService
+from fast_app.services.auth.permission_repository import PermissionRepository
+from fast_app.services.auth.permission_service import PermissionService
 
 
 TEST_USERS = {

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from fast_app.core.config import Settings
-from fast_app.services.agent_task_router import AgentTaskRouter
+from fast_app.services.agent_tasks.agent_task_router import AgentTaskRouter
 
 
 @dataclass(frozen=True)

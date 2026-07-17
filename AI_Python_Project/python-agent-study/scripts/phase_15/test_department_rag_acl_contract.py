@@ -6,7 +6,7 @@ from fast_app.components.retrievers.milvus_vector_retriever import (
 )
 from fast_app.domain.rag_models import RetrievalFilters
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.services.knowledge_permission_policy import (
+from fast_app.services.knowledge.knowledge_permission_policy import (
     KnowledgePermissionPolicy,
 )
 

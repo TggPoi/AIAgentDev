@@ -20,7 +20,7 @@ from fast_app.core.config import get_settings
 from fast_app.db.session import create_database_engine
 from fast_app.domain.rag_models import RetrievalFilters
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.services.knowledge_permission_policy import KnowledgePermissionPolicy
+from fast_app.services.knowledge.knowledge_permission_policy import KnowledgePermissionPolicy
 
 
 @dataclass(frozen=True)

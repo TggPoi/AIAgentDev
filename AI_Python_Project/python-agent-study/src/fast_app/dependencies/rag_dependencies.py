@@ -11,31 +11,36 @@ from fast_app.components.retrievers.mock_keyword_retriever import MockKeywordRet
 from fast_app.components.retrievers.mock_vector_retriever import MockVectorRetriever
 from fast_app.core.config import Settings, get_settings
 from fast_app.services.exceptions import AppServiceError
-from fast_app.services.langgraph_rag_pipeline_service import LangGraphRagPipeline
-from fast_app.services.conversation_memory import (
+from fast_app.services.rag.langgraph_rag_pipeline_service import LangGraphRagPipeline
+from fast_app.services.conversation.conversation_memory import (
     ConversationMemoryStore,
     InMemoryConversationMemoryStore,
     RedisConversationMemoryStore,
 )
-from fast_app.services.conversation_repository import PostgresConversationRepository
-from fast_app.services.conversation_persistence import ConversationPersistenceService
-from fast_app.services.conversation_summary import ConversationSummaryService
-from fast_app.services.knowledge_document_management_service import (
+from fast_app.services.conversation.conversation_repository import PostgresConversationRepository
+from fast_app.services.conversation.conversation_persistence import ConversationPersistenceService
+from fast_app.services.conversation.conversation_summary import ConversationSummaryService
+from fast_app.services.knowledge.knowledge_document_management_service import (
     KnowledgeDocumentManagementService,
 )
-from fast_app.services.query_rewrite import ConversationQueryRewriter
-from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
-from fast_app.services.rag_pipeline_service import RagPipeline
-from fast_app.services.prompt_guard_service import PromptGuardService
-from fast_app.services.auth_service import AuthService
-from fast_app.services.user_repository import UserRepository
-from fast_app.services.permission_repository import PermissionRepository
-from fast_app.services.permission_service import PermissionService
-from fast_app.services.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
-from fast_app.services.agent_task_planner import AgentTaskPlanner
-from fast_app.services.agent_task_router import AgentTaskRouter
-from fast_app.services.agent_tool_audit_service import AgentToolAuditService
-from fast_app.services.agent_tool_permission_service import AgentToolPermissionService
+from fast_app.services.conversation.query_rewrite import ConversationQueryRewriter
+from fast_app.services.rag.rag_agent_pipeline_service import RagAgentPipeline
+from fast_app.services.rag.rag_pipeline_service import RagPipeline
+from fast_app.services.rag.prompt_guard_service import PromptGuardService
+from fast_app.services.auth.auth_service import AuthService
+from fast_app.services.auth.user_repository import UserRepository
+from fast_app.services.auth.permission_repository import PermissionRepository
+from fast_app.services.auth.permission_service import PermissionService
+from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
+from fast_app.services.research.agentic_research_executor import AgenticResearchExecutor
+from fast_app.services.agent_tasks.document_task_executor import DocumentTaskExecutor
+from fast_app.services.research.research_evidence_evaluator import ResearchEvidenceEvaluator
+from fast_app.services.research.research_tool_loop import ResearchToolLoop
+from fast_app.services.research.research_worker_agent import ResearchWorkerAgent
+from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
+from fast_app.services.agent_tasks.agent_task_router import AgentTaskRouter
+from fast_app.services.agent_tasks.agent_tool_audit_service import AgentToolAuditService
+from fast_app.services.agent_tasks.agent_tool_permission_service import AgentToolPermissionService
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingClient
@@ -320,6 +325,32 @@ def get_agent_task_executor(
 ) -> AgentTaskExecutor:
     """提供 Agent TaskPlan 执行器。"""
 
+    research_tool_loop = ResearchToolLoop(
+        settings=settings,
+        vector_retriever=vector_retriever,
+        keyword_retriever=keyword_retriever,
+        llm_client=llm_client,
+    )
+    research_worker = ResearchWorkerAgent(
+        settings=settings,
+        tool_loop=research_tool_loop,
+        evaluator=ResearchEvidenceEvaluator(settings),
+    )
+    research_executor = AgenticResearchExecutor(
+        settings=settings,
+        llm_client=llm_client,
+        task_plan_store=task_plan_store,
+        worker_agent=research_worker,
+    )
+    document_executor = DocumentTaskExecutor(
+        settings=settings,
+        vector_retriever=vector_retriever,
+        keyword_retriever=keyword_retriever,
+        document_management_service=document_management_service,
+        tool_permission_service=tool_permission_service,
+        tool_audit_service=tool_audit_service,
+        task_plan_store=task_plan_store,
+    )
     return AgentTaskExecutor(
         settings=settings,
         vector_retriever=vector_retriever,
@@ -329,6 +360,8 @@ def get_agent_task_executor(
         tool_permission_service=tool_permission_service,
         tool_audit_service=tool_audit_service,
         task_plan_store=task_plan_store,
+        research_executor=research_executor,
+        document_executor=document_executor,
     )
 
 

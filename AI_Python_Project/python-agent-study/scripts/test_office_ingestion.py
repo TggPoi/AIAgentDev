@@ -54,8 +54,8 @@ from fast_app.domain.knowledge_models import (
 from fast_app.db.ingestion_tables import KnowledgeDocumentTable, KnowledgeIngestionJobTable
 from fast_app.db.auth_tables import UserTable
 from fast_app.db.session import create_database_engine, create_session_factory
-from fast_app.ingestion.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
-from fast_app.ingestion.document_loaders import (
+from fast_app.ingestion.processing.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
+from fast_app.ingestion.processing.document_loaders import (
     ExcelDocumentLoader,
     MarkdownDocumentLoader,
     PowerPointDocumentLoader,
@@ -70,7 +70,7 @@ from fast_app.ingestion.import_jobs import (
     new_import_job_id,
     normalize_upload_filename,
 )
-from fast_app.ingestion.incremental_store import (
+from fast_app.ingestion.stores.incremental_store import (
     ExistingChunkState,
     apply_chunk_diff,
     build_chunk_diff,
@@ -78,14 +78,14 @@ from fast_app.ingestion.incremental_store import (
     load_milvus_chunk_states,
     verify_chunk_convergence,
 )
-from fast_app.ingestion.metadata_models import build_doc_id, build_document_metadata
-from fast_app.ingestion.ooxml_validation import OOXMLValidationError, validate_ooxml_package
-from fast_app.ingestion.office_chunk_builders import (
+from fast_app.ingestion.processing.metadata_models import build_doc_id, build_document_metadata
+from fast_app.ingestion.validation.ooxml_validation import OOXMLValidationError, validate_ooxml_package
+from fast_app.ingestion.processing.office_chunk_builders import (
     ExcelChunkBuilder,
     ExcelConfigurationRequired,
     PowerPointChunkBuilder,
 )
-from fast_app.ingestion.rag_store_writer import replace_docs_rag_stores
+from fast_app.ingestion.stores.rag_store_writer import replace_docs_rag_stores
 from fast_app.ingestion.worker import KnowledgeImportWorker
 from fast_app.middlewares.request_size_middleware import RequestSizeLimitMiddleware
 
@@ -762,7 +762,7 @@ def test_notes_none_guard(root: Path) -> None:
     class FakePresentation:
         slides = [Slide()]
 
-    with patch("fast_app.ingestion.document_loaders.Presentation", return_value=FakePresentation()):
+    with patch("fast_app.ingestion.processing.document_loaders.Presentation", return_value=FakePresentation()):
         document = PowerPointDocumentLoader().load_file(root / "unused.pptx")
     assert "Slide 1" in document.content
 
@@ -1073,9 +1073,9 @@ async def test_replace_docs_idempotency(root: Path) -> None:
         return {"upsert_count": len(chunks)}, {"delete_count": 0}
 
     with (
-        patch("fast_app.ingestion.rag_store_writer.replace_docs_es_index", fake_replace_es),
+        patch("fast_app.ingestion.stores.rag_store_writer.replace_docs_es_index", fake_replace_es),
         patch(
-            "fast_app.ingestion.rag_store_writer.replace_docs_milvus_collection",
+            "fast_app.ingestion.stores.rag_store_writer.replace_docs_milvus_collection",
             fake_replace_milvus,
         ),
     ):

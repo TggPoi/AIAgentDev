@@ -24,16 +24,20 @@ from fast_app.domain.agent_task_plan import (
 )
 from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievalOptions
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.graph.agentic_research_graph import validate_research_dependencies
-from fast_app.graph.rag_agent_state import build_rag_agent_initial_state
+from fast_app.graph.research.agentic_research_graph import validate_research_dependencies
+from fast_app.graph.rag_agent.rag_agent_state import build_rag_agent_initial_state
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagRetrievalFilters
-from fast_app.services.agent_task_executor import (
+from fast_app.services.agent_tasks.agent_task_executor import (
     AgentTaskExecutor,
     AgentTaskPlanStore,
     _build_public_web_query,
 )
+from fast_app.services.research.agentic_research_executor import AgenticResearchExecutor
+from fast_app.services.research.research_evidence_evaluator import ResearchEvidenceEvaluator
+from fast_app.services.research.research_tool_loop import ResearchToolLoop
+from fast_app.services.research.research_worker_agent import ResearchWorkerAgent
 from fast_app.api.agent_task_plan_routes import _task_plan_progress_events
-from fast_app.services.agent_task_planner import AgentTaskPlanner
+from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 
 
 class UnusedRetriever(BaseRetriever):
@@ -49,7 +53,7 @@ class FakeLLM(BaseLLMClient):
         yield await self.generate(query, context)
 
 
-class ControlledResearchExecutor(AgentTaskExecutor):
+class ControlledResearchToolLoop(ResearchToolLoop):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.fail_ids: set[str] = set()
@@ -57,7 +61,7 @@ class ControlledResearchExecutor(AgentTaskExecutor):
         self.finished: list[tuple[str, float]] = []
         self.received: list[dict[str, object]] = []
 
-    async def _execute_sub_question(self, *args, **kwargs):
+    async def run_attempt(self, *args, **kwargs):
         item = kwargs["sub_question"]
         self.received.append(
             {
@@ -95,6 +99,56 @@ class ControlledResearchExecutor(AgentTaskExecutor):
         )
 
 
+class ControlledResearchExecutor:
+    """以组合方式注入可控 Tool Loop，不再继承统一入口覆盖私有方法。"""
+
+    def __init__(self, **kwargs) -> None:
+        settings = kwargs["settings"]
+        evaluator = kwargs.pop("evidence_evaluator", None) or ResearchEvidenceEvaluator(
+            settings
+        )
+        self.tool_loop = ControlledResearchToolLoop(
+            settings=settings,
+            vector_retriever=kwargs["vector_retriever"],
+            keyword_retriever=kwargs["keyword_retriever"],
+            llm_client=kwargs["llm_client"],
+        )
+        worker = ResearchWorkerAgent(settings, self.tool_loop, evaluator)
+        research = AgenticResearchExecutor(
+            settings,
+            kwargs["llm_client"],
+            kwargs["task_plan_store"],
+            worker,
+        )
+        self._executor = AgentTaskExecutor(
+            **kwargs,
+            research_executor=research,
+        )
+
+    def __getattr__(self, name):
+        return getattr(self._executor, name)
+
+    @property
+    def fail_ids(self):
+        return self.tool_loop.fail_ids
+
+    @fail_ids.setter
+    def fail_ids(self, value):
+        self.tool_loop.fail_ids = value
+
+    @property
+    def started(self):
+        return self.tool_loop.started
+
+    @property
+    def finished(self):
+        return self.tool_loop.finished
+
+    @property
+    def received(self):
+        return self.tool_loop.received
+
+
 class SearchWebThenAcceptEvaluator:
     def __init__(self) -> None:
         self.counts: dict[str, int] = {}
@@ -122,6 +176,11 @@ class SearchWebThenAcceptEvaluator:
             recommended_action="accept",
             reason="证据已补齐。",
         )
+
+
+class FailingEvaluator:
+    async def evaluate(self, **kwargs):
+        raise RuntimeError("simulated evaluator outage")
 
 
 def question(item_id: str, order: int, depends_on: list[str] | None = None):
@@ -416,6 +475,46 @@ async def main() -> None:
         )
         assert all_failed.status == AgentTaskPlanStatus.FAILED
         assert "final_answer" not in all_failed.final_output
+
+        evaluator_failure_executor = ControlledResearchExecutor(
+            settings=correction_settings,
+            vector_retriever=UnusedRetriever(),
+            keyword_retriever=UnusedRetriever(),
+            llm_client=FakeLLM(),
+            document_management_service=object(),
+            tool_permission_service=object(),
+            tool_audit_service=object(),
+            task_plan_store=store,
+            evidence_evaluator=FailingEvaluator(),
+        )
+        evaluator_partial = await evaluator_failure_executor.execute_question_decomposition_plan(
+            plan=plan("task_plan_202607160006_evaluator_partial", [question("has_evidence", 1)]),
+            user=user,
+            mode="keyword",
+            top_k=3,
+            candidate_k=None,
+            min_score=0.0,
+            filters=RetrievalFilters(),
+        )
+        partial_result = evaluator_partial.final_output["sub_question_results"][0]
+        assert evaluator_partial.status == AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS
+        assert partial_result["status"] == "partial"
+        assert partial_result["warnings"] == ["Evaluator 不可用: RuntimeError"]
+
+        evaluator_failure_executor.fail_ids = {"no_evidence"}
+        evaluator_failed = await evaluator_failure_executor.execute_question_decomposition_plan(
+            plan=plan("task_plan_202607160006_evaluator_failed", [question("no_evidence", 1)]),
+            user=user,
+            mode="keyword",
+            top_k=3,
+            candidate_k=None,
+            min_score=0.0,
+            filters=RetrievalFilters(),
+        )
+        failed_result = evaluator_failed.final_output["sub_question_results"][0]
+        assert evaluator_failed.status == AgentTaskPlanStatus.FAILED
+        assert failed_result["status"] == "failed"
+        assert failed_result["warnings"] == ["Evaluator 不可用: RuntimeError"]
 
         timeout_settings = Settings(
             OPENAI_API_KEY="",

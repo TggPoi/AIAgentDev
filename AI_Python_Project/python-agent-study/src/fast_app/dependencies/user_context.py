@@ -6,7 +6,7 @@ from fastapi import Depends, Header
 from fast_app.core.config import Settings, get_settings
 from fast_app.dependencies.rag_dependencies import get_auth_service
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.services.auth_service import AuthService
+from fast_app.services.auth.auth_service import AuthService
 from fast_app.services.exceptions import AppServiceError, AuthenticationError
 
 

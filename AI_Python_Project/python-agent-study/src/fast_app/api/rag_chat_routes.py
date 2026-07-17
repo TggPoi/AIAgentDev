@@ -13,12 +13,12 @@ from fast_app.dependencies.user_context import get_current_user_context
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
 from fast_app.services.exceptions import AppServiceError
-from fast_app.services.conversation_scope import (
+from fast_app.services.conversation.conversation_scope import (
     get_request_external_session_id,
     scope_rag_chat_request,
 )
-from fast_app.services.knowledge_permission_policy import KnowledgePermissionPolicy
-from fast_app.services.rag_pipeline_service import RagPipeline
+from fast_app.services.knowledge.knowledge_permission_policy import KnowledgePermissionPolicy
+from fast_app.services.rag.rag_pipeline_service import RagPipeline
 
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.core.request_context import get_request_id, get_trace_id

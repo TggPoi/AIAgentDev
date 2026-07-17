@@ -12,17 +12,17 @@ from fast_app.domain.conversation_models import (
     ConversationSummary,
 )
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.graph.rag_agent_nodes import (
+from fast_app.graph.rag_agent.rag_agent_nodes import (
     build_rag_agent_answer_query,
     create_next_action_decision_node,
 )
 from fast_app.schemas.rag_chat_schema import RagChatRequest
-from fast_app.services.conversation_history import build_conversation_memory_context
-from fast_app.services.conversation_memory import InMemoryConversationMemoryStore
-from fast_app.services.conversation_scope import scope_rag_chat_request
-from fast_app.services.query_rewrite import QueryRewriteResult
-from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
-from fast_app.services.agent_task_router import (
+from fast_app.services.conversation.conversation_history import build_conversation_memory_context
+from fast_app.services.conversation.conversation_memory import InMemoryConversationMemoryStore
+from fast_app.services.conversation.conversation_scope import scope_rag_chat_request
+from fast_app.services.conversation.query_rewrite import QueryRewriteResult
+from fast_app.services.rag.rag_agent_pipeline_service import RagAgentPipeline
+from fast_app.services.agent_tasks.agent_task_router import (
     AgentRouteDecision,
     AgentTaskRouteResult,
 )

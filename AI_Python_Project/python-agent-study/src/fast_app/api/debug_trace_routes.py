@@ -16,7 +16,7 @@ from fast_app.services.debug_trace_builder import (
     build_debug_success_response,
 )
 from fast_app.services.exceptions import AppServiceError
-from fast_app.services.rag_pipeline_service import RagPipeline
+from fast_app.services.rag.rag_pipeline_service import RagPipeline
 
 
 logger = get_logger(__name__)

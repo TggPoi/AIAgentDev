@@ -1,5 +1,5 @@
 from fast_app.domain.rag_models import RetrievedDoc
-from fast_app.services.retrieval_fusion import reciprocal_rank_fusion
+from fast_app.services.rag.retrieval_fusion import reciprocal_rank_fusion
 
 
 def main() -> None:

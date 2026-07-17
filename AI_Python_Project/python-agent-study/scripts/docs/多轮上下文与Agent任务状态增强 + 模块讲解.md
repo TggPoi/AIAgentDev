@@ -71,8 +71,8 @@
 
 ### 最小范围
 
-- `src/fast_app/graph/rag_agent_state.py`
-- `src/fast_app/services/rag_agent_pipeline_service.py`
+- `src/fast_app/graph/rag_agent/rag_agent_state.py`
+- `src/fast_app/services/rag/rag_agent_pipeline_service.py`
 - 对应无网络回归测试
 
 ### 完成标准
@@ -90,8 +90,8 @@
 $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe scripts\phase_15\test_agent_conversation_context.py
 .\.venv\Scripts\python.exe -m py_compile `
-  src\fast_app\graph\rag_agent_state.py `
-  src\fast_app\services\rag_agent_pipeline_service.py `
+  src\fast_app\graph\rag_agent\rag_agent_state.py `
+  src\fast_app\services\rag\rag_agent_pipeline_service.py `
   scripts\phase_15\test_agent_conversation_context.py
 ```
 
@@ -121,8 +121,8 @@ agent_conversation_context=passed
 
 ### 最小范围
 
-- `src/fast_app/graph/rag_agent_nodes.py`
-- `src/fast_app/services/agent_task_planner.py`
+- `src/fast_app/graph/rag_agent/rag_agent_nodes.py`
+- `src/fast_app/services/agent_tasks/agent_task_planner.py`
 - Planner 无网络回归测试
 
 ### 完成标准
@@ -179,8 +179,8 @@ Planner 主链路已删除固定 `history=[]`，改为传入带标签的会话�
 
 ### 最小范围
 
-- `src/fast_app/graph/rag_agent_nodes.py`
-- `src/fast_app/services/agent_task_executor.py`
+- `src/fast_app/graph/rag_agent/rag_agent_nodes.py`
+- `src/fast_app/services/agent_tasks/agent_task_executor.py`
 - 现有 RAG context 构造逻辑及回归测试
 
 ### 完成标准
@@ -237,7 +237,7 @@ guarded_streaming=passed
 
 ### 最小范围
 
-- `src/fast_app/services/agent_task_executor.py`
+- `src/fast_app/services/agent_tasks/agent_task_executor.py`
 - 必要时调整 `AgentTaskPlan` 的冻结任务字段
 - 文档 Tool Calling 回归测试
 
@@ -345,7 +345,7 @@ llm_document_management_task=passed
 ### 最小范围
 
 - `src/fast_app/domain/agent_task_plan.py`
-- `src/fast_app/services/agent_task_executor.py`
+- `src/fast_app/services/agent_tasks/agent_task_executor.py`
 - `AgentTaskPlanStore` 当前 JSON/Markdown 快照逻辑
 - 恢复和幂等回归测试
 
@@ -419,7 +419,7 @@ $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe scripts\phase_15\test_guarded_streaming.py
 .\.venv\Scripts\python.exe -m py_compile `
   src\fast_app\domain\agent_task_plan.py `
-  src\fast_app\services\agent_task_executor.py `
+  src\fast_app\services\agent_tasks\agent_task_executor.py `
   src\fast_app\api\agent_task_plan_routes.py
 ```
 
@@ -668,7 +668,7 @@ flowchart TD
 
 ### 当前修复
 
-入口在 [agent_task_planner.py (line 138)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_planner.py:138)。
+入口在 [agent_task_planner.py (line 138)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_planner.py:138)。
 
 现在判断顺序是：
 
@@ -687,10 +687,10 @@ flowchart TD
 
 关键代码是：
 
-- [文档任务确定性路由 (line 147)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_planner.py:147)
-- [简单问题跳过 Planner (line 158)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_planner.py:158)
-- [文档操作识别规则 (line 536)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_planner.py:536)
-- [复杂问题判断 (line 804)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_planner.py:804)
+- [文档任务确定性路由 (line 147)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_planner.py:147)
+- [简单问题跳过 Planner (line 158)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_planner.py:158)
+- [文档操作识别规则 (line 536)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_planner.py:536)
+- [复杂问题判断 (line 804)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_planner.py:804)
 
 例如：
 
@@ -710,7 +710,7 @@ flowchart TD
 → knowledge_document_management
 ```
 
-Planner 是从 [rag_agent_nodes.py (line 261)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent_nodes.py:261) 调用的。只有返回 TaskPlan 才进入 `execute_task_plan`；返回 `None` 则继续普通检索/回答。
+Planner 是从 [rag_agent_nodes.py (line 261)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py:261) 调用的。只有返回 TaskPlan 才进入 `execute_task_plan`；返回 `None` 则继续普通检索/回答。
 
 ### 仍未完整解决：明确 web_search 路由
 
@@ -728,7 +728,7 @@ Planner 是从 [rag_agent_nodes.py (line 261)](D:/AI_Agent_Project/AI_Python_Pro
 
 它没有“明确要求联网/Web Search”的单独路由。
 
-而普通 RAG 分支当前只有 `knowledge_retrieval` 和 `direct_answer`，代码也明确写着未来才扩展 `web_search`，见 [rag_agent_nodes.py (line 315)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent_nodes.py:315)。
+而普通 RAG 分支当前只有 `knowledge_retrieval` 和 `direct_answer`，代码也明确写着未来才扩展 `web_search`，见 [rag_agent_nodes.py (line 315)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py:315)。
 
 所以准确结论是：
 
@@ -736,7 +736,7 @@ Planner 是从 [rag_agent_nodes.py (line 261)](D:/AI_Agent_Project/AI_Python_Pro
 - 简单问题过度规划已经修复；
 - 明确 `web_search` 请求的稳定触发仍未完成。
 
-另外，[`_is_complex_question()` 的注释 (line 805)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_planner.py:805)仍写着“只用于无 LLM 兜底”，但它现在已经参与有 LLM 时的主路由，注释已经过时。
+另外，[`_is_complex_question()` 的注释 (line 805)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_planner.py:805)仍写着“只用于无 LLM 兜底”，但它现在已经参与有 LLM 时的主路由，注释已经过时。
 
 ## 2. Prompt Guard 误判正常删除请求
 
@@ -758,7 +758,7 @@ Prompt Guard 应负责识别第二种情况。第一种情况应该继续交给�
 
 ### 当前修复有两层
 
-第一层是修改 classifier 判断说明，见 [prompt_guard_service.py (line 139)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/prompt_guard_service.py:139)：
+第一层是修改 classifier 判断说明，见 [prompt_guard_service.py (line 139)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/rag/prompt_guard_service.py:139)：
 
 ```
 正常创建、修改、删除文档不是 Prompt Injection；
@@ -767,7 +767,7 @@ Prompt Guard 应负责识别第二种情况。第一种情况应该继续交给�
 
 这降低了模型从语义层面误判的概率。
 
-第二层是服务端结果收敛，见 [prompt_guard_service.py (line 721)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/prompt_guard_service.py:721)。
+第二层是服务端结果收敛，见 [prompt_guard_service.py (line 721)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/rag/prompt_guard_service.py:721)。
 
 如果满足：
 
@@ -796,7 +796,7 @@ risk_level = medium
 
 如果同时命中 `instruction_override` 等类别，则不会降级，仍然阻断。
 
-规则扫描也在 LLM classifier 之前执行，见 [classify_user_input() (line 202)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/prompt_guard_service.py:202)。明确包含“绕过安全规则、提升管理员权限”的请求会先被规则层 block，不会进入正常文档 Tool Loop。
+规则扫描也在 LLM classifier 之前执行，见 [classify_user_input() (line 202)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/rag/prompt_guard_service.py:202)。明确包含“绕过安全规则、提升管理员权限”的请求会先被规则层 block，不会进入正常文档 Tool Loop。
 
 ### 配置影响
 
@@ -848,9 +848,9 @@ ORM 对应定义在 [conversation_tables.py (line 62)](D:/AI_Agent_Project/AI_Py
 
 Repository 的消息读取现在统一按 `sequence_no` 排序：
 
-- [list_messages() (line 83)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/conversation_repository.py:83)
-- [list_messages_for_user() (line 107)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/conversation_repository.py:107)
-- [list_messages_after() (line 208)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/conversation_repository.py:208)
+- [list_messages() (line 83)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/conversation/conversation_repository.py:83)
+- [list_messages_for_user() (line 107)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/conversation/conversation_repository.py:107)
+- [list_messages_after() (line 208)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/conversation/conversation_repository.py:208)
 
 `sequence_no` 是全表递增而不是每个会话从 1 开始，但不影响正确性，因为查询先过滤 `conversation_id`，只需要比较同一会话内的相对插入顺序。
 
@@ -868,7 +868,7 @@ Repository 的消息读取现在统一按 `sequence_no` 排序：
 
 - 新插入消息的顺序可以得到保证。
 - 对迁移前已经存在、时间戳相同且顺序模糊的历史消息，数据库无法推测当时真实顺序；迁移只能给它们分配确定顺序，不能恢复已经丢失的信息。
-- [conversation_repository.py (line 89)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/conversation_repository.py:89)的 docstring 仍写着“按创建时间”，已经与实际实现不一致，属于注释遗留。
+- [conversation_repository.py (line 89)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/conversation/conversation_repository.py:89)的 docstring 仍写着“按创建时间”，已经与实际实现不一致，属于注释遗留。
 
 ## 4. LangSmith 401 Invalid token
 
@@ -976,7 +976,7 @@ FastAPI official documentation
 
 ### 当前修复
 
-[WebSearchToolInput (line 17)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/agents/web_search_tools.py:17)新增结构化参数：
+[WebSearchToolInput (line 17)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/agents/tools/web_search_tools.py:17)新增结构化参数：
 
 ```
 site: str | None
@@ -994,7 +994,7 @@ site: str | None
 site:fastapi.tiangolo.com FastAPI official documentation
 ```
 
-实现位于 [search_web_with_bocha() (line 146)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/agents/web_search_tools.py:146)。
+实现位于 [search_web_with_bocha() (line 146)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/agents/tools/web_search_tools.py:146)。
 
 请求还增加：
 
@@ -1008,8 +1008,8 @@ site:fastapi.tiangolo.com FastAPI official documentation
 
 两条 Agent 链路均复用了同一个 `WebSearchToolInput`：
 
-- question decomposition：[agent_task_executor.py (line 726)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:726)
-- document Agent：[agent_task_executor.py (line 1773)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:1773)
+- question decomposition：[agent_task_executor.py (line 726)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:726)
+- document Agent：[agent_task_executor.py (line 1773)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:1773)
 
 测试位于 [test_web_search_tool.py (line 17)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/phase_15/test_web_search_tool.py:17)。
 
@@ -1128,7 +1128,7 @@ confirm API
 
 ### 当前代码证据
 
-Planner 的 [_build_document_management_plan() (line 455)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_planner.py:455)明确写着：
+Planner 的 [_build_document_management_plan() (line 455)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_planner.py:455)明确写着：
 
 ```
 """创建空文档任务；动作只能由后续原生 ToolCall 产生。"""
@@ -1148,13 +1148,13 @@ AgentTaskPlan(
 
 ### steps 实际由谁生成
 
-Graph 发现文档 TaskPlan 后进入 [execute_task_plan_node (line 560)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent_nodes.py:560)，然后调用：
+Graph 发现文档 TaskPlan 后进入 [execute_task_plan_node (line 560)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py:560)，然后调用：
 
 ```
 AgentTaskExecutor.execute(...)
 ```
 
-文档任务进入 [_execute_document_tool_loop() (line 1196)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:1196)。
+文档任务进入 [_execute_document_tool_loop() (line 1196)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:1196)。
 
 运行时流程是：
 
@@ -1166,9 +1166,9 @@ LLM 调用 knowledge_document_create/update/delete
 → plan.steps.append(...)
 ```
 
-追加 step 的代码在 [agent_task_executor.py (line 1520)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:1520)。
+追加 step 的代码在 [agent_task_executor.py (line 1520)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:1520)。
 
-转换函数在 [_document_step_from_tool_result() (line 2060)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:2060)，生成：
+转换函数在 [_document_step_from_tool_result() (line 2060)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:2060)，生成：
 
 ```
 AgentToolStep(
@@ -1592,7 +1592,7 @@ AGENT_ROUTER_STRUCTURED_OUTPUT_METHOD=function_calling
 → Executor 执行已有计划
 ```
 
-Router 只回答“这是什么任务”，不回答问题、不生成 `doc_id`、路径、替换文本或工具参数。核心文件是新建的 [agent_task_router.py (line 123)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:123)。
+Router 只回答“这是什么任务”，不回答问题、不生成 `doc_id`、路径、替换文本或工具参数。核心文件是新建的 [agent_task_router.py (line 123)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:123)。
 
 它把之前“是否复杂问题”的隐式判断，变成稳定的结构化结果。
 
@@ -1622,11 +1622,11 @@ flowchart TD
     D --> I --> M
 ```
 
-图中真正调用 Router 的位置是 [rag_agent_nodes.py (line 278)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:278)，位于 `decide_next_action` 节点内。
+图中真正调用 Router 的位置是 [rag_agent_nodes.py (line 278)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:278)，位于 `decide_next_action` 节点内。
 
 ## 1. Router 能返回哪些意图
 
-定义在 [agent_task_router.py (line 21)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:21)：
+定义在 [agent_task_router.py (line 21)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:21)：
 
 ```
 AgentRouteIntent = Literal[
@@ -1646,11 +1646,11 @@ AgentRouteIntent = Literal[
 | `web_research`                  | 创建联网研究 TaskPlan。                                     |
 | `clarification_required`        | 不调用 Planner 或工具，直接向用户追问。                     |
 
-关键点：`simple_rag` 不等于“一定不检索”。Router 只是表示“无需多步骤 TaskPlan”；后面仍由已有的 `should_retrieve_for_query(...)` 决定走 `direct_answer` 还是 `knowledge_retrieval`，见 [rag_agent_nodes.py (line 369)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:369)。
+关键点：`simple_rag` 不等于“一定不检索”。Router 只是表示“无需多步骤 TaskPlan”；后面仍由已有的 `should_retrieve_for_query(...)` 决定走 `direct_answer` 还是 `knowledge_retrieval`，见 [rag_agent_nodes.py (line 369)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:369)。
 
 ## 2. 为什么要有 `AgentRouteDecision`
 
-Router 的模型输出被限制为这个 Pydantic schema，见 [agent_task_router.py (line 79)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:79)：
+Router 的模型输出被限制为这个 Pydantic schema，见 [agent_task_router.py (line 79)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:79)：
 
 ```
 class AgentRouteDecision(BaseModel):
@@ -1683,7 +1683,7 @@ class AgentRouteDecision(BaseModel):
 
 ## 3. `route()` 的核心决策顺序
 
-主函数位于 [agent_task_router.py (line 123)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:123)。
+主函数位于 [agent_task_router.py (line 123)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:123)。
 
 它的逻辑顺序是：
 
@@ -1707,9 +1707,9 @@ if rule_decision is not None:
     )
 ```
 
-位置：[agent_task_router.py (line 135)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:135)
+位置：[agent_task_router.py (line 135)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:135)
 
-规则实现位于 [agent_task_router.py (line 237)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:237)。
+规则实现位于 [agent_task_router.py (line 237)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:237)。
 
 当前规则只短路两类足够明确的请求：
 
@@ -1743,7 +1743,7 @@ response = await asyncio.wait_for(
 )
 ```
 
-位置：[agent_task_router.py (line 145)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:145)
+位置：[agent_task_router.py (line 145)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:145)
 
 这里有两层约束：
 
@@ -1790,7 +1790,7 @@ if decision.confidence < self._settings.agent_router_confidence_threshold:
     )
 ```
 
-位置：[agent_task_router.py (line 174)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:174)。
+位置：[agent_task_router.py (line 174)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:174)。
 
 默认阈值是 `0.75`，见 [config.py (line 208)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\core\\config.py:208)。
 
@@ -1817,7 +1817,7 @@ route_fields = {
 }
 ```
 
-位置：[rag_agent_nodes.py (line 284)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:284)。
+位置：[rag_agent_nodes.py (line 284)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:284)。
 
 这些字段的用途是可观测性和 API 返回；真正控制图分支的是 `route`。
 
@@ -1832,7 +1832,7 @@ elif decision.intent == "web_research":
     task_plan = task_planner.build_web_research_plan(...)
 ```
 
-位置：[rag_agent_nodes.py (line 315)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:315)。
+位置：[rag_agent_nodes.py (line 315)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:315)。
 
 三种情况只是在“如何创建 TaskPlan”上不同；只要 `task_plan is not None`，图状态统一写为：
 
@@ -1862,9 +1862,9 @@ result = {
 }
 ```
 
-位置：[rag_agent_nodes.py (line 292)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:292)。
+位置：[rag_agent_nodes.py (line 292)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:292)。
 
-随后图进入专用节点 [rag_agent_nodes.py (line 403)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:403)：
+随后图进入专用节点 [rag_agent_nodes.py (line 403)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:403)：
 
 ```
 result = {
@@ -1885,7 +1885,7 @@ result = {
 }
 ```
 
-响应字段组装在 [rag_agent_pipeline_service.py (line 632)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\rag_agent_pipeline_service.py:632)，schema 定义在 [rag_chat_schema.py (line 137)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\schemas\\rag_chat_schema.py:137)。
+响应字段组装在 [rag_agent_pipeline_service.py (line 632)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\rag\\rag_agent_pipeline_service.py:632)，schema 定义在 [rag_chat_schema.py (line 137)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\schemas\\rag_chat_schema.py:137)。
 
 React 可以据此展示一个澄清输入框，而不是把它误当系统异常。
 
@@ -1901,7 +1901,7 @@ route_result = await task_router.route(
 )
 ```
 
-位置：[rag_agent_nodes.py (line 278)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:278)。
+位置：[rag_agent_nodes.py (line 278)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:278)。
 
 Router 内部只保留最近 6 项、最多 12,000 字符：
 
@@ -1911,7 +1911,7 @@ history_text = "\n\n".join(
 )[-12_000:]
 ```
 
-位置：[agent_task_router.py (line 224)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:224)。
+位置：[agent_task_router.py (line 224)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:224)。
 
 并且系统提示明确规定“当前 query 优先，history 只用于理解指代”。
 
@@ -1919,17 +1919,17 @@ history_text = "\n\n".join(
 
 ## 7. 建议代码的阅读顺序
 
-1. [agent_task_router.py (line 21)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:21)
+1. [agent_task_router.py (line 21)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:21)
    先理解意图枚举和 prompt 边界。
-2. [agent_task_router.py (line 79)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:79)
+2. [agent_task_router.py (line 79)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:79)
    理解 Router 为什么只能返回结构化意图。
-3. [agent_task_router.py (line 123)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:123)
+3. [agent_task_router.py (line 123)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:123)
    按“规则 → 模型 → 低置信度/异常澄清”读主流程。
-4. [agent_task_router.py (line 237)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:237)
+4. [agent_task_router.py (line 237)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:237)
    看哪些请求无需模型就能确定。
-5. [rag_agent_nodes.py (line 228)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:228)
+5. [rag_agent_nodes.py (line 228)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:228)
    看 Router 结果如何分派给 Planner 或旧 RAG 分支。
-6. [rag_agent_nodes.py (line 403)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:403)
+6. [rag_agent_nodes.py (line 403)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:403)
    看澄清如何成为正常响应，而非错误。
 7. [test_agent_task_router.py (line 83)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\scripts\\phase_15\\test_agent_task_router.py:83)
    看 schema、规则、低置信度和故障回退的离线验证。
@@ -1979,7 +1979,7 @@ response = await asyncio.wait_for(
 )
 ```
 
-位置：[agent_task_router.py (line 161)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:161)。
+位置：[agent_task_router.py (line 161)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:161)。
 
 含义是：
 
@@ -2030,7 +2030,7 @@ except Exception as exc:
     )
 ```
 
-位置：[agent_task_router.py (line 179)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:179)。
+位置：[agent_task_router.py (line 179)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:179)。
 
 最终不会猜测用户想执行什么，而是返回：
 
@@ -2075,7 +2075,7 @@ flowchart TD
 
 ### 1. Router 先返回澄清决定
 
-核心位置：[agent_task_router.py (line 123)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:123)
+核心位置：[agent_task_router.py (line 123)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:123)
 
 例如模型明确说无法判断时：
 
@@ -2098,7 +2098,7 @@ decision=_clarification_decision(
 )
 ```
 
-位置：[agent_task_router.py (line 174)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_router.py:174)
+位置：[agent_task_router.py (line 174)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_router.py:174)
 
 最终 `AgentTaskRouteResult` 中有：
 
@@ -2114,7 +2114,7 @@ latency_ms
 
 ### 2. `decide_next_action_node` 将结果写入 State
 
-位置：[rag_agent_nodes.py (line 228)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:228)
+位置：[rag_agent_nodes.py (line 228)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:228)
 
 Router 调用完成后，先写入公共路由信息：
 
@@ -2129,7 +2129,7 @@ route_fields = {
 }
 ```
 
-位置：[rag_agent_nodes.py (line 284)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:284)
+位置：[rag_agent_nodes.py (line 284)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:284)
 
 若是澄清分支，立即返回下面这份 state 更新，而不会进入 Planner：
 
@@ -2147,7 +2147,7 @@ result = {
 }
 ```
 
-位置：[rag_agent_nodes.py (line 292)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:292)
+位置：[rag_agent_nodes.py (line 292)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:292)
 
 这里最重要的字段是：
 
@@ -2179,7 +2179,7 @@ decide_next_action
 → 根据 route 决定下一节点
 ```
 
-`route_after_loop_check(...)` 位于 [rag_agent_nodes.py (line 196)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:196)：
+`route_after_loop_check(...)` 位于 [rag_agent_nodes.py (line 196)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:196)：
 
 ```python
 route = state.get("route")
@@ -2198,13 +2198,13 @@ if route in (
 "clarification_required"
 ```
 
-并且循环检查对 `direct_answer` 和 `clarification_required` 都放宽工具调用上限，因为它们本身不应调用工具，见 [rag_agent_nodes.py (line 447)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:447)。
+并且循环检查对 `direct_answer` 和 `clarification_required` 都放宽工具调用上限，因为它们本身不应调用工具，见 [rag_agent_nodes.py (line 447)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:447)。
 
 ------
 
 ### 4. LangGraph 进入澄清节点后立刻结束
 
-图定义在 [rag_agent_builder.py (line 106)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_builder.py:106)。
+图定义在 [rag_agent_builder.py (line 106)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_builder.py:106)。
 
 先注册节点：
 
@@ -2232,7 +2232,7 @@ next_action_routes = {
 builder.add_edge("clarification_required", END)
 ```
 
-位置：[rag_agent_builder.py (line 154)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_builder.py:154)。
+位置：[rag_agent_builder.py (line 154)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_builder.py:154)。
 
 所以正常 LangGraph 路径是：
 
@@ -2257,7 +2257,7 @@ call_knowledge_retrieval
 
 ### 5. 澄清节点具体做什么
 
-实现位于 [rag_agent_nodes.py (line 403)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:403)。
+实现位于 [rag_agent_nodes.py (line 403)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:403)。
 
 它首先取得 Router 的问题；若模型没有提供，就使用固定后备问题：
 
@@ -2303,7 +2303,7 @@ final_reason
 final_state = await self.graph.ainvoke(...)
 ```
 
-执行整张图，位置：[rag_agent_pipeline_service.py (line 538)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\rag_agent_pipeline_service.py:538)。
+执行整张图，位置：[rag_agent_pipeline_service.py (line 538)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\rag\\rag_agent_pipeline_service.py:538)。
 
 最终将 state 映射为 `RagChatResponse`：
 
@@ -2324,7 +2324,7 @@ return RagChatResponse(
 )
 ```
 
-位置：[rag_agent_pipeline_service.py (line 632)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:632)。
+位置：[rag_agent_pipeline_service.py (line 632)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag\\rag_agent_pipeline_service.py:632)。
 
 由于澄清分支没有检索，`docs` 保持为空，因此：
 
@@ -2355,7 +2355,7 @@ state.update(loop_update)
 next_route = route_after_loop_check(state)
 ```
 
-位置：[rag_agent_pipeline_service.py (line 665)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:665)。
+位置：[rag_agent_pipeline_service.py (line 665)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag\\rag_agent_pipeline_service.py:665)。
 
 若路由为澄清：
 
@@ -2366,7 +2366,7 @@ if next_route == "clarification_required":
     return state
 ```
 
-位置：[rag_agent_pipeline_service.py (line 694)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:694)。
+位置：[rag_agent_pipeline_service.py (line 694)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag\\rag_agent_pipeline_service.py:694)。
 
 之后 `_stream_events(...)` 会先发送专用事件：
 
@@ -2381,7 +2381,7 @@ yield RagStreamEvent(
 )
 ```
 
-位置：[rag_agent_pipeline_service.py (line 900)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:900)。
+位置：[rag_agent_pipeline_service.py (line 900)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag\\rag_agent_pipeline_service.py:900)。
 
 然后沿用现有响应协议：
 
@@ -2447,7 +2447,7 @@ API 层只负责将业务事件包装为 SSE 文本；它不直接调用 Router�
 
 ### 2. `stream_events()` 进入内部生成器
 
-位置：[rag_agent_pipeline_service.py (line 881)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\rag_agent_pipeline_service.py:881)
+位置：[rag_agent_pipeline_service.py (line 881)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\rag\\rag_agent_pipeline_service.py:881)
 
 ```
 async def stream_events(self, req):
@@ -2458,7 +2458,7 @@ async def stream_events(self, req):
 
 ### 3. `_stream_events()` 准备流式 State 时触发 Router
 
-真正关键的一行在 [rag_agent_pipeline_service.py (line 896)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:896)：
+真正关键的一行在 [rag_agent_pipeline_service.py (line 896)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag\\rag_agent_pipeline_service.py:896)：
 
 ```
 state = await self._prepare_stream_state(
@@ -2477,13 +2477,13 @@ loop_update = await self.check_loop_limits_node(state)
 state.update(loop_update)
 ```
 
-位置：[rag_agent_pipeline_service.py (line 670)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:670)。
+位置：[rag_agent_pipeline_service.py (line 670)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag\\rag_agent_pipeline_service.py:670)。
 
 其中第一行 `await self.decide_next_action_node(state)` 就是流式请求触发 Router 的入口。
 
 ### 4. 决策节点调用 `task_router.route(...)`
 
-位置：[rag_agent_nodes.py (line 278)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\graph\\rag_agent_nodes.py:278)：
+位置：[rag_agent_nodes.py (line 278)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:278)：
 
 ```
 route_result = await task_router.route(
@@ -2511,7 +2511,7 @@ if next_route == "clarification_required":
     return state
 ```
 
-位置：[rag_agent_pipeline_service.py (line 694)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:694)。
+位置：[rag_agent_pipeline_service.py (line 694)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag\\rag_agent_pipeline_service.py:694)。
 
 随后 `_stream_events(...)` 发送：
 
@@ -2532,7 +2532,7 @@ agent_route_clarification_required
 pipeline.stream(req)
 ```
 
-也在 [rag_agent_pipeline_service.py (line 748)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag_agent_pipeline_service.py:748) 调用：
+也在 [rag_agent_pipeline_service.py (line 748)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\rag\\rag_agent_pipeline_service.py:748) 调用：
 
 ```
 state = await self._prepare_stream_state(req, operation="stream")
@@ -2568,7 +2568,7 @@ flowchart TD
 
 ## 1. 上下文从 `RagAgentState` 取出后传给 Planner
 
-位置：[rag_agent_nodes.py (line 259)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:259)
+位置：[rag_agent_nodes.py (line 259)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:259)
 
 ```
 history = [
@@ -2593,13 +2593,13 @@ task_plan = await task_planner.plan_question_decomposition(
 )
 ```
 
-位置：[rag_agent_nodes.py (line 314)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:314)。
+位置：[rag_agent_nodes.py (line 314)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:314)。
 
 其中 `state["query"]` 是当前生效 query：若 query rewrite 成功，它已是改写后的查询。因此 Planner 的优先输入不是旧对话，而是当前有效问题。
 
 ## 2. Planner 的 Prompt 如何接收上下文
 
-核心函数是 [agent_task_planner.py (line 499)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_planner.py:499)：
+核心函数是 [agent_task_planner.py (line 499)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_planner.py:499)：
 
 ```
 history_text = "\n\n".join(
@@ -2632,7 +2632,7 @@ payload = {
 
 ## 3. 上下文允许影响什么
 
-Planner 系统提示位于 [agent_task_planner.py (line 62)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_planner.py:62)：
+Planner 系统提示位于 [agent_task_planner.py (line 62)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_planner.py:62)：
 
 ```
 history 仅用于理解“刚才的文档”“继续上一项”等多轮指代和已明确约束。
@@ -2684,7 +2684,7 @@ Planner 也不能把它当作可执行事实，更不能产出：
 
 ## 5. 上下文如何进入两种 LLM 规划路径
 
-`plan_question_decomposition(...)` 位于 [agent_task_planner.py (line 131)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_planner.py:131)。
+`plan_question_decomposition(...)` 位于 [agent_task_planner.py (line 131)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_planner.py:131)。
 
 它优先尝试结构化输出：
 
@@ -2696,7 +2696,7 @@ payload = await self._invoke_structured_planner(
 )
 ```
 
-位置：[agent_task_planner.py (line 146)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_planner.py:146)。
+位置：[agent_task_planner.py (line 146)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_planner.py:146)。
 
 若 provider 不支持结构化输出，再降级为普通 JSON：
 
@@ -2710,7 +2710,7 @@ payload = await self._invoke_json_planner(
 
 两条路径最终都调用同一个 `_build_planner_messages(...)`，所以拿到的 `query + history + explicit_topics` 一致。
 
-如果模型遗漏了当前 query 的显式主题，Planner 会带着同一份 `history` 和新增的 `missing_topics` 再请求一次修复，见 [agent_task_planner.py (line 183)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\agent_task_planner.py:183)。
+如果模型遗漏了当前 query 的显式主题，Planner 会带着同一份 `history` 和新增的 `missing_topics` 再请求一次修复，见 [agent_task_planner.py (line 183)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\agent_tasks\\agent_task_planner.py:183)。
 
 ## 6. 上下文不会一直跟到 Executor
 
@@ -2786,7 +2786,7 @@ _invoke_structured_planner / _invoke_json_planner
 _build_planner_messages(history=history)
 ```
 
-组装位置：[rag_agent_nodes.py (line 259)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:259)：
+组装位置：[rag_agent_nodes.py (line 259)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:259)：
 
 ```
 history = [
@@ -2795,7 +2795,7 @@ history = [
 ]
 ```
 
-传给 Planner 的位置：[rag_agent_nodes.py (line 314)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent_nodes.py:314)：
+传给 Planner 的位置：[rag_agent_nodes.py (line 314)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\graph\\rag_agent\\rag_agent_nodes.py:314)：
 
 ```
 task_plan = await task_planner.plan_question_decomposition(
@@ -2805,7 +2805,7 @@ task_plan = await task_planner.plan_question_decomposition(
 )
 ```
 
-`plan_question_decomposition(...)` 再把同一个 `history` 交给 LLM 规划调用，见 [agent_task_planner.py (line 146)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_task_planner.py:146)。
+`plan_question_decomposition(...)` 再把同一个 `history` 交给 LLM 规划调用，见 [agent_task_planner.py (line 146)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_planner.py:146)。
 
 最终 `_build_planner_messages(...)` 中将它压缩成 prompt 字段：
 
@@ -2819,7 +2819,7 @@ payload = {
 }
 ```
 
-位置：[agent_task_planner.py (line 506)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\agent_task_planner.py:506)。
+位置：[agent_task_planner.py (line 506)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\agent_tasks\\agent_task_planner.py:506)。
 
 所以 `history` 的作用是帮助理解“它”“刚才那份文档”“继续上一项”等指代；它不是检索证据，也不是权限或执行事实。
 
@@ -2873,7 +2873,7 @@ missing_topics = _missing_topics(
 )
 ```
 
-位置：[agent_task_planner.py (line 177)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\agent_task_planner.py:177)。
+位置：[agent_task_planner.py (line 177)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\agent_tasks\\agent_task_planner.py:177)。
 
 假设 LLM 只拆出了“混合检索”和“rerank”，漏掉“权限设计”，则：
 
@@ -2893,7 +2893,7 @@ retry_payload = await self._invoke_structured_planner(
 )
 ```
 
-位置：[agent_task_planner.py (line 183)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\agent_task_planner.py:183)。
+位置：[agent_task_planner.py (line 183)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\agent_tasks\\agent_task_planner.py:183)。
 
 这时 `_build_planner_messages(...)` 才会额外加入：
 
@@ -2904,7 +2904,7 @@ payload["repair_instruction"] = (
 payload["missing_topics"] = missing_topics
 ```
 
-位置：[agent_task_planner.py (line 513)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\agent_task_planner.py:513)。
+位置：[agent_task_planner.py (line 513)](D:\\AI_Agent_Project\\AI_Python_Project\\src\\fast_app\\services\\agent_tasks\\agent_task_planner.py:513)。
 
 可以记成：
 

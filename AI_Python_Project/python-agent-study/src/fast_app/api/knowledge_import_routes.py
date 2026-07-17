@@ -32,10 +32,10 @@ from fast_app.ingestion.import_jobs import (
     normalize_upload_filename,
     validate_department_code,
 )
-from fast_app.ingestion.metadata_models import build_doc_id
-from fast_app.ingestion.ooxml_validation import OOXMLValidationError, validate_ooxml_package
+from fast_app.ingestion.processing.metadata_models import build_doc_id
+from fast_app.ingestion.validation.ooxml_validation import OOXMLValidationError, validate_ooxml_package
 from fast_app.services.exceptions import AuthenticationError, ToolPermissionDeniedError
-from fast_app.services.permission_service import PermissionService
+from fast_app.services.auth.permission_service import PermissionService
 
 
 router = APIRouter(tags=["knowledge-imports"])

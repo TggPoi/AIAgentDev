@@ -70,14 +70,17 @@ Answer Agent 独立进程
 |---|---|---|
 | Router | `AgentTaskRouter` | 只判断业务意图，不生成可信 Tool 参数 |
 | Planner | `AgentTaskPlanner` | 把复杂问题拆成结构化子问题和依赖 |
-| Supervisor | `AgentTaskExecutor` | 负责整体任务状态、预算、异常分类和最终综合 |
+| API Facade | `AgentTaskExecutor` | 只负责确认、重试、当前 ACL 和任务类型分派 |
+| Research Supervisor | `AgenticResearchExecutor` | 负责研究进度、结果汇总、任务终态和最终综合 |
 | Orchestrator | `agentic_research_graph.py` | 校验依赖图，选择波次，用 `Send` 派发 Worker |
-| Research Worker | `_execute_research_worker()` | 独立完成一个子问题，并执行有限纠正循环 |
+| Research Worker Agent | `ResearchWorkerAgent.run()` | 调用独立 Worker LangGraph，完成一个子问题的有限纠正循环 |
+| Worker Graph | `research_worker_graph.py` | 显式展示 attempt、evaluator、route、retry 和完成状态 |
+| Research Tool Loop | `ResearchToolLoop.run_attempt()` | 完成一轮工具选择、执行、证据汇总和候选答案生成 |
 | Retriever Agent 职责 | Worker 内的 `knowledge_retrieval` 工具 | 检索 ES/Milvus，并生成本地证据 |
 | WebSearch Agent 职责 | Worker 内的 `web_search` 工具 | 搜索公开网络资料 |
 | MCP Agent 职责 | Worker 内的 `mcp__*` 工具 | 调用白名单 MCP 工具 |
 | Evaluator | `ResearchEvidenceEvaluator` | 判断证据是否充分、冲突或需要继续检索 |
-| Answer Agent | `_synthesize_final_answer()` | 只使用可用 Worker 结果生成最终回答 |
+| Final Synthesizer | `AgenticResearchExecutor._synthesize_final_answer()` | 只使用可用 Worker 结果生成最终回答 |
 | 前端进度适配层 | `confirm/stream` 路由 | 把 TaskPlan 快照转换成 SSE 事件 |
 
 ### 2.3 当前链路中存在两层并发
@@ -105,7 +108,8 @@ Research Worker sq_1
 这两层并发不要混淆：
 
 - `agentic_research_graph.py` 负责 Worker 级并发。
-- `_execute_sub_question()` 负责单 Worker 内 ToolCall 级并发。
+- `research_worker_graph.py` 负责一个 Worker 内的纠正状态循环。
+- `ResearchToolLoop.run_attempt()` 负责一次 attempt 内的 ToolCall 级并发。
 
 ---
 
@@ -130,20 +134,23 @@ flowchart TD
     N --> O["POST /agent/task-plans/{id}/confirm/stream"]
     O --> P["AgentTaskExecutor.confirm"]
     P --> Q["重新校验用户和当前 ACL"]
-    Q --> R["execute_question_decomposition_plan"]
+    Q --> R["AgenticResearchExecutor.execute_question_decomposition_plan"]
     R --> S["build_agentic_research_graph"]
     S --> T["validate_dependencies"]
     T --> U["select_ready_wave"]
     U --> V["Send Research Workers"]
-    V --> W["_execute_research_worker"]
-    W --> X["_execute_sub_question"]
+    V --> W["ResearchWorkerAgent.run"]
+    W --> WG["Research Worker LangGraph"]
+    WG --> X["ResearchToolLoop.run_attempt"]
     X --> Y["Knowledge / Web / MCP Tools"]
     Y --> Z["ResearchEvidenceEvaluator"]
-    Z --> AA{"证据是否充分"}
-    AA -->|"充分"| AB["Worker completed"]
-    AA -->|"可纠正且预算足够"| X
-    AA -->|"有证据但不充分"| AC["Worker partial"]
-    AA -->|"无证据或异常"| AD["Worker failed"]
+    Z --> AA["route_evaluation"]
+    AA --> ABQ{"证据是否充分"}
+    ABQ -->|"充分"| AB["Worker completed"]
+    ABQ -->|"可纠正且预算足够"| RT["prepare_retry"]
+    RT --> X
+    ABQ -->|"有证据但不充分"| AC["Worker partial"]
+    ABQ -->|"无证据或异常"| AD["Worker failed"]
     AB --> AE["merge_wave_results"]
     AC --> AE
     AD --> AE
@@ -190,7 +197,7 @@ allow_web_fallback
 
 Router 入口位于：
 
-[agent_task_router.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_router.py:136)
+[agent_task_router.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_router.py:136)
 
 核心方法是：
 
@@ -246,7 +253,7 @@ ACL
 
 连接 Router 和 Planner 的节点位于：
 
-[rag_agent_nodes.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent_nodes.py:240)
+[rag_agent_nodes.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py:240)
 
 核心闭包是：
 
@@ -369,7 +376,7 @@ Router 判定 web_research
 
 Planner 位于：
 
-[agent_task_planner.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_planner.py:132)
+[agent_task_planner.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_planner.py:132)
 
 核心方法：
 
@@ -483,7 +490,7 @@ TaskPlan 创建后不会立即执行 Research Worker。
 
 对应节点位于：
 
-[rag_agent_nodes.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent_nodes.py:701)
+[rag_agent_nodes.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py:701)
 
 当 `task_kind == question_decomposition` 时：
 
@@ -530,7 +537,7 @@ MCP 调用
 
 TaskPlanStore 位于：
 
-[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:186)
+[agent_task_plan_store.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_plan_store.py:17)
 
 ### 8.1 为什么同时保存 JSON 和 Markdown
 
@@ -586,7 +593,7 @@ runtime/agent-task-plans
 
 真正的统一业务入口位于：
 
-[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:2450)
+[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:224)
 
 执行顺序：
 
@@ -619,7 +626,7 @@ CurrentUserContext
 
 研究任务主入口位于：
 
-[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:361)
+[agentic_research_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/research/agentic_research_executor.py:74)
 
 ```python
 execute_question_decomposition_plan()
@@ -721,7 +728,7 @@ snapshot_lock = asyncio.Lock()
 
 ### 10.6 worker_runner 为什么是异常边界
 
-`worker_runner()` 包装 `_execute_research_worker()`：
+`worker_runner()` 包装 `ResearchWorkerAgent.run()`：
 
 ```text
 Worker 超时
@@ -774,7 +781,7 @@ usable = completed + partial
 
 调度子图位于：
 
-[agentic_research_graph.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/agentic_research_graph.py:45)
+[agentic_research_graph.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/research/agentic_research_graph.py:45)
 
 这一阶段最容易让人困惑，是因为代码同时使用了三组新概念：
 
@@ -1125,7 +1132,7 @@ Kahn 不需要专门沿着每条路径寻找圆圈。只要最后还有无法移
 
 静态校验函数：
 
-[validate_research_dependencies()](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/agentic_research_graph.py:45)
+[validate_research_dependencies()](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/research/agentic_research_graph.py:45)
 
 变量对应关系：
 
@@ -1355,7 +1362,7 @@ operator.add 只负责合并并发分支的状态更新，
 
 运行时调度函数位于：
 
-[select_ready_wave()](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/agentic_research_graph.py:104)
+[select_ready_wave()](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/research/agentic_research_graph.py:104)
 
 它每次进入时都重新查看：
 
@@ -1558,7 +1565,7 @@ sq_5 依赖 sq_3 partial
 
 条件派发函数位于：
 
-[dispatch_wave()](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/agentic_research_graph.py:165)
+[dispatch_wave()](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/research/agentic_research_graph.py:165)
 
 如果：
 
@@ -1707,13 +1714,16 @@ LangGraph 子图只负责调度，不负责知道：
 如何记录 TaskPlan 快照
 ```
 
-这些业务逻辑仍在 `AgentTaskExecutor` 的回调中。
+调度节点随后通过 `worker_runner` 明确调用 `ResearchWorkerAgent.run()`。Worker
+自己的纠正循环位于 `research_worker_graph.py`，工具选择和执行位于
+`ResearchToolLoop.run_attempt()`；业务逻辑已经不再藏在 `AgentTaskExecutor` 中。
 
 这种边界让调度图保持简单：
 
 ```text
-Graph 决定“谁现在运行”
-Executor 决定“这个 Worker 如何研究”
+父级 Graph 决定“谁现在运行”
+Worker Graph 决定“是否评估、重试或结束”
+ResearchToolLoop 决定“一次 attempt 如何调用工具”
 ```
 
 ### 11.18 merge_wave_results 为什么要等一个批次
@@ -1761,7 +1771,7 @@ SSE 展示清楚
 
 构图代码位于：
 
-[build_agentic_research_graph()](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/agentic_research_graph.py:91)
+[build_agentic_research_graph()](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/research/agentic_research_graph.py:91)
 
 完整顺序：
 
@@ -1913,7 +1923,7 @@ $env:LANGCHAIN_TRACING_V2 = "false"
 
 #### 断点一：静态 Kahn 校验
 
-[agentic_research_graph.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/agentic_research_graph.py:45)
+[agentic_research_graph.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/research/agentic_research_graph.py:45)
 
 观察：
 
@@ -1927,7 +1937,7 @@ visited
 
 #### 断点二：运行时选择 wave
 
-[agentic_research_graph.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/agentic_research_graph.py:104)
+[agentic_research_graph.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/research/agentic_research_graph.py:104)
 
 观察：
 
@@ -1942,7 +1952,7 @@ batch_ids
 
 #### 断点三：Send 派发
 
-[agentic_research_graph.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/agentic_research_graph.py:165)
+[agentic_research_graph.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/research/agentic_research_graph.py:165)
 
 观察两个 `Send` 对象是否分别拥有：
 
@@ -1970,10 +1980,10 @@ results=[]
 
 Worker 入口位于：
 
-[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:634)
+[research_worker_agent.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/research/research_worker_agent.py:75)
 
 ```python
-_execute_research_worker()
+ResearchWorkerAgent.run()
 ```
 
 ### 12.1 Worker 为什么是“隔离的”
@@ -2033,13 +2043,29 @@ AGENT_RESEARCH_MAX_TOOL_CALLS_PER_WORKER=4
 检查是否取消
 → 计算剩余 ToolCall 预算
 → 决定本轮是否强制 Web
-→ 调用 _execute_sub_question()
+→ 调用 ResearchToolLoop.run_attempt()
 → 累计工具调用
 → 合并、去重 Evidence
 → 调用 Evidence Evaluator
 → 保存 evaluation 进度事件
 → completed / retry / partial / failed
 ```
+
+这段流程现在不是隐藏在一个普通 `for` 循环中，而是由
+`research_worker_graph.py` 的节点直接表达：
+
+```text
+run_attempt
+→ evaluate_evidence
+→ route_evaluation
+   ├─ complete
+   ├─ prepare_retry → run_attempt
+   └─ finalize_limited
+```
+
+`ResearchWorkerAgent.run()` 只负责创建初始 State、调用编译后的子图并取出
+`final_result`。因此阅读 Worker 时，可以先看图结构，再进入对应节点，不必在一个
+巨型 Executor 中追踪多层 `for/if`。
 
 ### 12.4 Evidence 为什么跨纠正轮累积
 
@@ -2048,7 +2074,7 @@ AGENT_RESEARCH_MAX_TOOL_CALLS_PER_WORKER=4
 所以使用：
 
 ```python
-all_evidence = _merge_evidence(all_evidence, last_result.evidence)
+all_evidence = merge_evidence(all_evidence, last_result.evidence)
 ```
 
 而不是每次重试清空旧证据。
@@ -2123,10 +2149,10 @@ Web 行为符合 web_policy
 
 Tool Loop 位于：
 
-[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:866)
+[research_tool_loop.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/research/research_tool_loop.py:101)
 
 ```python
-_execute_sub_question()
+ResearchToolLoop.run_attempt()
 ```
 
 ### 13.1 Tool Loop 的输入
@@ -2233,7 +2259,7 @@ tool_calls.extend(
 → 交给外层 Evaluator 再判断是否真正 completed
 ```
 
-这里 `_execute_sub_question()` 返回的 `completed` 只是表示工具循环成功获得候选结果。最终 Worker 状态仍由 Evaluator 决定。
+这里 `ResearchToolLoop.run_attempt()` 返回的 `completed` 只是表示工具循环成功获得候选结果。最终 Worker 状态仍由 Evaluator 决定。
 
 #### 选择过工具，但全部失败
 
@@ -2259,7 +2285,7 @@ tool_calls.extend(
 
 入口：
 
-[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:1457)
+[research_tool_loop.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/research/research_tool_loop.py:679)
 
 执行顺序：
 
@@ -2278,7 +2304,7 @@ tool_calls.extend(
 
 入口：
 
-[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:1510)
+[research_tool_loop.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/research/research_tool_loop.py:733)
 
 执行顺序：
 
@@ -2319,7 +2345,7 @@ evidence
 
 脱敏入口：
 
-[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:3275)
+[research_tool_loop.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/research/research_tool_loop.py:993)
 
 Web query 只能由以下内容构造：
 
@@ -2367,7 +2393,7 @@ user_id、department_codes、allowed_departments、can_read_all、ACL
 
 Evaluator 位于：
 
-[research_evidence_evaluator.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/research_evidence_evaluator.py:33)
+[research_evidence_evaluator.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/research/research_evidence_evaluator.py:33)
 
 ### 16.1 为什么不能只看候选答案
 
@@ -2472,7 +2498,7 @@ Evaluator 应评价证据与问题是否相关、充分，
 
 格式化入口：
 
-[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:3357)
+[agentic_research_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/research/agentic_research_executor.py:418)
 
 只有状态为：
 
@@ -2498,7 +2524,7 @@ evaluation.missing_points
 
 最终综合入口：
 
-[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:1591)
+[agentic_research_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/research/agentic_research_executor.py:360)
 
 输入只包含：
 
@@ -3018,7 +3044,7 @@ curl.exe -N `
 
 ### 断点 1：Router 输出
 
-[rag_agent_nodes.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent_nodes.py:295)
+[rag_agent_nodes.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py:295)
 
 观察：
 
@@ -3030,7 +3056,7 @@ route_result.source
 
 ### 断点 2：Planner 返回 TaskPlan
 
-[agent_task_planner.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_planner.py:169)
+[agent_task_planner.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_planner.py:169)
 
 观察：
 
@@ -3042,7 +3068,7 @@ plan.status
 
 ### 断点 3：确认时重建 ACL
 
-[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:2478)
+[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:224)
 
 观察：
 
@@ -3055,7 +3081,7 @@ RetrievalFilters
 
 ### 断点 4：选择当前 wave
 
-[agentic_research_graph.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/agentic_research_graph.py:104)
+[agentic_research_graph.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/research/agentic_research_graph.py:104)
 
 观察：
 
@@ -3069,7 +3095,7 @@ current_wave
 
 ### 断点 5：Worker attempt
 
-[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:660)
+[research_worker_agent.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/research/research_worker_agent.py:251)
 
 观察：
 
@@ -3082,7 +3108,7 @@ dependency_results
 
 ### 断点 6：Evaluator 结果
 
-[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:731)
+[research_worker_agent.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/research/research_worker_agent.py:292)
 
 观察：
 
@@ -3097,7 +3123,7 @@ evaluation.missing_points
 
 ### 断点 7：最终状态
 
-[agent_task_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_task_executor.py:585)
+[agentic_research_executor.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/research/agentic_research_executor.py:74)
 
 观察：
 
@@ -3137,9 +3163,9 @@ LangGraph Send
 
 ### 误解二：Worker 返回 completed 就是最终 completed
 
-`_execute_sub_question()` 的 completed 只说明工具循环取得候选结果。
+`ResearchToolLoop.run_attempt()` 的 completed 只说明工具循环取得候选结果。
 
-外层 `_execute_research_worker()` 还必须经过 Evidence Evaluator。
+外层 `ResearchWorkerAgent.run()` 还必须经过 Evidence Evaluator。
 
 ### 误解三：partial 等于失败
 
@@ -3307,8 +3333,8 @@ RagChatRequest
 
 阅读：
 
-1. `_execute_research_worker()`
-2. `_execute_sub_question()`
+1. `ResearchWorkerAgent.run()`
+2. `ResearchToolLoop.run_attempt()`
 3. `_run_knowledge_retrieval_for_sub_question()`
 4. `ResearchEvidenceEvaluator.evaluate()`
 
@@ -3348,7 +3374,7 @@ RagChatRequest
 8. 为什么 failed 依赖会让下游 skipped？
 9. 为什么 `worker_runner()` 不能捕获并吞掉 ToolPermissionDenied？
 10. attempt 预算和 ToolCall 预算有什么区别？
-11. 为什么 `_execute_sub_question()` 返回 completed 后仍要调用 Evaluator？
+11. 为什么 `ResearchToolLoop.run_attempt()` 返回 completed 后仍要调用 Evaluator？
 12. 为什么 Web fallback 需要用户明确允许？
 13. 为什么 Web query 不能包含 dependency_results 的原文？
 14. 为什么所有 Worker 失败时不能调用 Final Synthesizer？

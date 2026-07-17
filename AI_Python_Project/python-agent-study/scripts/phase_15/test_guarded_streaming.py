@@ -10,16 +10,16 @@ from fast_app.domain.prompt_guard_models import (
     PromptRiskCategory,
     PromptRiskLevel,
 )
-from fast_app.graph.rag_agent_state import build_rag_agent_initial_state
+from fast_app.graph.rag_agent.rag_agent_state import build_rag_agent_initial_state
 from fast_app.schemas.rag_chat_schema import RagChatRequest
-from fast_app.services.guarded_streaming import (
+from fast_app.services.rag.guarded_streaming import (
     GuardedStreamState,
     _should_flush_buffer,
     guarded_answer_delta_events,
     text_to_async_tokens,
 )
-from fast_app.services.prompt_guard_service import PromptGuardService
-from fast_app.services.rag_agent_pipeline_service import RagAgentPipeline
+from fast_app.services.rag.prompt_guard_service import PromptGuardService
+from fast_app.services.rag.rag_agent_pipeline_service import RagAgentPipeline
 
 
 class FakePromptGuard:

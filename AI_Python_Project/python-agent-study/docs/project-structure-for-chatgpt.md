@@ -350,7 +350,7 @@ RAG_PIPELINE_PROVIDER=langgraph -> LangGraphRagPipeline
 文件：
 
 ```text
-src/fast_app/services/rag_pipeline_service.py
+src/fast_app/services/rag/rag_pipeline_service.py
 ```
 
 核心类：
@@ -412,10 +412,10 @@ NoSearchResultError(...)
 文件：
 
 ```text
-src/fast_app/services/langgraph_rag_pipeline_service.py
-src/fast_app/graph/rag_graph_builder.py
-src/fast_app/graph/rag_graph_nodes.py
-src/fast_app/graph/rag_graph_state.py
+src/fast_app/services/rag/langgraph_rag_pipeline_service.py
+src/fast_app/graph/rag/rag_graph_builder.py
+src/fast_app/graph/rag/rag_graph_nodes.py
+src/fast_app/graph/rag/rag_graph_state.py
 ```
 
 核心类：

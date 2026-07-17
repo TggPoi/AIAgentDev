@@ -9,7 +9,7 @@ from fast_app.core.config import Settings
 from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RetrievalFilters, RetrievalOptions, RetrievedDoc, ScoreBreakdown
-from fast_app.ingestion.rag_store_schema import (
+from fast_app.ingestion.stores.rag_store_schema import (
     ES_CONTENT_FIELD,
     ES_ID_FIELD,
     ES_IK_INDEX_ANALYZER,

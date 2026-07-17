@@ -23,14 +23,14 @@ from fast_app.dependencies.rag_dependencies import (
 )
 from fast_app.dependencies.user_context import get_current_user_context
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.services.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
+from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
 from fast_app.services.exceptions import AppServiceError, ToolPermissionDeniedError
-from fast_app.services.guarded_streaming import (
+from fast_app.services.rag.guarded_streaming import (
     GuardedStreamState,
     guarded_answer_delta_events,
     text_to_async_tokens,
 )
-from fast_app.services.prompt_guard_service import PromptGuardService
+from fast_app.services.rag.prompt_guard_service import PromptGuardService
 
 
 router = APIRouter(prefix="/agent/task-plans", tags=["agent-task-plans"])

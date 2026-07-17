@@ -14,11 +14,11 @@
 
 ## 模块职责
 
-`markdown_chunker.py`
+`processing/markdown_chunker.py`
 
 保留 Markdown 标题解析、稳定 chunk id 生成，以及 build_markdown_chunks 兼容入口。
 
-`document_loaders.py`
+`processing/document_loaders.py`
 
 负责从本地知识库目录读取原始文档，并输出 LoadedDocument。
 
@@ -28,7 +28,7 @@
 - TextDocumentLoader
 - CompositeDocumentLoader
 
-`chunk_builders.py`
+`processing/chunk_builders.py`
 
 负责把 LoadedDocument 转成 KnowledgeChunk。
 
@@ -40,7 +40,7 @@
 - TextSplitter
 - MarkdownChunkBuilder
 
-`metadata_models.py`
+`processing/metadata_models.py`
 
 负责生成 ingestion 阶段的标准 metadata。
 
@@ -52,23 +52,23 @@
 - build_document_metadata
 - build_chunk_metadata
 
-`rag_store_schema.py`
+`stores/rag_store_schema.py`
 
 负责生成 ElasticSearch mapping、Milvus collection schema 和 Milvus index params。
 
-`rag_store_admin.py`
+`stores/rag_store_admin.py`
 
 负责 ES index 和 Milvus collection 的结构级管理，包括受控删除、重建空结构和返回重建结果。
 
-`rag_store_writer.py`
+`stores/rag_store_writer.py`
 
-负责把 KnowledgeChunk 写入 ElasticSearch 和 Milvus。recreate 模式需要删除和重建结构时，也通过 rag_store_admin.py 完成。
+负责把 KnowledgeChunk 写入 ElasticSearch 和 Milvus。recreate 模式需要删除和重建结构时，也通过 stores/rag_store_admin.py 完成。
 
 `markdown_ingestion_service.py`
 
 负责编排读取、切分、embedding、向量校验、ES 写入和 Milvus 写入。
 
-`ingestion_validation.py`
+`validation/ingestion_validation.py`
 
 负责验证本地文档读取、chunk 构造和 metadata 规范，并输出结构化验证报告。
 
@@ -137,7 +137,7 @@ flowchart TD
 - doc_id / source_path / document_type / chunk_index 是常用过滤和调试字段
 - metadata 保留完整标准 metadata
 
-默认 output_fields 由 rag_store_schema.py 中的 build_milvus_output_fields 统一生成。
+默认 output_fields 由 stores/rag_store_schema.py 中的 build_milvus_output_fields 统一生成。
 
 
 ## ElasticSearch Index 字段
@@ -164,7 +164,7 @@ flowchart TD
 
 ## 双写流程
 
-当前 ingestion 写入阶段由 rag_store_writer.py 统一编排。
+当前 ingestion 写入阶段由 stores/rag_store_writer.py 统一编排。
 
 核心入口：
 
@@ -209,7 +209,7 @@ flowchart TD
 
 ## 删除与重建安全边界
 
-ES index 和 Milvus collection 的删除操作统一放在 `rag_store_admin.py`。
+ES index 和 Milvus collection 的删除操作统一放在 `stores/rag_store_admin.py`。
 
 当前核心入口：
 
@@ -219,7 +219,7 @@ ES index 和 Milvus collection 的删除操作统一放在 `rag_store_admin.py`�
 
 删除类函数必须显式传入 `confirm=True` 才会执行。
 
-`rag_store_writer.py` 只负责写入 chunks / vectors。当 recreate 模式需要重建 ES index 或 Milvus collection 时，也通过 admin 模块完成。
+`stores/rag_store_writer.py` 只负责写入 chunks / vectors。当 recreate 模式需要重建 ES index 或 Milvus collection 时，也通过 admin 模块完成。
 
 后续 CLI 只能调用 `reset_rag_stores()`，不应该在 CLI 中直接写 `indices.delete()` 或 `drop_collection()`。
 

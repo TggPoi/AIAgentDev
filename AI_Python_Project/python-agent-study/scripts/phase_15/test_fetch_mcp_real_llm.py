@@ -16,7 +16,11 @@ from fast_app.core.config import Settings
 from fast_app.domain.agent_task_plan import AgentTaskPlan, AgentTaskSubQuestion
 from fast_app.domain.rag_models import RetrievalFilters, RetrievalOptions, RetrievedDoc
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.services.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
+from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
+from fast_app.services.research.agentic_research_executor import AgenticResearchExecutor
+from fast_app.services.research.research_evidence_evaluator import ResearchEvidenceEvaluator
+from fast_app.services.research.research_tool_loop import ResearchToolLoop
+from fast_app.services.research.research_worker_agent import ResearchWorkerAgent
 
 
 class EmptyRetriever(BaseRetriever):
@@ -79,18 +83,38 @@ async def main() -> None:
         settings.agent_task_plan_dir = temp_dir
         settings.agent_max_tool_calls = max(settings.agent_max_tool_calls, 2)
 
+        llm_client = QwenLangChainLLMClient(settings=settings)
+        tool_loop = ResearchToolLoop(
+            settings=settings,
+            vector_retriever=EmptyRetriever(),
+            keyword_retriever=EmptyRetriever(),
+            llm_client=llm_client,
+        )
+        store = AgentTaskPlanStore(settings=settings)
+        worker = ResearchWorkerAgent(
+            settings=settings,
+            tool_loop=tool_loop,
+            evaluator=ResearchEvidenceEvaluator(settings),
+        )
+        research = AgenticResearchExecutor(
+            settings=settings,
+            llm_client=llm_client,
+            task_plan_store=store,
+            worker_agent=worker,
+        )
         executor = AgentTaskExecutor(
             settings=settings,
             vector_retriever=EmptyRetriever(),
             keyword_retriever=EmptyRetriever(),
-            llm_client=QwenLangChainLLMClient(settings=settings),
+            llm_client=llm_client,
             document_management_service=object(),
             tool_permission_service=object(),
             tool_audit_service=object(),
-            task_plan_store=AgentTaskPlanStore(settings=settings),
+            task_plan_store=store,
+            research_executor=research,
         )
         plan = build_plan()
-        tools = await executor._build_available_task_tools()
+        tools = await tool_loop._build_available_task_tools()
         tool_names = {tool.name for tool in tools}
         assert "mcp__fetch" in tool_names, f"未注册 mcp__fetch，可用工具: {sorted(tool_names)}"
 
@@ -110,8 +134,11 @@ async def main() -> None:
                 print(saved[-1].read_text(encoding="utf-8"))
             raise
         payload = result.final_output["sub_question_results"][0]
-        assert payload["status"] == "completed", payload
+        # Evaluator 对摘要覆盖率的主观判断可能给出 partial；真实链路验收只要求
+        # Fetch 成功、证据存在且 Worker 没有伪装成无条件 completed。
+        assert payload["status"] in {"completed", "partial"}, payload
         assert payload["tool_calls"][0]["tool_name"] == "mcp__fetch", payload
+        assert payload["tool_calls"][0]["status"] == "completed", payload
         assert "Example Domain" in payload["tool_calls"][0]["tool_output"]["content"]
 
         print("fetch_mcp_real_llm=passed")
