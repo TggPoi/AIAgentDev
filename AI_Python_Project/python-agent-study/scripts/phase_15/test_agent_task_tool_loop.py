@@ -19,6 +19,7 @@ from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.domain.agent_task_plan import (
+    AgentResearchPolicy,
     AgentTaskPlan,
     AgentTaskPlanStatus,
     AgentTaskSubQuestion,
@@ -181,6 +182,7 @@ def build_plan(task_plan_id: str) -> AgentTaskPlan:
                 expected_evidence="失败轨迹。",
             ),
         ],
+        research_policy=AgentResearchPolicy(web_policy="required"),
         final_synthesis_instruction="综合所有成功子问题答案。",
         source_query="RAG 质量 改进",
         target_path=None,
@@ -219,6 +221,7 @@ async def main() -> None:
             BOCHA_API_KEY="fake",
             AGENT_TASK_PLAN_DIR=temp_dir,
             AGENT_MAX_TOOL_CALLS=2,
+            AGENT_RESEARCH_MAX_TOOL_CALLS_PER_WORKER=2,
         )
         store = AgentTaskPlanStore(settings=settings)
         executor = build_executor(settings, store)
@@ -330,6 +333,37 @@ async def main() -> None:
         assert required_web_calls[0]["call_id"] == "required_web"
         assert required_web_calls[0]["selected_tool"] == "web_search"
 
+        class FailingRequiredWebChatOpenAI:
+            def __init__(self, **kwargs):
+                pass
+
+            def bind_tools(self, tools, **kwargs):
+                raise RuntimeError("provider does not support required tool choice")
+
+        executor_module.ChatOpenAI = FailingRequiredWebChatOpenAI
+        try:
+            enforced_web_calls = await AgentTaskExecutor._select_tool_for_sub_question(
+                required_executor,
+                plan=build_plan("task_plan_required_web_fallback"),
+                sub_question=web_sub_question,
+                previous_results=[],
+                default_mode="hybrid",
+                default_top_k=3,
+                tool_calls=[],
+            )
+        finally:
+            executor_module.ChatOpenAI = original_chat_openai
+        assert enforced_web_calls == [
+            {
+                "selected_tool": "web_search",
+                "tool_input": {
+                    "query": web_sub_question.question,
+                    "count": 3,
+                },
+                "reason": "server_enforced_required_web_policy",
+            }
+        ]
+
         plan = await executor.execute_question_decomposition_plan(
             plan=build_plan("task_plan_202607080001_tool_loop"),
             user=build_user(),
@@ -340,7 +374,7 @@ async def main() -> None:
             filters=RetrievalFilters(),
         )
 
-        assert plan.status == AgentTaskPlanStatus.COMPLETED
+        assert plan.status == AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS
         results = plan.final_output["sub_question_results"]
         assert [item["sub_question_id"] for item in results] == [
             "sq_loop",

@@ -934,6 +934,11 @@ class RagAgentPipeline:
                         "status": task_plan.status.value,
                         "target_path": task_plan.target_path,
                         "source_query": task_plan.source_query,
+                        "research_policy": (
+                            getattr(task_plan, "research_policy").model_dump(mode="json")
+                            if getattr(task_plan, "research_policy", None) is not None
+                            else None
+                        ),
                         "sub_questions": [
                             item.model_dump(mode="json")
                             for item in task_plan.sub_questions

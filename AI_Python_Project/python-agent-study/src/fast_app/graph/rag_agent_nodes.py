@@ -16,7 +16,11 @@ from fast_app.agents.rag_agent_tools import (
     KNOWLEDGE_RETRIEVAL_TOOL_NAME,
     retrieve_knowledge_docs,
 )
-from fast_app.domain.agent_task_plan import AgentTaskPlanStatus, AgentToolStepStatus
+from fast_app.domain.agent_task_plan import (
+    AgentResearchPolicy,
+    AgentTaskPlanStatus,
+    AgentToolStepStatus,
+)
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.retrievers.base import BaseRetriever
@@ -322,6 +326,24 @@ def create_next_action_decision_node(
             current_user = state.get("current_user")
             user_id = current_user.user_id if current_user is not None else None
             task_plan = None
+            # 只冻结本次请求选择的检索参数和联网许可；ACL 必须在 confirm 时重建。
+            research_policy = AgentResearchPolicy(
+                mode=state["mode"],
+                top_k=state["top_k"],
+                candidate_k=state["candidate_k"],
+                min_score=state["min_score"],
+                source_path=(
+                    str(state["filters"].get("source_path"))
+                    if state["filters"].get("source_path")
+                    else None
+                ),
+                section_path=[
+                    str(item) for item in state["filters"].get("section_path", [])
+                ],
+                web_policy=(
+                    "fallback" if state.get("allow_web_fallback", False) else "disabled"
+                ),
+            )
 
             # 进入需要 Planner 拆解的复杂任务
             if decision.intent == "question_decomposition":
@@ -332,6 +354,7 @@ def create_next_action_decision_node(
                     history=history,
                     user_id=user_id,
                     langchain_config_factory=build_child_config,
+                    research_policy=research_policy,
                 )
 
             # 进入Planner文档操作任务
@@ -349,6 +372,9 @@ def create_next_action_decision_node(
                 task_plan = task_planner.build_web_research_plan(
                     query=state["query"],
                     user_id=user_id,
+                    research_policy=research_policy.model_copy(
+                        update={"web_policy": "required"}
+                    ),
                 )
 
             # 任务已生成，开始执行 拆解后的子任务

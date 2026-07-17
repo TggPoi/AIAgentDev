@@ -13,17 +13,19 @@ AgentTaskKind = Literal[
 ]
 AgentTaskType = Literal["qa", "comparison", "report_generation", "analysis", "unknown"]
 AgentTaskInformationSourceHint = Literal["knowledge_retrieval", "web_search", "none"]
-AgentTaskSubQuestionResultStatus = Literal["completed", "failed"]
+AgentTaskSubQuestionResultStatus = Literal["completed", "partial", "failed", "skipped"]
 AgentTaskToolCallStatus = Literal["completed", "failed"]
+AgentResearchWebPolicy = Literal["disabled", "fallback", "required"]
 
 
 class AgentTaskPlanStatus(StrEnum):
-    """LLM 多步骤任务计划状态。"""
+    """任务整体状态：LLM 多步骤任务计划状态。"""
 
     CREATED = "created"
     RUNNING = "running"
     WAITING_CONFIRMATION = "waiting_confirmation"
     COMPLETED = "completed"
+    COMPLETED_WITH_WARNINGS = "completed_with_warnings"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
@@ -89,6 +91,58 @@ class AgentTaskSubQuestion(BaseModel):
     )
 
 
+class AgentResearchPolicy(BaseModel):
+    """跨确认请求保存的研究参数；权限与认证状态必须在执行时重新读取。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Worker 执行本计划时使用的检索模式。
+    mode: Literal["vector", "keyword", "hybrid"] = "hybrid"
+    # 每次检索最终保留的文档数量。
+    top_k: int = Field(default=5, ge=1, le=20)
+    # rerank 前的候选文档数量；None 表示沿用服务端默认值。
+    candidate_k: int | None = Field(default=None, ge=1, le=50)
+    # 检索结果被视为可用证据前必须达到的最低分数。
+    min_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    # 将研究范围限定到某个知识库源文件；None 表示不按文件收窄。
+    source_path: str | None = None
+    # 将研究范围限定到文档标题层级路径；空列表表示不按章节过滤。
+    section_path: list[str] = Field(default_factory=list)
+    # 本计划是否禁止、允许兜底或必须执行联网研究。
+    web_policy: AgentResearchWebPolicy = "disabled"
+
+
+class ResearchEvidenceEvaluation(BaseModel):
+    """Evaluator 对一个 Worker 当前证据充分性的结构化判断。"""
+
+    model_config = ConfigDict(extra="forbid")
+    # 证据总体结论：足够、部分覆盖、不足或互相冲突。
+    verdict: Literal["sufficient", "partial", "insufficient", "conflict"]
+    # Evaluator 对当前总体结论的置信度。
+    confidence: float = Field(ge=0.0, le=1.0)
+    # 当前证据与子问题语义是否相关的评分。
+    relevance: float = Field(default=0.0, ge=0.0, le=1.0)
+    # 当前证据覆盖子问题所需要点的程度。
+    coverage: float = Field(default=0.0, ge=0.0, le=1.0)
+    # 当前证据来源的可信程度评分。
+    authority: float = Field(default=0.0, ge=0.0, le=1.0)
+    # 回答是否必须补充近期或实时信息，避免只依赖旧知识库。
+    freshness_required: bool = False
+    # 尚未被现有证据覆盖的具体问题点。
+    missing_points: list[str] = Field(default_factory=list)
+    # Executor 下一次应采取的研究动作，不直接等同于立即执行的工具调用。
+    recommended_action: Literal[
+        "accept",
+        "rewrite_local_query",
+        "search_web",
+        "combine_local_and_web",
+        "clarify",
+        "stop_with_limitation",
+    ] = "stop_with_limitation"
+    # 供 trace、前端和后续排查阅读的评估理由。
+    reason: str = ""
+
+
 class AgentTaskToolCallTrace(BaseModel):
     """子问题执行过程中的一次工具调用轨迹。"""
 
@@ -137,6 +191,16 @@ class AgentTaskSubQuestionResult(BaseModel):
     )
     status: AgentTaskSubQuestionResultStatus = Field(description="子问题执行状态。")
     error: str | None = Field(default=None, description="子问题失败原因。")
+    # 本子问题已经执行的研究尝试次数；因依赖失败跳过时为 0。
+    attempt_count: int = Field(default=1, ge=0)
+    # 每次研究尝试的工具、证据和评估摘要，供恢复、审计和前端展开查看。
+    attempts: list[dict[str, Any]] = Field(default_factory=list)
+    # 最近一次证据充分性评估；未进入 Evaluator 时为 None。
+    evaluation: ResearchEvidenceEvaluation | None = None
+    # 合并证据后实际使用的来源类型，例如 knowledge_base 或 web。
+    source_types: list[str] = Field(default_factory=list)
+    # 虽未必导致失败、但会影响答案完整性或可靠性的提示。
+    warnings: list[str] = Field(default_factory=list)
 
 
 class AgentTaskPlan(BaseModel):
@@ -161,6 +225,10 @@ class AgentTaskPlan(BaseModel):
     goal: str = Field(description="兼容字段，语义上等同于 objective。")
     sub_questions: list[AgentTaskSubQuestion] = Field(
         description="复杂问题拆解出的待回答子问题列表，不是执行 TODO list。",
+    )
+    research_policy: AgentResearchPolicy | None = Field(
+        default=None,
+        description="问题研究确认后仍需使用的检索参数；不包含权限或认证事实。",
     )
     final_synthesis_instruction: str = Field(
         description="最终如何整合多个子问题答案的说明。",
@@ -192,12 +260,15 @@ __all__ = [
     "AgentTaskKind",
     "AgentTaskPlan",
     "AgentTaskPlanStatus",
+    "AgentResearchPolicy",
+    "AgentResearchWebPolicy",
     "AgentTaskSubQuestion",
     "AgentTaskSubQuestionResult",
     "AgentTaskSubQuestionResultStatus",
     "AgentTaskToolCallStatus",
     "AgentTaskToolCallTrace",
     "AgentTaskType",
+    "ResearchEvidenceEvaluation",
     "AgentToolStep",
     "AgentToolStepStatus",
 ]

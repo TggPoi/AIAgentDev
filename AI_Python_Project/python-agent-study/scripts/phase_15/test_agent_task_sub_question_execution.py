@@ -16,6 +16,7 @@ from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.domain.agent_task_plan import (
+    AgentResearchPolicy,
     AgentTaskPlan,
     AgentTaskPlanStatus,
     AgentTaskSubQuestion,
@@ -128,6 +129,7 @@ def build_plan(task_plan_id: str) -> AgentTaskPlan:
                 expected_evidence="前置子问题答案。",
             ),
         ],
+        research_policy=AgentResearchPolicy(web_policy="required"),
         final_synthesis_instruction="按子问题答案整合为最终结论。",
         source_query="混合检索 Prompt Guard 权限设计",
         target_path=None,
@@ -172,7 +174,7 @@ async def main() -> None:
             filters=RetrievalFilters(),
         )
 
-        assert plan.status == AgentTaskPlanStatus.COMPLETED
+        assert plan.status == AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS
         results = [
             AgentTaskSubQuestionResult.model_validate(item)
             for item in plan.final_output["sub_question_results"]
@@ -183,9 +185,7 @@ async def main() -> None:
             "web_search",
             "none",
         ]
-        assert all(item.status == "completed" for item in results), [
-            item.model_dump(mode="json") for item in results
-        ]
+        assert [item.status for item in results] == ["completed", "completed", "failed"]
         assert "final_answer" in plan.final_output
         assert plan.final_output["used_tools"] == ["knowledge_retrieval", "web_search"]
 
@@ -206,12 +206,13 @@ async def main() -> None:
             task_plan_id=waiting_plan.task_plan_id,
             user=user,
         )
-        assert confirmed_plan.status == AgentTaskPlanStatus.COMPLETED
+        assert confirmed_plan.status == AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS
         assert "final_answer" in confirmed_plan.final_output
         assert len(confirmed_plan.final_output["sub_question_results"]) == 3
 
         bad_plan = build_plan("task_plan_202607070002_test")
         bad_plan.sub_questions[0].sub_question_id = "sq_bad"
+        bad_plan.sub_questions[2].depends_on = ["sq_bad", "sq_2"]
         bad_result_plan = await executor.execute_question_decomposition_plan(
             plan=bad_plan,
             user=user,
@@ -224,6 +225,7 @@ async def main() -> None:
         bad_results = bad_result_plan.final_output["sub_question_results"]
         assert bad_results[0]["status"] == "failed"
         assert "unknown_tool" in bad_results[0]["error"]
+        assert bad_results[2]["status"] == "skipped"
 
     print("agent_task_sub_question_execution=passed")
 

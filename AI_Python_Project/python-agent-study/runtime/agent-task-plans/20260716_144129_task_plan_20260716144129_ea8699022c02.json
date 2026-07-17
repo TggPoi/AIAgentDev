@@ -1,0 +1,3246 @@
+{
+  "task_plan_id": "task_plan_20260716144129_ea8699022c02",
+  "task_kind": "question_decomposition",
+  "user_id": "tool_user_15_7_admin",
+  "original_query": "请分别研究输入缓存窗口建议是多少秒，以及为什么不应该在 Anim Notify 中决定最终伤害；最后比较它们分别属于哪个系统职责。",
+  "objective": "请分别研究输入缓存窗口建议是多少秒，以及为什么不应该在 Anim Notify 中决定最终伤害；最后比较它们分别属于哪个系统职责。",
+  "task_type": "qa",
+  "goal": "请分别研究输入缓存窗口建议是多少秒，以及为什么不应该在 Anim Notify 中决定最终伤害；最后比较它们分别属于哪个系统职责。",
+  "sub_questions": [
+    {
+      "sub_question_id": "sq_1",
+      "order": 1,
+      "question": "知识库中分别研究输入缓存窗口建议是多少秒的核心设计是什么？",
+      "purpose": "明确分别研究输入缓存窗口建议是多少秒在原始问题中的基础事实。",
+      "depends_on": [],
+      "information_source_hint": "knowledge_retrieval",
+      "reason": "先回答分别研究输入缓存窗口建议是多少秒，后续才能进行对比和综合。",
+      "expected_evidence": "分别研究输入缓存窗口建议是多少秒相关的设计文档、流程说明或实现记录。"
+    },
+    {
+      "sub_question_id": "sq_2",
+      "order": 2,
+      "question": "知识库中以及 什么不应该在 Anim Notify 中决定最终伤害的核心设计是什么？",
+      "purpose": "明确以及 什么不应该在 Anim Notify 中决定最终伤害在原始问题中的基础事实。",
+      "depends_on": [],
+      "information_source_hint": "knowledge_retrieval",
+      "reason": "先回答以及 什么不应该在 Anim Notify 中决定最终伤害，后续才能进行对比和综合。",
+      "expected_evidence": "以及 什么不应该在 Anim Notify 中决定最终伤害相关的设计文档、流程说明或实现记录。"
+    },
+    {
+      "sub_question_id": "sq_3",
+      "order": 3,
+      "question": "知识库中最后比较它们分别属于哪个系统职责的核心设计是什么？",
+      "purpose": "明确最后比较它们分别属于哪个系统职责在原始问题中的基础事实。",
+      "depends_on": [],
+      "information_source_hint": "knowledge_retrieval",
+      "reason": "先回答最后比较它们分别属于哪个系统职责，后续才能进行对比和综合。",
+      "expected_evidence": "最后比较它们分别属于哪个系统职责相关的设计文档、流程说明或实现记录。"
+    },
+    {
+      "sub_question_id": "sq_4",
+      "order": 4,
+      "question": "这些主题之间有什么协作关系和差异？",
+      "purpose": "把前置子问题整合成最终报告所需的综合判断。",
+      "depends_on": [
+        "sq_1",
+        "sq_2",
+        "sq_3"
+      ],
+      "information_source_hint": "knowledge_retrieval",
+      "reason": "综合问题负责把多个主题连接成完整答案。",
+      "expected_evidence": "各主题的共同点、差异点和链路协作关系。"
+    }
+  ],
+  "research_policy": {
+    "mode": "keyword",
+    "top_k": 3,
+    "candidate_k": 3,
+    "min_score": 0.0,
+    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+    "section_path": [],
+    "web_policy": "disabled"
+  },
+  "final_synthesis_instruction": "按子问题顺序回答后，整合模块设计、关系和差异，形成结构化报告。",
+  "source_query": "分别研究输入缓存窗口建议是多少秒 以及 什么不应该在 Anim Notify 中决定最终伤害 最后比较它们分别属于哪个系统职责",
+  "target_path": null,
+  "report_title": "分别研究输入缓存窗口建议是多少秒，以及 什么不应该在 Anim Notify 中报告",
+  "status": "completed_with_warnings",
+  "steps": [],
+  "final_output": {
+    "research_progress": {
+      "current_wave": 1,
+      "workers": {
+        "sq_1": {
+          "status": "partial",
+          "wave": 1,
+          "attempt": 1,
+          "evaluation": {
+            "verdict": "insufficient",
+            "confidence": 0.9,
+            "relevance": 0.8,
+            "coverage": 0.6,
+            "authority": 0.7,
+            "freshness_required": false,
+            "missing_points": [],
+            "recommended_action": "search_web",
+            "reason": "证据中仅包含一条关于输入缓存窗口建议时长（0.18～0.28秒）及由Montage Notify State控制开启与关闭的验收规则片段，但缺乏该设计的详细核心设计说明、流程文档或实现记录。其他相关证据仅涉及输入缓存属于客户端本地数据、Anim Notify职责等周边信息，无法充分支撑'核心设计是什么'这一问题的完整回答。"
+          },
+          "error": null
+        },
+        "sq_2": {
+          "status": "partial",
+          "wave": 1,
+          "attempt": 1,
+          "evaluation": {
+            "verdict": "insufficient",
+            "confidence": 0.95,
+            "relevance": 0.95,
+            "coverage": 0.9,
+            "authority": 0.9,
+            "freshness_required": false,
+            "missing_points": [
+              "以及 什么不应该在 Anim Notify 中决定最终伤害相关的设计文档、流程说明或实现记录。"
+            ],
+            "recommended_action": "stop_with_limitation",
+            "reason": "知识库中确实存在关于 Anim Notify 职责和伤害计算架构的文档（如 9.3 动画通知职责、29.2 动画驱动全部游戏逻辑、11. 伤害计算架构等），但这些文档的 visibility 为 department，allowed_departments 为 [\"development\"]，属于受限访问的内部文档。根据评估规则，不能引用或补写来自受限文档的内容。虽然候选回答引用了这些 chunk，但作为评估器，我不能验证这些内部文档的完整内容，且这些文档本身不属于公开可访问的证据。因此判定为 insufficient。"
+          },
+          "error": null
+        },
+        "sq_3": {
+          "status": "failed",
+          "wave": 1,
+          "attempt": 1,
+          "evaluation": null,
+          "error": "WORKER_TIMEOUT"
+        },
+        "sq_4": {
+          "status": "skipped",
+          "attempt": 0,
+          "evaluation": null,
+          "error": "DEPENDENCY_FAILED: sq_3"
+        }
+      },
+      "events": [
+        {
+          "event": "agent_task_research_wave_started",
+          "wave": 1,
+          "sub_question_ids": [
+            "sq_1",
+            "sq_2",
+            "sq_3"
+          ]
+        },
+        {
+          "event": "agent_task_evidence_evaluated",
+          "sub_question_id": "sq_1",
+          "wave": 1,
+          "attempt": 1,
+          "status": "completed",
+          "evaluation": {
+            "verdict": "insufficient",
+            "confidence": 0.9,
+            "relevance": 0.8,
+            "coverage": 0.6,
+            "authority": 0.7,
+            "freshness_required": false,
+            "missing_points": [],
+            "recommended_action": "search_web",
+            "reason": "证据中仅包含一条关于输入缓存窗口建议时长（0.18～0.28秒）及由Montage Notify State控制开启与关闭的验收规则片段，但缺乏该设计的详细核心设计说明、流程文档或实现记录。其他相关证据仅涉及输入缓存属于客户端本地数据、Anim Notify职责等周边信息，无法充分支撑'核心设计是什么'这一问题的完整回答。"
+          }
+        },
+        {
+          "event": "agent_task_evidence_evaluated",
+          "sub_question_id": "sq_2",
+          "wave": 1,
+          "attempt": 1,
+          "status": "completed",
+          "evaluation": {
+            "verdict": "insufficient",
+            "confidence": 0.95,
+            "relevance": 0.95,
+            "coverage": 0.9,
+            "authority": 0.9,
+            "freshness_required": false,
+            "missing_points": [
+              "以及 什么不应该在 Anim Notify 中决定最终伤害相关的设计文档、流程说明或实现记录。"
+            ],
+            "recommended_action": "stop_with_limitation",
+            "reason": "知识库中确实存在关于 Anim Notify 职责和伤害计算架构的文档（如 9.3 动画通知职责、29.2 动画驱动全部游戏逻辑、11. 伤害计算架构等），但这些文档的 visibility 为 department，allowed_departments 为 [\"development\"]，属于受限访问的内部文档。根据评估规则，不能引用或补写来自受限文档的内容。虽然候选回答引用了这些 chunk，但作为评估器，我不能验证这些内部文档的完整内容，且这些文档本身不属于公开可访问的证据。因此判定为 insufficient。"
+          }
+        }
+      ]
+    },
+    "sub_question_results": [
+      {
+        "sub_question_id": "sq_1",
+        "question": "知识库中分别研究输入缓存窗口建议是多少秒的核心设计是什么？",
+        "selected_tool": "knowledge_retrieval",
+        "tool_input": {
+          "query": "Anim Notify 不应直接决定最终伤害数值 原因",
+          "mode": "hybrid",
+          "top_k": 10
+        },
+        "tool_output": {
+          "doc_count": 10,
+          "top_doc_ids": [
+            "chunk_289996c1f6f37506",
+            "chunk_a17565f13e822fca",
+            "chunk_03c6e8091066457e",
+            "chunk_d9d3107066dfe6c0",
+            "chunk_38bfe2dc873bb560"
+          ],
+          "answer": "根据知识库中的信息，关于输入缓存窗口的建议时间及核心设计如下：\n\n1. **建议时间**：0.18～0.28 秒。\n2. **核心设计**：由 `Montage Notify State` 控制开启与关闭。\n\n参考文档：[chunk_a17565f13e822fca]",
+          "evidence": [
+            {
+              "id": "chunk_289996c1f6f37506",
+              "source": "elasticsearch",
+              "title": "9.3 动画通知职责",
+              "score": 0.03278688524590164,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_289996c1f6f37506",
+                "title": "9.3 动画通知职责",
+                "section_path": [
+                  "9. 连招系统",
+                  "9.3 动画通知职责"
+                ],
+                "heading_level": 3,
+                "section_index": 30,
+                "chunk_index": 29
+              },
+              "content_preview": "Anim Notify 可以负责： - 开始武器 Trace。 - 结束武器 Trace。 - 打开连招输入窗口。 - 关闭连招输入窗口。 - 触发脚步音效。 - 触发非关键 VFX。 Anim Notify 不应直接决定最终伤害数值。 -..."
+            },
+            {
+              "id": "chunk_a17565f13e822fca",
+              "source": "elasticsearch",
+              "title": "32. 增量更新测试",
+              "score": 0.03200204813108039,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_a17565f13e822fca",
+                "title": "32. 增量更新测试",
+                "section_path": [
+                  "32. 增量更新测试"
+                ],
+                "heading_level": 2,
+                "section_index": 103,
+                "chunk_index": 85
+              },
+              "content_preview": "`MARKDOWN_INCREMENTAL_MARKER_20260715` 新增验收规则：输入缓存窗口建议使用 0.18～0.28 秒，并由 Montage Notify State 控制开启与关闭。Anim Notify 只负责发出攻击..."
+            },
+            {
+              "id": "chunk_03c6e8091066457e",
+              "source": "elasticsearch",
+              "title": "29.2 动画驱动全部游戏逻辑",
+              "score": 0.030621785881252923,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_03c6e8091066457e",
+                "title": "29.2 动画驱动全部游戏逻辑",
+                "section_path": [
+                  "29. 架构风险",
+                  "29.2 动画驱动全部游戏逻辑"
+                ],
+                "heading_level": 3,
+                "section_index": 98,
+                "chunk_index": 80
+              },
+              "content_preview": "风险： 将攻击伤害、状态修改和技能结束全部放在动画蓝图或 Anim Notify 中。 后果： - 网络结果不稳定。 - 动画资源变化影响战斗逻辑。 - 自动化测试困难。 - 动画与程序相互锁死。 解决方案： 动画通知只发送时间点事件，最终..."
+            },
+            {
+              "id": "chunk_d9d3107066dfe6c0",
+              "source": "elasticsearch",
+              "title": "30. RAG 检索测试建议",
+              "score": 0.015873015873015872,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_d9d3107066dfe6c0",
+                "title": "30. RAG 检索测试建议",
+                "section_path": [
+                  "30. RAG 检索测试建议"
+                ],
+                "heading_level": 2,
+                "section_index": 101,
+                "chunk_index": 83
+              },
+              "content_preview": "本文档适合用于验证 Markdown 文档解析、章节分块和代码块处理。 建议测试以下问题： 1. `ACombatCharacterBase` 应该承担哪些职责？ 2. 为什么不应该在 Anim Notify 中直接决定最终伤害？ 3. U..."
+            },
+            {
+              "id": "chunk_38bfe2dc873bb560",
+              "source": "milvus",
+              "title": "11.1 计算流程",
+              "score": 0.015625,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_38bfe2dc873bb560",
+                "title": "11.1 计算流程",
+                "section_path": [
+                  "11. 伤害计算架构",
+                  "11.1 计算流程"
+                ],
+                "heading_level": 3,
+                "section_index": 36,
+                "chunk_index": 33
+              },
+              "content_preview": "```text 基础伤害 × 技能倍率 × 武器倍率 × 属性倍率 × 暴击倍率 × 元素克制倍率 - 防御减伤 - 格挡减伤 = 最终生命伤害 ``` 伤害系统还可以同时计算： - 韧性伤害。 - 精力伤害。 - 部位伤害。 - 元素积累..."
+            },
+            {
+              "id": "chunk_af83677f9b3a330f",
+              "source": "elasticsearch",
+              "title": "18.1 Animation Blueprint 职责",
+              "score": 0.015625,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_af83677f9b3a330f",
+                "title": "18.1 Animation Blueprint 职责",
+                "section_path": [
+                  "18. 动画架构",
+                  "18.1 Animation Blueprint 职责"
+                ],
+                "heading_level": 3,
+                "section_index": 63,
+                "chunk_index": 53
+              },
+              "content_preview": "动画蓝图负责： - 移动状态混合。 - 上下半身分层。 - 武器动画层。 - Aim Offset。 - Turn In Place。 - 受击动画表现。 - 读取只读战斗状态。 - 播放由技能触发的 Montage。 动画蓝图不应： -..."
+            },
+            {
+              "id": "chunk_3fa38d867275f4db",
+              "source": "milvus",
+              "title": "14.4 受击反应",
+              "score": 0.015384615384615385,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_3fa38d867275f4db",
+                "title": "14.4 受击反应",
+                "section_path": [
+                  "14. 闪避、格挡与受击",
+                  "14.4 受击反应"
+                ],
+                "heading_level": 3,
+                "section_index": 50,
+                "chunk_index": 44
+              },
+              "content_preview": "受击反应根据以下信息选择： - 伤害方向。 - 伤害等级。 - 是否暴击。 - 是否破韧。 - 是否击飞。 - 是否击倒。 - 目标当前状态。 - 角色体型。 受击动画只负责表现，是否进入硬直由战斗状态和韧性计算决定。 ---"
+            },
+            {
+              "id": "chunk_d9bef672e6b8f49d",
+              "source": "elasticsearch",
+              "title": "31. 总结",
+              "score": 0.015384615384615385,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_d9bef672e6b8f49d",
+                "title": "31. 总结",
+                "section_path": [
+                  "31. 总结"
+                ],
+                "heading_level": 2,
+                "section_index": 102,
+                "chunk_index": 84
+              },
+              "content_preview": "UE5 战斗系统的核心不是某一个攻击蓝图，而是一套明确分层的运行时架构。 推荐将系统拆分为： - 输入与决策。 - 状态管理。 - 技能执行。 - 动画协调。 - 命中检测。 - 伤害结算。 - 属性和状态效果。 - 表现反馈。 - AI..."
+            },
+            {
+              "id": "chunk_8edfd9c2c359d3eb",
+              "source": "milvus",
+              "title": "11.2 伤害计算服务",
+              "score": 0.015151515151515152,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_8edfd9c2c359d3eb",
+                "title": "11.2 伤害计算服务",
+                "section_path": [
+                  "11. 伤害计算架构",
+                  "11.2 伤害计算服务"
+                ],
+                "heading_level": 3,
+                "section_index": 37,
+                "chunk_index": 34
+              },
+              "content_preview": "建议将伤害计算集中在独立服务或 GAS Execution Calculation 中。 输入： - 攻击者属性快照。 - 目标属性快照。 - 技能配置。 - 武器配置。 - 命中部位。 - 攻击标签。 - 防御状态。 - 随机种子。 输出..."
+            },
+            {
+              "id": "chunk_b4c89e5d0b92dfee",
+              "source": "elasticsearch",
+              "title": "2.2 职责单一",
+              "score": 0.015151515151515152,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_b4c89e5d0b92dfee",
+                "title": "2.2 职责单一",
+                "section_path": [
+                  "2. 设计原则",
+                  "2.2 职责单一"
+                ],
+                "heading_level": 3,
+                "section_index": 4,
+                "chunk_index": 4
+              },
+              "content_preview": "每个模块只负责一类明确问题。 例如： - 属性组件负责保存和修改属性。 - 伤害计算模块负责计算最终伤害。 - 目标锁定组件负责目标筛选和切换。 - 动画层负责视觉表现，不负责决定最终伤害。 - UI 层负责展示状态，不直接修改战斗数据。"
+            }
+          ]
+        },
+        "tool_calls": [
+          {
+            "call_id": "call_1177ce4736444fa6a7f58cfa",
+            "round": 1,
+            "tool_name": "knowledge_retrieval",
+            "tool_input": {
+              "query": "输入缓存窗口建议时长 核心设计",
+              "mode": "hybrid",
+              "top_k": 10
+            },
+            "tool_output": {
+              "doc_count": 10,
+              "top_doc_ids": [
+                "chunk_a17565f13e822fca",
+                "chunk_5ad9e0ba99c60ed5",
+                "chunk_cb6b3bd92cfc6346",
+                "chunk_2310e11ae15a8ee2",
+                "chunk_afdf11b82350e6d7"
+              ],
+              "answer": "根据知识库内容，输入缓存窗口建议使用 **0.18～0.28 秒**，其核心设计是**由 Montage Notify State 控制开启与关闭** [chunk_a17565f13e822fca]。",
+              "evidence": [
+                {
+                  "id": "chunk_a17565f13e822fca",
+                  "source": "elasticsearch",
+                  "title": "32. 增量更新测试",
+                  "score": 0.03278688524590164,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_a17565f13e822fca",
+                    "title": "32. 增量更新测试",
+                    "section_path": [
+                      "32. 增量更新测试"
+                    ],
+                    "heading_level": 2,
+                    "section_index": 103,
+                    "chunk_index": 85
+                  },
+                  "content_preview": "`MARKDOWN_INCREMENTAL_MARKER_20260715` 新增验收规则：输入缓存窗口建议使用 0.18～0.28 秒，并由 Montage Notify State 控制开启与关闭。Anim Notify 只负责发出攻击..."
+                },
+                {
+                  "id": "chunk_5ad9e0ba99c60ed5",
+                  "source": "elasticsearch",
+                  "title": "21.1 权威边界",
+                  "score": 0.031754032258064516,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_5ad9e0ba99c60ed5",
+                    "title": "21.1 权威边界",
+                    "section_path": [
+                      "21. 网络同步",
+                      "21.1 权威边界"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 73,
+                    "chunk_index": 60
+                  },
+                  "content_preview": "服务端权威数据： - 生命值。 - 精力值。 - 韧性值。 - 技能激活结果。 - 命中结果。 - 状态效果。 - 死亡状态。 - 奖励掉落。 客户端本地数据： - 输入缓存。 - 摄像机抖动。 - 非关键 UI 动画。 - 部分预测动画。..."
+                },
+                {
+                  "id": "chunk_cb6b3bd92cfc6346",
+                  "source": "elasticsearch",
+                  "title": "2.5 可测试与可观测",
+                  "score": 0.03149801587301587,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_cb6b3bd92cfc6346",
+                    "title": "2.5 可测试与可观测",
+                    "section_path": [
+                      "2. 设计原则",
+                      "2.5 可测试与可观测"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 7,
+                    "chunk_index": 7
+                  },
+                  "content_preview": "核心战斗计算应尽量设计成纯逻辑或低依赖逻辑，便于自动化测试。 系统应记录： - 技能激活与结束。 - 命中判定。 - 伤害输入与输出。 - 属性变化。 - 状态效果添加与移除。 - 网络预测失败。 - 服务器校正。 - 战斗状态切换。 --..."
+                },
+                {
+                  "id": "chunk_2310e11ae15a8ee2",
+                  "source": "elasticsearch",
+                  "title": "9.2 连招执行流程",
+                  "score": 0.016129032258064516,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_2310e11ae15a8ee2",
+                    "title": "9.2 连招执行流程",
+                    "section_path": [
+                      "9. 连招系统",
+                      "9.2 连招执行流程"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 29,
+                    "chunk_index": 28
+                  },
+                  "content_preview": "```mermaid sequenceDiagram participant Player as 玩家输入 participant Router as 输入路由 participant Ability as 攻击技能 participant..."
+                },
+                {
+                  "id": "chunk_afdf11b82350e6d7",
+                  "source": "milvus",
+                  "title": "29.4 客户端决定伤害",
+                  "score": 0.015873015873015872,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_afdf11b82350e6d7",
+                    "title": "29.4 客户端决定伤害",
+                    "section_path": [
+                      "29. 架构风险",
+                      "29.4 客户端决定伤害"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 100,
+                    "chunk_index": 82
+                  },
+                  "content_preview": "风险： 客户端直接上传最终伤害值。 后果： - 容易作弊。 - 网络结果不一致。 - 服务器无法验证战斗上下文。 解决方案： 客户端仅提交动作和命中候选，服务器重新验证并计算最终结果。 ---"
+                },
+                {
+                  "id": "chunk_c19a35d822816c43",
+                  "source": "milvus",
+                  "title": "13.3 叠加策略",
+                  "score": 0.015384615384615385,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_c19a35d822816c43",
+                    "title": "13.3 叠加策略",
+                    "section_path": [
+                      "13. 状态效果系统",
+                      "13.3 叠加策略"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 45,
+                    "chunk_index": 40
+                  },
+                  "content_preview": "常见策略： - 不可叠加，重复施加刷新时间。 - 可叠加层数，独立计时。 - 可叠加层数，共享计时。 - 新效果覆盖旧效果。 - 只保留数值更高的效果。 - 同来源不可叠加，不同来源可叠加。 ---"
+                },
+                {
+                  "id": "chunk_289996c1f6f37506",
+                  "source": "elasticsearch",
+                  "title": "9.3 动画通知职责",
+                  "score": 0.015384615384615385,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_289996c1f6f37506",
+                    "title": "9.3 动画通知职责",
+                    "section_path": [
+                      "9. 连招系统",
+                      "9.3 动画通知职责"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 30,
+                    "chunk_index": 29
+                  },
+                  "content_preview": "Anim Notify 可以负责： - 开始武器 Trace。 - 结束武器 Trace。 - 打开连招输入窗口。 - 关闭连招输入窗口。 - 触发脚步音效。 - 触发非关键 VFX。 Anim Notify 不应直接决定最终伤害数值。 -..."
+                },
+                {
+                  "id": "chunk_1a89af9b2ee4ca07",
+                  "source": "milvus",
+                  "title": "阶段五：联机与优化",
+                  "score": 0.015151515151515152,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_1a89af9b2ee4ca07",
+                    "title": "阶段五：联机与优化",
+                    "section_path": [
+                      "27. 推荐开发顺序",
+                      "阶段五：联机与优化"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 94,
+                    "chunk_index": 77
+                  },
+                  "content_preview": "- 明确服务器权威边界。 - 接入客户端预测。 - 增加服务器校正。 - 优化属性同步。 - 完善自动化测试。 - 完善性能分析和日志。 ---"
+                },
+                {
+                  "id": "chunk_911b855db4647690",
+                  "source": "elasticsearch",
+                  "title": "7.2 状态转换规则",
+                  "score": 0.015151515151515152,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_911b855db4647690",
+                    "title": "7.2 状态转换规则",
+                    "section_path": [
+                      "7. 战斗状态机",
+                      "7.2 状态转换规则"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 22,
+                    "chunk_index": 23
+                  },
+                  "content_preview": "```mermaid stateDiagram-v2 [*] --> Idle Idle --> Attacking: 普通攻击输入 Idle --> Blocking: 格挡输入 Idle --> Dodging: 闪避输入 Attack..."
+                },
+                {
+                  "id": "chunk_9ba5a344e87f4248",
+                  "source": "milvus",
+                  "title": "15.3 目标切换",
+                  "score": 0.014925373134328358,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_9ba5a344e87f4248",
+                    "title": "15.3 目标切换",
+                    "section_path": [
+                      "15. 目标锁定系统",
+                      "15.3 目标切换"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 54,
+                    "chunk_index": 47
+                  },
+                  "content_preview": "左右切换目标时，不应重新使用全局最高评分。 应基于当前目标的屏幕位置，寻找左侧或右侧最近候选目标。 ---"
+                }
+              ]
+            },
+            "status": "completed",
+            "error": null,
+            "reason": ""
+          },
+          {
+            "call_id": "call_f3202bf8f3e845c0a4ee818e",
+            "round": 2,
+            "tool_name": "knowledge_retrieval",
+            "tool_input": {
+              "query": "Anim Notify 不应直接决定最终伤害数值 原因",
+              "mode": "hybrid",
+              "top_k": 10
+            },
+            "tool_output": {
+              "doc_count": 10,
+              "top_doc_ids": [
+                "chunk_289996c1f6f37506",
+                "chunk_a17565f13e822fca",
+                "chunk_03c6e8091066457e",
+                "chunk_d9d3107066dfe6c0",
+                "chunk_38bfe2dc873bb560"
+              ],
+              "answer": "根据知识库中的信息，关于输入缓存窗口的建议时间及核心设计如下：\n\n1. **建议时间**：0.18～0.28 秒。\n2. **核心设计**：由 `Montage Notify State` 控制开启与关闭。\n\n参考文档：[chunk_a17565f13e822fca]",
+              "evidence": [
+                {
+                  "id": "chunk_289996c1f6f37506",
+                  "source": "elasticsearch",
+                  "title": "9.3 动画通知职责",
+                  "score": 0.03278688524590164,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_289996c1f6f37506",
+                    "title": "9.3 动画通知职责",
+                    "section_path": [
+                      "9. 连招系统",
+                      "9.3 动画通知职责"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 30,
+                    "chunk_index": 29
+                  },
+                  "content_preview": "Anim Notify 可以负责： - 开始武器 Trace。 - 结束武器 Trace。 - 打开连招输入窗口。 - 关闭连招输入窗口。 - 触发脚步音效。 - 触发非关键 VFX。 Anim Notify 不应直接决定最终伤害数值。 -..."
+                },
+                {
+                  "id": "chunk_a17565f13e822fca",
+                  "source": "elasticsearch",
+                  "title": "32. 增量更新测试",
+                  "score": 0.03200204813108039,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_a17565f13e822fca",
+                    "title": "32. 增量更新测试",
+                    "section_path": [
+                      "32. 增量更新测试"
+                    ],
+                    "heading_level": 2,
+                    "section_index": 103,
+                    "chunk_index": 85
+                  },
+                  "content_preview": "`MARKDOWN_INCREMENTAL_MARKER_20260715` 新增验收规则：输入缓存窗口建议使用 0.18～0.28 秒，并由 Montage Notify State 控制开启与关闭。Anim Notify 只负责发出攻击..."
+                },
+                {
+                  "id": "chunk_03c6e8091066457e",
+                  "source": "elasticsearch",
+                  "title": "29.2 动画驱动全部游戏逻辑",
+                  "score": 0.030621785881252923,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_03c6e8091066457e",
+                    "title": "29.2 动画驱动全部游戏逻辑",
+                    "section_path": [
+                      "29. 架构风险",
+                      "29.2 动画驱动全部游戏逻辑"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 98,
+                    "chunk_index": 80
+                  },
+                  "content_preview": "风险： 将攻击伤害、状态修改和技能结束全部放在动画蓝图或 Anim Notify 中。 后果： - 网络结果不稳定。 - 动画资源变化影响战斗逻辑。 - 自动化测试困难。 - 动画与程序相互锁死。 解决方案： 动画通知只发送时间点事件，最终..."
+                },
+                {
+                  "id": "chunk_d9d3107066dfe6c0",
+                  "source": "elasticsearch",
+                  "title": "30. RAG 检索测试建议",
+                  "score": 0.015873015873015872,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_d9d3107066dfe6c0",
+                    "title": "30. RAG 检索测试建议",
+                    "section_path": [
+                      "30. RAG 检索测试建议"
+                    ],
+                    "heading_level": 2,
+                    "section_index": 101,
+                    "chunk_index": 83
+                  },
+                  "content_preview": "本文档适合用于验证 Markdown 文档解析、章节分块和代码块处理。 建议测试以下问题： 1. `ACombatCharacterBase` 应该承担哪些职责？ 2. 为什么不应该在 Anim Notify 中直接决定最终伤害？ 3. U..."
+                },
+                {
+                  "id": "chunk_38bfe2dc873bb560",
+                  "source": "milvus",
+                  "title": "11.1 计算流程",
+                  "score": 0.015625,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_38bfe2dc873bb560",
+                    "title": "11.1 计算流程",
+                    "section_path": [
+                      "11. 伤害计算架构",
+                      "11.1 计算流程"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 36,
+                    "chunk_index": 33
+                  },
+                  "content_preview": "```text 基础伤害 × 技能倍率 × 武器倍率 × 属性倍率 × 暴击倍率 × 元素克制倍率 - 防御减伤 - 格挡减伤 = 最终生命伤害 ``` 伤害系统还可以同时计算： - 韧性伤害。 - 精力伤害。 - 部位伤害。 - 元素积累..."
+                },
+                {
+                  "id": "chunk_af83677f9b3a330f",
+                  "source": "elasticsearch",
+                  "title": "18.1 Animation Blueprint 职责",
+                  "score": 0.015625,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_af83677f9b3a330f",
+                    "title": "18.1 Animation Blueprint 职责",
+                    "section_path": [
+                      "18. 动画架构",
+                      "18.1 Animation Blueprint 职责"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 63,
+                    "chunk_index": 53
+                  },
+                  "content_preview": "动画蓝图负责： - 移动状态混合。 - 上下半身分层。 - 武器动画层。 - Aim Offset。 - Turn In Place。 - 受击动画表现。 - 读取只读战斗状态。 - 播放由技能触发的 Montage。 动画蓝图不应： -..."
+                },
+                {
+                  "id": "chunk_3fa38d867275f4db",
+                  "source": "milvus",
+                  "title": "14.4 受击反应",
+                  "score": 0.015384615384615385,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_3fa38d867275f4db",
+                    "title": "14.4 受击反应",
+                    "section_path": [
+                      "14. 闪避、格挡与受击",
+                      "14.4 受击反应"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 50,
+                    "chunk_index": 44
+                  },
+                  "content_preview": "受击反应根据以下信息选择： - 伤害方向。 - 伤害等级。 - 是否暴击。 - 是否破韧。 - 是否击飞。 - 是否击倒。 - 目标当前状态。 - 角色体型。 受击动画只负责表现，是否进入硬直由战斗状态和韧性计算决定。 ---"
+                },
+                {
+                  "id": "chunk_d9bef672e6b8f49d",
+                  "source": "elasticsearch",
+                  "title": "31. 总结",
+                  "score": 0.015384615384615385,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_d9bef672e6b8f49d",
+                    "title": "31. 总结",
+                    "section_path": [
+                      "31. 总结"
+                    ],
+                    "heading_level": 2,
+                    "section_index": 102,
+                    "chunk_index": 84
+                  },
+                  "content_preview": "UE5 战斗系统的核心不是某一个攻击蓝图，而是一套明确分层的运行时架构。 推荐将系统拆分为： - 输入与决策。 - 状态管理。 - 技能执行。 - 动画协调。 - 命中检测。 - 伤害结算。 - 属性和状态效果。 - 表现反馈。 - AI..."
+                },
+                {
+                  "id": "chunk_8edfd9c2c359d3eb",
+                  "source": "milvus",
+                  "title": "11.2 伤害计算服务",
+                  "score": 0.015151515151515152,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_8edfd9c2c359d3eb",
+                    "title": "11.2 伤害计算服务",
+                    "section_path": [
+                      "11. 伤害计算架构",
+                      "11.2 伤害计算服务"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 37,
+                    "chunk_index": 34
+                  },
+                  "content_preview": "建议将伤害计算集中在独立服务或 GAS Execution Calculation 中。 输入： - 攻击者属性快照。 - 目标属性快照。 - 技能配置。 - 武器配置。 - 命中部位。 - 攻击标签。 - 防御状态。 - 随机种子。 输出..."
+                },
+                {
+                  "id": "chunk_b4c89e5d0b92dfee",
+                  "source": "elasticsearch",
+                  "title": "2.2 职责单一",
+                  "score": 0.015151515151515152,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_b4c89e5d0b92dfee",
+                    "title": "2.2 职责单一",
+                    "section_path": [
+                      "2. 设计原则",
+                      "2.2 职责单一"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 4,
+                    "chunk_index": 4
+                  },
+                  "content_preview": "每个模块只负责一类明确问题。 例如： - 属性组件负责保存和修改属性。 - 伤害计算模块负责计算最终伤害。 - 目标锁定组件负责目标筛选和切换。 - 动画层负责视觉表现，不负责决定最终伤害。 - UI 层负责展示状态，不直接修改战斗数据。"
+                }
+              ]
+            },
+            "status": "completed",
+            "error": null,
+            "reason": ""
+          }
+        ],
+        "answer": "根据知识库内容，输入缓存窗口的建议时长及核心设计如下：\n\n* **建议时长**：0.18～0.28 秒。\n* **核心设计**：由 Montage Notify State 控制开启与关闭 [chunk_a17565f13e822fca]。",
+        "evidence": [
+          {
+            "id": "chunk_a17565f13e822fca",
+            "source": "elasticsearch",
+            "title": "32. 增量更新测试",
+            "score": 0.03278688524590164,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_a17565f13e822fca",
+              "title": "32. 增量更新测试",
+              "section_path": [
+                "32. 增量更新测试"
+              ],
+              "heading_level": 2,
+              "section_index": 103,
+              "chunk_index": 85
+            },
+            "content_preview": "`MARKDOWN_INCREMENTAL_MARKER_20260715` 新增验收规则：输入缓存窗口建议使用 0.18～0.28 秒，并由 Montage Notify State 控制开启与关闭。Anim Notify 只负责发出攻击..."
+          },
+          {
+            "id": "chunk_5ad9e0ba99c60ed5",
+            "source": "elasticsearch",
+            "title": "21.1 权威边界",
+            "score": 0.031754032258064516,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_5ad9e0ba99c60ed5",
+              "title": "21.1 权威边界",
+              "section_path": [
+                "21. 网络同步",
+                "21.1 权威边界"
+              ],
+              "heading_level": 3,
+              "section_index": 73,
+              "chunk_index": 60
+            },
+            "content_preview": "服务端权威数据： - 生命值。 - 精力值。 - 韧性值。 - 技能激活结果。 - 命中结果。 - 状态效果。 - 死亡状态。 - 奖励掉落。 客户端本地数据： - 输入缓存。 - 摄像机抖动。 - 非关键 UI 动画。 - 部分预测动画。..."
+          },
+          {
+            "id": "chunk_cb6b3bd92cfc6346",
+            "source": "elasticsearch",
+            "title": "2.5 可测试与可观测",
+            "score": 0.03149801587301587,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_cb6b3bd92cfc6346",
+              "title": "2.5 可测试与可观测",
+              "section_path": [
+                "2. 设计原则",
+                "2.5 可测试与可观测"
+              ],
+              "heading_level": 3,
+              "section_index": 7,
+              "chunk_index": 7
+            },
+            "content_preview": "核心战斗计算应尽量设计成纯逻辑或低依赖逻辑，便于自动化测试。 系统应记录： - 技能激活与结束。 - 命中判定。 - 伤害输入与输出。 - 属性变化。 - 状态效果添加与移除。 - 网络预测失败。 - 服务器校正。 - 战斗状态切换。 --..."
+          },
+          {
+            "id": "chunk_2310e11ae15a8ee2",
+            "source": "elasticsearch",
+            "title": "9.2 连招执行流程",
+            "score": 0.016129032258064516,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_2310e11ae15a8ee2",
+              "title": "9.2 连招执行流程",
+              "section_path": [
+                "9. 连招系统",
+                "9.2 连招执行流程"
+              ],
+              "heading_level": 3,
+              "section_index": 29,
+              "chunk_index": 28
+            },
+            "content_preview": "```mermaid sequenceDiagram participant Player as 玩家输入 participant Router as 输入路由 participant Ability as 攻击技能 participant..."
+          },
+          {
+            "id": "chunk_afdf11b82350e6d7",
+            "source": "milvus",
+            "title": "29.4 客户端决定伤害",
+            "score": 0.015873015873015872,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_afdf11b82350e6d7",
+              "title": "29.4 客户端决定伤害",
+              "section_path": [
+                "29. 架构风险",
+                "29.4 客户端决定伤害"
+              ],
+              "heading_level": 3,
+              "section_index": 100,
+              "chunk_index": 82
+            },
+            "content_preview": "风险： 客户端直接上传最终伤害值。 后果： - 容易作弊。 - 网络结果不一致。 - 服务器无法验证战斗上下文。 解决方案： 客户端仅提交动作和命中候选，服务器重新验证并计算最终结果。 ---"
+          },
+          {
+            "id": "chunk_c19a35d822816c43",
+            "source": "milvus",
+            "title": "13.3 叠加策略",
+            "score": 0.015384615384615385,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_c19a35d822816c43",
+              "title": "13.3 叠加策略",
+              "section_path": [
+                "13. 状态效果系统",
+                "13.3 叠加策略"
+              ],
+              "heading_level": 3,
+              "section_index": 45,
+              "chunk_index": 40
+            },
+            "content_preview": "常见策略： - 不可叠加，重复施加刷新时间。 - 可叠加层数，独立计时。 - 可叠加层数，共享计时。 - 新效果覆盖旧效果。 - 只保留数值更高的效果。 - 同来源不可叠加，不同来源可叠加。 ---"
+          },
+          {
+            "id": "chunk_289996c1f6f37506",
+            "source": "elasticsearch",
+            "title": "9.3 动画通知职责",
+            "score": 0.015384615384615385,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_289996c1f6f37506",
+              "title": "9.3 动画通知职责",
+              "section_path": [
+                "9. 连招系统",
+                "9.3 动画通知职责"
+              ],
+              "heading_level": 3,
+              "section_index": 30,
+              "chunk_index": 29
+            },
+            "content_preview": "Anim Notify 可以负责： - 开始武器 Trace。 - 结束武器 Trace。 - 打开连招输入窗口。 - 关闭连招输入窗口。 - 触发脚步音效。 - 触发非关键 VFX。 Anim Notify 不应直接决定最终伤害数值。 -..."
+          },
+          {
+            "id": "chunk_1a89af9b2ee4ca07",
+            "source": "milvus",
+            "title": "阶段五：联机与优化",
+            "score": 0.015151515151515152,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_1a89af9b2ee4ca07",
+              "title": "阶段五：联机与优化",
+              "section_path": [
+                "27. 推荐开发顺序",
+                "阶段五：联机与优化"
+              ],
+              "heading_level": 3,
+              "section_index": 94,
+              "chunk_index": 77
+            },
+            "content_preview": "- 明确服务器权威边界。 - 接入客户端预测。 - 增加服务器校正。 - 优化属性同步。 - 完善自动化测试。 - 完善性能分析和日志。 ---"
+          },
+          {
+            "id": "chunk_911b855db4647690",
+            "source": "elasticsearch",
+            "title": "7.2 状态转换规则",
+            "score": 0.015151515151515152,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_911b855db4647690",
+              "title": "7.2 状态转换规则",
+              "section_path": [
+                "7. 战斗状态机",
+                "7.2 状态转换规则"
+              ],
+              "heading_level": 3,
+              "section_index": 22,
+              "chunk_index": 23
+            },
+            "content_preview": "```mermaid stateDiagram-v2 [*] --> Idle Idle --> Attacking: 普通攻击输入 Idle --> Blocking: 格挡输入 Idle --> Dodging: 闪避输入 Attack..."
+          },
+          {
+            "id": "chunk_9ba5a344e87f4248",
+            "source": "milvus",
+            "title": "15.3 目标切换",
+            "score": 0.014925373134328358,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_9ba5a344e87f4248",
+              "title": "15.3 目标切换",
+              "section_path": [
+                "15. 目标锁定系统",
+                "15.3 目标切换"
+              ],
+              "heading_level": 3,
+              "section_index": 54,
+              "chunk_index": 47
+            },
+            "content_preview": "左右切换目标时，不应重新使用全局最高评分。 应基于当前目标的屏幕位置，寻找左侧或右侧最近候选目标。 ---"
+          },
+          {
+            "id": "chunk_03c6e8091066457e",
+            "source": "elasticsearch",
+            "title": "29.2 动画驱动全部游戏逻辑",
+            "score": 0.030621785881252923,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_03c6e8091066457e",
+              "title": "29.2 动画驱动全部游戏逻辑",
+              "section_path": [
+                "29. 架构风险",
+                "29.2 动画驱动全部游戏逻辑"
+              ],
+              "heading_level": 3,
+              "section_index": 98,
+              "chunk_index": 80
+            },
+            "content_preview": "风险： 将攻击伤害、状态修改和技能结束全部放在动画蓝图或 Anim Notify 中。 后果： - 网络结果不稳定。 - 动画资源变化影响战斗逻辑。 - 自动化测试困难。 - 动画与程序相互锁死。 解决方案： 动画通知只发送时间点事件，最终..."
+          },
+          {
+            "id": "chunk_d9d3107066dfe6c0",
+            "source": "elasticsearch",
+            "title": "30. RAG 检索测试建议",
+            "score": 0.015873015873015872,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_d9d3107066dfe6c0",
+              "title": "30. RAG 检索测试建议",
+              "section_path": [
+                "30. RAG 检索测试建议"
+              ],
+              "heading_level": 2,
+              "section_index": 101,
+              "chunk_index": 83
+            },
+            "content_preview": "本文档适合用于验证 Markdown 文档解析、章节分块和代码块处理。 建议测试以下问题： 1. `ACombatCharacterBase` 应该承担哪些职责？ 2. 为什么不应该在 Anim Notify 中直接决定最终伤害？ 3. U..."
+          },
+          {
+            "id": "chunk_38bfe2dc873bb560",
+            "source": "milvus",
+            "title": "11.1 计算流程",
+            "score": 0.015625,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_38bfe2dc873bb560",
+              "title": "11.1 计算流程",
+              "section_path": [
+                "11. 伤害计算架构",
+                "11.1 计算流程"
+              ],
+              "heading_level": 3,
+              "section_index": 36,
+              "chunk_index": 33
+            },
+            "content_preview": "```text 基础伤害 × 技能倍率 × 武器倍率 × 属性倍率 × 暴击倍率 × 元素克制倍率 - 防御减伤 - 格挡减伤 = 最终生命伤害 ``` 伤害系统还可以同时计算： - 韧性伤害。 - 精力伤害。 - 部位伤害。 - 元素积累..."
+          },
+          {
+            "id": "chunk_af83677f9b3a330f",
+            "source": "elasticsearch",
+            "title": "18.1 Animation Blueprint 职责",
+            "score": 0.015625,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_af83677f9b3a330f",
+              "title": "18.1 Animation Blueprint 职责",
+              "section_path": [
+                "18. 动画架构",
+                "18.1 Animation Blueprint 职责"
+              ],
+              "heading_level": 3,
+              "section_index": 63,
+              "chunk_index": 53
+            },
+            "content_preview": "动画蓝图负责： - 移动状态混合。 - 上下半身分层。 - 武器动画层。 - Aim Offset。 - Turn In Place。 - 受击动画表现。 - 读取只读战斗状态。 - 播放由技能触发的 Montage。 动画蓝图不应： -..."
+          },
+          {
+            "id": "chunk_3fa38d867275f4db",
+            "source": "milvus",
+            "title": "14.4 受击反应",
+            "score": 0.015384615384615385,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_3fa38d867275f4db",
+              "title": "14.4 受击反应",
+              "section_path": [
+                "14. 闪避、格挡与受击",
+                "14.4 受击反应"
+              ],
+              "heading_level": 3,
+              "section_index": 50,
+              "chunk_index": 44
+            },
+            "content_preview": "受击反应根据以下信息选择： - 伤害方向。 - 伤害等级。 - 是否暴击。 - 是否破韧。 - 是否击飞。 - 是否击倒。 - 目标当前状态。 - 角色体型。 受击动画只负责表现，是否进入硬直由战斗状态和韧性计算决定。 ---"
+          },
+          {
+            "id": "chunk_d9bef672e6b8f49d",
+            "source": "elasticsearch",
+            "title": "31. 总结",
+            "score": 0.015384615384615385,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_d9bef672e6b8f49d",
+              "title": "31. 总结",
+              "section_path": [
+                "31. 总结"
+              ],
+              "heading_level": 2,
+              "section_index": 102,
+              "chunk_index": 84
+            },
+            "content_preview": "UE5 战斗系统的核心不是某一个攻击蓝图，而是一套明确分层的运行时架构。 推荐将系统拆分为： - 输入与决策。 - 状态管理。 - 技能执行。 - 动画协调。 - 命中检测。 - 伤害结算。 - 属性和状态效果。 - 表现反馈。 - AI..."
+          },
+          {
+            "id": "chunk_8edfd9c2c359d3eb",
+            "source": "milvus",
+            "title": "11.2 伤害计算服务",
+            "score": 0.015151515151515152,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_8edfd9c2c359d3eb",
+              "title": "11.2 伤害计算服务",
+              "section_path": [
+                "11. 伤害计算架构",
+                "11.2 伤害计算服务"
+              ],
+              "heading_level": 3,
+              "section_index": 37,
+              "chunk_index": 34
+            },
+            "content_preview": "建议将伤害计算集中在独立服务或 GAS Execution Calculation 中。 输入： - 攻击者属性快照。 - 目标属性快照。 - 技能配置。 - 武器配置。 - 命中部位。 - 攻击标签。 - 防御状态。 - 随机种子。 输出..."
+          },
+          {
+            "id": "chunk_b4c89e5d0b92dfee",
+            "source": "elasticsearch",
+            "title": "2.2 职责单一",
+            "score": 0.015151515151515152,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_b4c89e5d0b92dfee",
+              "title": "2.2 职责单一",
+              "section_path": [
+                "2. 设计原则",
+                "2.2 职责单一"
+              ],
+              "heading_level": 3,
+              "section_index": 4,
+              "chunk_index": 4
+            },
+            "content_preview": "每个模块只负责一类明确问题。 例如： - 属性组件负责保存和修改属性。 - 伤害计算模块负责计算最终伤害。 - 目标锁定组件负责目标筛选和切换。 - 动画层负责视觉表现，不负责决定最终伤害。 - UI 层负责展示状态，不直接修改战斗数据。"
+          }
+        ],
+        "status": "partial",
+        "error": null,
+        "attempt_count": 1,
+        "attempts": [
+          {
+            "attempt": 1,
+            "selected_tool": "knowledge_retrieval",
+            "status": "completed",
+            "tool_call_count": 2,
+            "evaluation": {
+              "verdict": "insufficient",
+              "confidence": 0.9,
+              "relevance": 0.8,
+              "coverage": 0.6,
+              "authority": 0.7,
+              "freshness_required": false,
+              "missing_points": [],
+              "recommended_action": "search_web",
+              "reason": "证据中仅包含一条关于输入缓存窗口建议时长（0.18～0.28秒）及由Montage Notify State控制开启与关闭的验收规则片段，但缺乏该设计的详细核心设计说明、流程文档或实现记录。其他相关证据仅涉及输入缓存属于客户端本地数据、Anim Notify职责等周边信息，无法充分支撑'核心设计是什么'这一问题的完整回答。"
+            }
+          }
+        ],
+        "evaluation": {
+          "verdict": "insufficient",
+          "confidence": 0.9,
+          "relevance": 0.8,
+          "coverage": 0.6,
+          "authority": 0.7,
+          "freshness_required": false,
+          "missing_points": [],
+          "recommended_action": "search_web",
+          "reason": "证据中仅包含一条关于输入缓存窗口建议时长（0.18～0.28秒）及由Montage Notify State控制开启与关闭的验收规则片段，但缺乏该设计的详细核心设计说明、流程文档或实现记录。其他相关证据仅涉及输入缓存属于客户端本地数据、Anim Notify职责等周边信息，无法充分支撑'核心设计是什么'这一问题的完整回答。"
+        },
+        "source_types": [
+          "elasticsearch",
+          "milvus"
+        ],
+        "warnings": [
+          "证据不足，但本次请求未授权 WebSearch。"
+        ]
+      },
+      {
+        "sub_question_id": "sq_2",
+        "question": "知识库中以及 什么不应该在 Anim Notify 中决定最终伤害的核心设计是什么？",
+        "selected_tool": "knowledge_retrieval",
+        "tool_input": {
+          "query": "Anim Notify 决定最终伤害 设计",
+          "mode": "hybrid",
+          "top_k": 10
+        },
+        "tool_output": {
+          "doc_count": 10,
+          "top_doc_ids": [
+            "chunk_289996c1f6f37506",
+            "chunk_a17565f13e822fca",
+            "chunk_03c6e8091066457e",
+            "chunk_2310e11ae15a8ee2",
+            "chunk_862012114c6a7dfa"
+          ],
+          "answer": "根据知识库，不应该在 Anim Notify 中决定最终伤害的核心设计是**职责分离（单一职责原则）**，即动画层仅负责视觉表现和发送时间点事件，最终伤害必须由服务端权威的伤害计算模块统一结算。\n\n**不应该在 Anim Notify 中决定最终伤害的原因（风险与后果）：**\n1. **网络结果不稳定**：将伤害逻辑放在动画中会导致网络同步时出现不稳定现象 [chunk_03c6e8091066457e]。\n2. **动画资源变化影响战斗逻辑**：如果动画资源发生修改，会直接干扰或破坏战斗逻辑 [chunk_03c6e8091066457e]。\n3. **自动化测试困难**：动画与逻辑高度耦合会导致难以进行独立的自动化测试 [chunk_03c6e8091066457e]。\n4. **动画与程序相互锁死**：逻辑与动画绑定会使得程序和美术资源相互制约，难以维护 [chunk_03c6e8091066457e]。\n\n**正确的设计方案：**\n- **Anim Notify 的职责**：只负责发出攻击时间点事件（如开始/结束武器 Trace、打开/关闭连招输入窗口、触发脚步音效和非关键 VFX 等），不直接决定最终伤害数值 [chunk_289996c1f6f37506] [chunk_03c6e8091066457e]。\n- **最终伤害的结算**：最终伤害必须由**服务端权威的伤害计算模块**（或独立的伤害计算服务/GAS Execution Calculation）结合属性、Gameplay Effect 和命中上下文统一结算 [chunk_a17565f13e822fca] [chunk_03c6e8091066457e]。动画层只负责表现，不负责决定最终伤害 [chunk_b4c89e5d0b92dfee]。",
+          "evidence": [
+            {
+              "id": "chunk_289996c1f6f37506",
+              "source": "elasticsearch",
+              "title": "9.3 动画通知职责",
+              "score": 0.03278688524590164,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_289996c1f6f37506",
+                "title": "9.3 动画通知职责",
+                "section_path": [
+                  "9. 连招系统",
+                  "9.3 动画通知职责"
+                ],
+                "heading_level": 3,
+                "section_index": 30,
+                "chunk_index": 29
+              },
+              "content_preview": "Anim Notify 可以负责： - 开始武器 Trace。 - 结束武器 Trace。 - 打开连招输入窗口。 - 关闭连招输入窗口。 - 触发脚步音效。 - 触发非关键 VFX。 Anim Notify 不应直接决定最终伤害数值。 -..."
+            },
+            {
+              "id": "chunk_a17565f13e822fca",
+              "source": "elasticsearch",
+              "title": "32. 增量更新测试",
+              "score": 0.03200204813108039,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_a17565f13e822fca",
+                "title": "32. 增量更新测试",
+                "section_path": [
+                  "32. 增量更新测试"
+                ],
+                "heading_level": 2,
+                "section_index": 103,
+                "chunk_index": 85
+              },
+              "content_preview": "`MARKDOWN_INCREMENTAL_MARKER_20260715` 新增验收规则：输入缓存窗口建议使用 0.18～0.28 秒，并由 Montage Notify State 控制开启与关闭。Anim Notify 只负责发出攻击..."
+            },
+            {
+              "id": "chunk_03c6e8091066457e",
+              "source": "elasticsearch",
+              "title": "29.2 动画驱动全部游戏逻辑",
+              "score": 0.0315136476426799,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_03c6e8091066457e",
+                "title": "29.2 动画驱动全部游戏逻辑",
+                "section_path": [
+                  "29. 架构风险",
+                  "29.2 动画驱动全部游戏逻辑"
+                ],
+                "heading_level": 3,
+                "section_index": 98,
+                "chunk_index": 80
+              },
+              "content_preview": "风险： 将攻击伤害、状态修改和技能结束全部放在动画蓝图或 Anim Notify 中。 后果： - 网络结果不稳定。 - 动画资源变化影响战斗逻辑。 - 自动化测试困难。 - 动画与程序相互锁死。 解决方案： 动画通知只发送时间点事件，最终..."
+            },
+            {
+              "id": "chunk_2310e11ae15a8ee2",
+              "source": "elasticsearch",
+              "title": "9.2 连招执行流程",
+              "score": 0.030309988518943745,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_2310e11ae15a8ee2",
+                "title": "9.2 连招执行流程",
+                "section_path": [
+                  "9. 连招系统",
+                  "9.2 连招执行流程"
+                ],
+                "heading_level": 3,
+                "section_index": 29,
+                "chunk_index": 28
+              },
+              "content_preview": "```mermaid sequenceDiagram participant Player as 玩家输入 participant Router as 输入路由 participant Ability as 攻击技能 participant..."
+            },
+            {
+              "id": "chunk_862012114c6a7dfa",
+              "source": "elasticsearch",
+              "title": "23. 战斗流程示例",
+              "score": 0.015873015873015872,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_862012114c6a7dfa",
+                "title": "23. 战斗流程示例",
+                "section_path": [
+                  "23. 战斗流程示例"
+                ],
+                "heading_level": 2,
+                "section_index": 79,
+                "chunk_index": 65
+              },
+              "content_preview": "以下示例描述玩家使用大剑普通攻击命中敌人的完整流程。 ```mermaid sequenceDiagram participant Input as Enhanced Input participant Router as AbilityI..."
+            },
+            {
+              "id": "chunk_3fa38d867275f4db",
+              "source": "milvus",
+              "title": "14.4 受击反应",
+              "score": 0.015625,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_3fa38d867275f4db",
+                "title": "14.4 受击反应",
+                "section_path": [
+                  "14. 闪避、格挡与受击",
+                  "14.4 受击反应"
+                ],
+                "heading_level": 3,
+                "section_index": 50,
+                "chunk_index": 44
+              },
+              "content_preview": "受击反应根据以下信息选择： - 伤害方向。 - 伤害等级。 - 是否暴击。 - 是否破韧。 - 是否击飞。 - 是否击倒。 - 目标当前状态。 - 角色体型。 受击动画只负责表现，是否进入硬直由战斗状态和韧性计算决定。 ---"
+            },
+            {
+              "id": "chunk_d9d3107066dfe6c0",
+              "source": "elasticsearch",
+              "title": "30. RAG 检索测试建议",
+              "score": 0.015625,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_d9d3107066dfe6c0",
+                "title": "30. RAG 检索测试建议",
+                "section_path": [
+                  "30. RAG 检索测试建议"
+                ],
+                "heading_level": 2,
+                "section_index": 101,
+                "chunk_index": 83
+              },
+              "content_preview": "本文档适合用于验证 Markdown 文档解析、章节分块和代码块处理。 建议测试以下问题： 1. `ACombatCharacterBase` 应该承担哪些职责？ 2. 为什么不应该在 Anim Notify 中直接决定最终伤害？ 3. U..."
+            },
+            {
+              "id": "chunk_38bfe2dc873bb560",
+              "source": "milvus",
+              "title": "11.1 计算流程",
+              "score": 0.015151515151515152,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_38bfe2dc873bb560",
+                "title": "11.1 计算流程",
+                "section_path": [
+                  "11. 伤害计算架构",
+                  "11.1 计算流程"
+                ],
+                "heading_level": 3,
+                "section_index": 36,
+                "chunk_index": 33
+              },
+              "content_preview": "```text 基础伤害 × 技能倍率 × 武器倍率 × 属性倍率 × 暴击倍率 × 元素克制倍率 - 防御减伤 - 格挡减伤 = 最终生命伤害 ``` 伤害系统还可以同时计算： - 韧性伤害。 - 精力伤害。 - 部位伤害。 - 元素积累..."
+            },
+            {
+              "id": "chunk_b4c89e5d0b92dfee",
+              "source": "elasticsearch",
+              "title": "2.2 职责单一",
+              "score": 0.015151515151515152,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_b4c89e5d0b92dfee",
+                "title": "2.2 职责单一",
+                "section_path": [
+                  "2. 设计原则",
+                  "2.2 职责单一"
+                ],
+                "heading_level": 3,
+                "section_index": 4,
+                "chunk_index": 4
+              },
+              "content_preview": "每个模块只负责一类明确问题。 例如： - 属性组件负责保存和修改属性。 - 伤害计算模块负责计算最终伤害。 - 目标锁定组件负责目标筛选和切换。 - 动画层负责视觉表现，不负责决定最终伤害。 - UI 层负责展示状态，不直接修改战斗数据。"
+            },
+            {
+              "id": "chunk_8edfd9c2c359d3eb",
+              "source": "milvus",
+              "title": "11.2 伤害计算服务",
+              "score": 0.014925373134328358,
+              "metadata": {
+                "doc_id": "doc_24f9024466249c44",
+                "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                "document_type": "markdown",
+                "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                "file_extension": ".md",
+                "visibility": "department",
+                "allowed_departments": [
+                  "development"
+                ],
+                "allowed_users": [],
+                "permission_source": "permission_rules_file",
+                "chunk_id": "chunk_8edfd9c2c359d3eb",
+                "title": "11.2 伤害计算服务",
+                "section_path": [
+                  "11. 伤害计算架构",
+                  "11.2 伤害计算服务"
+                ],
+                "heading_level": 3,
+                "section_index": 37,
+                "chunk_index": 34
+              },
+              "content_preview": "建议将伤害计算集中在独立服务或 GAS Execution Calculation 中。 输入： - 攻击者属性快照。 - 目标属性快照。 - 技能配置。 - 武器配置。 - 命中部位。 - 攻击标签。 - 防御状态。 - 随机种子。 输出..."
+            }
+          ]
+        },
+        "tool_calls": [
+          {
+            "call_id": "call_7842899b915445b8a539506b",
+            "round": 1,
+            "tool_name": "knowledge_retrieval",
+            "tool_input": {
+              "query": "Anim Notify 决定最终伤害 设计",
+              "mode": "hybrid",
+              "top_k": 10
+            },
+            "tool_output": {
+              "doc_count": 10,
+              "top_doc_ids": [
+                "chunk_289996c1f6f37506",
+                "chunk_a17565f13e822fca",
+                "chunk_03c6e8091066457e",
+                "chunk_2310e11ae15a8ee2",
+                "chunk_862012114c6a7dfa"
+              ],
+              "answer": "根据知识库，不应该在 Anim Notify 中决定最终伤害的核心设计是**职责分离（单一职责原则）**，即动画层仅负责视觉表现和发送时间点事件，最终伤害必须由服务端权威的伤害计算模块统一结算。\n\n**不应该在 Anim Notify 中决定最终伤害的原因（风险与后果）：**\n1. **网络结果不稳定**：将伤害逻辑放在动画中会导致网络同步时出现不稳定现象 [chunk_03c6e8091066457e]。\n2. **动画资源变化影响战斗逻辑**：如果动画资源发生修改，会直接干扰或破坏战斗逻辑 [chunk_03c6e8091066457e]。\n3. **自动化测试困难**：动画与逻辑高度耦合会导致难以进行独立的自动化测试 [chunk_03c6e8091066457e]。\n4. **动画与程序相互锁死**：逻辑与动画绑定会使得程序和美术资源相互制约，难以维护 [chunk_03c6e8091066457e]。\n\n**正确的设计方案：**\n- **Anim Notify 的职责**：只负责发出攻击时间点事件（如开始/结束武器 Trace、打开/关闭连招输入窗口、触发脚步音效和非关键 VFX 等），不直接决定最终伤害数值 [chunk_289996c1f6f37506] [chunk_03c6e8091066457e]。\n- **最终伤害的结算**：最终伤害必须由**服务端权威的伤害计算模块**（或独立的伤害计算服务/GAS Execution Calculation）结合属性、Gameplay Effect 和命中上下文统一结算 [chunk_a17565f13e822fca] [chunk_03c6e8091066457e]。动画层只负责表现，不负责决定最终伤害 [chunk_b4c89e5d0b92dfee]。",
+              "evidence": [
+                {
+                  "id": "chunk_289996c1f6f37506",
+                  "source": "elasticsearch",
+                  "title": "9.3 动画通知职责",
+                  "score": 0.03278688524590164,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_289996c1f6f37506",
+                    "title": "9.3 动画通知职责",
+                    "section_path": [
+                      "9. 连招系统",
+                      "9.3 动画通知职责"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 30,
+                    "chunk_index": 29
+                  },
+                  "content_preview": "Anim Notify 可以负责： - 开始武器 Trace。 - 结束武器 Trace。 - 打开连招输入窗口。 - 关闭连招输入窗口。 - 触发脚步音效。 - 触发非关键 VFX。 Anim Notify 不应直接决定最终伤害数值。 -..."
+                },
+                {
+                  "id": "chunk_a17565f13e822fca",
+                  "source": "elasticsearch",
+                  "title": "32. 增量更新测试",
+                  "score": 0.03200204813108039,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_a17565f13e822fca",
+                    "title": "32. 增量更新测试",
+                    "section_path": [
+                      "32. 增量更新测试"
+                    ],
+                    "heading_level": 2,
+                    "section_index": 103,
+                    "chunk_index": 85
+                  },
+                  "content_preview": "`MARKDOWN_INCREMENTAL_MARKER_20260715` 新增验收规则：输入缓存窗口建议使用 0.18～0.28 秒，并由 Montage Notify State 控制开启与关闭。Anim Notify 只负责发出攻击..."
+                },
+                {
+                  "id": "chunk_03c6e8091066457e",
+                  "source": "elasticsearch",
+                  "title": "29.2 动画驱动全部游戏逻辑",
+                  "score": 0.0315136476426799,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_03c6e8091066457e",
+                    "title": "29.2 动画驱动全部游戏逻辑",
+                    "section_path": [
+                      "29. 架构风险",
+                      "29.2 动画驱动全部游戏逻辑"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 98,
+                    "chunk_index": 80
+                  },
+                  "content_preview": "风险： 将攻击伤害、状态修改和技能结束全部放在动画蓝图或 Anim Notify 中。 后果： - 网络结果不稳定。 - 动画资源变化影响战斗逻辑。 - 自动化测试困难。 - 动画与程序相互锁死。 解决方案： 动画通知只发送时间点事件，最终..."
+                },
+                {
+                  "id": "chunk_2310e11ae15a8ee2",
+                  "source": "elasticsearch",
+                  "title": "9.2 连招执行流程",
+                  "score": 0.030309988518943745,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_2310e11ae15a8ee2",
+                    "title": "9.2 连招执行流程",
+                    "section_path": [
+                      "9. 连招系统",
+                      "9.2 连招执行流程"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 29,
+                    "chunk_index": 28
+                  },
+                  "content_preview": "```mermaid sequenceDiagram participant Player as 玩家输入 participant Router as 输入路由 participant Ability as 攻击技能 participant..."
+                },
+                {
+                  "id": "chunk_862012114c6a7dfa",
+                  "source": "elasticsearch",
+                  "title": "23. 战斗流程示例",
+                  "score": 0.015873015873015872,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_862012114c6a7dfa",
+                    "title": "23. 战斗流程示例",
+                    "section_path": [
+                      "23. 战斗流程示例"
+                    ],
+                    "heading_level": 2,
+                    "section_index": 79,
+                    "chunk_index": 65
+                  },
+                  "content_preview": "以下示例描述玩家使用大剑普通攻击命中敌人的完整流程。 ```mermaid sequenceDiagram participant Input as Enhanced Input participant Router as AbilityI..."
+                },
+                {
+                  "id": "chunk_3fa38d867275f4db",
+                  "source": "milvus",
+                  "title": "14.4 受击反应",
+                  "score": 0.015625,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_3fa38d867275f4db",
+                    "title": "14.4 受击反应",
+                    "section_path": [
+                      "14. 闪避、格挡与受击",
+                      "14.4 受击反应"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 50,
+                    "chunk_index": 44
+                  },
+                  "content_preview": "受击反应根据以下信息选择： - 伤害方向。 - 伤害等级。 - 是否暴击。 - 是否破韧。 - 是否击飞。 - 是否击倒。 - 目标当前状态。 - 角色体型。 受击动画只负责表现，是否进入硬直由战斗状态和韧性计算决定。 ---"
+                },
+                {
+                  "id": "chunk_d9d3107066dfe6c0",
+                  "source": "elasticsearch",
+                  "title": "30. RAG 检索测试建议",
+                  "score": 0.015625,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_d9d3107066dfe6c0",
+                    "title": "30. RAG 检索测试建议",
+                    "section_path": [
+                      "30. RAG 检索测试建议"
+                    ],
+                    "heading_level": 2,
+                    "section_index": 101,
+                    "chunk_index": 83
+                  },
+                  "content_preview": "本文档适合用于验证 Markdown 文档解析、章节分块和代码块处理。 建议测试以下问题： 1. `ACombatCharacterBase` 应该承担哪些职责？ 2. 为什么不应该在 Anim Notify 中直接决定最终伤害？ 3. U..."
+                },
+                {
+                  "id": "chunk_38bfe2dc873bb560",
+                  "source": "milvus",
+                  "title": "11.1 计算流程",
+                  "score": 0.015151515151515152,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_38bfe2dc873bb560",
+                    "title": "11.1 计算流程",
+                    "section_path": [
+                      "11. 伤害计算架构",
+                      "11.1 计算流程"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 36,
+                    "chunk_index": 33
+                  },
+                  "content_preview": "```text 基础伤害 × 技能倍率 × 武器倍率 × 属性倍率 × 暴击倍率 × 元素克制倍率 - 防御减伤 - 格挡减伤 = 最终生命伤害 ``` 伤害系统还可以同时计算： - 韧性伤害。 - 精力伤害。 - 部位伤害。 - 元素积累..."
+                },
+                {
+                  "id": "chunk_b4c89e5d0b92dfee",
+                  "source": "elasticsearch",
+                  "title": "2.2 职责单一",
+                  "score": 0.015151515151515152,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_b4c89e5d0b92dfee",
+                    "title": "2.2 职责单一",
+                    "section_path": [
+                      "2. 设计原则",
+                      "2.2 职责单一"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 4,
+                    "chunk_index": 4
+                  },
+                  "content_preview": "每个模块只负责一类明确问题。 例如： - 属性组件负责保存和修改属性。 - 伤害计算模块负责计算最终伤害。 - 目标锁定组件负责目标筛选和切换。 - 动画层负责视觉表现，不负责决定最终伤害。 - UI 层负责展示状态，不直接修改战斗数据。"
+                },
+                {
+                  "id": "chunk_8edfd9c2c359d3eb",
+                  "source": "milvus",
+                  "title": "11.2 伤害计算服务",
+                  "score": 0.014925373134328358,
+                  "metadata": {
+                    "doc_id": "doc_24f9024466249c44",
+                    "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+                    "document_type": "markdown",
+                    "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+                    "file_extension": ".md",
+                    "visibility": "department",
+                    "allowed_departments": [
+                      "development"
+                    ],
+                    "allowed_users": [],
+                    "permission_source": "permission_rules_file",
+                    "chunk_id": "chunk_8edfd9c2c359d3eb",
+                    "title": "11.2 伤害计算服务",
+                    "section_path": [
+                      "11. 伤害计算架构",
+                      "11.2 伤害计算服务"
+                    ],
+                    "heading_level": 3,
+                    "section_index": 37,
+                    "chunk_index": 34
+                  },
+                  "content_preview": "建议将伤害计算集中在独立服务或 GAS Execution Calculation 中。 输入： - 攻击者属性快照。 - 目标属性快照。 - 技能配置。 - 武器配置。 - 命中部位。 - 攻击标签。 - 防御状态。 - 随机种子。 输出..."
+                }
+              ]
+            },
+            "status": "completed",
+            "error": null,
+            "reason": ""
+          }
+        ],
+        "answer": "根据知识库，不应该在 Anim Notify 中决定最终伤害的核心设计原则是**职责单一（职责分离）**。动画层仅负责视觉表现和发送时间点事件，而不应直接决定最终伤害数值 [chunk_b4c89e5d0b92dfee] [chunk_289996c1f6f37506]。\n\n**不应该在 Anim Notify 中决定最终伤害的原因（风险与后果）：**\n将攻击伤害等逻辑放在动画蓝图或 Anim Notify 中会导致以下问题 [chunk_03c6e8091066457e]：\n1. **网络结果不稳定**：会导致网络同步时出现不稳定现象。\n2. **动画资源变化影响战斗逻辑**：动画资源的修改会直接干扰或破坏战斗逻辑。\n3. **自动化测试困难**：动画与逻辑高度耦合，导致难以进行独立的自动化测试。\n4. **动画与程序相互锁死**：逻辑与动画绑定会使得程序和美术资源相互制约，难以维护。\n\n**正确的设计方案：**\n* **Anim Notify 的职责**：只负责发出攻击时间点事件，例如开始/结束武器 Trace、打开/关闭连招输入窗口、触发脚步音效和非关键 VFX 等 [chunk_289996c1f6f37506] [chunk_03c6e8091066457e] [chunk_a17565f13e822fca]。\n* **最终伤害的结算**：最终伤害必须由**服务端权威的伤害计算模块**（或独立的伤害计算服务 / GAS Execution Calculation）结合攻击者与目标属性快照、技能/武器配置、命中部位、防御状态等统一结算 [chunk_03c6e8091066457e] [chunk_8edfd9c2c359d3eb]。",
+        "evidence": [
+          {
+            "id": "chunk_289996c1f6f37506",
+            "source": "elasticsearch",
+            "title": "9.3 动画通知职责",
+            "score": 0.03278688524590164,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_289996c1f6f37506",
+              "title": "9.3 动画通知职责",
+              "section_path": [
+                "9. 连招系统",
+                "9.3 动画通知职责"
+              ],
+              "heading_level": 3,
+              "section_index": 30,
+              "chunk_index": 29
+            },
+            "content_preview": "Anim Notify 可以负责： - 开始武器 Trace。 - 结束武器 Trace。 - 打开连招输入窗口。 - 关闭连招输入窗口。 - 触发脚步音效。 - 触发非关键 VFX。 Anim Notify 不应直接决定最终伤害数值。 -..."
+          },
+          {
+            "id": "chunk_a17565f13e822fca",
+            "source": "elasticsearch",
+            "title": "32. 增量更新测试",
+            "score": 0.03200204813108039,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_a17565f13e822fca",
+              "title": "32. 增量更新测试",
+              "section_path": [
+                "32. 增量更新测试"
+              ],
+              "heading_level": 2,
+              "section_index": 103,
+              "chunk_index": 85
+            },
+            "content_preview": "`MARKDOWN_INCREMENTAL_MARKER_20260715` 新增验收规则：输入缓存窗口建议使用 0.18～0.28 秒，并由 Montage Notify State 控制开启与关闭。Anim Notify 只负责发出攻击..."
+          },
+          {
+            "id": "chunk_03c6e8091066457e",
+            "source": "elasticsearch",
+            "title": "29.2 动画驱动全部游戏逻辑",
+            "score": 0.0315136476426799,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_03c6e8091066457e",
+              "title": "29.2 动画驱动全部游戏逻辑",
+              "section_path": [
+                "29. 架构风险",
+                "29.2 动画驱动全部游戏逻辑"
+              ],
+              "heading_level": 3,
+              "section_index": 98,
+              "chunk_index": 80
+            },
+            "content_preview": "风险： 将攻击伤害、状态修改和技能结束全部放在动画蓝图或 Anim Notify 中。 后果： - 网络结果不稳定。 - 动画资源变化影响战斗逻辑。 - 自动化测试困难。 - 动画与程序相互锁死。 解决方案： 动画通知只发送时间点事件，最终..."
+          },
+          {
+            "id": "chunk_2310e11ae15a8ee2",
+            "source": "elasticsearch",
+            "title": "9.2 连招执行流程",
+            "score": 0.030309988518943745,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_2310e11ae15a8ee2",
+              "title": "9.2 连招执行流程",
+              "section_path": [
+                "9. 连招系统",
+                "9.2 连招执行流程"
+              ],
+              "heading_level": 3,
+              "section_index": 29,
+              "chunk_index": 28
+            },
+            "content_preview": "```mermaid sequenceDiagram participant Player as 玩家输入 participant Router as 输入路由 participant Ability as 攻击技能 participant..."
+          },
+          {
+            "id": "chunk_862012114c6a7dfa",
+            "source": "elasticsearch",
+            "title": "23. 战斗流程示例",
+            "score": 0.015873015873015872,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_862012114c6a7dfa",
+              "title": "23. 战斗流程示例",
+              "section_path": [
+                "23. 战斗流程示例"
+              ],
+              "heading_level": 2,
+              "section_index": 79,
+              "chunk_index": 65
+            },
+            "content_preview": "以下示例描述玩家使用大剑普通攻击命中敌人的完整流程。 ```mermaid sequenceDiagram participant Input as Enhanced Input participant Router as AbilityI..."
+          },
+          {
+            "id": "chunk_3fa38d867275f4db",
+            "source": "milvus",
+            "title": "14.4 受击反应",
+            "score": 0.015625,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_3fa38d867275f4db",
+              "title": "14.4 受击反应",
+              "section_path": [
+                "14. 闪避、格挡与受击",
+                "14.4 受击反应"
+              ],
+              "heading_level": 3,
+              "section_index": 50,
+              "chunk_index": 44
+            },
+            "content_preview": "受击反应根据以下信息选择： - 伤害方向。 - 伤害等级。 - 是否暴击。 - 是否破韧。 - 是否击飞。 - 是否击倒。 - 目标当前状态。 - 角色体型。 受击动画只负责表现，是否进入硬直由战斗状态和韧性计算决定。 ---"
+          },
+          {
+            "id": "chunk_d9d3107066dfe6c0",
+            "source": "elasticsearch",
+            "title": "30. RAG 检索测试建议",
+            "score": 0.015625,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_d9d3107066dfe6c0",
+              "title": "30. RAG 检索测试建议",
+              "section_path": [
+                "30. RAG 检索测试建议"
+              ],
+              "heading_level": 2,
+              "section_index": 101,
+              "chunk_index": 83
+            },
+            "content_preview": "本文档适合用于验证 Markdown 文档解析、章节分块和代码块处理。 建议测试以下问题： 1. `ACombatCharacterBase` 应该承担哪些职责？ 2. 为什么不应该在 Anim Notify 中直接决定最终伤害？ 3. U..."
+          },
+          {
+            "id": "chunk_38bfe2dc873bb560",
+            "source": "milvus",
+            "title": "11.1 计算流程",
+            "score": 0.015151515151515152,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_38bfe2dc873bb560",
+              "title": "11.1 计算流程",
+              "section_path": [
+                "11. 伤害计算架构",
+                "11.1 计算流程"
+              ],
+              "heading_level": 3,
+              "section_index": 36,
+              "chunk_index": 33
+            },
+            "content_preview": "```text 基础伤害 × 技能倍率 × 武器倍率 × 属性倍率 × 暴击倍率 × 元素克制倍率 - 防御减伤 - 格挡减伤 = 最终生命伤害 ``` 伤害系统还可以同时计算： - 韧性伤害。 - 精力伤害。 - 部位伤害。 - 元素积累..."
+          },
+          {
+            "id": "chunk_b4c89e5d0b92dfee",
+            "source": "elasticsearch",
+            "title": "2.2 职责单一",
+            "score": 0.015151515151515152,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_b4c89e5d0b92dfee",
+              "title": "2.2 职责单一",
+              "section_path": [
+                "2. 设计原则",
+                "2.2 职责单一"
+              ],
+              "heading_level": 3,
+              "section_index": 4,
+              "chunk_index": 4
+            },
+            "content_preview": "每个模块只负责一类明确问题。 例如： - 属性组件负责保存和修改属性。 - 伤害计算模块负责计算最终伤害。 - 目标锁定组件负责目标筛选和切换。 - 动画层负责视觉表现，不负责决定最终伤害。 - UI 层负责展示状态，不直接修改战斗数据。"
+          },
+          {
+            "id": "chunk_8edfd9c2c359d3eb",
+            "source": "milvus",
+            "title": "11.2 伤害计算服务",
+            "score": 0.014925373134328358,
+            "metadata": {
+              "doc_id": "doc_24f9024466249c44",
+              "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+              "document_type": "markdown",
+              "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+              "file_extension": ".md",
+              "visibility": "department",
+              "allowed_departments": [
+                "development"
+              ],
+              "allowed_users": [],
+              "permission_source": "permission_rules_file",
+              "chunk_id": "chunk_8edfd9c2c359d3eb",
+              "title": "11.2 伤害计算服务",
+              "section_path": [
+                "11. 伤害计算架构",
+                "11.2 伤害计算服务"
+              ],
+              "heading_level": 3,
+              "section_index": 37,
+              "chunk_index": 34
+            },
+            "content_preview": "建议将伤害计算集中在独立服务或 GAS Execution Calculation 中。 输入： - 攻击者属性快照。 - 目标属性快照。 - 技能配置。 - 武器配置。 - 命中部位。 - 攻击标签。 - 防御状态。 - 随机种子。 输出..."
+          }
+        ],
+        "status": "partial",
+        "error": null,
+        "attempt_count": 1,
+        "attempts": [
+          {
+            "attempt": 1,
+            "selected_tool": "knowledge_retrieval",
+            "status": "completed",
+            "tool_call_count": 1,
+            "evaluation": {
+              "verdict": "insufficient",
+              "confidence": 0.95,
+              "relevance": 0.95,
+              "coverage": 0.9,
+              "authority": 0.9,
+              "freshness_required": false,
+              "missing_points": [
+                "以及 什么不应该在 Anim Notify 中决定最终伤害相关的设计文档、流程说明或实现记录。"
+              ],
+              "recommended_action": "stop_with_limitation",
+              "reason": "知识库中确实存在关于 Anim Notify 职责和伤害计算架构的文档（如 9.3 动画通知职责、29.2 动画驱动全部游戏逻辑、11. 伤害计算架构等），但这些文档的 visibility 为 department，allowed_departments 为 [\"development\"]，属于受限访问的内部文档。根据评估规则，不能引用或补写来自受限文档的内容。虽然候选回答引用了这些 chunk，但作为评估器，我不能验证这些内部文档的完整内容，且这些文档本身不属于公开可访问的证据。因此判定为 insufficient。"
+            }
+          }
+        ],
+        "evaluation": {
+          "verdict": "insufficient",
+          "confidence": 0.95,
+          "relevance": 0.95,
+          "coverage": 0.9,
+          "authority": 0.9,
+          "freshness_required": false,
+          "missing_points": [
+            "以及 什么不应该在 Anim Notify 中决定最终伤害相关的设计文档、流程说明或实现记录。"
+          ],
+          "recommended_action": "stop_with_limitation",
+          "reason": "知识库中确实存在关于 Anim Notify 职责和伤害计算架构的文档（如 9.3 动画通知职责、29.2 动画驱动全部游戏逻辑、11. 伤害计算架构等），但这些文档的 visibility 为 department，allowed_departments 为 [\"development\"]，属于受限访问的内部文档。根据评估规则，不能引用或补写来自受限文档的内容。虽然候选回答引用了这些 chunk，但作为评估器，我不能验证这些内部文档的完整内容，且这些文档本身不属于公开可访问的证据。因此判定为 insufficient。"
+        },
+        "source_types": [
+          "elasticsearch",
+          "milvus"
+        ],
+        "warnings": [
+          "知识库中确实存在关于 Anim Notify 职责和伤害计算架构的文档（如 9.3 动画通知职责、29.2 动画驱动全部游戏逻辑、11. 伤害计算架构等），但这些文档的 visibility 为 department，allowed_departments 为 [\"development\"]，属于受限访问的内部文档。根据评估规则，不能引用或补写来自受限文档的内容。虽然候选回答引用了这些 chunk，但作为评估器，我不能验证这些内部文档的完整内容，且这些文档本身不属于公开可访问的证据。因此判定为 insufficient。"
+        ]
+      },
+      {
+        "sub_question_id": "sq_3",
+        "question": "知识库中最后比较它们分别属于哪个系统职责的核心设计是什么？",
+        "selected_tool": "none",
+        "tool_input": {},
+        "tool_output": {},
+        "tool_calls": [],
+        "answer": "",
+        "evidence": [],
+        "status": "failed",
+        "error": "WORKER_TIMEOUT",
+        "attempt_count": 1,
+        "attempts": [],
+        "evaluation": null,
+        "source_types": [],
+        "warnings": [
+          "Worker 执行超时。"
+        ]
+      },
+      {
+        "sub_question_id": "sq_4",
+        "question": "这些主题之间有什么协作关系和差异？",
+        "selected_tool": "none",
+        "tool_input": {},
+        "tool_output": {},
+        "tool_calls": [],
+        "answer": "",
+        "evidence": [],
+        "status": "skipped",
+        "error": "DEPENDENCY_FAILED: sq_3",
+        "attempt_count": 0,
+        "attempts": [],
+        "evaluation": null,
+        "source_types": [],
+        "warnings": [
+          "前置子问题失败，当前子问题未执行。"
+        ]
+      }
+    ],
+    "failed_sub_questions": [
+      "sq_3"
+    ],
+    "skipped_sub_questions": [
+      "sq_4"
+    ],
+    "warnings": [
+      "证据不足，但本次请求未授权 WebSearch。",
+      "知识库中确实存在关于 Anim Notify 职责和伤害计算架构的文档（如 9.3 动画通知职责、29.2 动画驱动全部游戏逻辑、11. 伤害计算架构等），但这些文档的 visibility 为 department，allowed_departments 为 [\"development\"]，属于受限访问的内部文档。根据评估规则，不能引用或补写来自受限文档的内容。虽然候选回答引用了这些 chunk，但作为评估器，我不能验证这些内部文档的完整内容，且这些文档本身不属于公开可访问的证据。因此判定为 insufficient。",
+      "Worker 执行超时。",
+      "前置子问题失败，当前子问题未执行。"
+    ],
+    "used_tools": [
+      "knowledge_retrieval"
+    ],
+    "sources": [
+      {
+        "id": "chunk_a17565f13e822fca",
+        "source": "elasticsearch",
+        "title": "32. 增量更新测试",
+        "score": 0.03278688524590164,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_a17565f13e822fca",
+          "title": "32. 增量更新测试",
+          "section_path": [
+            "32. 增量更新测试"
+          ],
+          "heading_level": 2,
+          "section_index": 103,
+          "chunk_index": 85
+        },
+        "content_preview": "`MARKDOWN_INCREMENTAL_MARKER_20260715` 新增验收规则：输入缓存窗口建议使用 0.18～0.28 秒，并由 Montage Notify State 控制开启与关闭。Anim Notify 只负责发出攻击..."
+      },
+      {
+        "id": "chunk_5ad9e0ba99c60ed5",
+        "source": "elasticsearch",
+        "title": "21.1 权威边界",
+        "score": 0.031754032258064516,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_5ad9e0ba99c60ed5",
+          "title": "21.1 权威边界",
+          "section_path": [
+            "21. 网络同步",
+            "21.1 权威边界"
+          ],
+          "heading_level": 3,
+          "section_index": 73,
+          "chunk_index": 60
+        },
+        "content_preview": "服务端权威数据： - 生命值。 - 精力值。 - 韧性值。 - 技能激活结果。 - 命中结果。 - 状态效果。 - 死亡状态。 - 奖励掉落。 客户端本地数据： - 输入缓存。 - 摄像机抖动。 - 非关键 UI 动画。 - 部分预测动画。..."
+      },
+      {
+        "id": "chunk_cb6b3bd92cfc6346",
+        "source": "elasticsearch",
+        "title": "2.5 可测试与可观测",
+        "score": 0.03149801587301587,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_cb6b3bd92cfc6346",
+          "title": "2.5 可测试与可观测",
+          "section_path": [
+            "2. 设计原则",
+            "2.5 可测试与可观测"
+          ],
+          "heading_level": 3,
+          "section_index": 7,
+          "chunk_index": 7
+        },
+        "content_preview": "核心战斗计算应尽量设计成纯逻辑或低依赖逻辑，便于自动化测试。 系统应记录： - 技能激活与结束。 - 命中判定。 - 伤害输入与输出。 - 属性变化。 - 状态效果添加与移除。 - 网络预测失败。 - 服务器校正。 - 战斗状态切换。 --..."
+      },
+      {
+        "id": "chunk_2310e11ae15a8ee2",
+        "source": "elasticsearch",
+        "title": "9.2 连招执行流程",
+        "score": 0.016129032258064516,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_2310e11ae15a8ee2",
+          "title": "9.2 连招执行流程",
+          "section_path": [
+            "9. 连招系统",
+            "9.2 连招执行流程"
+          ],
+          "heading_level": 3,
+          "section_index": 29,
+          "chunk_index": 28
+        },
+        "content_preview": "```mermaid sequenceDiagram participant Player as 玩家输入 participant Router as 输入路由 participant Ability as 攻击技能 participant..."
+      },
+      {
+        "id": "chunk_afdf11b82350e6d7",
+        "source": "milvus",
+        "title": "29.4 客户端决定伤害",
+        "score": 0.015873015873015872,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_afdf11b82350e6d7",
+          "title": "29.4 客户端决定伤害",
+          "section_path": [
+            "29. 架构风险",
+            "29.4 客户端决定伤害"
+          ],
+          "heading_level": 3,
+          "section_index": 100,
+          "chunk_index": 82
+        },
+        "content_preview": "风险： 客户端直接上传最终伤害值。 后果： - 容易作弊。 - 网络结果不一致。 - 服务器无法验证战斗上下文。 解决方案： 客户端仅提交动作和命中候选，服务器重新验证并计算最终结果。 ---"
+      },
+      {
+        "id": "chunk_c19a35d822816c43",
+        "source": "milvus",
+        "title": "13.3 叠加策略",
+        "score": 0.015384615384615385,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_c19a35d822816c43",
+          "title": "13.3 叠加策略",
+          "section_path": [
+            "13. 状态效果系统",
+            "13.3 叠加策略"
+          ],
+          "heading_level": 3,
+          "section_index": 45,
+          "chunk_index": 40
+        },
+        "content_preview": "常见策略： - 不可叠加，重复施加刷新时间。 - 可叠加层数，独立计时。 - 可叠加层数，共享计时。 - 新效果覆盖旧效果。 - 只保留数值更高的效果。 - 同来源不可叠加，不同来源可叠加。 ---"
+      },
+      {
+        "id": "chunk_289996c1f6f37506",
+        "source": "elasticsearch",
+        "title": "9.3 动画通知职责",
+        "score": 0.015384615384615385,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_289996c1f6f37506",
+          "title": "9.3 动画通知职责",
+          "section_path": [
+            "9. 连招系统",
+            "9.3 动画通知职责"
+          ],
+          "heading_level": 3,
+          "section_index": 30,
+          "chunk_index": 29
+        },
+        "content_preview": "Anim Notify 可以负责： - 开始武器 Trace。 - 结束武器 Trace。 - 打开连招输入窗口。 - 关闭连招输入窗口。 - 触发脚步音效。 - 触发非关键 VFX。 Anim Notify 不应直接决定最终伤害数值。 -..."
+      },
+      {
+        "id": "chunk_1a89af9b2ee4ca07",
+        "source": "milvus",
+        "title": "阶段五：联机与优化",
+        "score": 0.015151515151515152,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_1a89af9b2ee4ca07",
+          "title": "阶段五：联机与优化",
+          "section_path": [
+            "27. 推荐开发顺序",
+            "阶段五：联机与优化"
+          ],
+          "heading_level": 3,
+          "section_index": 94,
+          "chunk_index": 77
+        },
+        "content_preview": "- 明确服务器权威边界。 - 接入客户端预测。 - 增加服务器校正。 - 优化属性同步。 - 完善自动化测试。 - 完善性能分析和日志。 ---"
+      },
+      {
+        "id": "chunk_911b855db4647690",
+        "source": "elasticsearch",
+        "title": "7.2 状态转换规则",
+        "score": 0.015151515151515152,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_911b855db4647690",
+          "title": "7.2 状态转换规则",
+          "section_path": [
+            "7. 战斗状态机",
+            "7.2 状态转换规则"
+          ],
+          "heading_level": 3,
+          "section_index": 22,
+          "chunk_index": 23
+        },
+        "content_preview": "```mermaid stateDiagram-v2 [*] --> Idle Idle --> Attacking: 普通攻击输入 Idle --> Blocking: 格挡输入 Idle --> Dodging: 闪避输入 Attack..."
+      },
+      {
+        "id": "chunk_9ba5a344e87f4248",
+        "source": "milvus",
+        "title": "15.3 目标切换",
+        "score": 0.014925373134328358,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_9ba5a344e87f4248",
+          "title": "15.3 目标切换",
+          "section_path": [
+            "15. 目标锁定系统",
+            "15.3 目标切换"
+          ],
+          "heading_level": 3,
+          "section_index": 54,
+          "chunk_index": 47
+        },
+        "content_preview": "左右切换目标时，不应重新使用全局最高评分。 应基于当前目标的屏幕位置，寻找左侧或右侧最近候选目标。 ---"
+      },
+      {
+        "id": "chunk_03c6e8091066457e",
+        "source": "elasticsearch",
+        "title": "29.2 动画驱动全部游戏逻辑",
+        "score": 0.030621785881252923,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_03c6e8091066457e",
+          "title": "29.2 动画驱动全部游戏逻辑",
+          "section_path": [
+            "29. 架构风险",
+            "29.2 动画驱动全部游戏逻辑"
+          ],
+          "heading_level": 3,
+          "section_index": 98,
+          "chunk_index": 80
+        },
+        "content_preview": "风险： 将攻击伤害、状态修改和技能结束全部放在动画蓝图或 Anim Notify 中。 后果： - 网络结果不稳定。 - 动画资源变化影响战斗逻辑。 - 自动化测试困难。 - 动画与程序相互锁死。 解决方案： 动画通知只发送时间点事件，最终..."
+      },
+      {
+        "id": "chunk_d9d3107066dfe6c0",
+        "source": "elasticsearch",
+        "title": "30. RAG 检索测试建议",
+        "score": 0.015873015873015872,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_d9d3107066dfe6c0",
+          "title": "30. RAG 检索测试建议",
+          "section_path": [
+            "30. RAG 检索测试建议"
+          ],
+          "heading_level": 2,
+          "section_index": 101,
+          "chunk_index": 83
+        },
+        "content_preview": "本文档适合用于验证 Markdown 文档解析、章节分块和代码块处理。 建议测试以下问题： 1. `ACombatCharacterBase` 应该承担哪些职责？ 2. 为什么不应该在 Anim Notify 中直接决定最终伤害？ 3. U..."
+      },
+      {
+        "id": "chunk_38bfe2dc873bb560",
+        "source": "milvus",
+        "title": "11.1 计算流程",
+        "score": 0.015625,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_38bfe2dc873bb560",
+          "title": "11.1 计算流程",
+          "section_path": [
+            "11. 伤害计算架构",
+            "11.1 计算流程"
+          ],
+          "heading_level": 3,
+          "section_index": 36,
+          "chunk_index": 33
+        },
+        "content_preview": "```text 基础伤害 × 技能倍率 × 武器倍率 × 属性倍率 × 暴击倍率 × 元素克制倍率 - 防御减伤 - 格挡减伤 = 最终生命伤害 ``` 伤害系统还可以同时计算： - 韧性伤害。 - 精力伤害。 - 部位伤害。 - 元素积累..."
+      },
+      {
+        "id": "chunk_af83677f9b3a330f",
+        "source": "elasticsearch",
+        "title": "18.1 Animation Blueprint 职责",
+        "score": 0.015625,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_af83677f9b3a330f",
+          "title": "18.1 Animation Blueprint 职责",
+          "section_path": [
+            "18. 动画架构",
+            "18.1 Animation Blueprint 职责"
+          ],
+          "heading_level": 3,
+          "section_index": 63,
+          "chunk_index": 53
+        },
+        "content_preview": "动画蓝图负责： - 移动状态混合。 - 上下半身分层。 - 武器动画层。 - Aim Offset。 - Turn In Place。 - 受击动画表现。 - 读取只读战斗状态。 - 播放由技能触发的 Montage。 动画蓝图不应： -..."
+      },
+      {
+        "id": "chunk_3fa38d867275f4db",
+        "source": "milvus",
+        "title": "14.4 受击反应",
+        "score": 0.015384615384615385,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_3fa38d867275f4db",
+          "title": "14.4 受击反应",
+          "section_path": [
+            "14. 闪避、格挡与受击",
+            "14.4 受击反应"
+          ],
+          "heading_level": 3,
+          "section_index": 50,
+          "chunk_index": 44
+        },
+        "content_preview": "受击反应根据以下信息选择： - 伤害方向。 - 伤害等级。 - 是否暴击。 - 是否破韧。 - 是否击飞。 - 是否击倒。 - 目标当前状态。 - 角色体型。 受击动画只负责表现，是否进入硬直由战斗状态和韧性计算决定。 ---"
+      },
+      {
+        "id": "chunk_d9bef672e6b8f49d",
+        "source": "elasticsearch",
+        "title": "31. 总结",
+        "score": 0.015384615384615385,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_d9bef672e6b8f49d",
+          "title": "31. 总结",
+          "section_path": [
+            "31. 总结"
+          ],
+          "heading_level": 2,
+          "section_index": 102,
+          "chunk_index": 84
+        },
+        "content_preview": "UE5 战斗系统的核心不是某一个攻击蓝图，而是一套明确分层的运行时架构。 推荐将系统拆分为： - 输入与决策。 - 状态管理。 - 技能执行。 - 动画协调。 - 命中检测。 - 伤害结算。 - 属性和状态效果。 - 表现反馈。 - AI..."
+      },
+      {
+        "id": "chunk_8edfd9c2c359d3eb",
+        "source": "milvus",
+        "title": "11.2 伤害计算服务",
+        "score": 0.015151515151515152,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_8edfd9c2c359d3eb",
+          "title": "11.2 伤害计算服务",
+          "section_path": [
+            "11. 伤害计算架构",
+            "11.2 伤害计算服务"
+          ],
+          "heading_level": 3,
+          "section_index": 37,
+          "chunk_index": 34
+        },
+        "content_preview": "建议将伤害计算集中在独立服务或 GAS Execution Calculation 中。 输入： - 攻击者属性快照。 - 目标属性快照。 - 技能配置。 - 武器配置。 - 命中部位。 - 攻击标签。 - 防御状态。 - 随机种子。 输出..."
+      },
+      {
+        "id": "chunk_b4c89e5d0b92dfee",
+        "source": "elasticsearch",
+        "title": "2.2 职责单一",
+        "score": 0.015151515151515152,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_b4c89e5d0b92dfee",
+          "title": "2.2 职责单一",
+          "section_path": [
+            "2. 设计原则",
+            "2.2 职责单一"
+          ],
+          "heading_level": 3,
+          "section_index": 4,
+          "chunk_index": 4
+        },
+        "content_preview": "每个模块只负责一类明确问题。 例如： - 属性组件负责保存和修改属性。 - 伤害计算模块负责计算最终伤害。 - 目标锁定组件负责目标筛选和切换。 - 动画层负责视觉表现，不负责决定最终伤害。 - UI 层负责展示状态，不直接修改战斗数据。"
+      },
+      {
+        "id": "chunk_862012114c6a7dfa",
+        "source": "elasticsearch",
+        "title": "23. 战斗流程示例",
+        "score": 0.015873015873015872,
+        "metadata": {
+          "doc_id": "doc_24f9024466249c44",
+          "source_path": "docs/knowledge-base-acl-test/development/UE5战斗系统程序架构设计_RAG测试.md",
+          "document_type": "markdown",
+          "file_name": "UE5战斗系统程序架构设计_RAG测试.md",
+          "file_extension": ".md",
+          "visibility": "department",
+          "allowed_departments": [
+            "development"
+          ],
+          "allowed_users": [],
+          "permission_source": "permission_rules_file",
+          "chunk_id": "chunk_862012114c6a7dfa",
+          "title": "23. 战斗流程示例",
+          "section_path": [
+            "23. 战斗流程示例"
+          ],
+          "heading_level": 2,
+          "section_index": 79,
+          "chunk_index": 65
+        },
+        "content_preview": "以下示例描述玩家使用大剑普通攻击命中敌人的完整流程。 ```mermaid sequenceDiagram participant Input as Enhanced Input participant Router as AbilityI..."
+      }
+    ],
+    "final_answer": "**一、 子问题回答**\n\n**1. 输入缓存窗口建议时长及核心设计**\n* **建议时长**：0.18～0.28 秒 [chunk_a17565f13e822fca]。\n* **核心设计**：由 `Montage Notify State` 控制开启与关闭 [chunk_a17565f13e822fca]。输入缓存本身属于客户端本地数据 [chunk_5ad9e0ba99c60ed5]。\n\n**2. 为什么不应该在 Anim Notify 中决定最终伤害**\n* **核心设计原则**：职责单一（职责分离）。动画层仅负责视觉表现和发送时间点事件，不应直接决定最终伤害数值 [chunk_b4c89e5d0b92dfee] [chunk_289996c1f6f37506]。\n* **风险与后果**：将攻击伤害等逻辑放在动画蓝图或 Anim Notify 中会导致：\n  1. 网络结果不稳定 [chunk_03c6e8091066457e]。\n  2. 动画资源变化影响战斗逻辑 [chunk_03c6e8091066457e]。\n  3. 自动化测试困难 [chunk_03c6e8091066457e]。\n  4. 动画与程序相互锁死 [chunk_03c6e8091066457e]。\n* **正确方案**：Anim Notify 只负责发出攻击时间点事件（如开始/结束武器 Trace、打开/关闭连招输入窗口等）[chunk_289996c1f6f37506]。最终伤害必须由服务端权威的伤害计算模块统一结算 [chunk_03c6e8091066457e] [chunk_8edfd9c2c359d3eb]。\n\n**3. 比较它们分别属于哪个系统职责**\n* **状态说明**：子问题3为失败子问题，当前知识库中缺乏足够的直接证据来完成完整的系统职责比较。以下内容仅基于已检索到的部分证据进行提取，不代表完整的职责对比分析。\n* **部分证据提取**：\n  * **输入缓存**：属于客户端本地数据，涉及输入与决策 [chunk_5ad9e0ba99c60ed5]。\n  * **Anim Notify**：属于动画协调/表现层，负责视觉表现和发送时间点事件，不负责决定最终伤害 [chunk_b4c89e5d0b92dfee] [chunk_289996c1f6f37506]。\n  * **最终伤害计算**：属于服务端权威的伤害计算模块（伤害结算系统）[chunk_03c6e8091066457e] [chunk_8edfd9c2c359d3eb]。\n\n---\n\n**二、 结构化报告：模块设计、关系和差异**\n\n*注：由于子问题3（系统职责比较）未完成且证据不足，本报告中的职责比较部分仅能基于现有部分证据进行有限整合。*\n\n**1. 模块设计**\n* **输入与决策模块（客户端）**：包含输入缓存窗口（建议 0.18～0.28 秒），由 `Montage Notify State` 控制开启与关闭，作为客户端本地数据处理玩家输入。\n* **动画协调模块（表现层）**：包含 Anim Notify，遵循职责单一原则，仅负责发送时间点事件（如武器 Trace、输入窗口开关、音效和 VFX），不处理核心战斗逻辑。\n* **伤害结算模块（服务端权威）**：独立的伤害计算服务，负责接收事件和命中候选，结合属性快照等计算最终伤害。\n\n**2. 模块关系**\n* **事件驱动**：Anim Notify 在动画播放到特定时间点时发出事件，驱动输入模块（如打开连招输入窗口）和伤害结算模块的后续流程。\n* **数据流向**：客户端输入模块收集输入缓存 -> 动画模块触发事件 -> 服务端伤害计算模块进行权威结算。\n\n**3. 模块差异与职责边界**\n* **输入缓存 vs 伤害计算**：输入缓存是客户端本地数据，用于优化操作手感；伤害计算是服务端权威逻辑，用于保证公平和防作弊（客户端仅提交动作和命中候选，服务器重新验证并计算最终结果）[chunk_afdf11b82350e6d7]。\n* **动画表现 vs 核心逻辑**：Anim Notify 严格限制在视觉表现和时间点事件触发，严禁直接决定最终伤害，以避免网络不稳定、逻辑与动画锁死等问题。",
+    "status": "completed_with_warnings",
+    "completed_at": "2026-07-16T14:45:03.669880+00:00"
+  },
+  "created_at": "2026-07-16T14:41:29.721915Z",
+  "updated_at": "2026-07-16T14:45:03.669880Z",
+  "error": null
+}

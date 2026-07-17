@@ -60,6 +60,8 @@ class RagAgentState(TypedDict):
     min_score: float
     # 已合并当前用户知识库权限范围的检索过滤条件；节点不能绕过它重新构造权限事实。
     filters: dict[str, object]
+    # 只表达本次请求是否允许公开网络兜底；不代表 Web 服务一定可用。
+    allow_web_fallback: bool
 
     # Agent 执行上下文：用于区分 run / stream / stream_events。
     # 同一套 Agent 节点会被三种入口复用，但 trace step index 和流式行为会不同。
@@ -152,6 +154,7 @@ def build_rag_agent_initial_state(
             filters=req.filters.model_dump(),
             permission_scope=req._retrieval_permission_scope,
         ),
+        "allow_web_fallback": req.allow_web_fallback,
         "operation": operation,
         "route": None,
         "route_reason": None,

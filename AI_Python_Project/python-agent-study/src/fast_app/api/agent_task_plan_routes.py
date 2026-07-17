@@ -159,7 +159,7 @@ async def retry_agent_task_plan_endpoint(
     task_executor: AgentTaskExecutor = Depends(get_agent_task_executor),
     settings: Settings = Depends(get_settings),
 ) -> AgentTaskPlanControlResponse:
-    """从最近完整检查点恢复失败或进程中断的文档 Tool Loop。"""
+    """恢复可重试的研究任务或文档 Tool Loop。"""
 
     async with _agent_task_plan_trace(
         settings,
@@ -175,7 +175,7 @@ async def retry_agent_task_plan_endpoint(
     return AgentTaskPlanControlResponse(
         task_plan_id=plan.task_plan_id,
         status=plan.status.value,
-        message="Agent task plan 已从最近完整轮次恢复",
+        message="Agent task plan 已按最近完整快照恢复",
         request_id=get_request_id(),
         trace_id=get_trace_id(),
     )
@@ -304,6 +304,7 @@ async def _confirm_task_plan_sse_generator(
         # 轮询会重复读到已经完成的子问题；用 id 去重，确保前端每题只收到一次完成事件。
         seen_sub_questions: set[str] = set()
         seen_steps: set[str] = set()
+        seen_research_events: set[str] = set()
         yield _format_sse_event(
             "agent_task_execution_started",
             {"task_plan_id": task_plan_id},
@@ -326,7 +327,7 @@ async def _confirm_task_plan_sse_generator(
 
                     # 把当前读取到的 任务快照进度 转换为 sse事件 响应给前端显示任务状态
                     for event in _task_plan_progress_events(
-                        plan, seen_sub_questions, seen_steps
+                        plan, seen_sub_questions, seen_steps, seen_research_events
                     ):
                         yield event
                 
@@ -340,13 +341,17 @@ async def _confirm_task_plan_sse_generator(
             plan = await task
 
             for event in _task_plan_progress_events(
-                plan, seen_sub_questions, seen_steps
+                plan, seen_sub_questions, seen_steps, seen_research_events
             ):
                 yield event
 
             # prompt_guard 开始校验 最终回答
             final_answer = plan.final_output.get("final_answer")
             if isinstance(final_answer, str) and final_answer.strip():
+                yield _format_sse_event(
+                    "sources",
+                    {"sources": plan.final_output.get("sources", [])},
+                )
                 stream_state = GuardedStreamState()
 
                 # 开始消费llm生成的token，组装为多个chunk，直到达到最大长度或句号边界时，交给 Prompt Guard 检查。
@@ -366,6 +371,13 @@ async def _confirm_task_plan_sse_generator(
                         "task_plan_id": plan.task_plan_id,
                         "status": plan.status.value,
                         "used_tools": plan.final_output.get("used_tools", []),
+                        "warnings": plan.final_output.get("warnings", []),
+                        "failed_sub_questions": plan.final_output.get(
+                            "failed_sub_questions", []
+                        ),
+                        "skipped_sub_questions": plan.final_output.get(
+                            "skipped_sub_questions", []
+                        ),
                     },
                 )
             if trace_run is not None:
@@ -397,6 +409,7 @@ def _task_plan_progress_events(
     plan: Any,
     seen_sub_questions: set[str],
     seen_steps: set[str] | None = None,
+    seen_research_events: set[str] | None = None,
 ) -> list[str]:
     """把一次 TaskPlan 快照中可观察到的状态和新增子问题结果转为 SSE。
 
@@ -411,6 +424,37 @@ def _task_plan_progress_events(
         )
     ]
     seen_steps = seen_steps if seen_steps is not None else set()
+    seen_research_events = (
+        seen_research_events if seen_research_events is not None else set()
+    )
+    progress = plan.final_output.get("research_progress", {})
+    research_events = progress.get("events", []) if isinstance(progress, dict) else []
+    if isinstance(research_events, list):
+        for index, research_event in enumerate(research_events):
+            if not isinstance(research_event, dict):
+                continue
+            event_name = str(research_event.get("event") or "")
+            event_key = f"{index}:{event_name}"
+            if event_key in seen_research_events or event_name not in {
+                "agent_task_research_wave_started",
+                "agent_task_evidence_evaluated",
+                "agent_task_sub_question_retrying",
+            }:
+                continue
+            seen_research_events.add(event_key)
+            events.append(
+                _format_sse_event(
+                    event_name,
+                    {
+                        "task_plan_id": plan.task_plan_id,
+                        **{
+                            key: value
+                            for key, value in research_event.items()
+                            if key != "event"
+                        },
+                    },
+                )
+            )
     for step in getattr(plan, "steps", []):
         if step.step_id in seen_steps or step.status.value not in {
             "completed",

@@ -1,7 +1,7 @@
 """TaskPlan 的运行时执行器。
 
 本文件包含两条互不混用的主线：
-1. question_decomposition：确认后顺序执行子问题，允许只读工具调用，最后综合答案；
+1. question_decomposition：确认后按依赖波次并行执行 Research Worker，最后综合答案；
 2. knowledge_document_management：LLM 通过原生 ToolCall 收集资料并生成 dry-run，
    停在 waiting_confirmation，只有 confirm() 才会触发真实文档写入。
 
@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
+import tempfile
 from difflib import unified_diff
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -56,6 +58,7 @@ from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.domain.agent_task_plan import (
+    AgentResearchPolicy,
     AgentTaskPlan,
     AgentTaskPlanStatus,
     AgentTaskSubQuestion,
@@ -63,6 +66,10 @@ from fast_app.domain.agent_task_plan import (
     AgentTaskToolCallTrace,
     AgentToolStep,
     AgentToolStepStatus,
+)
+from fast_app.graph.agentic_research_graph import (
+    ResearchExecutionCancelled,
+    build_agentic_research_graph,
 )
 from fast_app.domain.agent_tool_permissions import (
     AgentToolCallContext,
@@ -89,6 +96,7 @@ from fast_app.services.rag_pipeline_service import (
     build_rag_context,
     build_top_doc_ids,
 )
+from fast_app.services.research_evidence_evaluator import ResearchEvidenceEvaluator
 
 
 LangChainConfigFactory = Callable[[str], RunnableConfig]
@@ -168,7 +176,12 @@ class _TaskPlanCancelledError(AppServiceError):
     """当前轮次屏障检测到用户已经取消 TaskPlan。"""
 
 
+class _TaskPlanPersistenceError(AppServiceError):
+    """研究进度快照无法持久化；这是任务级异常，不能降级成单 Worker 失败。"""
+
+
 _ACTIVE_DOCUMENT_TASK_PLAN_IDS: set[str] = set()
+_ACTIVE_RESEARCH_TASK_PLAN_IDS: set[str] = set()
 
 
 class AgentTaskPlanStore:
@@ -184,8 +197,31 @@ class AgentTaskPlanStore:
         self._task_plan_dir.mkdir(parents=True, exist_ok=True)
         plan.updated_at = datetime.now(UTC)
         path = self._path_for_new_plan(plan)
-        path.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
-        path.with_suffix(".md").write_text(_render_task_plan_markdown(plan), encoding="utf-8")
+        self._atomic_write_text(path, plan.model_dump_json(indent=2))
+        self._atomic_write_text(path.with_suffix(".md"), _render_task_plan_markdown(plan))
+
+    @staticmethod
+    def _atomic_write_text(path: Path, content: str) -> None:
+        """在目标目录写完临时文件后原子替换，避免轮询者读到半份快照。"""
+
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=path.parent,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+                temp_path = Path(handle.name)
+            os.replace(temp_path, path)
+        finally:
+            if temp_path is not None and temp_path.exists():
+                temp_path.unlink(missing_ok=True)
 
     def load(self, task_plan_id: str) -> AgentTaskPlan:
         """按 task_plan_id 读取最近一次保存的计划快照。"""
@@ -224,7 +260,7 @@ class AgentTaskExecutor:
     """执行 TaskPlan。
 
     当前保留两条链路：
-    - question_decomposition：确认后按子问题顺序选工具、回答并整合。
+    - question_decomposition：确认后由 LangGraph 调度隔离 Worker、评估证据并整合。
     - knowledge_document_management：原生 ToolCall 生成 dry-run，确认后真实写入。
     """
 
@@ -238,6 +274,7 @@ class AgentTaskExecutor:
         tool_permission_service: AgentToolPermissionService,
         tool_audit_service: AgentToolAuditService,
         task_plan_store: AgentTaskPlanStore,
+        evidence_evaluator: ResearchEvidenceEvaluator | None = None,
     ) -> None:
         # Executor 只编排已有依赖，不自行创建数据库、检索器或权限服务，便于请求级依赖注入。
         self._settings = settings
@@ -248,6 +285,7 @@ class AgentTaskExecutor:
         self._tool_permission_service = tool_permission_service
         self._tool_audit_service = tool_audit_service
         self._task_plan_store = task_plan_store
+        self._evidence_evaluator = evidence_evaluator or ResearchEvidenceEvaluator(settings)
 
     def save_plan(self, plan: AgentTaskPlan) -> None:
         """保存等待用户确认的 TaskPlan，不在 chat 请求里直接推进执行。"""
@@ -257,10 +295,15 @@ class AgentTaskExecutor:
     def cancel(self, task_plan_id: str, user: CurrentUserContext) -> AgentTaskPlan:
         """取消尚未完成的 TaskPlan；运行中任务会在下一轮屏障停止。"""
 
+        # 先从持久化快照读取，而不是使用请求内对象，避免取消过期的计划状态。
         plan = self._task_plan_store.load(task_plan_id)
         if plan.user_id != user.user_id and user.role != "admin":
             raise ToolPermissionDeniedError("只能取消自己创建的 Agent task plan")
-        if plan.status in {AgentTaskPlanStatus.COMPLETED, AgentTaskPlanStatus.CANCELLED}:
+        if plan.status in {
+            AgentTaskPlanStatus.COMPLETED,
+            AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS,
+            AgentTaskPlanStatus.CANCELLED,
+        }:
             raise AppServiceError("已完成或已取消的 Agent task plan 不能再次取消")
         plan.status = AgentTaskPlanStatus.CANCELLED
         plan.error = None
@@ -285,6 +328,7 @@ class AgentTaskExecutor:
     def _sync_cancelled_state(self, plan: AgentTaskPlan) -> bool:
         """把控制 API 写入的 cancelled 快照同步到当前执行对象。"""
 
+        # 执行协程与 cancel API 不共享内存；以文件快照作为它们之间的取消信号。
         latest = self._task_plan_store.load(plan.task_plan_id)
         if latest.status != AgentTaskPlanStatus.CANCELLED:
             return False
@@ -326,71 +370,260 @@ class AgentTaskExecutor:
         min_score: float,
         filters: RetrievalFilters,
         langchain_config_factory: LangChainConfigFactory | None = None,
+        resume: bool = False,
     ) -> AgentTaskPlan:
-        """按顺序回答问题拆解计划的子问题，并把结果整合成最终答案。"""
+        """用 LangGraph 按依赖波次并行执行研究 Worker，再统一综合结果。"""
 
         if plan.task_kind != "question_decomposition":
             raise AppServiceError(f"不支持的问题拆解 task kind: {plan.task_kind}")
+        if len(plan.sub_questions) > self._settings.agent_research_max_sub_questions:
+            plan.status = AgentTaskPlanStatus.FAILED
+            plan.error = (
+                "研究子问题数量超过上限: "
+                f"{len(plan.sub_questions)}>{self._settings.agent_research_max_sub_questions}"
+            )
+            plan.final_output = {"status": plan.status.value}
+            self._task_plan_store.save(plan)
+            raise AppServiceError(plan.error)
 
-        # 执行入口会被确认接口调用，所以这里重新绑定 user_id 并落盘运行态快照。
         plan.user_id = plan.user_id or user.user_id
         plan.status = AgentTaskPlanStatus.RUNNING
+        retained_results: list[AgentTaskSubQuestionResult] = []
+        if resume:
+            # 重试只复用已完成结果；failed/partial 会重新执行，避免把不足证据当成最终事实。
+            retained_results = [
+                AgentTaskSubQuestionResult.model_validate(item)
+                for item in plan.final_output.get("sub_question_results", [])
+                if isinstance(item, dict) and item.get("status") == "completed"
+            ]
         plan.final_output = {
-            "sub_question_results": [],
-            "used_tools": [],
+            "research_progress": {"current_wave": 0, "workers": {}, "events": []},
+            "sub_question_results": [
+                item.model_dump(mode="json") for item in retained_results
+            ],
+            "failed_sub_questions": [],
+            "skipped_sub_questions": [],
+            "warnings": [],
+            "used_tools": sorted(
+                {tool for item in retained_results for tool in _result_used_tools(item)}
+            ),
+            "sources": _collect_result_sources(retained_results),
         }
-
-        # 保存running状态快照
         self._task_plan_store.save(plan)
+        # 多个 Worker 可同时上报事件；这把“更新内存快照 + 落盘”串行化，防止字段互相覆盖。
+        snapshot_lock = asyncio.Lock()
 
-        results: list[AgentTaskSubQuestionResult] = []
-        try:
-            # sub_questions 是规划事实；执行结果单独写入 final_output，避免污染 plan。
-            for sub_question in sorted(plan.sub_questions, key=lambda item: item.order):
-                if self._sync_cancelled_state(plan):
-                    self._task_plan_store.save(plan)
-                    return plan
-                # 开始执行子任务
-                result = await self._execute_sub_question(
-                    plan=plan,
-                    sub_question=sub_question,
-                    previous_results=results,
-                    mode=mode,
-                    top_k=top_k,
-                    candidate_k=candidate_k,
-                    min_score=min_score,
-                    filters=filters,
-                    langchain_config_factory=langchain_config_factory,
-                )
-                results.append(result)
-                if self._sync_cancelled_state(plan):
-                    self._task_plan_store.save(plan)
-                    return plan
-                # 每完成一个子问题就保存一次，便于接口或页面看到中间进度。
-                plan.final_output["sub_question_results"] = [
-                    item.model_dump(mode="json") for item in results
-                ]
-                plan.final_output["used_tools"] = sorted(
+        def save_research_snapshot() -> None:
+            # 持久化失败会中断整个研究图，而非伪装成某个 Worker 的局部失败；否则 SSE
+            # 与后续 resume 会读取到不完整的事实快照。
+            try:
+                self._task_plan_store.save(plan)
+            except Exception as exc:
+                raise _TaskPlanPersistenceError(
+                    f"无法持久化 TaskPlan 快照: {type(exc).__name__}: {exc}"
+                ) from exc
+
+        async def append_progress_event(event: str, payload: dict[str, Any]) -> None:
+            # Worker 只提交事件负载；此回调负责把它转换成 API/SSE 可观察的统一进度结构。
+            async with snapshot_lock:
+                progress = plan.final_output["research_progress"]
+                progress["events"].append({"event": event, **payload})
+                worker_id = str(payload.get("sub_question_id") or "")
+                if worker_id:
+                    worker = progress["workers"].setdefault(worker_id, {})
+                    worker.update(
+                        {
+                            key: value
+                            for key, value in payload.items()
+                            if key in {"status", "wave", "attempt", "evaluation", "error"}
+                        }
+                    )
+                save_research_snapshot()
+
+        async def on_wave_started(wave: int, sub_question_ids: list[str]) -> None:
+            # 先把本波次所有 Worker 标为 running，再启动实际协程，避免极快完成时页面漏掉开始态。
+            async with snapshot_lock:
+                progress = plan.final_output["research_progress"]
+                progress["current_wave"] = wave
+                progress["events"].append(
                     {
-                        tool_name
-                        for item in results
-                        for tool_name in _result_used_tools(item)
+                        "event": "agent_task_research_wave_started",
+                        "wave": wave,
+                        "sub_question_ids": sub_question_ids,
                     }
                 )
-                # 保存一次已完成的子任务的 任务快照
+                for item_id in sub_question_ids:
+                    progress["workers"][item_id] = {
+                        "status": "running",
+                        "wave": wave,
+                        "attempt": 1,
+                        "evaluation": None,
+                        "error": None,
+                    }
+                save_research_snapshot()
+
+        merged_by_id = {item.sub_question_id: item for item in retained_results}
+
+        async def on_wave_merged(
+            wave: int,
+            wave_results: list[AgentTaskSubQuestionResult],
+        ) -> None:
+            async with snapshot_lock:
+                # LangGraph 并行节点的返回顺序不可预测；按 id 覆盖后统一排序，快照才稳定。
+                for item in wave_results:
+                    merged_by_id[item.sub_question_id] = item
+                    plan.final_output["research_progress"]["workers"].setdefault(
+                        item.sub_question_id, {}
+                    ).update(
+                        {
+                            "status": item.status,
+                            "wave": wave,
+                            "attempt": item.attempt_count,
+                            "evaluation": (
+                                item.evaluation.model_dump(mode="json")
+                                if item.evaluation is not None
+                                else None
+                            ),
+                            "error": item.error,
+                        }
+                    )
+                ordered = _sort_results(plan, list(merged_by_id.values()))
+                plan.final_output["sub_question_results"] = [
+                    item.model_dump(mode="json") for item in ordered
+                ]
+                plan.final_output["used_tools"] = sorted(
+                    {tool for item in ordered for tool in _result_used_tools(item)}
+                )
+                plan.final_output["sources"] = _collect_result_sources(ordered)
+                save_research_snapshot()
+
+        def should_stop() -> bool:
+            # Graph 和每个 Worker 复用同一取消探针，在派发新波次前以及长操作边界检查。
+            return self._sync_cancelled_state(plan)
+
+        async def worker_runner(
+            sub_question: AgentTaskSubQuestion,
+            dependency_results: list[AgentTaskSubQuestionResult],
+            wave: int,
+        ) -> AgentTaskSubQuestionResult:
+            try:
+                # Worker 超时限制在单子问题；一个慢工具不应阻塞同波次的其他研究结果。
+                return await asyncio.wait_for(
+                    self._execute_research_worker(
+                        plan=plan,
+                        sub_question=sub_question,
+                        dependency_results=dependency_results,
+                        policy=plan.research_policy or AgentResearchPolicy(
+                            mode=mode,
+                            top_k=top_k,
+                            candidate_k=candidate_k,
+                            min_score=min_score,
+                            source_path=filters.source_path,
+                            section_path=filters.section_path,
+                            web_policy="disabled",
+                        ),
+                        filters=filters,
+                        wave=wave,
+                        on_progress=append_progress_event,
+                        should_stop=should_stop,
+                        langchain_config_factory=langchain_config_factory,
+                    ),
+                    timeout=self._settings.agent_research_worker_timeout_seconds,
+                )
+            except ResearchExecutionCancelled:
+                raise
+            except ToolPermissionDeniedError:
+                raise
+            except _TaskPlanPersistenceError:
+                raise
+            except TimeoutError:
+                return _failed_research_result(
+                    sub_question, "WORKER_TIMEOUT", "Worker 执行超时。"
+                )
+            except Exception as exc:
+                return _failed_research_result(
+                    sub_question,
+                    f"{type(exc).__name__}: {exc}",
+                    "Worker 局部异常已隔离。",
+                )
+
+        try:
+            graph = build_agentic_research_graph(
+                worker_runner=worker_runner,
+                on_wave_started=on_wave_started,
+                on_wave_merged=on_wave_merged,
+                should_stop=should_stop,
+            )
+            graph_result = await graph.ainvoke(
+                {
+                    "sub_questions": plan.sub_questions,
+                    "results": retained_results,
+                    "current_wave": 0,
+                    "batch_ids": [],
+                    "max_parallel_workers": self._settings.agent_research_max_parallel_workers,
+                }
+            )
+            # 图已经把依赖失败转换成 skipped；Executor 在图外只负责汇总、综合与最终状态。
+            results = _sort_results(plan, graph_result.get("results", []))
+            if self._sync_cancelled_state(plan):
                 self._task_plan_store.save(plan)
-
-            # 允许单个子问题失败，但不能在完全没有有效答案时继续综合。
-            if not any(item.status == "completed" for item in results):
-                raise AppServiceError("所有子问题都执行失败，无法整合最终答案")
-
+                return plan
+            usable = [item for item in results if item.status in {"completed", "partial"}]
+            failed = [item.sub_question_id for item in results if item.status == "failed"]
+            skipped = [item.sub_question_id for item in results if item.status == "skipped"]
+            warnings = [warning for item in results for warning in item.warnings]
+            warnings.extend(
+                f"{item.sub_question_id}: {item.status} - {item.error or '证据不足'}"
+                for item in results
+                if item.status in {"failed", "skipped"} and not item.warnings
+            )
+            workers = plan.final_output["research_progress"]["workers"]
+            for item in results:
+                workers.setdefault(item.sub_question_id, {}).update(
+                    {
+                        "status": item.status,
+                        "attempt": item.attempt_count,
+                        "evaluation": (
+                            item.evaluation.model_dump(mode="json")
+                            if item.evaluation is not None
+                            else None
+                        ),
+                        "error": item.error,
+                    }
+                )
+            plan.final_output.update(
+                {
+                    "sub_question_results": [
+                        item.model_dump(mode="json") for item in results
+                    ],
+                    "failed_sub_questions": failed,
+                    "skipped_sub_questions": skipped,
+                    "warnings": warnings,
+                    "sources": _collect_result_sources(usable),
+                    "used_tools": sorted(
+                        {tool for item in results for tool in _result_used_tools(item)}
+                    ),
+                }
+            )
+            if not usable:
+                # 没有任何可用证据时不能请求综合模型，避免生成看似完整但无依据的答案。
+                plan.status = AgentTaskPlanStatus.FAILED
+                plan.error = "所有子问题均 failed/skipped，没有可综合的证据。"
+                plan.final_output["status"] = plan.status.value
+                self._task_plan_store.save(plan)
+                return plan
             final_answer = await self._synthesize_final_answer(
                 plan,
-                results,
+                usable,
+                failed_sub_questions=failed,
+                skipped_sub_questions=skipped,
                 langchain_config_factory=langchain_config_factory,
             )
-            # 所有任务完成后，保存最终结果的 任务快照
-            plan.status = AgentTaskPlanStatus.COMPLETED
+            plan.status = (
+                AgentTaskPlanStatus.COMPLETED
+                if all(item.status == "completed" for item in results)
+                else AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS
+            )
             plan.final_output.update(
                 {
                     "final_answer": final_answer,
@@ -400,12 +633,253 @@ class AgentTaskExecutor:
             )
             self._task_plan_store.save(plan)
             return plan
+        except ResearchExecutionCancelled:
+            self._sync_cancelled_state(plan)
+            self._task_plan_store.save(plan)
+            return plan
         except Exception as exc:
             plan.status = AgentTaskPlanStatus.FAILED
             plan.error = f"{type(exc).__name__}: {exc}"
             plan.final_output["status"] = plan.status.value
             self._task_plan_store.save(plan)
             raise
+
+    async def _execute_research_worker(
+        self,
+        *,
+        plan: AgentTaskPlan,
+        sub_question: AgentTaskSubQuestion,
+        dependency_results: list[AgentTaskSubQuestionResult],
+        policy: AgentResearchPolicy,
+        filters: RetrievalFilters,
+        wave: int,
+        on_progress: Callable[[str, dict[str, Any]], Any],
+        should_stop: Callable[[], bool],
+        langchain_config_factory: LangChainConfigFactory | None,
+    ) -> AgentTaskSubQuestionResult:
+        """执行一个隔离 Worker，并在有限预算内根据 Evaluator 做纠正检索。"""
+
+        attempts: list[dict[str, Any]] = []
+        all_tool_calls: list[AgentTaskToolCallTrace] = []
+        all_evidence: list[dict[str, Any]] = []
+        used_tool_calls = 0
+        force_web = policy.web_policy == "required"
+        web_missing_points: list[str] = []
+        max_attempts = self._settings.agent_research_max_correction_rounds + 1
+        last_result = _failed_research_result(sub_question, "NOT_STARTED")
+
+        for attempt in range(1, max_attempts + 1):
+            if should_stop():
+                raise ResearchExecutionCancelled("TaskPlan 已取消")
+            remaining_calls = max(
+                self._settings.agent_research_max_tool_calls_per_worker
+                - used_tool_calls,
+                0,
+            )
+            attempt_question = (
+                sub_question.model_copy(update={"information_source_hint": "web_search"})
+                if force_web
+                else sub_question
+            )
+
+            def build_worker_config(child_name: str) -> RunnableConfig:
+                """把旧工具循环子调用映射到稳定的 Research Worker trace 命名。"""
+
+                if langchain_config_factory is None:
+                    return {}
+                tool_match = re.search(r"\.tool\.([^.]+)", child_name)
+                if tool_match is not None:
+                    research_name = (
+                        f"research.worker.{sub_question.sub_question_id}."
+                        f"attempt_{attempt}.tool.{tool_match.group(1)}"
+                    )
+                else:
+                    leaf = child_name.rsplit(".", 1)[-1]
+                    research_name = (
+                        f"research.wave_{wave}.worker.{sub_question.sub_question_id}."
+                        f"attempt_{attempt}.{leaf}"
+                    )
+                return langchain_config_factory(research_name)
+
+            last_result = await self._execute_sub_question(
+                plan=plan,
+                sub_question=attempt_question,
+                previous_results=dependency_results,
+                mode=policy.mode,
+                top_k=policy.top_k,
+                candidate_k=policy.candidate_k,
+                min_score=policy.min_score,
+                filters=filters,
+                langchain_config_factory=(
+                    build_worker_config if langchain_config_factory is not None else None
+                ),
+                max_tool_calls_override=remaining_calls,
+                allow_web_search=force_web,
+                safe_web_query=_build_public_web_query(
+                    plan.original_query,
+                    sub_question.question,
+                    web_missing_points,
+                ),
+            )
+            # 每轮都累积调用轨迹和证据：纠正检索是在补证据，不能丢掉前一轮已经验证的来源。
+            used_tool_calls += len(last_result.tool_calls)
+            all_tool_calls.extend(last_result.tool_calls)
+            all_evidence = _merge_evidence(all_evidence, last_result.evidence)
+            source_types = sorted(
+                {
+                    str(item.get("source"))
+                    for item in all_evidence
+                    if item.get("source")
+                }
+            )
+            candidate_answer = last_result.answer
+            try:
+                if should_stop():
+                    raise ResearchExecutionCancelled("TaskPlan 已取消")
+                evaluation = await self._evidence_evaluator.evaluate(
+                    sub_question=sub_question,
+                    answer=candidate_answer,
+                    evidence=all_evidence,
+                    langchain_config=(
+                        langchain_config_factory(
+                            f"research.worker.{sub_question.sub_question_id}."
+                            f"attempt_{attempt}.evaluator"
+                        )
+                        if langchain_config_factory is not None
+                        else None
+                    ),
+                )
+            except ResearchExecutionCancelled:
+                raise
+            except Exception as exc:
+                # Evaluator 是质量门，不是证据来源；它不可用时保留已有结果并降级为 partial。
+                status = "partial" if all_evidence else "failed"
+                warning = f"Evaluator 不可用: {type(exc).__name__}"
+                attempts.append(
+                    {
+                        "attempt": attempt,
+                        "selected_tool": last_result.selected_tool,
+                        "status": last_result.status,
+                        "tool_call_count": len(last_result.tool_calls),
+                        "evaluation_error": warning,
+                    }
+                )
+                await on_progress(
+                    "agent_task_evidence_evaluated",
+                    {
+                        "sub_question_id": sub_question.sub_question_id,
+                        "wave": wave,
+                        "attempt": attempt,
+                        "status": status,
+                        "evaluation": {"error": warning},
+                    },
+                )
+                return last_result.model_copy(
+                    update={
+                        "status": status,
+                        "evidence": all_evidence,
+                        "tool_calls": all_tool_calls,
+                        "attempt_count": attempt,
+                        "attempts": attempts,
+                        "source_types": source_types,
+                        "warnings": [warning],
+                        "error": None if all_evidence else (last_result.error or warning),
+                    }
+                )
+
+            evaluation_payload = evaluation.model_dump(mode="json")
+            attempts.append(
+                {
+                    "attempt": attempt,
+                    "selected_tool": last_result.selected_tool,
+                    "status": last_result.status,
+                    "tool_call_count": len(last_result.tool_calls),
+                    "evaluation": evaluation_payload,
+                }
+            )
+            await on_progress(
+                "agent_task_evidence_evaluated",
+                {
+                    "sub_question_id": sub_question.sub_question_id,
+                    "wave": wave,
+                    "attempt": attempt,
+                    "status": last_result.status,
+                    "evaluation": evaluation_payload,
+                },
+            )
+            if evaluation.verdict == "sufficient" and evaluation.confidence >= 0.65:
+                # verdict 与置信度同时满足才停止，避免评价器虽倾向充分但自身不确定时过早结束。
+                return last_result.model_copy(
+                    update={
+                        "status": "completed",
+                        "evidence": all_evidence,
+                        "tool_calls": all_tool_calls,
+                        "attempt_count": attempt,
+                        "attempts": attempts,
+                        "evaluation": evaluation,
+                        "source_types": source_types,
+                        "error": None,
+                    }
+                )
+
+            wants_web = evaluation.recommended_action in {
+                "search_web",
+                "combine_local_and_web",
+            }
+            # 重试同时受轮次数和 ToolCall 总预算约束，防止“证据不足”导致无限检索。
+            can_retry = attempt < max_attempts and used_tool_calls < self._settings.agent_research_max_tool_calls_per_worker
+            if wants_web and policy.web_policy == "disabled":
+                warning = "证据不足，但本次请求未授权 WebSearch。"
+                return last_result.model_copy(
+                    update={
+                        "status": "partial" if all_evidence else "failed",
+                        "evidence": all_evidence,
+                        "tool_calls": all_tool_calls,
+                        "attempt_count": attempt,
+                        "attempts": attempts,
+                        "evaluation": evaluation,
+                        "source_types": source_types,
+                        "warnings": [warning],
+                        "error": None if all_evidence else (last_result.error or warning),
+                    }
+                )
+            if can_retry and evaluation.recommended_action in {
+                "rewrite_local_query",
+                "search_web",
+                "combine_local_and_web",
+            }:
+                # 只有 fallback/required 策略可打开 Web；missing_points 只在真正走 Web 时进入公开查询。
+                force_web = policy.web_policy == "required" or (
+                    wants_web and policy.web_policy == "fallback"
+                )
+                web_missing_points = list(evaluation.missing_points) if force_web else []
+                await on_progress(
+                    "agent_task_sub_question_retrying",
+                    {
+                        "sub_question_id": sub_question.sub_question_id,
+                        "wave": wave,
+                        "attempt": attempt + 1,
+                        "status": "retrying",
+                        "retry_reason": evaluation.reason,
+                    },
+                )
+                continue
+
+            warning = evaluation.reason or "达到纠正预算，证据仍不充分。"
+            return last_result.model_copy(
+                update={
+                    "status": "partial" if all_evidence else "failed",
+                    "evidence": all_evidence,
+                    "tool_calls": all_tool_calls,
+                    "attempt_count": attempt,
+                    "attempts": attempts,
+                    "evaluation": evaluation,
+                    "source_types": source_types,
+                    "warnings": [warning] if all_evidence else [],
+                    "error": None if all_evidence else (last_result.error or warning),
+                }
+            )
+        return last_result
 
     async def _execute_sub_question(
         self,
@@ -418,6 +892,9 @@ class AgentTaskExecutor:
         min_score: float,
         filters: RetrievalFilters,
         langchain_config_factory: LangChainConfigFactory | None = None,
+        max_tool_calls_override: int | None = None,
+        allow_web_search: bool = True,
+        safe_web_query: str | None = None,
     ) -> AgentTaskSubQuestionResult:
         """执行一个子问题：让 LLM 进行有限多轮工具选择，再生成子问题答案。
 
@@ -425,8 +902,16 @@ class AgentTaskExecutor:
         子问题结论”的场景；tool_calls 只记录当前子问题内部的多轮工具调用轨迹。
         """
 
-        available_tools = await self._build_available_task_tools()
-        max_tool_calls = max(self._settings.agent_max_tool_calls, 0)
+        available_tools = await self._build_available_task_tools(
+            allow_web_search=allow_web_search
+        )
+        # override 由 Research Worker 的剩余预算提供，确保纠正轮不会突破单 Worker 总上限。
+        max_tool_calls = max(
+            self._settings.agent_max_tool_calls
+            if max_tool_calls_override is None
+            else max_tool_calls_override,
+            0,
+        )
         tool_calls: list[AgentTaskToolCallTrace] = []
         call_count = 0
         round_index = 0
@@ -456,6 +941,7 @@ class AgentTaskExecutor:
                     if str(item.get("selected_tool") or "none") != "none"
                 ]
                 if not selections:
+                    # 模型明确停止调用工具后，跳出循环，随后用已成功的调用统一生成答案。
                     break
 
                 batch_size = len(selections)
@@ -493,12 +979,22 @@ class AgentTaskExecutor:
                     # 每个协程只返回自己的 trace，不并发修改外层 tool_calls，避免共享列表写入竞态。
                     selected_tool = str(selection.get("selected_tool") or "")
                     tool_input = _normalize_tool_input(selection.get("tool_input"))
+                    if selected_tool == WEB_SEARCH_TOOL_NAME:
+                        # Web 请求只使用当前公开子问题，不转发私有 Chunk、路径、ACL 或依赖原文。
+                        tool_input = {
+                            **tool_input,
+                            "query": safe_web_query
+                            or _build_public_web_query(
+                                plan.original_query, sub_question.question, []
+                            ),
+                        }
                     call_id = str(
                         selection.get("call_id")
                         or f"{sub_question.sub_question_id}_tool_{round_index}_{index}"
                     )
                     reason = str(selection.get("reason") or "")
                     try:
+                        # 内置检索/Web 与 MCP 工具都被收敛为相同的 trace 结构，方便后续综合。
                         tool_output, answer, evidence = await self._run_task_tool_for_sub_question(
                             selected_tool=selected_tool,
                             tool_input=tool_input,
@@ -526,6 +1022,8 @@ class AgentTaskExecutor:
                             status="completed",
                             reason=reason,
                         )
+                    except ToolPermissionDeniedError:
+                        raise
                     except Exception as exc:
                         return AgentTaskToolCallTrace(
                             call_id=call_id,
@@ -606,6 +1104,9 @@ class AgentTaskExecutor:
                 evidence=evidence,
                 status="completed",
             )
+        except ToolPermissionDeniedError:
+            # 权限拒绝属于任务级安全事件，不能降级成“这个子问题失败后继续试”。
+            raise
         except Exception as exc:
             # 子问题失败不立刻中断整个计划，让后续子问题仍有机会完成。
             return AgentTaskSubQuestionResult(
@@ -668,8 +1169,20 @@ class AgentTaskExecutor:
                 langchain_config_factory=langchain_config_factory,
             )
             if selections is None:
+                # 原生 ToolCall 失败时才退到 JSON；两种协议不会同时请求，避免重复选择。
                 if required_tool_name is not None:
-                    raise AppServiceError("模型未能生成必需的原生 Web Search ToolCall")
+                    # web_policy=required 已由服务端策略确认；模型不支持原生 ToolCall 时，
+                    # 由后端生成最小 WebSearch 调用，实际 query 仍会在执行前被隐私清洗。
+                    return [
+                        {
+                            "selected_tool": WEB_SEARCH_TOOL_NAME,
+                            "tool_input": {
+                                "query": sub_question.question,
+                                "count": default_top_k,
+                            },
+                            "reason": "server_enforced_required_web_policy",
+                        }
+                    ]
                 selection = await self._select_tool_with_json(
                     plan=plan,
                     sub_question=sub_question,
@@ -688,6 +1201,7 @@ class AgentTaskExecutor:
                     if isinstance(selection, dict)
                 ]
                 if not tool_calls and _extract_first_url(sub_question.question):
+                    # URL 在首轮即可确定；后端固定 fetch，避免模型把已知地址误交给检索工具。
                     return [
                         _repair_fetch_tool_selection(
                             selection={"selected_tool": "none", "tool_input": {}},
@@ -699,6 +1213,7 @@ class AgentTaskExecutor:
 
         # LLM 不可用时的兜底，不作为正常企业场景的主判断器。
         if tool_calls:
+            # 无 LLM 兜底只允许首轮选择一次；后续没有模型就停止，避免根据旧输入重复调用。
             return []
         fallback_tool = sub_question.information_source_hint
         if fallback_tool not in {tool.name for tool in available_tools}:
@@ -718,7 +1233,10 @@ class AgentTaskExecutor:
             )
         ]
 
-    async def _build_available_task_tools(self) -> list[BaseTool]:
+    async def _build_available_task_tools(
+        self,
+        allow_web_search: bool = True,
+    ) -> list[BaseTool]:
         """构造本阶段允许 LLM 选择的工具白名单。"""
 
         async def knowledge_retrieval(query: str, mode: str = "hybrid", top_k: int = 5) -> str:
@@ -734,7 +1252,7 @@ class AgentTaskExecutor:
             )
         ]
 
-        if self._settings.bocha_api_key:
+        if allow_web_search and self._settings.bocha_api_key:
             # Bocha 未配置时不把 web_search 暴露给 LLM，避免模型选择不可执行工具。
             async def web_search(
                 query: str,
@@ -767,6 +1285,7 @@ class AgentTaskExecutor:
         for config in _load_mcp_stdio_server_configs(
             self._settings.agent_task_mcp_stdio_servers_json
         ):
+            # 每个 server 单独应用 allowed_tool_names，MCP 返回的其他工具不会进入 LLM 白名单。
             client = McpStdioClientBoundary(
                 server_config=McpStdioServerConfig(
                     command=config["command"],
@@ -824,6 +1343,7 @@ class AgentTaskExecutor:
                 ),
             )
         except Exception:
+            # provider/协议差异由调用者继续尝试 JSON fallback；这里不泄露底层异常给模型上下文。
             return None
 
         tool_calls = getattr(response, "tool_calls", None) or []
@@ -874,6 +1394,7 @@ class AgentTaskExecutor:
                 ),
             )
         except Exception:
+            # JSON fallback 也不可用时交由上层按 information_source_hint 做最小保守选择。
             return None
         if isinstance(response, AgentTaskToolSelectionPayload):
             return response.model_dump(mode="json")
@@ -918,6 +1439,7 @@ class AgentTaskExecutor:
 
         # 走到这里的是 MCP 等外部工具：先按白名单取工具，再由 LangChain tool 执行。
         tool = _find_registered_tool(selected_tool, available_tools)
+        # MCP 输出未必是字符串；先序列化成文本，才能同时进入答案上下文与可持久化证据摘要。
         content = await tool.ainvoke(
             tool_input,
             config=(
@@ -992,6 +1514,7 @@ class AgentTaskExecutor:
             filters=filters,
             pipeline_provider="rag_agent_task_sub_question",
         )
+        # 原始 docs 留在本次 LLM 上下文，落到 TaskPlan 的 evidence 只保留可展示的摘要。
         # 子问题回答复用现有 RAG context 构造，避免新建一套上下文格式。
         answer = await self._generate_with_trace(
             query=f"请回答子问题：{sub_question.question}",
@@ -1034,6 +1557,7 @@ class AgentTaskExecutor:
                 count=count,
                 site=site,
             )
+        # WebSearch 返回的数据模型与本地检索不同；转成 RetrievedDoc 后可以复用同一 RAG 上下文构造器。
         docs = [
             RetrievedDoc(
                 id=f"web_{index}",
@@ -1082,6 +1606,7 @@ class AgentTaskExecutor:
             docs=[],
             context_text=_format_previous_answers(previous_results) or "无前置子问题答案。",
         )
+        # 纯推理路径没有外部事实，evidence 为空；调用方仍把答案标记为 completed。
         answer = await self._generate_with_trace(
             query=f"请基于已有子问题答案回答：{sub_question.question}",
             context=context,
@@ -1099,6 +1624,8 @@ class AgentTaskExecutor:
         self,
         plan: AgentTaskPlan,
         results: list[AgentTaskSubQuestionResult],
+        failed_sub_questions: list[str] | None = None,
+        skipped_sub_questions: list[str] | None = None,
         langchain_config_factory: LangChainConfigFactory | None = None,
     ) -> str:
         """把所有子问题答案和证据整合成面向用户的最终回答。"""
@@ -1108,15 +1635,20 @@ class AgentTaskExecutor:
             docs=[],
             context_text=_format_sub_question_results(results),
         )
+        # 综合模型只读取序列化后的已完成结果，不能凭空补全 failed/skipped 子问题。
         answer = await self._generate_with_trace(
             query=(
                 f"请回答原始复杂问题：{plan.original_query}\n"
                 f"最终目标：{plan.objective}\n"
-                f"整合要求：{plan.final_synthesis_instruction}"
+                f"整合要求：{plan.final_synthesis_instruction}\n"
+                f"失败子问题：{failed_sub_questions or []}\n"
+                f"跳过子问题：{skipped_sub_questions or []}\n"
+                "只能使用 completed/partial 结果和实际证据；不得推测失败问题，"
+                "必须明确说明未完成、证据不足和冲突内容。"
             ),
             context=context,
             langchain_config=(
-                langchain_config_factory("final_synthesis")
+                langchain_config_factory("research.final_synthesis")
                 if langchain_config_factory is not None
                 else None
             ),
@@ -1136,6 +1668,7 @@ class AgentTaskExecutor:
             json.dumps(call.model_dump(mode="json"), ensure_ascii=False)
             for call in tool_calls
         )
+        # 保留每条调用的参数、输出和状态，而非只传最后一条，供模型处理多工具互补或冲突。
         previous = _format_previous_answers(previous_results)
         if previous:
             context_text = _append_text(context_text, previous, title="前置子问题答案")
@@ -1193,6 +1726,53 @@ class AgentTaskExecutor:
         plan = self._task_plan_store.load(task_plan_id)
         if plan.user_id != user.user_id and user.role != "admin":
             raise ToolPermissionDeniedError("只能恢复自己创建的 Agent task plan")
+        if plan.task_kind == "question_decomposition":
+            if plan.status not in {
+                AgentTaskPlanStatus.RUNNING,
+                AgentTaskPlanStatus.FAILED,
+                AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS,
+            }:
+                raise AppServiceError(
+                    "研究 TaskPlan 只有 running、failed 或 completed_with_warnings 可以重试"
+                )
+            if task_plan_id in _ACTIVE_RESEARCH_TASK_PLAN_IDS:
+                raise AppServiceError("研究 TaskPlan 当前仍在执行，不能重复恢复")
+            if not user.is_authenticated:
+                raise ToolPermissionDeniedError("当前用户身份已失效，拒绝恢复研究计划")
+            policy = plan.research_policy or AgentResearchPolicy(
+                mode="hybrid",
+                top_k=self._settings.rag_default_top_k,
+                min_score=self._settings.rag_default_min_score,
+                web_policy="disabled",
+            )
+            permissions = set(user.permissions)
+            _ACTIVE_RESEARCH_TASK_PLAN_IDS.add(task_plan_id)
+            try:
+                # resume=True 让执行器恢复完成结果并重新跑未完成部分，而不是直接复用旧的失败状态。
+                return await self.execute_question_decomposition_plan(
+                    plan=plan,
+                    user=user,
+                    mode=policy.mode,
+                    top_k=policy.top_k,
+                    candidate_k=policy.candidate_k,
+                    min_score=policy.min_score,
+                    filters=RetrievalFilters(
+                        source_path=policy.source_path,
+                        section_path=policy.section_path,
+                        user_id=user.user_id,
+                        department_codes=list(user.department_codes),
+                        can_read_all=(
+                            user.role == "admin"
+                            or "*" in permissions
+                            or "knowledge:read:all" in permissions
+                        ),
+                        allow_public=True,
+                    ),
+                    langchain_config_factory=langchain_config_factory,
+                    resume=True,
+                )
+            finally:
+                _ACTIVE_RESEARCH_TASK_PLAN_IDS.discard(task_plan_id)
         if plan.task_kind != "knowledge_document_management":
             raise AppServiceError("当前只支持恢复文档管理 Tool Loop")
         if plan.status not in {AgentTaskPlanStatus.RUNNING, AgentTaskPlanStatus.FAILED}:
@@ -1244,6 +1824,7 @@ class AgentTaskExecutor:
             if not isinstance(checkpoint, dict):
                 raise AppServiceError("文档 TaskPlan 缺少可恢复检查点")
             try:
+                # checkpoint 保存的是每个完整轮次后的状态；恢复不会执行一次只完成一半的并行批次。
                 candidates = {
                     str(key): dict(value)
                     for key, value in dict(checkpoint.get("candidates") or {}).items()
@@ -1309,6 +1890,7 @@ class AgentTaskExecutor:
             document_actions=document_actions,
         )
         tools_by_name = {tool.name: tool for tool in tools}
+        # 这个模型只负责提出 ToolCall；文档读写的真实实现与权限判断都在下方后端工具闭包中。
         # 模型可以同轮返回多个调用；后端仍按白名单和轮次开始时的状态强制校验。
         model = ChatOpenAI(
             model=self._settings.llm_model_name,
@@ -1348,6 +1930,7 @@ class AgentTaskExecutor:
                     ),
                 )
                 messages.append(response)
+                # 先把 AIMessage 放入 checkpoint；无论本轮成功还是拒绝，下一轮都能看到自己刚才的调用。
                 raw_calls = getattr(response, "tool_calls", None) or []
                 invalid_calls = getattr(response, "invalid_tool_calls", None) or []
                 if invalid_calls:
@@ -1483,6 +2066,7 @@ class AgentTaskExecutor:
                     tool_input = _normalize_tool_input(call.get("args"))
                     tool = tools_by_name[tool_name]
                     try:
+                        # tools 已由整批校验确认存在且可并行；这里不允许单个协程提前修改候选/read 状态。
                         tool_message = await tool.ainvoke(
                             call,
                             config=(
@@ -1549,6 +2133,7 @@ class AgentTaskExecutor:
                         KNOWLEDGE_DOCUMENT_UPDATE_TOOL_NAME,
                         KNOWLEDGE_DOCUMENT_DELETE_TOOL_NAME,
                     }:
+                        # 只有 dry-run 写工具才能产出待确认步骤；retrieval/read 只更新下一轮可用的服务端事实。
                         plan.steps.append(
                             _document_step_from_tool_result(
                                 call_id=trace.call_id,
@@ -1591,6 +2176,7 @@ class AgentTaskExecutor:
             self._task_plan_store.save(plan)
             return plan
         except asyncio.CancelledError:
+            # 进程/请求中断可能发生在轮次边界以外，不能当作用户主动取消。
             plan.status = AgentTaskPlanStatus.FAILED
             plan.error = "AgentTaskInterrupted: 文档 Agent 在完整轮次边界外中断"
             plan.final_output["status"] = plan.status.value
@@ -1621,6 +2207,7 @@ class AgentTaskExecutor:
 
         if self._sync_cancelled_state(plan):
             raise _TaskPlanCancelledError("Agent task plan 已取消")
+        # 将消息同时持久化为 LangChain 可反序列化格式，resume 才能把 ToolMessage 原样交回模型。
         plan.final_output["tool_calls"] = [
             item.model_dump(mode="json") for item in traces
         ]
@@ -1692,6 +2279,7 @@ class AgentTaskExecutor:
             content = self._document_management_service.read_document_content(
                 candidate["source_path"]
             )
+            # 只有读取成功后才记入 read_doc_ids；这正是 update 的“读过原文”凭据。
             read_doc_ids.add(doc_id)
             return json.dumps(
                 {
@@ -1855,6 +2443,7 @@ class AgentTaskExecutor:
             ),
         )
         result = await self._document_management_service.plan_action(request, user=user)
+        # plan_action 负责路径/ACL/内容等领域校验，返回的是预览而不是实际写入结果。
         preview = result.preview
         doc_id = str(preview.affected_doc_id or "")
         if not doc_id:
@@ -1922,21 +2511,42 @@ class AgentTaskExecutor:
 
         if plan.task_kind == "question_decomposition":
             # 复杂问题拆解计划：确认的是“开始执行这个计划”，不是写入文件。
-            return await self.execute_question_decomposition_plan(
-                plan=plan,
-                user=user,
+            if not user.is_authenticated:
+                raise ToolPermissionDeniedError("当前用户身份已失效，拒绝执行研究计划")
+            policy = plan.research_policy or AgentResearchPolicy(
                 mode="hybrid",
                 top_k=self._settings.rag_default_top_k,
-                candidate_k=None,
                 min_score=self._settings.rag_default_min_score,
-                filters=RetrievalFilters(
-                    user_id=user.user_id,
-                    department_codes=user.department_codes,
-                    can_read_all="knowledge:read_all" in user.permissions,
-                    allow_public=True,
-                ),
-                langchain_config_factory=langchain_config_factory,
+                web_policy="disabled",
             )
+            current_permissions = set(user.permissions)
+            if task_plan_id in _ACTIVE_RESEARCH_TASK_PLAN_IDS:
+                raise AppServiceError("研究 TaskPlan 当前仍在执行，不能重复确认")
+            _ACTIVE_RESEARCH_TASK_PLAN_IDS.add(task_plan_id)
+            try:
+                return await self.execute_question_decomposition_plan(
+                    plan=plan,
+                    user=user,
+                    mode=policy.mode,
+                    top_k=policy.top_k,
+                    candidate_k=policy.candidate_k,
+                    min_score=policy.min_score,
+                    filters=RetrievalFilters(
+                        source_path=policy.source_path,
+                        section_path=policy.section_path,
+                        user_id=user.user_id,
+                        department_codes=list(user.department_codes),
+                        can_read_all=(
+                            user.role == "admin"
+                            or "*" in current_permissions
+                            or "knowledge:read:all" in current_permissions
+                        ),
+                        allow_public=True,
+                    ),
+                    langchain_config_factory=langchain_config_factory,
+                )
+            finally:
+                _ACTIVE_RESEARCH_TASK_PLAN_IDS.discard(task_plan_id)
 
         if plan.task_kind == "knowledge_document_management":
             return await self._confirm_document_management_plan(
@@ -2058,7 +2668,9 @@ def _parse_tool_message_content(content: object) -> dict[str, Any]:
         try:
             value = json.loads(content)
         except json.JSONDecodeError:
+            # 工具允许返回普通文本；不把它当成失败，包装后仍可展示在 trace 中。
             return {"content": content}
+        # JSON 数组/标量同样保留，避免假设每个第三方工具都返回对象。
         return value if isinstance(value, dict) else {"content": value}
     return {"content": content}
 
@@ -2099,6 +2711,7 @@ def _document_step_from_tool_result(
     if not isinstance(preview, dict) or not isinstance(action_request, dict):
         raise AppServiceError("文档 dry-run ToolMessage 缺少 preview 或 action_request")
     operation = str(output.get("operation") or "")
+    # step 只保存确认所需的冻结事实；真正执行时会从 action_request 重建领域请求。
     return AgentToolStep(
         step_id=f"step_{index}_{operation}_document",
         tool_name=tool_name,
@@ -2124,6 +2737,7 @@ def _document_candidates(docs: list[RetrievedDoc]) -> list[dict[str, Any]]:
 
     candidates: dict[str, dict[str, Any]] = {}
     for doc in docs:
+        # 一个文档可能命中多个 chunk；按 doc_id 聚合后，模型只能对文档而非单个片段发起写操作。
         doc_id = str(doc.metadata.get("doc_id") or "").strip()
         source_path = str(doc.metadata.get("source_path") or "").strip()
         if not doc_id or not source_path:
@@ -2147,6 +2761,7 @@ def _document_candidates(docs: list[RetrievedDoc]) -> list[dict[str, Any]]:
             },
         )
         item["chunk_count"] += 1
+        # 仅保留片段预览，既给确认页面提供选择依据，也避免把整篇文档塞回 ToolCall 结果。
         item["matched_chunks"].append(build_content_preview(doc.content))
     return list(candidates.values())
 
@@ -2159,6 +2774,7 @@ def _apply_unique_replacements(
 
     updated = content
     for replacement in replacements:
+        # 每次替换都基于上一次替换后的文本，因此也能发现 replacement 之间互相影响的歧义。
         count = updated.count(replacement.old_text)
         if count != 1:
             raise AppServiceError(
@@ -2183,6 +2799,7 @@ def _create_target_path(
     """把 LLM 建议文件名限制在当前用户默认作用域目录。"""
 
     requested_name = Path(requested_path).name if requested_path else ""
+    # Path.name 丢弃模型给出的目录部分，避免 create 工具借文件名进行路径穿越。
     if not requested_name.endswith((".md", ".txt")):
         requested_name = f"agent-{task_plan_id.rsplit('_', 1)[-1]}.md"
     directory = user.primary_department_code or f"users/{user.user_id}"
@@ -2209,7 +2826,8 @@ def _fallback_final_answer(
         "最终综合模型没有返回有效正文，以下为基于子问题结果生成的兜底答案。",
     ]
     for result in results:
-        if result.status != "completed" or not result.answer.strip():
+        # 兜底答案同样遵守结果状态，不把 failed/跳过问题拼成看似确定的结论。
+        if result.status not in {"completed", "partial"} or not result.answer.strip():
             continue
         lines.extend(["", f"## {result.question}", "", result.answer.strip()])
     return "\n".join(lines)
@@ -2233,6 +2851,15 @@ def _render_task_plan_markdown(plan: AgentTaskPlan) -> str:
     ]
 
     if plan.task_kind == "question_decomposition":
+        if plan.research_policy is not None:
+            lines.extend(
+                [
+                    "",
+                    "## 研究参数",
+                    "",
+                    f"```json\n{plan.research_policy.model_dump_json(indent=2)}\n```",
+                ]
+            )
         lines.extend(["", "## 子问题拆解"])
         for item in sorted(plan.sub_questions, key=lambda sub: sub.order):
             depends_on = ", ".join(item.depends_on) if item.depends_on else "无"
@@ -2252,6 +2879,7 @@ def _render_task_plan_markdown(plan: AgentTaskPlan) -> str:
         lines.extend(["", "## 最终整合要求", "", plan.final_synthesis_instruction])
 
         results = plan.final_output.get("sub_question_results", [])
+        # JSON 快照可能来自旧版本或中断前的状态，渲染时继续做类型收敛，不能让展示接口失败。
         if isinstance(results, list) and results:
             lines.extend(["", "## 执行结果"])
             for result in results:
@@ -2290,6 +2918,7 @@ def _render_task_plan_markdown(plan: AgentTaskPlan) -> str:
             )
         lines.extend(["", "## 文档动作"])
         for step in plan.steps:
+            # Markdown 是审查视图：只读取 step 已冻结的 output，不重新调用领域服务取最新文档。
             preview = step.output.get("preview")
             preview = preview if isinstance(preview, dict) else {}
             action_request = step.output.get("action_request")
@@ -2394,6 +3023,7 @@ def _markdown_fenced_block(text: str, language: str) -> list[str]:
     """生成不会被正文内部反引号提前闭合的 Markdown 代码块。"""
 
     longest_run = max((len(match.group(0)) for match in re.finditer(r"`+", text)), default=0)
+    # 栅栏长度必须大于正文中最长的连续反引号，避免 diff/正文提前闭合代码块。
     fence = "`" * max(3, longest_run + 1)
     return [f"{fence}{language}", text, fence]
 
@@ -2407,6 +3037,7 @@ def _build_tool_selection_messages(
     """构造给【工具选择 LLM】 的上下文，只暴露当前子问题和已完成答案。"""
 
     tool_calls = tool_calls or []
+    # 只传当前子问题和其依赖已完成答案，避免同批无关 Worker 的中间信息污染工具选择。
     return [
         SystemMessage(content=TASK_TOOL_SELECTION_PROMPT),
         HumanMessage(
@@ -2441,6 +3072,7 @@ def _validate_tool_selection(
     """规范化 LLM 工具选择；未知名称留给批次校验生成明确错误。"""
 
     del tools
+    # 这里故意不校验名称：批次校验需要收集整轮全部未知工具，才能给模型完整的修正反馈。
     selected_tool = str(selection.get("selected_tool") or "none").strip()
     return {
         "call_id": selection.get("call_id"),
@@ -2470,6 +3102,7 @@ def _parallel_batch_error(
     if unknown:
         return "本轮包含未注册工具: " + ", ".join(unknown)
     if len(tool_names) <= 1:
+        # 单调用仍需要预算和注册校验，但不存在“同批并行安全”问题。
         return None
     if len(tool_names) > max_parallel_calls:
         return f"本轮 ToolCall 数超过并行上限: {len(tool_names)}>{max_parallel_calls}"
@@ -2518,6 +3151,7 @@ def _document_batch_dependency_error(
     """
 
     for call in calls:
+        # candidates/read_doc_ids 都是“本轮开始前”的副本，故同批新结果绝不能立刻解锁后继工具。
         tool_name = str(call.get("name") or "")
         tool_input = _normalize_tool_input(call.get("args"))
         doc_id = str(tool_input.get("doc_id") or "")
@@ -2557,6 +3191,7 @@ def _repair_fetch_tool_selection(
 
     tool_input = _normalize_tool_input(selection.get("tool_input"))
     if selection.get("selected_tool") == "mcp__fetch":
+        # 保留模型填出的其他合法参数，只在 url 缺失时补上已从问题提取出的地址。
         return {
             **selection,
             "tool_input": {"url": tool_input.get("url") or url, **tool_input},
@@ -2588,6 +3223,7 @@ def _coerce_int(value: object, default: int, minimum: int, maximum: int) -> int:
     """把 LLM 输出的整数参数限制在后端允许范围内。"""
 
     try:
+        # 接受模型常见的字符串数字，其他值统一回退到服务端默认值。
         number = int(value) if value is not None else default
     except (TypeError, ValueError):
         number = default
@@ -2606,6 +3242,7 @@ def _load_mcp_stdio_server_configs(raw_value: str) -> list[dict[str, Any]]:
 
     configs: list[dict[str, Any]] = []
     for item in payload:
+        # 逐项验证后才交给 subprocess/MCP 边界，配置错误在启动调用前显式失败。
         if not isinstance(item, dict):
             raise AppServiceError("MCP stdio server 配置项必须是对象")
         command = item.get("command")
@@ -2651,16 +3288,116 @@ def _collect_tool_call_evidence(
 
     evidence: list[dict[str, Any]] = []
     for call in tool_calls:
+        # failed trace 没有可信输出；仅从工具实际写入的 evidence 列表中抽取字典项。
         raw_evidence = call.tool_output.get("evidence")
         if isinstance(raw_evidence, list):
             evidence.extend(item for item in raw_evidence if isinstance(item, dict))
     return evidence
 
 
+def _failed_research_result(
+    sub_question: AgentTaskSubQuestion,
+    error: str,
+    warning: str | None = None,
+) -> AgentTaskSubQuestionResult:
+    """把 Worker 局部异常转换成可合并的失败结果。"""
+
+    return AgentTaskSubQuestionResult(
+        sub_question_id=sub_question.sub_question_id,
+        question=sub_question.question,
+        selected_tool="none",
+        status="failed",
+        error=error,
+        warnings=[warning] if warning else [],
+    )
+
+
+def _merge_evidence(
+    current: list[dict[str, Any]],
+    incoming: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """按来源与证据 ID 去重，保留各纠正轮首次出现的稳定顺序。"""
+
+    merged = list(current)
+    seen = {
+        (str(item.get("source") or ""), str(item.get("id") or item.get("url") or ""))
+        for item in merged
+    }
+    for item in incoming:
+        # source 与 id/url 共同构成来源键，允许不同来源恰好使用同一个标识。
+        key = (
+            str(item.get("source") or ""),
+            str(item.get("id") or item.get("url") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+    return merged
+
+
+def _build_public_web_query(
+    original_query: str,
+    sub_question: str,
+    missing_points: list[str],
+) -> str:
+    """只用公开问题边界构造 Web 查询，并移除常见内部标识与本地路径。"""
+
+    text = " ".join([original_query, sub_question, *missing_points])
+    # 不把邮箱、本地/知识库路径、ACL 字段和常见员工/资产标识发送给外部搜索服务。
+    text = re.sub(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b", " ", text)
+    text = re.sub(r"\b[A-Za-z]:[\\/][^\s，。；;]+", " ", text)
+    text = re.sub(r"[^\s，。；;]+\.(?:md|txt|pptx|xlsx)\b", " ", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"\b(?:AST|EMP|USER|EMPLOYEE|ASSET)[-_:#：]?[A-Za-z0-9_-]+\b",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"(?:user_id|department_codes|allowed_departments|can_read_all|ACL)\s*[:=：]\s*[^\s，。；;]+",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    normalized = " ".join(text.split())[:500]
+    # 清洗后为空仍给搜索服务一个无敏感信息的最小查询，避免发出空请求。
+    return normalized or "公开资料研究"
+
+
+def _sort_results(
+    plan: AgentTaskPlan,
+    results: list[AgentTaskSubQuestionResult],
+) -> list[AgentTaskSubQuestionResult]:
+    """并发完成顺序不稳定，持久化与综合统一按 (order, id) 排序。"""
+
+    order_by_id = {item.sub_question_id: item.order for item in plan.sub_questions}
+    # 同一 id 的最新结果覆盖旧结果，resume 与纠正轮合并时不会产生重复子问题。
+    by_id = {item.sub_question_id: item for item in results}
+    return sorted(
+        by_id.values(),
+        key=lambda item: (order_by_id.get(item.sub_question_id, 0), item.sub_question_id),
+    )
+
+
+def _collect_result_sources(
+    results: list[AgentTaskSubQuestionResult],
+) -> list[dict[str, Any]]:
+    """最终 Sources 只来自 completed/partial Worker 实际取得的证据。"""
+
+    sources: list[dict[str, Any]] = []
+    for result in results:
+        if result.status not in {"completed", "partial"}:
+            continue
+        sources = _merge_evidence(sources, result.evidence)
+    return sources
+
+
 def _result_used_tools(result: AgentTaskSubQuestionResult) -> list[str]:
     """提取一个子问题实际使用过的工具。"""
 
     if result.tool_calls:
+        # 多轮时以实际完成的 trace 为准；selected_tool 仅是兼容旧结果的单工具摘要。
         return [
             item.tool_name
             for item in result.tool_calls
@@ -2689,9 +3426,17 @@ def _format_previous_answers(results: list[AgentTaskSubQuestionResult]) -> str:
 
     lines: list[str] = []
     for result in results:
-        if result.status != "completed":
+        if result.status not in {"completed", "partial"}:
             continue
-        lines.append(f"[{result.sub_question_id}] {result.question}\n{result.answer}")
+        limitations = []
+        if result.status == "partial":
+            limitations.extend(result.warnings)
+            if result.evaluation is not None:
+                limitations.extend(result.evaluation.missing_points)
+        suffix = f"\n不足说明: {'; '.join(limitations)}" if limitations else ""
+        lines.append(
+            f"[{result.sub_question_id}] {result.question}\n{result.answer}{suffix}"
+        )
     return "\n\n".join(lines)
 
 
@@ -2700,6 +3445,7 @@ def _format_sub_question_results(results: list[AgentTaskSubQuestionResult]) -> s
 
     lines: list[str] = []
     for result in results:
+        # 以 JSON 保留工具参数和评估对象，综合模型可追溯结论来源而不是只看到自然语言答案。
         lines.append(
             "\n".join(
                 [
@@ -2709,6 +3455,8 @@ def _format_sub_question_results(results: list[AgentTaskSubQuestionResult]) -> s
                     f"工具调用: {json.dumps([call.model_dump(mode='json') for call in result.tool_calls], ensure_ascii=False)}",
                     f"回答: {result.answer}",
                     f"证据: {json.dumps(result.evidence, ensure_ascii=False)}",
+                    f"评估: {json.dumps(result.evaluation.model_dump(mode='json') if result.evaluation else None, ensure_ascii=False)}",
+                    f"警告: {json.dumps(result.warnings, ensure_ascii=False)}",
                     f"错误: {result.error or ''}",
                 ]
             )
@@ -2720,6 +3468,7 @@ def _append_text(base_text: str, extra_text: str, title: str) -> str:
     """把额外上下文附加到文本后。"""
 
     if not extra_text:
+        # 没有附加信息时直接返回原字符串，避免制造空标题和多余 token。
         return base_text
     return f"{base_text}\n\n【{title}】\n{extra_text}"
 
@@ -2733,6 +3482,7 @@ def _append_previous_answers(
     previous = _format_previous_answers(previous_results)
     if not previous:
         return context
+    # RagContext 是值对象；创建副本而非原地修改，避免调用方共享的 context 被悄悄污染。
     return RagContext(
         query=context.query,
         docs=context.docs,

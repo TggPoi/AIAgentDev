@@ -242,6 +242,21 @@ class Settings(BaseSettings):
         le=20,
         alias="AGENT_MAX_PARALLEL_TOOL_CALLS",
     )
+    agent_research_max_sub_questions: int = Field(
+        default=8, ge=1, le=8, alias="AGENT_RESEARCH_MAX_SUB_QUESTIONS"
+    )
+    agent_research_max_parallel_workers: int = Field(
+        default=4, ge=1, le=4, alias="AGENT_RESEARCH_MAX_PARALLEL_WORKERS"
+    )
+    agent_research_max_tool_calls_per_worker: int = Field(
+        default=4, ge=0, le=4, alias="AGENT_RESEARCH_MAX_TOOL_CALLS_PER_WORKER"
+    )
+    agent_research_max_correction_rounds: int = Field(
+        default=2, ge=0, le=2, alias="AGENT_RESEARCH_MAX_CORRECTION_ROUNDS"
+    )
+    agent_research_worker_timeout_seconds: float = Field(
+        default=120.0, gt=0.0, alias="AGENT_RESEARCH_WORKER_TIMEOUT_SECONDS"
+    )
     # Agent 文档管理工具默认关闭，并且默认只允许 dry-run。
     # 真实写入需要通过 TaskPlan 确认接口重新校验权限后再放开。
     agent_document_tools_enabled: bool = Field(

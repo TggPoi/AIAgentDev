@@ -75,6 +75,11 @@ class RagChatRequest(BaseModel):
         description="metadata 过滤条件",
     )
 
+    allow_web_fallback: bool = Field(
+        default=False,
+        description="复杂研究本地证据不足时，是否允许把公开问题发送给 WebSearch。",
+    )
+
     @field_validator("query")
     @classmethod
     def validate_query(cls, value: str) -> str:
@@ -125,6 +130,7 @@ class RagChatResponse(BaseModel):
         default=None,
         description="本次请求的 request_id，用于和后端日志对齐",
     )
+
     trace_id: str | None = Field(
         default=None,
         description="本次请求的 trace_id，当前阶段默认与 request_id 相同",

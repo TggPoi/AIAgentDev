@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from fast_app.core.config import Settings
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.agent_task_plan import (
+    AgentResearchPolicy,
     AgentTaskKind,
     AgentTaskPlan,
     AgentTaskSubQuestion,
@@ -134,12 +135,13 @@ class AgentTaskPlanner:
         history: list[object] | None = None,
         user_id: str | None = None,
         langchain_config_factory: LangChainConfigFactory | None = None,
+        research_policy: AgentResearchPolicy | None = None,
     ) -> AgentTaskPlan:
         """为 Router 已确认的复杂问题生成拆解计划。"""
 
         # 没有 LLM 时只能走规则兜底；有 LLM 时由模型生成具体拆解内容。
         if not self._settings.openai_api_key:
-            return self._plan_with_rules(query=query, user_id=user_id)
+            return self._plan_with_rules(query, user_id, research_policy)
 
         model = self._build_model()
         # 优先走 provider 支持的 structured output，降低 JSON 格式漂移概率。
@@ -160,19 +162,20 @@ class AgentTaskPlanner:
 
         if payload is None:
             # LLM 调用失败或输出无法解析时，才允许规则兜底。
-            return self._plan_with_rules(query=query, user_id=user_id)
+            return self._plan_with_rules(query, user_id, research_policy)
 
         if _parse_confidence(payload.get("confidence")) < 0.65:
             # Router 已确认需要拆解；Planner 低置信度时用本地拆解兜底，不能改变路由。
-            return self._plan_with_rules(query=query, user_id=user_id)
+            return self._plan_with_rules(query, user_id, research_policy)
 
         plan = self._plan_from_payload(
             query=query,
             payload=payload,
             user_id=user_id,
+            research_policy=research_policy,
         )
         if plan is None:
-            return self._plan_with_rules(query=query, user_id=user_id)
+            return self._plan_with_rules(query, user_id, research_policy)
         return plan
 
     def _build_model(self) -> ChatOpenAI:
@@ -275,6 +278,7 @@ class AgentTaskPlanner:
         self,
         query: str,
         user_id: str | None,
+        research_policy: AgentResearchPolicy | None = None,
     ) -> AgentTaskPlan:
         """Planner 不可用时，为已确认的复杂问题生成最小可执行拆解。"""
 
@@ -292,6 +296,7 @@ class AgentTaskPlanner:
             report_title=_build_report_title(source_query),
             sub_questions=_build_rule_sub_questions(query),
             final_synthesis_instruction="按子问题顺序回答后，整合模块设计、关系和差异，形成结构化报告。",
+            research_policy=research_policy,
         )
 
     def _plan_from_payload(
@@ -299,6 +304,7 @@ class AgentTaskPlanner:
         query: str,
         payload: dict[str, Any],
         user_id: str | None = None,
+        research_policy: AgentResearchPolicy | None = None,
     ) -> AgentTaskPlan | None:
         """把 LLM JSON 收敛成问题拆解计划，忽略任何正文类字段。"""
 
@@ -307,10 +313,13 @@ class AgentTaskPlanner:
         if not source_query:
             return None
         # 子问题必须是“待回答问题”，动作式 TODO 会在这里被过滤。
-        sub_questions = _parse_sub_questions(payload.get("sub_questions"))
+        sub_questions = _parse_sub_questions(
+            payload.get("sub_questions"),
+            max_count=self._settings.agent_research_max_sub_questions,
+        )
         if not sub_questions:
             # 没有合法子问题时不能继续信任 LLM plan，否则后续只能执行空壳任务。
-            return self._plan_with_rules(query=query, user_id=user_id)
+            return self._plan_with_rules(query, user_id, research_policy)
 
         return self._build_plan(
             user_id=user_id,
@@ -327,6 +336,7 @@ class AgentTaskPlanner:
                 payload.get("final_synthesis_instruction")
                 or "按子问题顺序回答后，整合为最终报告。"
             ).strip(),
+            research_policy=research_policy,
         )
 
     def build_document_management_plan(
@@ -359,6 +369,7 @@ class AgentTaskPlanner:
         self,
         query: str,
         user_id: str | None,
+        research_policy: AgentResearchPolicy | None = None,
     ) -> AgentTaskPlan:
         """为明确联网请求创建单子问题计划，执行器负责产生原生 ToolCall。"""
 
@@ -383,6 +394,9 @@ class AgentTaskPlanner:
             report_title=_build_report_title(query),
             sub_questions=[sub_question],
             final_synthesis_instruction="仅依据联网工具返回的证据回答，并保留来源信息。",
+            research_policy=(research_policy or AgentResearchPolicy()).model_copy(
+                update={"web_policy": "required"}
+            ),
         )
 
     def _build_plan(
@@ -397,6 +411,7 @@ class AgentTaskPlanner:
         report_title: str,
         sub_questions: list[AgentTaskSubQuestion],
         final_synthesis_instruction: str,
+        research_policy: AgentResearchPolicy | None = None,
     ) -> AgentTaskPlan:
         # 唯一创建 AgentTaskPlan 的出口，保证 LLM 路径和规则兜底路径字段一致。
         now = datetime.now(UTC)
@@ -410,6 +425,7 @@ class AgentTaskPlanner:
             task_type=task_type,
             goal=objective,
             sub_questions=sub_questions,
+            research_policy=research_policy,
             final_synthesis_instruction=final_synthesis_instruction,
             source_query=_condense_source_query(source_query),
             target_path=target_path,
@@ -467,10 +483,13 @@ def _infer_task_type(query: str) -> AgentTaskType:
     return "qa"
 
 
-def _parse_sub_questions(value: Any) -> list[AgentTaskSubQuestion]:
+def _parse_sub_questions(
+    value: Any,
+    max_count: int = 8,
+) -> list[AgentTaskSubQuestion]:
     """把 LLM 子问题数组收敛成领域模型，并过滤动作式 TODO。"""
 
-    if not isinstance(value, list):
+    if not isinstance(value, list) or len(value) > max_count:
         return []
 
     result: list[AgentTaskSubQuestion] = []
