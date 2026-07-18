@@ -27,7 +27,7 @@ from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
 from fast_app.services.research.agentic_research_executor import AgenticResearchExecutor
 from fast_app.services.research.research_evidence_evaluator import ResearchEvidenceEvaluator
-from fast_app.services.research.research_tool_loop import ResearchToolLoop
+from fast_app.services.research.research_tool_loop import ResearchToolLoop, ToolExecutionResult
 from fast_app.services.research.research_worker_agent import ResearchWorkerAgent
 
 
@@ -59,7 +59,7 @@ class FakeLLM(BaseLLMClient):
 class SelectingResearchToolLoop(ResearchToolLoop):
     async def _select_tool_for_sub_question(self, *args, **kwargs) -> dict[str, Any]:
         sub_question = kwargs["sub_question"]
-        if kwargs.get("tool_calls"):
+        if kwargs.get("current_tool_calls"):
             return {"selected_tool": "none", "tool_input": {}}
         if sub_question.sub_question_id == "sq_1":
             return {
@@ -76,18 +76,18 @@ class SelectingResearchToolLoop(ResearchToolLoop):
         return {"selected_tool": "none", "tool_input": {}}
 
     async def _run_web_search_for_sub_question(self, *args, **kwargs):
-        sub_question = kwargs["sub_question"]
-        return (
-            {"result_count": 1, "top_urls": ["https://example.com/prompt-guard"]},
-            f"web answer for {sub_question.question}",
-            [
-                {
-                    "id": "web_1",
-                    "source": "web_search",
-                    "title": "Prompt Guard",
-                    "url": "https://example.com/prompt-guard",
-                }
-            ],
+        doc = RetrievedDoc(
+            id="web_1",
+            content="Prompt Guard public practice",
+            score=1.0,
+            source="web_search",
+            title="Prompt Guard",
+            metadata={"url": "https://example.com/prompt-guard"},
+        )
+        return ToolExecutionResult(
+            tool_output={"result_count": 1, "top_urls": ["https://example.com/prompt-guard"]},
+            evidence=[{"id": "web_1", "source": "web_search", "title": "Prompt Guard"}],
+            context_docs=[doc],
         )
 
 

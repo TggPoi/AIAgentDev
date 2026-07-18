@@ -2008,9 +2008,10 @@ wave
 attempts
 all_tool_calls
 all_evidence
+all_context_doc_groups
 used_tool_calls
 force_web
-web_missing_points
+retry_missing_points
 ```
 
 这些变量不会在不同 Worker 之间共享。
@@ -2043,9 +2044,11 @@ AGENT_RESEARCH_MAX_TOOL_CALLS_PER_WORKER=4
 检查是否取消
 → 计算剩余 ToolCall 预算
 → 决定本轮是否强制 Web
-→ 调用 ResearchToolLoop.run_attempt()
-→ 累计工具调用
-→ 合并、去重 Evidence
+→ 把历史 ToolCall、Evidence、完整临时上下文和 missing_points 传给 ResearchToolLoop
+→ 分轮选择并执行本 attempt 的全部工具
+→ 合并历史 attempt 与当前 attempt 的完整证据
+→ LLM 最多生成一次候选答案
+→ 累计工具调用、Evidence 和临时上下文
 → 调用 Evidence Evaluator
 → 保存 evaluation 进度事件
 → completed / retry / partial / failed
@@ -2067,7 +2070,7 @@ run_attempt
 `final_result`。因此阅读 Worker 时，可以先看图结构，再进入对应节点，不必在一个
 巨型 Executor 中追踪多层 `for/if`。
 
-### 12.4 Evidence 为什么跨纠正轮累积
+### 12.4 Evidence 和完整上下文为什么都要跨纠正轮累积
 
 第一轮本地检索可能已经获得部分证据，第二轮 WebSearch 只是补充缺口。
 
@@ -2078,6 +2081,24 @@ all_evidence = merge_evidence(all_evidence, last_result.evidence)
 ```
 
 而不是每次重试清空旧证据。
+
+但 `all_evidence` 只包含可持久化的标题、来源和内容预览，不能单独承担回答上下文。
+如果第二轮候选答案只读取第二轮文档，而 Evaluator 却读取两轮累计 Evidence，就会出现：
+
+```text
+候选答案依据：只有第二轮
+Evaluator 依据：第一轮 + 第二轮
+```
+
+当前实现还会在 Worker Graph 内存中保留：
+
+```python
+all_context_doc_groups: list[list[RetrievedDoc]]
+```
+
+它保存各次工具调用获得的完整授权文档，供纠正后的候选答案统一使用。该字段不会进入
+`AgentTaskSubQuestionResult`、TaskPlan JSON、HTTP 或 SSE；对外只返回 `all_evidence`
+中的摘要。
 
 去重键为：
 
@@ -2166,6 +2187,9 @@ ResearchToolLoop.run_attempt()
 当前 Worker 剩余工具预算
 是否允许 Web
 清洗后的 Web query
+历史 attempt 的 ToolCall 和 Evidence
+历史 attempt 的完整临时上下文
+Evaluator 给出的 retry_missing_points
 ```
 
 ### 13.2 构造工具白名单
@@ -2232,12 +2256,13 @@ web_search
 ### 13.5 asyncio.gather 在这里做什么
 
 ```python
-tool_calls.extend(
-    await asyncio.gather(
-        run_selection(selection_1),
-        run_selection(selection_2),
-    )
+batch_results = await asyncio.gather(
+    run_selection(selection_1),
+    run_selection(selection_2),
 )
+
+for trace, evidence, context_docs in batch_results:
+    tool_calls.append(trace)
 ```
 
 两个工具同时开始。
@@ -2252,9 +2277,12 @@ tool_calls.extend(
 #### 有成功 ToolCall
 
 ```text
-汇总所有成功 ToolCall
-→ LLM 生成子问题答案
-→ 抽取 Evidence
+等待当前 attempt 的全部 ToolCall 完成
+→ 合并历史 attempt 和当前 attempt 的完整 RetrievedDoc
+→ 按工具调用组轮询取文档并稳定去重
+→ 复用 build_rag_context() 限制上下文长度
+→ LLM 只生成一次子问题候选答案
+→ 保存 Evidence 摘要
 → 返回 completed 候选结果
 → 交给外层 Evaluator 再判断是否真正 completed
 ```
@@ -2276,6 +2304,61 @@ tool_calls.extend(
 ```
 
 由于没有外部 Evidence，外层 Evaluator 通常会把它判断为 insufficient。
+
+### 13.7 为什么工具自己不再生成回答
+
+Knowledge、WebSearch 和 MCP 工具现在统一返回：
+
+```text
+tool_output
+    可写入 ToolCall trace 的结构化事实和统计。
+
+evidence
+    可写入 TaskPlan 的来源、标题、URL、坐标和内容预览。
+
+context_docs
+    只在当前 Worker 内存中使用的完整授权内容。
+```
+
+单个工具执行结束后不会调用 LLM，也不会向 `tool_output` 填入 `answer`。原因是单个
+工具此时看不到同批或后续工具，提前回答会让最终综合变成“模型结论再综合模型结论”。
+
+以一个 attempt 调用 Knowledge 和 WebSearch 为例，当前顺序是：
+
+```text
+Knowledge 返回事实和文档 ─┐
+                           ├─ 合并完整证据 → 一次 tool_answer → Evaluator
+WebSearch 返回事实和文档 ──┘
+```
+
+而不是：
+
+```text
+Knowledge → knowledge_answer
+WebSearch → web_answer
+两个局部答案 → tool_answer
+```
+
+因此两个工具的回答生成从三次降为一次，同时让冲突、互补和来源权威性在同一个 Prompt
+中处理。Tool selection LLM 和 Evaluator LLM 仍然存在，它们分别负责决定是否继续调用
+工具和判断证据是否充分，不属于工具级回答生成。
+
+### 13.8 dependency_results 与历史 ToolCall 的区别
+
+```text
+dependency_results
+    来自 depends_on 指定的其他子问题，在当前 Worker 的所有 attempt 中保持不变。
+
+prior_attempt_tool_calls / prior_attempt_evidence
+    来自当前 Worker 之前的纠正 attempt，用于避免重复工具调用。
+
+current_attempt_tool_calls / current_attempt_evidence
+    当前 attempt 已经完成的调用，用于判断本 attempt 是否还需要下一批工具。
+```
+
+Evaluator 返回 `rewrite_local_query` 时，`retry_missing_points` 会进入下一 attempt 的工具
+选择上下文；返回 `search_web` 或 `combine_local_and_web` 时，同一缺失点还会经过安全
+清洗后参与公开 Web query 构造。
 
 ---
 

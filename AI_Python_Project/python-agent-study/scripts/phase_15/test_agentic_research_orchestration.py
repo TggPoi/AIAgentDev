@@ -34,7 +34,7 @@ from fast_app.services.agent_tasks.agent_task_executor import (
 )
 from fast_app.services.research.agentic_research_executor import AgenticResearchExecutor
 from fast_app.services.research.research_evidence_evaluator import ResearchEvidenceEvaluator
-from fast_app.services.research.research_tool_loop import ResearchToolLoop
+from fast_app.services.research.research_tool_loop import ResearchAttemptOutcome, ResearchToolLoop
 from fast_app.services.research.research_worker_agent import ResearchWorkerAgent
 from fast_app.api.agent_task_plan_routes import _task_plan_progress_events
 from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
@@ -76,26 +76,32 @@ class ControlledResearchToolLoop(ResearchToolLoop):
         await asyncio.sleep(0.08)
         self.finished.append((item.sub_question_id, perf_counter()))
         if item.sub_question_id in self.fail_ids:
-            return AgentTaskSubQuestionResult(
+            return ResearchAttemptOutcome(
+                result=AgentTaskSubQuestionResult(
+                    sub_question_id=item.sub_question_id,
+                    question=item.question,
+                    selected_tool="knowledge_retrieval",
+                    status="failed",
+                    error="simulated retrieval failure",
+                ),
+                context_doc_groups=[],
+            )
+        return ResearchAttemptOutcome(
+            result=AgentTaskSubQuestionResult(
                 sub_question_id=item.sub_question_id,
                 question=item.question,
                 selected_tool="knowledge_retrieval",
-                status="failed",
-                error="simulated retrieval failure",
-            )
-        return AgentTaskSubQuestionResult(
-            sub_question_id=item.sub_question_id,
-            question=item.question,
-            selected_tool="knowledge_retrieval",
-            answer=f"answer:{item.sub_question_id}",
-            evidence=[
-                {
-                    "id": f"doc:{item.sub_question_id}",
-                    "source": "knowledge_retrieval",
-                    "content_preview": item.question,
-                }
-            ],
-            status="completed",
+                answer=f"answer:{item.sub_question_id}",
+                evidence=[
+                    {
+                        "id": f"doc:{item.sub_question_id}",
+                        "source": "knowledge_retrieval",
+                        "content_preview": item.question,
+                    }
+                ],
+                status="completed",
+            ),
+            context_doc_groups=[],
         )
 
 

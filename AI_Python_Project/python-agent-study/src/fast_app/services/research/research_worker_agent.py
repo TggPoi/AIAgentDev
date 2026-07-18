@@ -94,8 +94,9 @@ class ResearchWorkerAgent:
                 "used_tool_calls": 0,
                 "all_tool_calls": [],
                 "all_evidence": [],
+                "all_context_doc_groups": [],
                 "force_web": request.policy.web_policy == "required",
-                "web_missing_points": [],
+                "retry_missing_points": [],
                 "attempts": [],
                 "last_result": initial,
                 "evaluation": None,
@@ -149,10 +150,10 @@ class ResearchWorkerAgent:
                 )
             return request.langchain_config_factory(name)
 
-        last_result = await self._tool_loop.run_attempt(
+        attempt_outcome = await self._tool_loop.run_attempt(
             plan=request.plan,
             sub_question=attempt_question,
-            previous_results=request.dependency_results,
+            dependency_results=request.dependency_results,
             mode=request.policy.mode,
             top_k=request.policy.top_k,
             candidate_k=request.policy.candidate_k,
@@ -165,12 +166,18 @@ class ResearchWorkerAgent:
             ),
             max_tool_calls_override=remaining_calls,
             allow_web_search=state["force_web"],
+            attempt=attempt,
+            prior_tool_calls=state["all_tool_calls"],
+            prior_evidence=state["all_evidence"],
+            prior_context_doc_groups=state["all_context_doc_groups"],
+            retry_missing_points=state["retry_missing_points"],
             safe_web_query=build_public_web_query(
                 request.plan.original_query,
                 request.sub_question.question,
-                state["web_missing_points"],
+                state["retry_missing_points"],
             ),
         )
+        last_result = attempt_outcome.result
         return {
             "last_result": last_result,
             "used_tool_calls": state["used_tool_calls"] + len(last_result.tool_calls),
@@ -178,6 +185,10 @@ class ResearchWorkerAgent:
             "all_evidence": merge_evidence(
                 state["all_evidence"], last_result.evidence
             ),
+            "all_context_doc_groups": [
+                *state["all_context_doc_groups"],
+                *attempt_outcome.context_doc_groups,
+            ],
             "evaluation": None,
             "evaluator_error": None,
             "final_warning": None,
@@ -326,9 +337,8 @@ class ResearchWorkerAgent:
         return {
             "attempt": next_attempt,
             "force_web": force_web,
-            "web_missing_points": (
-                list(evaluation.missing_points) if force_web else []
-            ),
+            # 本地 query 改写和 Web 补充都必须看到 Evaluator 指出的缺失点。
+            "retry_missing_points": list(evaluation.missing_points),
         }
 
     async def _complete(

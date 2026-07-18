@@ -12,6 +12,7 @@ from fast_app.domain.agent_task_plan import (
     AgentTaskToolCallTrace,
     ResearchEvidenceEvaluation,
 )
+from fast_app.domain.rag_models import RetrievedDoc
 
 
 class ResearchWorkerGraphState(TypedDict):
@@ -22,8 +23,10 @@ class ResearchWorkerGraphState(TypedDict):
     used_tool_calls: int
     all_tool_calls: list[AgentTaskToolCallTrace]
     all_evidence: list[dict[str, Any]]
+    # 完整正文只在当前 Worker Graph 内存中流转，不进入 TaskPlan 持久化模型。
+    all_context_doc_groups: list[list[RetrievedDoc]]
     force_web: bool
-    web_missing_points: list[str]
+    retry_missing_points: list[str]
     attempts: list[dict[str, Any]]
     last_result: AgentTaskSubQuestionResult
     evaluation: ResearchEvidenceEvaluation | None

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -50,6 +52,23 @@ class AgentTaskKnowledgeRetrievalToolInput(BaseModel):
     top_k: int = Field(default=5, ge=1, le=20)
 
 
+@dataclass(slots=True)
+class ToolExecutionResult:
+    """一次工具执行产生的持久化摘要、证据摘要和内存上下文。"""
+
+    tool_output: dict[str, Any]
+    evidence: list[dict[str, Any]]
+    context_docs: list[RetrievedDoc]
+
+
+@dataclass(slots=True)
+class ResearchAttemptOutcome:
+    """Tool Loop 的公开结果以及不得写入 TaskPlan 的完整上下文分组。"""
+
+    result: AgentTaskSubQuestionResult
+    context_doc_groups: list[list[RetrievedDoc]]
+
+
 TASK_TOOL_SELECTION_PROMPT = """你是 Agent TaskPlan 的工具选择器。
 
 你只负责为当前子问题选择一个或多个已绑定工具。
@@ -83,7 +102,7 @@ class ResearchToolLoop:
         context: RagContext,
         langchain_config: RunnableConfig | None = None,
     ) -> str:
-        """调用 LLM；兼容测试中仍使用旧签名的 fake client。"""
+        """调用 LLM 根据tool执行结果和query生成独立回答；兼容测试中仍使用旧签名的 fake client。"""
 
         try:
             # 真实 LangChain client 使用 langchain_config 透传 LangSmith 子 run 名称。
@@ -98,11 +117,12 @@ class ResearchToolLoop:
                 raise
             answer = await self._llm_client.generate(query=query, context=context)
             return _as_text(answer)
+
     async def run_attempt(
         self,
         plan: AgentTaskPlan,
         sub_question: AgentTaskSubQuestion,
-        previous_results: list[AgentTaskSubQuestionResult],
+        dependency_results: list[AgentTaskSubQuestionResult],
         mode: str,
         top_k: int,
         candidate_k: int | None,
@@ -112,13 +132,22 @@ class ResearchToolLoop:
         max_tool_calls_override: int | None = None,
         allow_web_search: bool = True,
         safe_web_query: str | None = None,
-    ) -> AgentTaskSubQuestionResult:
+        attempt: int = 1,
+        prior_tool_calls: list[AgentTaskToolCallTrace] | None = None,
+        prior_evidence: list[dict[str, Any]] | None = None,
+        prior_context_doc_groups: list[list[RetrievedDoc]] | None = None,
+        retry_missing_points: list[str] | None = None,
+    ) -> ResearchAttemptOutcome:
         """执行一个子问题：让 LLM 进行有限多轮工具选择，再生成子问题答案。
 
-        previous_results 是已经完成的前置子问题答案，用来支持“后一个子问题依赖前一个
-        子问题结论”的场景；tool_calls 只记录当前子问题内部的多轮工具调用轨迹。
+        dependency_results 是已完成的前置子问题答案；prior_* 是当前 Worker 之前
+        attempt 的历史。当前 attempt 只在全部工具执行完成后生成一次候选答案。
         """
 
+        prior_tool_calls = list(prior_tool_calls or [])
+        prior_evidence = list(prior_evidence or [])
+        prior_context_doc_groups = list(prior_context_doc_groups or [])
+        retry_missing_points = list(retry_missing_points or [])
         available_tools = await self._build_available_task_tools(
             allow_web_search=allow_web_search
         )
@@ -130,6 +159,8 @@ class ResearchToolLoop:
             0,
         )
         tool_calls: list[AgentTaskToolCallTrace] = []
+        evidence: list[dict[str, Any]] = []
+        context_doc_groups: list[list[RetrievedDoc]] = []
         call_count = 0
         round_index = 0
 
@@ -141,11 +172,15 @@ class ResearchToolLoop:
                 selected = await self._select_tool_for_sub_question(
                     plan=plan,
                     sub_question=sub_question,
-                    previous_results=previous_results,
+                    dependency_results=dependency_results,
                     default_mode=mode,
                     default_top_k=top_k,
                     available_tools=available_tools,
-                    tool_calls=tool_calls,
+                    prior_tool_calls=prior_tool_calls,
+                    prior_evidence=prior_evidence,
+                    current_tool_calls=tool_calls,
+                    current_evidence=evidence,
+                    retry_missing_points=retry_missing_points,
                     langchain_config_factory=langchain_config_factory,
                 )
                 selections = selected if isinstance(selected, list) else [selected]
@@ -181,6 +216,7 @@ class ResearchToolLoop:
                         _failed_batch_traces(
                             selections=selections,
                             sub_question_id=sub_question.sub_question_id,
+                            attempt=attempt,
                             round_index=round_index,
                             error=batch_error,
                         )
@@ -190,14 +226,18 @@ class ResearchToolLoop:
                 async def run_selection(
                     selection: dict[str, Any],
                     index: int,
-                ) -> AgentTaskToolCallTrace:
-                    """负责执行“一个”问题拆解工具调用，并把成功或失败转换成一条 AgentTaskToolCallTrace"""
+                ) -> tuple[
+                    AgentTaskToolCallTrace,
+                    list[dict[str, Any]],
+                    list[RetrievedDoc],
+                ]:
+                    """执行一个工具，并把可持久化结果与完整内存上下文分开返回。"""
 
                     # 每个协程只返回自己的 trace，不并发修改外层 tool_calls，避免共享列表写入竞态。
                     selected_tool = str(selection.get("selected_tool") or "")
                     tool_input = normalize_tool_input(selection.get("tool_input"))
                     if selected_tool == WEB_SEARCH_TOOL_NAME:
-                        # Web 请求只使用当前公开子问题，不转发私有 Chunk、路径、ACL 或依赖原文。
+                        # 【规则匹配 移除敏感信息】Web 请求只使用当前公开子问题，不转发私有 Chunk、路径、ACL 或依赖原文。
                         tool_input = {
                             **tool_input,
                             "query": safe_web_query
@@ -205,19 +245,21 @@ class ResearchToolLoop:
                                 plan.original_query, sub_question.question, []
                             ),
                         }
-                    call_id = str(
-                        selection.get("call_id")
-                        or f"{sub_question.sub_question_id}_tool_{round_index}_{index}"
+                    provider_call_id = str(
+                        selection.get("call_id") or f"tool_{round_index}_{index}"
+                    )
+                    call_id = (
+                        f"{sub_question.sub_question_id}_attempt_{attempt}_"
+                        f"{provider_call_id}"
                     )
                     reason = str(selection.get("reason") or "")
                     try:
-                        # 内置检索/Web 与 MCP 工具都被收敛为相同的 trace 结构，方便后续综合。
-                        tool_output, answer, evidence = await self._run_task_tool_for_sub_question(
+                        # 【执行 tool】这里只取得事实和证据；候选答案必须等本 attempt 的工具全部结束后生成。
+                        execution = await self._run_task_tool_for_sub_question(
                             selected_tool=selected_tool,
                             tool_input=tool_input,
                             available_tools=available_tools,
                             sub_question=sub_question,
-                            previous_results=previous_results,
                             mode=mode,
                             top_k=top_k,
                             candidate_k=candidate_k,
@@ -226,125 +268,159 @@ class ResearchToolLoop:
                             tool_call_round=round_index,
                             langchain_config_factory=langchain_config_factory,
                         )
-                        return AgentTaskToolCallTrace(
-                            call_id=call_id,
-                            round=round_index,
-                            tool_name=selected_tool,
-                            tool_input=tool_input,
-                            tool_output={
-                                **tool_output,
-                                "answer": answer,
-                                "evidence": evidence,
-                            },
-                            status="completed",
-                            reason=reason,
+                        tagged_evidence = [
+                            {**item, "tool_call_id": call_id}
+                            for item in execution.evidence
+                        ]
+                        return (
+                            AgentTaskToolCallTrace(
+                                call_id=call_id,
+                                round=round_index,
+                                tool_name=selected_tool,
+                                tool_input=tool_input,
+                                tool_output=execution.tool_output,
+                                status="completed",
+                                reason=reason,
+                            ),
+                            tagged_evidence,
+                            execution.context_docs,
                         )
                     except ToolPermissionDeniedError:
                         raise
                     except Exception as exc:
-                        return AgentTaskToolCallTrace(
-                            call_id=call_id,
-                            round=round_index,
-                            tool_name=selected_tool,
-                            tool_input=tool_input,
-                            status="failed",
-                            error=f"{type(exc).__name__}: {exc}",
-                            reason=reason,
+                        return (
+                            AgentTaskToolCallTrace(
+                                call_id=call_id,
+                                round=round_index,
+                                tool_name=selected_tool,
+                                tool_input=tool_input,
+                                status="failed",
+                                error=f"{type(exc).__name__}: {exc}",
+                                reason=reason,
+                            ),
+                            [],
+                            [],
                         )
 
                 # --------------------------------------------------开始普通任务 并行tool 执行--------------------------------------------------
                 # 校验通过的只读调用同时开始；gather 按输入顺序返回，即使工具完成先后不同，
-                tool_calls.extend(
-                    await asyncio.gather(
-                        *(
-                            run_selection(selection, index)
-                            for index, selection in enumerate(selections, start=1)
-                        )
+                batch_results = await asyncio.gather(
+                    *(
+                        run_selection(selection, index)
+                        for index, selection in enumerate(selections, start=1)
                     )
                 )
+                for trace, call_evidence, context_docs in batch_results:
+                    tool_calls.append(trace)
+                    evidence = merge_evidence(evidence, call_evidence)
+                    if context_docs:
+                        context_doc_groups.append(context_docs)
 
-            completed_calls = [item for item in tool_calls if item.status == "completed"]
-            if completed_calls:
-                # 多轮工具的原始输出只作为证据和上下文；最终子问题答案统一由 LLM
-                # 基于所有成功工具调用生成，避免直接把工具原文当成用户可读答案。
+            completed_calls = [
+                item
+                for item in [*prior_tool_calls, *tool_calls]
+                if item.status == "completed"
+            ]
+            
+            # 把上一轮执行的attempt检索到的正文，和本轮执行时检索到的正文进行组合，去重
+            all_context_docs = _merge_context_doc_groups(
+                [*prior_context_doc_groups, *context_doc_groups]
+            )
+            if all_context_docs or dependency_results:
+                # 【所有 tool 执行完成后整合回答】完整正文只存在于当前 Worker 内存，
+                # TaskPlan 只接收 tool_output 与 evidence 摘要。
                 answer = await self._answer_from_tool_calls(
                     sub_question=sub_question,
-                    previous_results=previous_results,
-                    tool_calls=completed_calls,
+                    dependency_results=dependency_results,
+                    context_docs=all_context_docs,
+                    retry_missing_points=retry_missing_points,
                     langchain_config_factory=langchain_config_factory,
                 )
-                # 抽取支撑该子问题回答的证据摘要
-                evidence = _collect_tool_call_evidence(completed_calls)
-                last_call = completed_calls[-1]
-                return AgentTaskSubQuestionResult(
-                    sub_question_id=sub_question.sub_question_id,
-                    question=sub_question.question,
-                    selected_tool=last_call.tool_name,
-                    tool_input=last_call.tool_input,
-                    tool_output=last_call.tool_output,
-                    tool_calls=tool_calls,
-                    answer=answer,
-                    evidence=evidence,
-                    status="completed",
+                last_call = completed_calls[-1] if completed_calls else None
+                return ResearchAttemptOutcome(
+                    result=AgentTaskSubQuestionResult(
+                        sub_question_id=sub_question.sub_question_id,
+                        question=sub_question.question,
+                        selected_tool=last_call.tool_name if last_call else "none",
+                        tool_input=last_call.tool_input if last_call else {},
+                        tool_output=last_call.tool_output if last_call else {},
+                        tool_calls=tool_calls,
+                        answer=answer,
+                        evidence=evidence,
+                        status="completed",
+                    ),
+                    context_doc_groups=context_doc_groups,
                 )
 
-            if tool_calls:
-                # 到这里说明 LLM 选择过工具，但没有任何一轮成功；记录失败结果，
-                # 让最终 plan 能展示失败原因，而不是静默丢掉这个子问题。
-                last_call = tool_calls[-1]
-                return AgentTaskSubQuestionResult(
-                    sub_question_id=sub_question.sub_question_id,
-                    question=sub_question.question,
-                    selected_tool=last_call.tool_name,
-                    tool_input=last_call.tool_input,
-                    tool_output=last_call.tool_output,
-                    tool_calls=tool_calls,
-                    status="failed",
-                    error=last_call.error,
+            if tool_calls or prior_tool_calls:
+                # 工具可能成功返回空结果，也可能全部失败；两种情况都没有可供回答的事实。
+                last_call = (tool_calls or prior_tool_calls)[-1]
+                return ResearchAttemptOutcome(
+                    result=AgentTaskSubQuestionResult(
+                        sub_question_id=sub_question.sub_question_id,
+                        question=sub_question.question,
+                        selected_tool=last_call.tool_name,
+                        tool_input=last_call.tool_input,
+                        tool_output=last_call.tool_output,
+                        tool_calls=tool_calls,
+                        status="failed",
+                        error=last_call.error or "NO_USABLE_EVIDENCE",
+                    ),
+                    context_doc_groups=context_doc_groups,
                 )
 
             # LLM 一开始就判断不需要工具，或者 agent_max_tool_calls=0 时，走纯推理分支。
-            # 这个分支只能使用 previous_results，不会主动检索或访问外部工具。
+            # 这个分支只能使用 dependency_results，不会主动检索或访问外部工具。
             tool_output, answer, evidence = await self._answer_without_tool(
                 sub_question=sub_question,
-                previous_results=previous_results,
+                dependency_results=dependency_results,
                 langchain_config_factory=langchain_config_factory,
             )
-            return AgentTaskSubQuestionResult(
-                sub_question_id=sub_question.sub_question_id,
-                question=sub_question.question,
-                selected_tool="none",
-                tool_input={},
-                tool_output=tool_output,
-                tool_calls=[],
-                answer=answer,
-                evidence=evidence,
-                status="completed",
+            return ResearchAttemptOutcome(
+                result=AgentTaskSubQuestionResult(
+                    sub_question_id=sub_question.sub_question_id,
+                    question=sub_question.question,
+                    selected_tool="none",
+                    tool_input={},
+                    tool_output=tool_output,
+                    tool_calls=[],
+                    answer=answer,
+                    evidence=evidence,
+                    status="completed",
+                ),
+                context_doc_groups=[],
             )
         except ToolPermissionDeniedError:
             # 权限拒绝属于任务级安全事件，不能降级成“这个子问题失败后继续试”。
             raise
         except Exception as exc:
             # 子问题失败不立刻中断整个计划，让后续子问题仍有机会完成。
-            return AgentTaskSubQuestionResult(
-                sub_question_id=sub_question.sub_question_id,
-                question=sub_question.question,
-                selected_tool=tool_calls[-1].tool_name if tool_calls else "none",
-                tool_input=tool_calls[-1].tool_input if tool_calls else {},
-                tool_calls=tool_calls,
-                status="failed",
-                error=f"{type(exc).__name__}: {exc}",
+            return ResearchAttemptOutcome(
+                result=AgentTaskSubQuestionResult(
+                    sub_question_id=sub_question.sub_question_id,
+                    question=sub_question.question,
+                    selected_tool=tool_calls[-1].tool_name if tool_calls else "none",
+                    tool_input=tool_calls[-1].tool_input if tool_calls else {},
+                    tool_calls=tool_calls,
+                    status="failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                ),
+                context_doc_groups=context_doc_groups,
             )
 
     async def _select_tool_for_sub_question(
         self,
         plan: AgentTaskPlan,
         sub_question: AgentTaskSubQuestion,
-        previous_results: list[AgentTaskSubQuestionResult],
+        dependency_results: list[AgentTaskSubQuestionResult],
         default_mode: str,
         default_top_k: int,
         available_tools: list[BaseTool] | None = None,
-        tool_calls: list[AgentTaskToolCallTrace] | None = None,
+        prior_tool_calls: list[AgentTaskToolCallTrace] | None = None,
+        prior_evidence: list[dict[str, Any]] | None = None,
+        current_tool_calls: list[AgentTaskToolCallTrace] | None = None,
+        current_evidence: list[dict[str, Any]] | None = None,
+        retry_missing_points: list[str] | None = None,
         langchain_config_factory: LangChainConfigFactory | None = None,
     ) -> list[dict[str, Any]]:
         """选择子问题需要调用的 tool 工具。
@@ -357,7 +433,11 @@ class ResearchToolLoop:
 
         # available_tools 可以由外层传入，避免同一个子问题多轮选择时重复构造工具列表。
         available_tools = available_tools if available_tools is not None else await self._build_available_task_tools()
-        tool_calls = tool_calls or []
+        prior_tool_calls = prior_tool_calls or []
+        prior_evidence = prior_evidence or []
+        current_tool_calls = current_tool_calls or []
+        current_evidence = current_evidence or []
+        retry_missing_points = retry_missing_points or []
         if not available_tools:
             return []
 
@@ -366,7 +446,7 @@ class ResearchToolLoop:
             # URL 场景仍交给下面既有的 mcp__fetch 强制修正规则。
             required_tool_name = (
                 WEB_SEARCH_TOOL_NAME
-                if not tool_calls
+                if not current_tool_calls
                 and sub_question.information_source_hint == WEB_SEARCH_TOOL_NAME
                 and extract_first_url(sub_question.question) is None
                 else None
@@ -380,8 +460,12 @@ class ResearchToolLoop:
                 tools=available_tools,
                 plan=plan,
                 sub_question=sub_question,
-                previous_results=previous_results,
-                tool_calls=tool_calls,
+                dependency_results=dependency_results,
+                prior_tool_calls=prior_tool_calls,
+                prior_evidence=prior_evidence,
+                current_tool_calls=current_tool_calls,
+                current_evidence=current_evidence,
+                retry_missing_points=retry_missing_points,
                 required_tool_name=required_tool_name,
                 langchain_config_factory=langchain_config_factory,
             )
@@ -403,8 +487,12 @@ class ResearchToolLoop:
                 selection = await self._select_tool_with_json(
                     plan=plan,
                     sub_question=sub_question,
-                    previous_results=previous_results,
-                    tool_calls=tool_calls,
+                    dependency_results=dependency_results,
+                    prior_tool_calls=prior_tool_calls,
+                    prior_evidence=prior_evidence,
+                    current_tool_calls=current_tool_calls,
+                    current_evidence=current_evidence,
+                    retry_missing_points=retry_missing_points,
                     langchain_config_factory=langchain_config_factory,
                 )
                 selections = [selection] if selection is not None else None
@@ -417,7 +505,7 @@ class ResearchToolLoop:
                     for selection in selections
                     if isinstance(selection, dict)
                 ]
-                if not tool_calls and extract_first_url(sub_question.question):
+                if not current_tool_calls and extract_first_url(sub_question.question):
                     # URL 在首轮即可确定；后端固定 fetch，避免模型把已知地址误交给检索工具。
                     return [
                         _repair_fetch_tool_selection(
@@ -429,7 +517,7 @@ class ResearchToolLoop:
                 return validated
 
         # LLM 不可用时的兜底，不作为正常企业场景的主判断器。
-        if tool_calls:
+        if current_tool_calls:
             # 无 LLM 兜底只允许首轮选择一次；后续没有模型就停止，避免根据旧输入重复调用。
             return []
         fallback_tool = sub_question.information_source_hint
@@ -495,8 +583,12 @@ class ResearchToolLoop:
         tools: list[BaseTool],
         plan: AgentTaskPlan,
         sub_question: AgentTaskSubQuestion,
-        previous_results: list[AgentTaskSubQuestionResult],
-        tool_calls: list[AgentTaskToolCallTrace],
+        dependency_results: list[AgentTaskSubQuestionResult],
+        prior_tool_calls: list[AgentTaskToolCallTrace],
+        prior_evidence: list[dict[str, Any]],
+        current_tool_calls: list[AgentTaskToolCallTrace],
+        current_evidence: list[dict[str, Any]],
+        retry_missing_points: list[str],
         required_tool_name: str | None = None,
         langchain_config_factory: LangChainConfigFactory | None = None,
     ) -> list[dict[str, Any]] | None:
@@ -524,8 +616,12 @@ class ResearchToolLoop:
                 _build_tool_selection_messages(
                     plan,
                     sub_question,
-                    previous_results,
-                    tool_calls,
+                    dependency_results,
+                    prior_tool_calls,
+                    prior_evidence,
+                    current_tool_calls,
+                    current_evidence,
+                    retry_missing_points,
                 ),
                 config=(
                     langchain_config_factory(
@@ -558,8 +654,12 @@ class ResearchToolLoop:
         self,
         plan: AgentTaskPlan,
         sub_question: AgentTaskSubQuestion,
-        previous_results: list[AgentTaskSubQuestionResult],
-        tool_calls: list[AgentTaskToolCallTrace],
+        dependency_results: list[AgentTaskSubQuestionResult],
+        prior_tool_calls: list[AgentTaskToolCallTrace],
+        prior_evidence: list[dict[str, Any]],
+        current_tool_calls: list[AgentTaskToolCallTrace],
+        current_evidence: list[dict[str, Any]],
+        retry_missing_points: list[str],
         langchain_config_factory: LangChainConfigFactory | None = None,
     ) -> dict[str, Any] | None:
         """provider 不稳定支持 tool calling 时，退到结构化输出。"""
@@ -575,8 +675,12 @@ class ResearchToolLoop:
                 _build_tool_selection_messages(
                     plan,
                     sub_question,
-                    previous_results,
-                    tool_calls,
+                    dependency_results,
+                    prior_tool_calls,
+                    prior_evidence,
+                    current_tool_calls,
+                    current_evidence,
+                    retry_missing_points,
                 ),
                 config=(
                     langchain_config_factory(
@@ -599,7 +703,6 @@ class ResearchToolLoop:
         tool_input: dict[str, Any],
         available_tools: list[BaseTool],
         sub_question: AgentTaskSubQuestion,
-        previous_results: list[AgentTaskSubQuestionResult],
         mode: str,
         top_k: int,
         candidate_k: int | None,
@@ -607,8 +710,8 @@ class ResearchToolLoop:
         filters: RetrievalFilters,
         tool_call_round: int = 1,
         langchain_config_factory: LangChainConfigFactory | None = None,
-    ) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
-        """执行本地工具或 MCP 工具，并统一返回摘要、答案和证据。"""
+    ) -> ToolExecutionResult:
+        """执行本地工具或 MCP 工具，不在单个工具边界生成答案。"""
 
         # 内置工具走本服务的强类型方法，方便复用权限、检索参数和证据格式。
         if selected_tool == KNOWLEDGE_RETRIEVAL_TOOL_NAME:
@@ -626,13 +729,11 @@ class ResearchToolLoop:
             return await self._run_web_search_for_sub_question(
                 sub_question=sub_question,
                 tool_input=tool_input,
-                previous_results=previous_results,
-                langchain_config_factory=langchain_config_factory,
             )
 
         # 走到这里的是 MCP 等外部工具：先按白名单取工具，再由 LangChain tool 执行。
         tool = find_registered_tool(selected_tool, available_tools)
-        # MCP 输出未必是字符串；先序列化成文本，才能同时进入答案上下文与可持久化证据摘要。
+        # MCP 输出未必是字符串；统一成文本后，完整内容只保留在 Worker 内存。
         content = await tool.ainvoke(
             tool_input,
             config=(
@@ -644,36 +745,22 @@ class ResearchToolLoop:
             ),
         )
         text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
-        answer = await self._generate_with_trace(
-            query=f"请基于 MCP 工具结果回答子问题：{sub_question.question}",
-            context=RagContext(
-                query=sub_question.question,
-                docs=[],
-                context_text=_append_text(
-                    text,
-                    _format_previous_answers(previous_results),
-                    title="前置子问题答案",
-                ),
-            ),
-            langchain_config=(
-                langchain_config_factory(
-                    f"sub_question.{sub_question.sub_question_id}.mcp_answer"
-                )
-                if langchain_config_factory is not None
-                else None
-            ),
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+        doc = RetrievedDoc(
+            id=f"{selected_tool}_{digest}",
+            content=text,
+            score=1.0,
+            source=selected_tool,
+            title=selected_tool,
+            metadata={"tool_name": selected_tool},
         )
-        return (
-            {"content": text, "content_preview": build_content_preview(text)},
-            answer,
-            [
-                {
-                    "id": f"{selected_tool}_result",
-                    "source": selected_tool,
-                    "title": selected_tool,
-                    "content_preview": build_content_preview(text),
-                }
-            ],
+        return ToolExecutionResult(
+            tool_output={
+                "content_length": len(text),
+                "content_preview": build_content_preview(text),
+            },
+            evidence=[doc_to_evidence(doc)],
+            context_docs=[doc],
         )
 
     async def _run_knowledge_retrieval_for_sub_question(
@@ -686,8 +773,8 @@ class ResearchToolLoop:
         min_score: float,
         filters: RetrievalFilters,
         langchain_config_factory: LangChainConfigFactory | None = None,
-    ) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
-        """执行知识库检索，并基于检索结果回答当前子问题。"""
+    ) -> ToolExecutionResult:
+        """执行知识库检索并返回摘要、证据与完整内存文档。"""
 
         # LLM 可能给出不完整或越界参数；这里用后端默认值和范围做最后收敛。
         query = str(tool_input.get("query") or sub_question.question).strip()
@@ -707,37 +794,22 @@ class ResearchToolLoop:
             filters=filters,
             pipeline_provider="rag_agent_task_sub_question",
         )
-        # 原始 docs 留在本次 LLM 上下文，落到 TaskPlan 的 evidence 只保留可展示的摘要。
-        # 子问题回答复用现有 RAG context 构造，避免新建一套上下文格式。
-        answer = await self._generate_with_trace(
-            query=f"请回答子问题：{sub_question.question}",
-            context=build_rag_context(sub_question.question, docs),
-            langchain_config=(
-                langchain_config_factory(
-                    f"sub_question.{sub_question.sub_question_id}.knowledge_answer"
-                )
-                if langchain_config_factory is not None
-                else None
-            ),
-        )
-        evidence = [doc_to_evidence(doc) for doc in docs]
-        return (
-            {
+        # 完整 docs 交给 attempt 结束后的统一回答，TaskPlan 只保存下面的摘要。
+        return ToolExecutionResult(
+            tool_output={
                 "doc_count": len(docs),
                 "top_doc_ids": build_top_doc_ids(docs),
             },
-            answer,
-            evidence,
+            evidence=[doc_to_evidence(doc) for doc in docs],
+            context_docs=docs,
         )
 
     async def _run_web_search_for_sub_question(
         self,
         sub_question: AgentTaskSubQuestion,
         tool_input: dict[str, Any],
-        previous_results: list[AgentTaskSubQuestionResult],
-        langchain_config_factory: LangChainConfigFactory | None = None,
-    ) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
-        """执行网页搜索，并把搜索结果临时转成 RetrievedDoc 供 LLM 消费。"""
+    ) -> ToolExecutionResult:
+        """执行网页搜索，并把结果转成可统一合并的 RetrievedDoc。"""
 
         query = str(tool_input.get("query") or sub_question.question).strip()
         count = coerce_int(tool_input.get("count"), default=5, minimum=1, maximum=10)
@@ -753,7 +825,12 @@ class ResearchToolLoop:
         # WebSearch 返回的数据模型与本地检索不同；转成 RetrievedDoc 后可以复用同一 RAG 上下文构造器。
         docs = [
             RetrievedDoc(
-                id=f"web_{index}",
+                id=(
+                    "web_"
+                    + hashlib.sha256(
+                        (item.url or f"{item.title}:{index}").encode("utf-8")
+                    ).hexdigest()[:16]
+                ),
                 content=" ".join(
                     part
                     for part in [item.title, item.snippet, item.summary, item.url]
@@ -766,30 +843,19 @@ class ResearchToolLoop:
             )
             for index, item in enumerate(results, start=1)
         ]
-        context = build_rag_context(sub_question.question, docs)
-        # web 结果可能需要结合前置子问题答案做综合判断。
-        answer = await self._generate_with_trace(
-            query=f"请回答子问题：{sub_question.question}",
-            context=_append_previous_answers(context, previous_results),
-            langchain_config=(
-                langchain_config_factory(
-                    f"sub_question.{sub_question.sub_question_id}.web_answer"
-                )
-                if langchain_config_factory is not None
-                else None
-            ),
-        )
-        evidence = [doc_to_evidence(doc) for doc in docs]
-        return (
-            {"result_count": len(results), "top_urls": [item.url for item in results[:5]]},
-            answer,
-            evidence,
+        return ToolExecutionResult(
+            tool_output={
+                "result_count": len(results),
+                "top_urls": [item.url for item in results[:5]],
+            },
+            evidence=[doc_to_evidence(doc) for doc in docs],
+            context_docs=docs,
         )
 
     async def _answer_without_tool(
         self,
         sub_question: AgentTaskSubQuestion,
-        previous_results: list[AgentTaskSubQuestionResult],
+        dependency_results: list[AgentTaskSubQuestionResult],
         langchain_config_factory: LangChainConfigFactory | None = None,
     ) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
         """不调用工具，只用已完成的前置子问题答案推理。"""
@@ -797,7 +863,7 @@ class ResearchToolLoop:
         context = RagContext(
             query=sub_question.question,
             docs=[],
-            context_text=_format_previous_answers(previous_results) or "无前置子问题答案。",
+            context_text=_format_dependency_answers(dependency_results) or "无前置子问题答案。",
         )
         # 纯推理路径没有外部事实，evidence 为空；调用方仍把答案标记为 completed。
         answer = await self._generate_with_trace(
@@ -812,30 +878,31 @@ class ResearchToolLoop:
             ),
         )
         return ({"reason": "no_tool_selected"}, answer, [])
+
     async def _answer_from_tool_calls(
         self,
         sub_question: AgentTaskSubQuestion,
-        previous_results: list[AgentTaskSubQuestionResult],
-        tool_calls: list[AgentTaskToolCallTrace],
+        dependency_results: list[AgentTaskSubQuestionResult],
+        context_docs: list[RetrievedDoc],
+        retry_missing_points: list[str],
         langchain_config_factory: LangChainConfigFactory | None = None,
     ) -> str:
-        """用当前子问题的多轮工具结果生成最终子问题答案。"""
+        """用历史和当前 attempt 的全部工具原始上下文生成一次候选答案。"""
 
-        context_text = "\n\n".join(
-            json.dumps(call.model_dump(mode="json"), ensure_ascii=False)
-            for call in tool_calls
+        context = _append_dependency_answers(
+            build_rag_context(sub_question.question, context_docs),
+            dependency_results,
         )
-        # 保留每条调用的参数、输出和状态，而非只传最后一条，供模型处理多工具互补或冲突。
-        previous = _format_previous_answers(previous_results)
-        if previous:
-            context_text = _append_text(context_text, previous, title="前置子问题答案")
+        # 上一次attempt执行后，是否信息不足导致需要补充的要点。在本轮attempt进行补充查询
+        missing_text = "; ".join(retry_missing_points)
+        query = f"请综合全部工具证据回答子问题：{sub_question.question}"
+        if missing_text:
+            query += f"\n本次纠正需要重点补足：{missing_text}"
+
+        # 执行llm查询
         return await self._generate_with_trace(
-            query=f"请综合这些工具结果回答子问题：{sub_question.question}",
-            context=RagContext(
-                query=sub_question.question,
-                docs=[],
-                context_text=context_text,
-            ),
+            query=query,
+            context=context,
             langchain_config=(
                 langchain_config_factory(
                     f"sub_question.{sub_question.sub_question_id}.tool_answer"
@@ -848,12 +915,15 @@ class ResearchToolLoop:
 def _build_tool_selection_messages(
     plan: AgentTaskPlan,
     sub_question: AgentTaskSubQuestion,
-    previous_results: list[AgentTaskSubQuestionResult],
-    tool_calls: list[AgentTaskToolCallTrace] | None = None,
+    dependency_results: list[AgentTaskSubQuestionResult],
+    prior_tool_calls: list[AgentTaskToolCallTrace],
+    prior_evidence: list[dict[str, Any]],
+    current_tool_calls: list[AgentTaskToolCallTrace],
+    current_evidence: list[dict[str, Any]],
+    retry_missing_points: list[str],
 ) -> list[SystemMessage | HumanMessage]:
-    """构造给【工具选择 LLM】 的上下文，只暴露当前子问题和已完成答案。"""
+    """构造工具选择上下文，明确区分依赖结果、历史 attempt 和当前 attempt。"""
 
-    tool_calls = tool_calls or []
     # 只传当前子问题和其依赖已完成答案，避免同批无关 Worker 的中间信息污染工具选择。
     return [
         SystemMessage(content=TASK_TOOL_SELECTION_PROMPT),
@@ -863,18 +933,24 @@ def _build_tool_selection_messages(
                     "original_query": plan.original_query,
                     "objective": plan.objective,
                     "current_sub_question": sub_question.model_dump(mode="json"),
-                    "current_tool_calls": [
-                        item.model_dump(mode="json") for item in tool_calls
-                    ],
-                    "previous_answers": [
+                    "dependency_answers": [
                         {
                             "sub_question_id": item.sub_question_id,
                             "question": item.question,
                             "answer": item.answer,
                             "status": item.status,
                         }
-                        for item in previous_results
+                        for item in dependency_results
                     ],
+                    "prior_attempt_tool_calls": [
+                        item.model_dump(mode="json") for item in prior_tool_calls
+                    ],
+                    "prior_attempt_evidence": prior_evidence,
+                    "current_attempt_tool_calls": [
+                        item.model_dump(mode="json") for item in current_tool_calls
+                    ],
+                    "current_attempt_evidence": current_evidence,
+                    "retry_missing_points": retry_missing_points,
                 },
                 ensure_ascii=False,
             )
@@ -902,6 +978,7 @@ def _failed_batch_traces(
     *,
     selections: list[dict[str, Any]],
     sub_question_id: str,
+    attempt: int,
     round_index: int,
     error: str,
 ) -> list[AgentTaskToolCallTrace]:
@@ -909,9 +986,9 @@ def _failed_batch_traces(
 
     return [
         AgentTaskToolCallTrace(
-            call_id=str(
-                selection.get("call_id")
-                or f"{sub_question_id}_tool_{round_index}_{index}"
+            call_id=(
+                f"{sub_question_id}_attempt_{attempt}_"
+                f"{selection.get('call_id') or f'tool_{round_index}_{index}'}"
             ),
             round=round_index,
             tool_name=str(selection.get("selected_tool") or "unknown"),
@@ -953,19 +1030,6 @@ def _repair_fetch_tool_selection(
         "reason": "子问题包含明确 URL，使用 Fetch MCP 读取网页正文。",
     }
 
-def _collect_tool_call_evidence(
-    tool_calls: list[AgentTaskToolCallTrace],
-) -> list[dict[str, Any]]:
-    """从多轮 tool call 输出中抽取 evidence。"""
-
-    evidence: list[dict[str, Any]] = []
-    for call in tool_calls:
-        # failed trace 没有可信输出；仅从工具实际写入的 evidence 列表中抽取字典项。
-        raw_evidence = call.tool_output.get("evidence")
-        if isinstance(raw_evidence, list):
-            evidence.extend(item for item in raw_evidence if isinstance(item, dict))
-    return evidence
-
 def merge_evidence(
     current: list[dict[str, Any]],
     incoming: list[dict[str, Any]],
@@ -990,12 +1054,33 @@ def merge_evidence(
     return merged
 
 
+def _merge_context_doc_groups(
+    groups: list[list[RetrievedDoc]],
+) -> list[RetrievedDoc]:
+    """按工具组轮询合并完整文档，并按来源身份稳定去重。"""
+
+    merged: list[RetrievedDoc] = []
+    seen: set[tuple[str, str]] = set()
+    for index in range(max((len(group) for group in groups), default=0)):
+        for group in groups:
+            if index >= len(group):
+                continue
+            doc = group[index]
+            identity = str(doc.metadata.get("url") or doc.id)
+            key = (doc.source, identity)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(doc)
+    return merged
+
+
 def build_public_web_query(
     original_query: str,
     sub_question: str,
     missing_points: list[str],
 ) -> str:
-    """只用公开问题边界构造 Web 查询，并移除常见内部标识与本地路径。"""
+    """规则匹配 移除敏感信息 只用公开问题边界构造 Web 查询，并移除常见内部标识与本地路径。"""
 
     text = " ".join([original_query, sub_question, *missing_points])
     # 不把邮箱、本地/知识库路径、ACL 字段和常见员工/资产标识发送给外部搜索服务。
@@ -1018,7 +1103,7 @@ def build_public_web_query(
     # 清洗后为空仍给搜索服务一个无敏感信息的最小查询，避免发出空请求。
     return normalized or "公开资料研究"
 
-def _format_previous_answers(results: list[AgentTaskSubQuestionResult]) -> str:
+def _format_dependency_answers(results: list[AgentTaskSubQuestionResult]) -> str:
     """格式化已完成子问题答案，供后续子问题引用。"""
 
     lines: list[str] = []
@@ -1036,29 +1121,22 @@ def _format_previous_answers(results: list[AgentTaskSubQuestionResult]) -> str:
         )
     return "\n\n".join(lines)
 
-def _append_text(base_text: str, extra_text: str, title: str) -> str:
-    """把额外上下文附加到文本后。"""
-
-    if not extra_text:
-        # 没有附加信息时直接返回原字符串，避免制造空标题和多余 token。
-        return base_text
-    return f"{base_text}\n\n【{title}】\n{extra_text}"
-
-
-def _append_previous_answers(
+def _append_dependency_answers(
     context: RagContext,
-    previous_results: list[AgentTaskSubQuestionResult],
+    dependency_results: list[AgentTaskSubQuestionResult],
 ) -> RagContext:
     """在 RAG context 后附加前置答案，保持 docs 不变。"""
 
-    previous = _format_previous_answers(previous_results)
-    if not previous:
+    dependency_answers = _format_dependency_answers(dependency_results)
+    if not dependency_answers:
         return context
     # RagContext 是值对象；创建副本而非原地修改，避免调用方共享的 context 被悄悄污染。
     return RagContext(
         query=context.query,
         docs=context.docs,
-        context_text=f"{context.context_text}\n\n【前置子问题答案】\n{previous}",
+        context_text=(
+            f"{context.context_text}\n\n【前置子问题答案】\n{dependency_answers}"
+        ),
     )
 
 
@@ -1070,11 +1148,11 @@ def _as_text(value: object) -> str:
     return str(value or "")
 
 
-__all__ = ["AgentTaskExecutor", "AgentTaskPlanStore"]
-
 __all__ = [
     "AgentTaskKnowledgeRetrievalToolInput",
+    "ResearchAttemptOutcome",
     "ResearchToolLoop",
+    "ToolExecutionResult",
     "build_public_web_query",
     "merge_evidence",
 ]

@@ -139,7 +139,9 @@ async def main() -> None:
         assert payload["status"] in {"completed", "partial"}, payload
         assert payload["tool_calls"][0]["tool_name"] == "mcp__fetch", payload
         assert payload["tool_calls"][0]["status"] == "completed", payload
-        assert "Example Domain" in payload["tool_calls"][0]["tool_output"]["content"]
+        tool_output = payload["tool_calls"][0]["tool_output"]
+        assert "Example Domain" in tool_output["content_preview"]
+        assert "content" not in tool_output
 
         print("fetch_mcp_real_llm=passed")
         print(f"selected_tool={payload['tool_calls'][0]['tool_name']}")
