@@ -6,6 +6,7 @@ import asyncio
 import json
 from collections.abc import Callable
 from difflib import unified_diff
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -29,14 +30,27 @@ from fast_app.core.config import Settings
 from fast_app.domain.agent_task_plan import AgentTaskPlan, AgentTaskPlanStatus, AgentTaskToolCallTrace, AgentToolStep, AgentToolStepStatus
 from fast_app.domain.agent_tool_permissions import AgentToolCallContext, AgentToolPermissionAction, PermissionCode
 from fast_app.domain.knowledge_document_actions import KnowledgeDocumentActionRequest, KnowledgeDocumentOperation, KnowledgeDocumentRiskLevel
+from fast_app.domain.document_workflow import (
+    DocumentChangeProposal,
+    DocumentDeliverable,
+    DocumentDeliverableFailure,
+    DocumentWorkflowDecision,
+    DocumentWorkflowResult,
+)
 from fast_app.domain.rag_models import RetrievalFilters, RetrievedDoc
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
 from fast_app.services.agent_tasks.agent_task_tool_support import build_mcp_task_tools, doc_to_evidence, normalize_tool_input, parallel_batch_error
 from fast_app.services.agent_tasks.agent_tool_audit_service import AgentToolAuditService
 from fast_app.services.agent_tasks.agent_tool_permission_service import AgentToolPermissionService
+from fast_app.services.agent_tasks.document_change_plan_service import (
+    DocumentActionConflictError,
+    DocumentChangePlanService,
+)
 from fast_app.services.exceptions import AppServiceError, ToolPermissionDeniedError
 from fast_app.services.knowledge.knowledge_document_management_service import KnowledgeDocumentManagementService
+from fast_app.services.agent_tasks.deep_document_agent import DeepDocumentAgent
+from fast_app.services.agent_tasks.document_supervisor_agent import DocumentSupervisorAgent
 from fast_app.services.research.research_tool_loop import AgentTaskKnowledgeRetrievalToolInput
 from fast_app.services.rag.rag_pipeline_service import build_content_preview
 
@@ -59,10 +73,6 @@ DOCUMENT_AGENT_SYSTEM_PROMPT = """你是知识库文档管理 Agent。你必须�
 """
 
 
-class _DocumentActionConflictError(AppServiceError):
-    pass
-
-
 class _TaskPlanCancelledError(AppServiceError):
     pass
 
@@ -73,7 +83,19 @@ _ACTIVE_DOCUMENT_TASK_PLAN_IDS: set[str] = set()
 class DocumentTaskExecutor:
     """只负责文档任务的 Tool Loop、确认和补偿状态。"""
 
-    def __init__(self, settings: Settings, vector_retriever: BaseRetriever, keyword_retriever: BaseRetriever, document_management_service: KnowledgeDocumentManagementService, tool_permission_service: AgentToolPermissionService, tool_audit_service: AgentToolAuditService, task_plan_store: AgentTaskPlanStore) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        vector_retriever: BaseRetriever,
+        keyword_retriever: BaseRetriever,
+        document_management_service: KnowledgeDocumentManagementService,
+        tool_permission_service: AgentToolPermissionService,
+        tool_audit_service: AgentToolAuditService,
+        task_plan_store: AgentTaskPlanStore,
+        supervisor_agent: DocumentSupervisorAgent | None = None,
+        deep_document_agent: DeepDocumentAgent | None = None,
+        change_plan_service: DocumentChangePlanService | None = None,
+    ) -> None:
         self._settings = settings
         self._vector_retriever = vector_retriever
         self._keyword_retriever = keyword_retriever
@@ -81,6 +103,14 @@ class DocumentTaskExecutor:
         self._tool_permission_service = tool_permission_service
         self._tool_audit_service = tool_audit_service
         self._task_plan_store = task_plan_store
+        # 未显式装配时保持旧 direct Tool Loop，避免测试或兼容调用意外启用新模型链路。
+        self._supervisor_agent = supervisor_agent
+        self._deep_document_agent = deep_document_agent
+        self._change_plan_service = change_plan_service or DocumentChangePlanService(
+            document_management_service=document_management_service,
+            tool_permission_service=tool_permission_service,
+            tool_audit_service=tool_audit_service,
+        )
 
     def _sync_cancelled_state(self, plan: AgentTaskPlan) -> bool:
         latest = self._task_plan_store.load(plan.task_plan_id)
@@ -103,13 +133,66 @@ class DocumentTaskExecutor:
         filters: RetrievalFilters,
         langchain_config_factory: LangChainConfigFactory | None = None,
     ) -> AgentTaskPlan:
-        """运行原生文档 Tool loop，并停在人工确认前。"""
+        """先判断 direct/agentic，再停在唯一的真实写入确认点。"""
 
         # 文档任务不能复用问题拆解执行器：前者要冻结可确认的写操作，后者只生成答案。
         if plan.task_kind != "knowledge_document_management":
             raise AppServiceError(f"不支持的 Agent task kind: {plan.task_kind}")
-        return await self._execute_document_tool_loop(
+        if self._supervisor_agent is None or self._deep_document_agent is None:
+            return await self._execute_document_tool_loop(
+                plan=plan,
+                user=user,
+                mode=mode,
+                top_k=top_k,
+                candidate_k=candidate_k,
+                min_score=min_score,
+                filters=filters,
+                langchain_config_factory=langchain_config_factory,
+            )
+        web_policy = (
+            plan.research_policy.web_policy
+            if plan.research_policy is not None
+            else "disabled"
+        )
+        # agentic 重试复用第一次已经确认范围的 Supervisor 决定，只重新做规则校验；
+        # 不再次调用 LLM，避免同一 TaskPlan 在重试时改变交付物数量或依赖关系。
+        saved_workflow = plan.final_output.get("document_workflow")
+        saved_supervisor = (
+            saved_workflow.get("supervisor")
+            if isinstance(saved_workflow, dict)
+            and saved_workflow.get("execution_mode") == "agentic"
+            else None
+        )
+        if isinstance(saved_supervisor, dict):
+            decision = self._supervisor_agent.validate_saved_decision(
+                DocumentWorkflowDecision.model_validate(saved_supervisor),
+                allowed_web_policy=web_policy,
+            )
+        else:
+            decision = await self._supervisor_agent.decide(
+                query=plan.original_query,
+                web_policy=web_policy,
+                langchain_config_factory=langchain_config_factory,
+            )
+        plan.final_output["document_workflow"] = {
+            "execution_mode": decision.execution_mode,
+            "supervisor": decision.model_dump(mode="json"),
+        }
+        self._task_plan_store.save(plan)
+        if decision.execution_mode == "direct":
+            return await self._execute_document_tool_loop(
+                plan=plan,
+                user=user,
+                mode=mode,
+                top_k=top_k,
+                candidate_k=candidate_k,
+                min_score=min_score,
+                filters=filters,
+                langchain_config_factory=langchain_config_factory,
+            )
+        return await self._execute_agentic_document_workflow(
             plan=plan,
+            decision=decision,
             user=user,
             mode=mode,
             top_k=top_k,
@@ -117,6 +200,340 @@ class DocumentTaskExecutor:
             min_score=min_score,
             filters=filters,
             langchain_config_factory=langchain_config_factory,
+        )
+
+    async def _execute_agentic_document_workflow(
+        self,
+        *,
+        plan: AgentTaskPlan,
+        decision: DocumentWorkflowDecision,
+        user: CurrentUserContext,
+        mode: str,
+        top_k: int,
+        candidate_k: int | None,
+        min_score: float,
+        filters: RetrievalFilters,
+        langchain_config_factory: LangChainConfigFactory | None,
+    ) -> AgentTaskPlan:
+        """运行 Deep Agents 内容生产，再逐项收敛为现有 dry-run 步骤。"""
+
+        if plan.task_plan_id in _ACTIVE_DOCUMENT_TASK_PLAN_IDS:
+            raise AppServiceError("Agent task plan 当前仍在执行")
+        if self._deep_document_agent is None:
+            raise AppServiceError("DeepDocumentAgent 未装配")
+        _ACTIVE_DOCUMENT_TASK_PLAN_IDS.add(plan.task_plan_id)
+        try:
+            plan.user_id = plan.user_id or user.user_id
+            plan.status = AgentTaskPlanStatus.RUNNING
+            plan.steps = []
+            plan.error = None
+            plan.final_output.update(
+                {
+                    "status": plan.status.value,
+                    "document_progress": {
+                        "stage": "deep_agent_running",
+                        "events": [
+                            {
+                                "event": "agent_task_document_supervised",
+                                "execution_mode": "agentic",
+                                "deliverable_count": len(decision.deliverables),
+                            },
+                            *[
+                                {
+                                    "event": "agent_task_document_subagent_started",
+                                    "deliverable_id": item.deliverable_id,
+                                    "subagent_type": "document-researcher",
+                                }
+                                for item in decision.deliverables
+                            ],
+                        ],
+                        "deliverables": [
+                            {
+                                "deliverable_id": item.deliverable_id,
+                                "status": "running",
+                            }
+                            for item in decision.deliverables
+                        ],
+                    },
+                }
+            )
+            self._task_plan_store.save(plan)
+            run_result = await self._deep_document_agent.run(
+                plan=plan,
+                decision=decision,
+                user=user,
+                mode=mode,
+                top_k=top_k,
+                candidate_k=candidate_k,
+                min_score=min_score,
+                filters=filters,
+                langchain_config=(
+                    langchain_config_factory("document.deep_agent")
+                    if langchain_config_factory is not None
+                    else None
+                ),
+            )
+            workflow = run_result.workflow
+            failed = list(workflow.failed_deliverables)
+            deliverables = {
+                item.deliverable_id: item for item in decision.deliverables
+            }
+            # Deep Agents 的结构化输出仍是模型输出：先证明 Proposal 确实对应
+            # Supervisor 交付物、Writer 最终草稿和 Reviewer 最终批准，再准备动作。
+            proposal_ids = _validate_agentic_workflow_result(
+                workflow=workflow,
+                deliverables=deliverables,
+            )
+            accounted_ids = {
+                *proposal_ids,
+                *(item.deliverable_id for item in failed),
+                *(item.deliverable_id for item in workflow.skipped_deliverables),
+            }
+            # 模型遗漏的交付物不能静默消失，统一转成前端可见的失败结果。
+            failed.extend(
+                DocumentDeliverableFailure(
+                    deliverable_id=item.deliverable_id,
+                    status="failed",
+                    error_code="MISSING_DELIVERABLE_RESULT",
+                    reason="DeepDocumentAgent 未返回该交付物结果",
+                )
+                for item in decision.deliverables
+                if item.deliverable_id not in accounted_ids
+            )
+            document_actions: dict[str, str] = {}
+            # Deep Agents 运行期间 Middleware 已把 task 工具边界写入最新快照；
+            # 重新加载而不是使用旧 plan 对象，避免结束时覆盖真实的实时事件。
+            latest = self._task_plan_store.load(plan.task_plan_id)
+            live_progress = dict(
+                latest.final_output.get("document_progress") or {}
+            )
+            document_events = [
+                *list(live_progress.get("events") or []),
+                *[
+                    {
+                        "event": "agent_task_document_subagent_completed",
+                        "deliverable_id": item.deliverable_id,
+                        "subagent_type": "document-researcher",
+                        "status": item.status,
+                    }
+                    for item in workflow.research_results
+                ],
+                *[
+                    {
+                        "event": "agent_task_document_draft_created",
+                        "deliverable_id": item.deliverable_id,
+                        "operation": item.operation,
+                    }
+                    for item in workflow.draft_results
+                ],
+                *[
+                    {
+                        "event": "agent_task_document_review_completed",
+                        "deliverable_id": item.deliverable_id,
+                        "verdict": item.verdict,
+                        "confidence": item.confidence,
+                    }
+                    for item in workflow.review_results
+                ],
+            ]
+            seen_draft_ids: set[str] = set()
+            for draft in workflow.draft_results:
+                if draft.deliverable_id in seen_draft_ids:
+                    document_events.append(
+                        {
+                            "event": "agent_task_document_revision_started",
+                            "deliverable_id": draft.deliverable_id,
+                        }
+                    )
+                seen_draft_ids.add(draft.deliverable_id)
+            # 每个通过审查的 Proposal 独立转换为 dry-run。普通单项失败只记入
+            # failed_deliverables，其他独立交付物仍可进入同一次人工确认。
+            for proposal in workflow.approved_changes:
+                try:
+                    output = await self._prepare_agentic_proposal(
+                        plan=plan,
+                        user=user,
+                        proposal=proposal,
+                        candidates=run_result.candidates,
+                        read_snapshots=run_result.read_snapshots,
+                        document_actions=document_actions,
+                    )
+                    plan.steps.append(
+                        _document_step_from_tool_result(
+                            call_id=f"deep_agent_{proposal.deliverable_id}",
+                            tool_name=f"knowledge_document_{proposal.operation}",
+                            tool_input={
+                                "deliverable_id": proposal.deliverable_id,
+                                "candidate_doc_id": proposal.candidate_doc_id,
+                            },
+                            output=_parse_tool_message_content(output),
+                            index=len(plan.steps) + 1,
+                        )
+                    )
+                    document_events.append(
+                        {
+                            "event": "agent_task_document_action_prepared",
+                            "deliverable_id": proposal.deliverable_id,
+                            "operation": proposal.operation,
+                            "step_id": plan.steps[-1].step_id,
+                        }
+                    )
+                except ToolPermissionDeniedError:
+                    raise
+                except Exception as exc:
+                    failed.append(
+                        DocumentDeliverableFailure(
+                            deliverable_id=proposal.deliverable_id,
+                            status="failed",
+                            error_code=type(exc).__name__,
+                            reason=str(exc),
+                        )
+                    )
+                    document_events.append(
+                        {
+                            "event": "agent_task_document_subagent_failed",
+                            "deliverable_id": proposal.deliverable_id,
+                            "subagent_type": "change_set_validation",
+                            "error": f"{type(exc).__name__}: {exc}",
+                        }
+                    )
+
+            plan.final_output.update(
+                {
+                    "document_workflow": {
+                        "execution_mode": "agentic",
+                        "supervisor": decision.model_dump(mode="json"),
+                    },
+                    "research_results": [
+                        item.model_dump(mode="json") for item in workflow.research_results
+                    ],
+                    "draft_results": [
+                        item.model_dump(mode="json") for item in workflow.draft_results
+                    ],
+                    "review_results": [
+                        item.model_dump(mode="json") for item in workflow.review_results
+                    ],
+                    "failed_deliverables": [
+                        item.model_dump(mode="json") for item in failed
+                    ],
+                    "skipped_deliverables": [
+                        item.model_dump(mode="json")
+                        for item in workflow.skipped_deliverables
+                    ],
+                    "warnings": workflow.warnings,
+                    "used_tools": workflow.used_tools,
+                    "evidence": workflow.evidence,
+                    "document_progress": {
+                        "stage": "actions_prepared" if plan.steps else "failed",
+                        "events": document_events,
+                        "prepared": len(plan.steps),
+                        "failed": len(failed),
+                        "skipped": len(workflow.skipped_deliverables),
+                    },
+                }
+            )
+            # 没有任何安全动作时不能伪装成成功；至少一个动作可用时才允许
+            # WAITING_CONFIRMATION，失败/跳过项会在确认后形成 completed_with_warnings。
+            if not plan.steps:
+                plan.status = AgentTaskPlanStatus.FAILED
+                plan.error = "复杂文档任务没有产生可确认动作"
+                plan.final_output["status"] = plan.status.value
+                self._task_plan_store.save(plan)
+                return plan
+            plan.status = AgentTaskPlanStatus.WAITING_CONFIRMATION
+            plan.final_output.update(
+                {
+                    "status": plan.status.value,
+                    "confirm_endpoint": f"/agent/task-plans/{plan.task_plan_id}/confirm",
+                    "document_action_count": len(plan.steps),
+                }
+            )
+            self._task_plan_store.save(plan)
+            return plan
+        except asyncio.CancelledError:
+            if self._sync_cancelled_state(plan):
+                return plan
+            plan.status = AgentTaskPlanStatus.FAILED
+            plan.error = "AgentTaskInterrupted: DeepDocumentAgent 执行中断"
+            plan.final_output["status"] = plan.status.value
+            self._task_plan_store.save(plan)
+            raise
+        except Exception as exc:
+            plan.status = AgentTaskPlanStatus.FAILED
+            plan.error = f"{type(exc).__name__}: {exc}"
+            plan.final_output["status"] = plan.status.value
+            self._task_plan_store.save(plan)
+            raise
+        finally:
+            _ACTIVE_DOCUMENT_TASK_PLAN_IDS.discard(plan.task_plan_id)
+
+    async def _prepare_agentic_proposal(
+        self,
+        *,
+        plan: AgentTaskPlan,
+        user: CurrentUserContext,
+        proposal: DocumentChangeProposal,
+        candidates: dict[str, dict[str, Any]],
+        read_snapshots: dict[str, Any],
+        document_actions: dict[str, str],
+    ) -> str:
+        """把模型建议绑定到当前 ACL 候选和读取版本，再复用现有 dry-run。"""
+
+        operation = KnowledgeDocumentOperation(proposal.operation)
+        candidate: dict[str, Any] | None = None
+        diff = ""
+        content = proposal.content
+        if operation == KnowledgeDocumentOperation.CREATE:
+            # create 的真实目录由当前用户部门和服务端规则生成，模型只提供文件名。
+            target_path = _create_target_path(
+                proposal.filename or "",
+                user,
+                plan.task_plan_id,
+            )
+        else:
+            candidate = _require_document_candidate(
+                proposal.candidate_doc_id or "",
+                candidates,
+            )
+            target_path = candidate["source_path"]
+            if (
+                proposal.candidate_source_path
+                and proposal.candidate_source_path != target_path
+            ):
+                raise AppServiceError("模型返回的 source_path 与服务端候选不一致")
+        if operation == KnowledgeDocumentOperation.UPDATE:
+            # 第一次比较模型携带的 base_sha256 与授权读取快照；第二次读取真实文件，
+            # 解决“研究完成后、dry-run 生成前”发生并发修改的 TOCTOU 问题。
+            snapshot = read_snapshots.get(proposal.candidate_doc_id or "")
+            if snapshot is None:
+                raise AppServiceError("复杂 update 缺少授权读取快照")
+            if snapshot.source_path != target_path or snapshot.sha256 != proposal.base_sha256:
+                raise AppServiceError("复杂 update 的 base_sha256 与读取快照不一致")
+            current = self._document_management_service.read_document_content(target_path)
+            if sha256(current.encode("utf-8")).hexdigest() != snapshot.sha256:
+                raise AppServiceError("目标文档在 Deep Agents 编写期间已变化")
+            if content == current:
+                raise AppServiceError("复杂 update 没有产生内容变化")
+            diff = "\n".join(
+                unified_diff(
+                    current.splitlines(),
+                    (content or "").splitlines(),
+                    fromfile=target_path,
+                    tofile=target_path,
+                    lineterm="",
+                )
+            )
+        return await self._change_plan_service.prepare_dry_run(
+            user=user,
+            operation=operation,
+            target_path=target_path,
+            content=content,
+            reason=proposal.reason,
+            candidate=candidate,
+            selection_reason=proposal.selection_reason,
+            replacements=[],
+            document_actions=document_actions,
+            diff=diff,
         )
     async def _execute_document_tool_loop(
         self,
@@ -172,7 +589,10 @@ class DocumentTaskExecutor:
         else:
             plan.status = AgentTaskPlanStatus.RUNNING
             plan.steps = []
+            supervisor_output = plan.final_output.get("document_workflow")
             plan.final_output = {"tool_calls": [], "used_tools": []}
+            if supervisor_output is not None:
+                plan.final_output["document_workflow"] = supervisor_output
             # 这三个集合是一次 Agent loop 的服务端事实，不交给模型维护：
             # candidates 限定 update/delete 可选 doc_id；read_doc_ids 强制 update 先读原文；
             # document_actions 防止同一文档出现重复 update、update+delete 等冲突动作。
@@ -410,7 +830,7 @@ class DocumentTaskExecutor:
                             ),
                             output,
                         )
-                    except (_DocumentActionConflictError, ToolPermissionDeniedError):
+                    except (DocumentActionConflictError, ToolPermissionDeniedError):
                         raise
                     except Exception as exc:
                         error = f"{type(exc).__name__}: {exc}"
@@ -611,7 +1031,7 @@ class DocumentTaskExecutor:
         async def create_document(filename: str, content: str, reason: str) -> str:
             # LLM 只建议文件名；后端会把它收敛到当前用户可管理的默认目录。
             target_path = _create_target_path(filename, user, plan.task_plan_id)
-            return await self._prepare_document_dry_run(
+            return await self._change_plan_service.prepare_dry_run(
                 user=user,
                 operation=KnowledgeDocumentOperation.CREATE,
                 target_path=target_path,
@@ -647,7 +1067,7 @@ class DocumentTaskExecutor:
                     lineterm="",
                 )
             )
-            return await self._prepare_document_dry_run(
+            return await self._change_plan_service.prepare_dry_run(
                 user=user,
                 operation=KnowledgeDocumentOperation.UPDATE,
                 target_path=candidate["source_path"],
@@ -667,7 +1087,7 @@ class DocumentTaskExecutor:
         ) -> str:
             # delete 同样只能选择权限过滤后的候选；工具参数中没有自由 target_path。
             candidate = _require_document_candidate(doc_id, candidates)
-            return await self._prepare_document_dry_run(
+            return await self._change_plan_service.prepare_dry_run(
                 user=user,
                 operation=KnowledgeDocumentOperation.DELETE,
                 target_path=candidate["source_path"],
@@ -730,90 +1150,28 @@ class DocumentTaskExecutor:
             tools.extend(await build_mcp_task_tools(self._settings))
         return tools
 
-    async def _prepare_document_dry_run(
-        self,
-        *,
-        user: CurrentUserContext,
-        operation: KnowledgeDocumentOperation,
-        target_path: str,
-        content: str | None,
-        reason: str,
-        candidate: dict[str, Any] | None,
-        selection_reason: str,
-        replacements: list[dict[str, Any]],
-        document_actions: dict[str, str],
-        diff: str = "",
-    ) -> str:
-        """校验一个写动作并返回可冻结进 TaskPlan 的 dry-run ToolMessage 内容。"""
-
-        # LLM 工具 schema 不包含 ACL、dry_run 或执行开关；这些安全字段只能由后端补齐。
-        request = KnowledgeDocumentActionRequest(
-            operation=operation,
-            target_path=target_path,
-            content=content,
-            reason=reason,
-            dry_run=True,
-            expected_department_codes=(
-                [user.primary_department_code]
-                if operation == KnowledgeDocumentOperation.CREATE
-                and user.primary_department_code
-                else []
-            ),
-        )
-        result = await self._document_management_service.plan_action(request, user=user)
-        # plan_action 负责路径/ACL/内容等领域校验，返回的是预览而不是实际写入结果。
-        preview = result.preview
-        doc_id = str(preview.affected_doc_id or "")
-        if not doc_id:
-            raise AppServiceError("文档 dry-run 未返回 doc_id")
-        previous = document_actions.get(doc_id)
-        # 以最终 preview 的 doc_id 判冲突，而不是相信 LLM 提供的路径或候选描述。
-        if previous is not None:
-            raise _DocumentActionConflictError(
-                f"同一文档不能重复或冲突操作: doc_id={doc_id}, {previous}+{operation.value}"
-            )
-        context = AgentToolCallContext(
-            tool_name=f"knowledge_document_{operation.value}",
-            operation=operation,
-            risk_level=preview.risk_level,
-            target_path=target_path,
-            target_department_codes=list(
-                preview.permission_metadata.get("allowed_departments", []) or []
-            ),
-            requires_confirmation=True,
-            metadata={"source": "rag_agent.document_native_tool"},
-        )
-        decision = await self._tool_permission_service.authorize(user=user, context=context)
-        # dry-run 也记录权限决策，便于审计“谁尝试规划了什么高风险操作”。
-        await self._tool_audit_service.record_decision(
-            user=user,
-            context=context,
-            decision=decision,
-        )
-        if decision.action == AgentToolPermissionAction.DENY:
-            raise ToolPermissionDeniedError(decision.reason)
-        document_actions[doc_id] = operation.value
-        # 返回值会成为 ToolMessage，并在成功后转换为 WAITING_CONFIRMATION step。
-        return json.dumps(
-            {
-                "operation": operation.value,
-                "target_path": target_path,
-                "action_request": request.model_dump(mode="json"),
-                "preview": preview.model_dump(mode="json"),
-                "permission_decision": decision.model_dump(mode="json"),
-                "candidate": candidate,
-                "selection_reason": selection_reason,
-                "replacements": replacements,
-                "diff": diff,
-            },
-            ensure_ascii=False,
-        )
     async def confirm(
         self,
         plan: AgentTaskPlan,
         user: CurrentUserContext,
     ) -> AgentTaskPlan:
         """重新鉴权全部文档步骤，再交给 service 做整批执行和补偿。"""
+
+        if plan.task_plan_id in _ACTIVE_DOCUMENT_TASK_PLAN_IDS:
+            raise AppServiceError("文档 TaskPlan 当前仍在执行，不能重复确认")
+        _ACTIVE_DOCUMENT_TASK_PLAN_IDS.add(plan.task_plan_id)
+        try:
+            return await self._confirm_once(plan=plan, user=user)
+        finally:
+            _ACTIVE_DOCUMENT_TASK_PLAN_IDS.discard(plan.task_plan_id)
+
+    async def _confirm_once(
+        self,
+        *,
+        plan: AgentTaskPlan,
+        user: CurrentUserContext,
+    ) -> AgentTaskPlan:
+        """执行一次确认；外层负责同 TaskPlan 的进程内互斥。"""
 
         actions: list[tuple[KnowledgeDocumentActionRequest, str | None]] = []
         contexts: list[AgentToolCallContext] = []
@@ -886,7 +1244,16 @@ class DocumentTaskExecutor:
                     executed=True,
                     message=result.message,
                 )
-            plan.status = AgentTaskPlanStatus.COMPLETED
+            has_preparation_warnings = bool(
+                plan.final_output.get("failed_deliverables")
+                or plan.final_output.get("skipped_deliverables")
+                or plan.final_output.get("warnings")
+            )
+            plan.status = (
+                AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS
+                if has_preparation_warnings
+                else AgentTaskPlanStatus.COMPLETED
+            )
             plan.final_output = {
                 **plan.final_output,
                 "status": plan.status.value,
@@ -943,6 +1310,73 @@ def _parse_tool_message_content(content: object) -> dict[str, Any]:
         # JSON 数组/标量同样保留，避免假设每个第三方工具都返回对象。
         return value if isinstance(value, dict) else {"content": value}
     return {"content": content}
+
+
+def _validate_agentic_workflow_result(
+    *,
+    workflow: DocumentWorkflowResult,
+    deliverables: dict[str, DocumentDeliverable],
+) -> list[str]:
+    """证明每个可执行建议确实来自同一交付物的最终草稿和 Reviewer 批准。"""
+
+    # 一个交付物只能落入 approved、failed、skipped 三种终态之一。
+    proposal_ids = [item.deliverable_id for item in workflow.approved_changes]
+    failed_ids = [item.deliverable_id for item in workflow.failed_deliverables]
+    skipped_ids = [item.deliverable_id for item in workflow.skipped_deliverables]
+    known_ids = set(deliverables)
+    all_terminal_ids = [*proposal_ids, *failed_ids, *skipped_ids]
+    if any(item not in known_ids for item in all_terminal_ids):
+        raise AppServiceError("DeepDocumentAgent 返回了 Supervisor 计划外的交付物")
+    if len(all_terminal_ids) != len(set(all_terminal_ids)):
+        raise AppServiceError("DeepDocumentAgent 对同一交付物返回了冲突终态")
+
+    for proposal in workflow.approved_changes:
+        deliverable = deliverables[proposal.deliverable_id]
+        if deliverable.operation != proposal.operation:
+            raise AppServiceError("DeepDocumentAgent 变更建议超出 Supervisor 操作范围")
+        matching_drafts = [
+            item
+            for item in workflow.draft_results
+            if item.deliverable_id == proposal.deliverable_id
+        ]
+        matching_reviews = [
+            item
+            for item in workflow.review_results
+            if item.deliverable_id == proposal.deliverable_id
+        ]
+        if not matching_drafts or not matching_reviews:
+            raise AppServiceError("approved_changes 缺少 Writer 草稿或 Reviewer 结果")
+        # 修订循环可能留下多版结果，只有最后一版 Draft 和最后一次 Review
+        # 能决定是否生成真实可确认动作。
+        final_draft = matching_drafts[-1]
+        final_review = matching_reviews[-1]
+        if final_review.verdict != "approved":
+            raise AppServiceError("最终 Reviewer 未批准，不能生成可确认动作")
+        if proposal.review.model_dump(mode="json") != final_review.model_dump(
+            mode="json"
+        ):
+            raise AppServiceError("变更建议携带的 Reviewer 结果与独立审查结果不一致")
+        # 对身份、目标、版本和完整正文做整体相等比较，防止 Coordinator 在汇总时
+        # 把 Reviewer 看过的草稿替换成另一份内容。
+        draft_facts = (
+            final_draft.operation,
+            final_draft.candidate_doc_id,
+            final_draft.candidate_source_path,
+            final_draft.filename,
+            final_draft.base_sha256,
+            final_draft.content,
+        )
+        proposal_facts = (
+            proposal.operation,
+            proposal.candidate_doc_id,
+            proposal.candidate_source_path,
+            proposal.filename,
+            proposal.base_sha256,
+            proposal.content,
+        )
+        if draft_facts != proposal_facts:
+            raise AppServiceError("变更建议与 Writer 最终草稿的目标或正文不一致")
+    return proposal_ids
 
 
 def _user_has_permission(

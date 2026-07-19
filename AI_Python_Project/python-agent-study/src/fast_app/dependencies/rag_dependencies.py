@@ -34,6 +34,8 @@ from fast_app.services.auth.permission_service import PermissionService
 from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
 from fast_app.services.research.agentic_research_executor import AgenticResearchExecutor
 from fast_app.services.agent_tasks.document_task_executor import DocumentTaskExecutor
+from fast_app.services.agent_tasks.deep_document_agent import DeepDocumentAgent
+from fast_app.services.agent_tasks.document_supervisor_agent import DocumentSupervisorAgent
 from fast_app.services.research.research_evidence_evaluator import ResearchEvidenceEvaluator
 from fast_app.services.research.research_tool_loop import ResearchToolLoop
 from fast_app.services.research.research_worker_agent import ResearchWorkerAgent
@@ -322,9 +324,12 @@ def get_agent_task_executor(
     ),
     tool_audit_service: AgentToolAuditService = Depends(get_agent_tool_audit_service),
     task_plan_store: AgentTaskPlanStore = Depends(get_agent_task_plan_store),
+    prompt_guard: PromptGuardService = Depends(get_prompt_guard_service),
 ) -> AgentTaskExecutor:
     """提供 Agent TaskPlan 执行器。"""
 
+    # 两条多 Agent 链路在依赖层显式装配，Facade 只负责按 task_kind 分派：
+    # Research 使用父图 + Worker 子图；文档任务使用 Supervisor + Deep Agents。
     research_tool_loop = ResearchToolLoop(
         settings=settings,
         vector_retriever=vector_retriever,
@@ -342,6 +347,8 @@ def get_agent_task_executor(
         task_plan_store=task_plan_store,
         worker_agent=research_worker,
     )
+    # 真实写入 Service 同时注入 Executor 和 DeepDocumentAgent：前者负责确认执行，
+    # 后者只通过受控 read 工具读取原文，不拥有 execute_confirmed_actions 入口。
     document_executor = DocumentTaskExecutor(
         settings=settings,
         vector_retriever=vector_retriever,
@@ -350,6 +357,15 @@ def get_agent_task_executor(
         tool_permission_service=tool_permission_service,
         tool_audit_service=tool_audit_service,
         task_plan_store=task_plan_store,
+        supervisor_agent=DocumentSupervisorAgent(settings),
+        deep_document_agent=DeepDocumentAgent(
+            settings=settings,
+            vector_retriever=vector_retriever,
+            keyword_retriever=keyword_retriever,
+            document_management_service=document_management_service,
+            task_plan_store=task_plan_store,
+            prompt_guard=prompt_guard,
+        ),
     )
     return AgentTaskExecutor(
         settings=settings,

@@ -94,9 +94,16 @@ class KnowledgeDocumentReplacement(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # old_text 不能为空，否则无法确定要替换的目标片段。
-    old_text: str = Field(min_length=1, max_length=100_000)
+    old_text: str = Field(
+        min_length=1,
+        max_length=100_000,
+        description="必须在目标原文中唯一出现的完整旧文本片段。",
+    )
     # new_text 可以为空字符串；为空时就表示删除 old_text 对应的内容。
-    new_text: str = Field(max_length=100_000)
+    new_text: str = Field(
+        max_length=100_000,
+        description="替换后的完整新文本；空字符串表示删除 old_text。",
+    )
 
 
 class KnowledgeDocumentUpdateToolInput(BaseModel):

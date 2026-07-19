@@ -34,14 +34,29 @@ class AgentTaskPlannerSubQuestionPayload(BaseModel):
     # LLM 可能多吐字段；这里先忽略，后续 _parse_sub_questions 再收敛成领域模型。
     model_config = ConfigDict(extra="ignore")
 
-    sub_question_id: str = Field(default="")
-    order: int = Field(default=0)
-    question: str = Field(default="")
-    purpose: str = Field(default="")
-    depends_on: list[str] = Field(default_factory=list)
-    information_source_hint: str = Field(default="knowledge_retrieval")
-    reason: str = Field(default="")
-    expected_evidence: str | None = Field(default=None)
+    sub_question_id: str = Field(
+        default="",
+        description="当前计划内唯一的子问题 ID，例如 sq_1。",
+    )
+    order: int = Field(default=0, description="子问题在最终推理中的建议顺序。")
+    question: str = Field(
+        default="",
+        description="需要被回答的独立问题，不能写成调用工具或生成报告等动作。",
+    )
+    purpose: str = Field(default="", description="拆出该子问题的目的。")
+    depends_on: list[str] = Field(
+        default_factory=list,
+        description="必须先完成的 sub_question_id；无依赖时为空。",
+    )
+    information_source_hint: str = Field(
+        default="knowledge_retrieval",
+        description="建议来源：knowledge_retrieval、web_search 或 none。",
+    )
+    reason: str = Field(default="", description="该子问题如何支撑用户最终目标。")
+    expected_evidence: str | None = Field(
+        default=None,
+        description="回答该子问题理想需要的证据类型或事实。",
+    )
 
 
 class AgentTaskPlannerPayload(BaseModel):
@@ -51,12 +66,29 @@ class AgentTaskPlannerPayload(BaseModel):
     # 字段保持宽松，避免 provider 结构化输出的小偏差直接打断请求。
     model_config = ConfigDict(extra="ignore")
 
-    objective: str = Field(default="")
-    task_type: str = Field(default="unknown")
-    source_query: str = Field(default="")
-    final_synthesis_instruction: str = Field(default="")
-    sub_questions: list[AgentTaskPlannerSubQuestionPayload] = Field(default_factory=list)
-    confidence: float = Field(default=0.0)
+    objective: str = Field(default="", description="从用户问题提炼出的最终回答目标。")
+    task_type: str = Field(
+        default="unknown",
+        description="任务类型：qa、comparison、report_generation、analysis 或 unknown。",
+    )
+    source_query: str = Field(
+        default="",
+        description="覆盖整体主题的简短检索查询，不机械拼接全部子问题。",
+    )
+    final_synthesis_instruction: str = Field(
+        default="",
+        description="最终回答应如何整合各子问题结果。",
+    )
+    sub_questions: list[AgentTaskPlannerSubQuestionPayload] = Field(
+        default_factory=list,
+        description="覆盖用户明确要求的问题拆解列表。",
+    )
+    confidence: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Planner 对本次拆解结果的置信度。",
+    )
 
 
 # Prompt 负责告诉 LLM“应该输出什么语义”；Pydantic 和 helper 负责决定“能不能接受”。
@@ -343,6 +375,7 @@ class AgentTaskPlanner:
         self,
         query: str,
         user_id: str | None,
+        research_policy: AgentResearchPolicy | None = None,
     ) -> AgentTaskPlan:
         """创建空文档任务；动作只能由后续原生 ToolCall 产生。"""
         now = datetime.now(UTC)
@@ -356,6 +389,7 @@ class AgentTaskPlanner:
             task_type="analysis",
             goal=query.strip() or query,
             sub_questions=[],
+            research_policy=research_policy,
             final_synthesis_instruction="解析目标、生成变更预览并等待人工确认。",
             source_query=query.strip(),
             target_path=None,

@@ -41,21 +41,21 @@ class AgentTaskPlanConfirmRequest(BaseModel):
 
 
 class AgentTaskPlanConfirmResponse(BaseModel):
-    task_plan_id: str
-    status: str
-    executed: bool
-    message: str
-    task_plan: dict[str, Any]
-    request_id: str | None = None
-    trace_id: str | None = None
+    task_plan_id: str = Field(description="被确认执行的 TaskPlan ID。")
+    status: str = Field(description="确认执行后的 TaskPlan 状态。")
+    executed: bool = Field(description="是否已进入并完成真实确认执行。")
+    message: str = Field(description="供前端展示的确认执行结果摘要。")
+    task_plan: dict[str, Any] = Field(description="确认执行后的完整 TaskPlan 快照。")
+    request_id: str | None = Field(default=None, description="本次确认请求 ID。")
+    trace_id: str | None = Field(default=None, description="本次确认链路追踪 ID。")
 
 
 class AgentTaskPlanControlResponse(BaseModel):
-    task_plan_id: str
-    status: str
-    message: str
-    request_id: str | None = None
-    trace_id: str | None = None
+    task_plan_id: str = Field(description="被控制的 TaskPlan ID。")
+    status: str = Field(description="取消、重试或恢复后的 TaskPlan 状态。")
+    message: str = Field(description="供前端展示的控制操作结果摘要。")
+    request_id: str | None = Field(default=None, description="本次控制请求 ID。")
+    trace_id: str | None = Field(default=None, description="本次控制链路追踪 ID。")
 
 
 def _agent_task_plan_trace(
@@ -450,6 +450,49 @@ def _task_plan_progress_events(
                         **{
                             key: value
                             for key, value in research_event.items()
+                            if key != "event"
+                        },
+                    },
+                )
+            )
+    document_progress = plan.final_output.get("document_progress", {})
+    document_events = (
+        document_progress.get("events", [])
+        if isinstance(document_progress, dict)
+        else []
+    )
+    # 只把稳定协议中的文档事件暴露给 React；TaskPlan 内部临时字段不会自动变成 SSE。
+    allowed_document_events = {
+        "agent_task_document_supervised",
+        "agent_task_document_subagent_started",
+        "agent_task_document_subagent_completed",
+        "agent_task_document_subagent_failed",
+        "agent_task_document_draft_created",
+        "agent_task_document_review_completed",
+        "agent_task_document_revision_started",
+        "agent_task_document_action_prepared",
+    }
+    if isinstance(document_events, list):
+        for index, document_event in enumerate(document_events):
+            if not isinstance(document_event, dict):
+                continue
+            event_name = str(document_event.get("event") or "")
+            # 轮询会重复读取同一 JSON 快照，索引 + 事件名用于避免重复推送。
+            event_key = f"document:{index}:{event_name}"
+            if (
+                event_key in seen_research_events
+                or event_name not in allowed_document_events
+            ):
+                continue
+            seen_research_events.add(event_key)
+            events.append(
+                _format_sse_event(
+                    event_name,
+                    {
+                        "task_plan_id": plan.task_plan_id,
+                        **{
+                            key: value
+                            for key, value in document_event.items()
                             if key != "event"
                         },
                     },

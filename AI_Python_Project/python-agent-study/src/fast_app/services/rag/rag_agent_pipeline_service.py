@@ -949,6 +949,32 @@ class RagAgentPipeline:
                         ],
                     },
                 )
+                document_progress = task_plan.final_output.get(
+                    "document_progress", {}
+                )
+                document_events = (
+                    document_progress.get("events", [])
+                    if isinstance(document_progress, dict)
+                    else []
+                )
+                if isinstance(document_events, list):
+                    for document_event in document_events:
+                        if not isinstance(document_event, dict):
+                            continue
+                        event_name = str(document_event.get("event") or "")
+                        if not event_name.startswith("agent_task_document_"):
+                            continue
+                        yield RagStreamEvent(
+                            event=event_name,
+                            data={
+                                "task_plan_id": task_plan.task_plan_id,
+                                **{
+                                    key: value
+                                    for key, value in document_event.items()
+                                    if key != "event"
+                                },
+                            },
+                        )
                 for step in task_plan.steps:
                     if step.status.value in {
                         "running",

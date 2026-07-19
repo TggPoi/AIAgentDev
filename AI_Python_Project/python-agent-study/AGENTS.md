@@ -57,6 +57,13 @@ The FastAPI module is `fast_app`.
 
 Before file-level modifications, read the real code and dependency files. If docs and code disagree, code is the source of truth.
 
+## Pydantic and JSON Schema rules
+
+1. Every public field in a Pydantic model that generates JSON Schema for LLM structured output, `response_format`, Tool `args_schema`, or FastAPI/OpenAPI requests and responses must declare `Field(description="...")`.
+2. A field description must state the field's business meaning and, when relevant, its source, allowed status or enum semantics, identity inheritance, null/default meaning, and trust boundary. Keep it concise, but do not rely on the field name alone to convey these rules.
+3. Class docstrings, Python comments, prompts, and validators do not replace field-level descriptions. Descriptions guide the model or API consumer; Pydantic validators and deterministic service checks must still enforce the rules.
+4. When adding or changing a Schema-bound Pydantic model, extend and run `scripts/phase_15/test_schema_field_descriptions.py` so missing field descriptions fail regression checks.
+
 ## Conversation context and Agent state rules
 
 Use conversation history as scoped input, not as global implicit Agent state:

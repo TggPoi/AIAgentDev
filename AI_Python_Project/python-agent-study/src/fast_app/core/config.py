@@ -284,6 +284,28 @@ class Settings(BaseSettings):
         default=True,
         alias="AGENT_DOCUMENT_TOOLS_REQUIRE_CONFIRMATION",
     )
+    agent_document_max_deliverables: int = Field(
+        default=6,
+        ge=1,
+        le=12,
+        alias="AGENT_DOCUMENT_MAX_DELIVERABLES",
+    )
+    agent_document_max_revision_rounds: int = Field(
+        default=2,
+        ge=0,
+        le=4,
+        alias="AGENT_DOCUMENT_MAX_REVISION_ROUNDS",
+    )
+    agent_document_worker_timeout_seconds: float = Field(
+        default=180.0,
+        gt=0.0,
+        alias="AGENT_DOCUMENT_WORKER_TIMEOUT_SECONDS",
+    )
+    agent_document_max_total_draft_chars: int = Field(
+        default=400_000,
+        ge=1,
+        alias="AGENT_DOCUMENT_MAX_TOTAL_DRAFT_CHARS",
+    )
     agent_task_plan_dir: str = Field(
         default="runtime/agent-task-plans",
         alias="AGENT_TASK_PLAN_DIR",

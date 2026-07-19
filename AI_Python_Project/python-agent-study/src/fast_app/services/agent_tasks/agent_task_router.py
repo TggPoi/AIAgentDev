@@ -88,14 +88,24 @@ class AgentRouteDecision(BaseModel):
     # 拒绝模型额外输出的字段，并统一去掉字符串两端空白，防止 Router 输出悄悄扩张为计划或参数。
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    # 业务路由结论；后续图节点只据此选择分支，仍需独立执行权限和工具校验。
-    intent: AgentRouteIntent
-    # Router 对结论的自评，后端会再与配置阈值比较，不直接无条件信任。
-    confidence: float = Field(ge=0.0, le=1.0)
-    # 简短的人类可读判断理由，主要用于 trace 和排查。
-    reason: str = Field(min_length=1, max_length=200)
-    # 仅当 intent 为 clarification_required 时允许出现的用户追问。
-    clarification_question: str | None = Field(default=None, max_length=300)
+    intent: AgentRouteIntent = Field(
+        description="业务路由结论；只决定后续分支，不授予权限或生成工具参数。"
+    )
+    confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Router 对 intent 的置信度，后端仍会与配置阈值比较。",
+    )
+    reason: str = Field(
+        min_length=1,
+        max_length=200,
+        description="支持当前路由结论的简短理由，供 trace 和排查。",
+    )
+    clarification_question: str | None = Field(
+        default=None,
+        max_length=300,
+        description="仅 clarification_required 时返回的单个用户追问；其他意图为空。",
+    )
 
     @field_validator("clarification_question", mode="before")
     @classmethod

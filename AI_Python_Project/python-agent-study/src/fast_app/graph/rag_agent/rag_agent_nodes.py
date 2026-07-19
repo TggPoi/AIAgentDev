@@ -364,6 +364,7 @@ def create_next_action_decision_node(
                 task_plan = task_planner.build_document_management_plan(
                     query=state["query"],
                     user_id=user_id,
+                    research_policy=research_policy,
                 )
             # 进入Planner网络搜索任务
             elif decision.intent == "web_research":

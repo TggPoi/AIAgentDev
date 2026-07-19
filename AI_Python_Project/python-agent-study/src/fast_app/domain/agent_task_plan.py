@@ -96,41 +96,80 @@ class AgentResearchPolicy(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    # Worker 执行本计划时使用的检索模式。
-    mode: Literal["vector", "keyword", "hybrid"] = "hybrid"
-    # 每次检索最终保留的文档数量。
-    top_k: int = Field(default=5, ge=1, le=20)
-    # rerank 前的候选文档数量；None 表示沿用服务端默认值。
-    candidate_k: int | None = Field(default=None, ge=1, le=50)
-    # 检索结果被视为可用证据前必须达到的最低分数。
-    min_score: float = Field(default=0.0, ge=0.0, le=1.0)
-    # 将研究范围限定到某个知识库源文件；None 表示不按文件收窄。
-    source_path: str | None = None
-    # 将研究范围限定到文档标题层级路径；空列表表示不按章节过滤。
-    section_path: list[str] = Field(default_factory=list)
-    # 本计划是否禁止、允许兜底或必须执行联网研究。
-    web_policy: AgentResearchWebPolicy = "disabled"
+    mode: Literal["vector", "keyword", "hybrid"] = Field(
+        default="hybrid",
+        description="Worker 执行本计划时使用的本地检索模式。",
+    )
+    top_k: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="每次检索最终保留的文档数量。",
+    )
+    candidate_k: int | None = Field(
+        default=None,
+        ge=1,
+        le=50,
+        description="rerank 前的候选数量；None 表示使用服务端默认值。",
+    )
+    min_score: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="检索结果被视为可用证据前必须达到的最低分数。",
+    )
+    source_path: str | None = Field(
+        default=None,
+        description="限定检索到一个知识库源文件；None 表示不按文件收窄。",
+    )
+    section_path: list[str] = Field(
+        default_factory=list,
+        description="限定检索到指定章节层级；空列表表示不按章节过滤。",
+    )
+    web_policy: AgentResearchWebPolicy = Field(
+        default="disabled",
+        description="联网策略：禁止、仅证据不足时兜底，或必须联网。",
+    )
 
 
 class ResearchEvidenceEvaluation(BaseModel):
     """Evaluator 对一个 Worker 当前证据充分性的结构化判断。"""
 
     model_config = ConfigDict(extra="forbid")
-    # 证据总体结论：足够、部分覆盖、不足或互相冲突。
-    verdict: Literal["sufficient", "partial", "insufficient", "conflict"]
-    # Evaluator 对当前总体结论的置信度。
-    confidence: float = Field(ge=0.0, le=1.0)
-    # 当前证据与子问题语义是否相关的评分。
-    relevance: float = Field(default=0.0, ge=0.0, le=1.0)
-    # 当前证据覆盖子问题所需要点的程度。
-    coverage: float = Field(default=0.0, ge=0.0, le=1.0)
-    # 当前证据来源的可信程度评分。
-    authority: float = Field(default=0.0, ge=0.0, le=1.0)
-    # 回答是否必须补充近期或实时信息，避免只依赖旧知识库。
-    freshness_required: bool = False
-    # 尚未被现有证据覆盖的具体问题点。
-    missing_points: list[str] = Field(default_factory=list)
-    # Executor 下一次应采取的研究动作，不直接等同于立即执行的工具调用。
+    verdict: Literal["sufficient", "partial", "insufficient", "conflict"] = Field(
+        description="证据总体结论：充分、部分覆盖、不足或相互冲突。"
+    )
+    confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Evaluator 对 verdict 的置信度，范围 0 到 1。",
+    )
+    relevance: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="当前证据与子问题语义的相关性评分。",
+    )
+    coverage: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="当前证据覆盖子问题关键点的程度。",
+    )
+    authority: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="当前证据来源的可信程度评分。",
+    )
+    freshness_required: bool = Field(
+        default=False,
+        description="回答是否必须补充近期或实时信息。",
+    )
+    missing_points: list[str] = Field(
+        default_factory=list,
+        description="现有证据尚未覆盖、下一轮研究应补齐的具体问题点。",
+    )
     recommended_action: Literal[
         "accept",
         "rewrite_local_query",
@@ -138,9 +177,14 @@ class ResearchEvidenceEvaluation(BaseModel):
         "combine_local_and_web",
         "clarify",
         "stop_with_limitation",
-    ] = "stop_with_limitation"
-    # 供 trace、前端和后续排查阅读的评估理由。
-    reason: str = ""
+    ] = Field(
+        default="stop_with_limitation",
+        description="建议的下一步研究动作；Executor 仍会按权限和预算决定是否执行。",
+    )
+    reason: str = Field(
+        default="",
+        description="支持当前评估结论和建议动作的简要理由。",
+    )
 
 
 class AgentTaskToolCallTrace(BaseModel):
@@ -191,16 +235,27 @@ class AgentTaskSubQuestionResult(BaseModel):
     )
     status: AgentTaskSubQuestionResultStatus = Field(description="子问题执行状态。")
     error: str | None = Field(default=None, description="子问题失败原因。")
-    # 本子问题已经执行的研究尝试次数；因依赖失败跳过时为 0。
-    attempt_count: int = Field(default=1, ge=0)
-    # 每次研究尝试的工具、证据和评估摘要，供恢复、审计和前端展开查看。
-    attempts: list[dict[str, Any]] = Field(default_factory=list)
-    # 最近一次证据充分性评估；未进入 Evaluator 时为 None。
-    evaluation: ResearchEvidenceEvaluation | None = None
-    # 合并证据后实际使用的来源类型，例如 knowledge_base 或 web。
-    source_types: list[str] = Field(default_factory=list)
-    # 虽未必导致失败、但会影响答案完整性或可靠性的提示。
-    warnings: list[str] = Field(default_factory=list)
+    attempt_count: int = Field(
+        default=1,
+        ge=0,
+        description="已执行的研究尝试次数；因依赖失败跳过时为 0。",
+    )
+    attempts: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="各次研究尝试的工具、证据和评估摘要。",
+    )
+    evaluation: ResearchEvidenceEvaluation | None = Field(
+        default=None,
+        description="最近一次证据充分性评估；未进入 Evaluator 时为空。",
+    )
+    source_types: list[str] = Field(
+        default_factory=list,
+        description="最终证据实际使用的来源类型，例如 knowledge_base 或 web。",
+    )
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="不一定导致失败但会影响答案完整性或可靠性的提示。",
+    )
 
 
 class AgentTaskPlan(BaseModel):

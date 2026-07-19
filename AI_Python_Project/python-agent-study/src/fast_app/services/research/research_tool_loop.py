@@ -38,9 +38,15 @@ PARALLEL_SAFE_TASK_TOOL_NAMES = {KNOWLEDGE_RETRIEVAL_TOOL_NAME, WEB_SEARCH_TOOL_
 class AgentTaskToolSelectionPayload(BaseModel):
     """LLM 工具调用不可用时，用结构化 JSON 表达工具选择结果。"""
 
-    selected_tool: str = Field(default="knowledge_retrieval")
-    tool_input: dict[str, Any] = Field(default_factory=dict)
-    reason: str = Field(default="")
+    selected_tool: str = Field(
+        default="knowledge_retrieval",
+        description="本轮选择的已注册只读工具名；none 表示不调用工具。",
+    )
+    tool_input: dict[str, Any] = Field(
+        default_factory=dict,
+        description="传给 selected_tool 的 JSON 参数；不得包含权限或 ACL 字段。",
+    )
+    reason: str = Field(default="", description="选择该工具和参数的简短理由。")
 
 
 class AgentTaskKnowledgeRetrievalToolInput(BaseModel):
@@ -49,7 +55,12 @@ class AgentTaskKnowledgeRetrievalToolInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     query: str = Field(min_length=1, description="用于检索知识库的 query")
     mode: str = Field(default="hybrid", description="vector / keyword / hybrid")
-    top_k: int = Field(default=5, ge=1, le=20)
+    top_k: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="本轮知识库检索最终保留的文档数量。",
+    )
 
 
 @dataclass(slots=True)

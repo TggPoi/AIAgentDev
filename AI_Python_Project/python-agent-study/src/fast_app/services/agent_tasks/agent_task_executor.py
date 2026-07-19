@@ -206,6 +206,28 @@ class AgentTaskExecutor:
             raise AppServiceError("当前只支持恢复文档管理 Tool Loop")
         if plan.status not in {AgentTaskPlanStatus.RUNNING, AgentTaskPlanStatus.FAILED}:
             raise AppServiceError("只有 running 或 failed 的文档 TaskPlan 可以恢复")
+        workflow = plan.final_output.get("document_workflow")
+        if isinstance(workflow, dict) and workflow.get("execution_mode") == "agentic":
+            policy = plan.research_policy or AgentResearchPolicy(
+                mode="hybrid",
+                top_k=self._settings.rag_default_top_k,
+                min_score=self._settings.rag_default_min_score,
+                web_policy="disabled",
+            )
+            return await self._document_executor.execute(
+                plan=plan,
+                user=user,
+                mode=policy.mode,
+                top_k=policy.top_k,
+                candidate_k=policy.candidate_k,
+                min_score=policy.min_score,
+                filters=self._current_filters(
+                    user,
+                    source_path=policy.source_path,
+                    section_path=policy.section_path,
+                ),
+                langchain_config_factory=langchain_config_factory,
+            )
         checkpoint = plan.final_output.get("checkpoint")
         if not isinstance(checkpoint, dict) or checkpoint.get("completed") is True:
             raise AppServiceError("Agent task plan 没有可恢复的轮次检查点")
@@ -296,12 +318,12 @@ class AgentTaskExecutor:
         user: CurrentUserContext,
         *,
         source_path: str | None = None,
-        section_path: str | None = None,
+        section_path: list[str] | None = None,
     ) -> RetrievalFilters:
         permissions = set(user.permissions)
         return RetrievalFilters(
             source_path=source_path,
-            section_path=section_path,
+            section_path=section_path or [],
             user_id=user.user_id,
             department_codes=list(user.department_codes),
             can_read_all=(

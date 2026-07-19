@@ -44,87 +44,156 @@ router = APIRouter(tags=["knowledge-imports"])
 class KnowledgeImportJobResponse(BaseModel):
     """前端轮询任务状态、配置要求和增量结果所需的稳定结构。"""
 
-    job_id: str
-    operation: str
-    doc_id: str | None
-    status: str
-    phase: str
-    original_filename: str
-    target_path: str
-    department_code: str
-    document_type: str
-    file_size: int
-    base_sha256: str | None = None
-    new_sha256: str | None = None
-    attempt_count: int
-    max_attempts: int
-    document_count: int
-    chunk_count: int
-    requires_configuration: bool
-    excel_preview: dict[str, Any] | None = None
-    excel_profile_id: str | None = None
-    diff_counts: dict[str, int] = Field(default_factory=dict)
-    warnings: list[dict[str, Any]] = Field(default_factory=list)
-    error_code: str | None = None
-    error_message: str | None = None
-    created_at: datetime
-    updated_at: datetime
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
-    status_url: str
-    request_id: str | None = None
-    trace_id: str | None = None
+    job_id: str = Field(description="导入任务唯一 ID。")
+    operation: str = Field(description="任务操作类型：create 或 update。")
+    doc_id: str | None = Field(description="稳定文档 ID；尚未注册时可能为空。")
+    status: str = Field(description="任务当前状态，例如 pending、running 或 succeeded。")
+    phase: str = Field(description="Worker 当前执行阶段。")
+    original_filename: str = Field(description="用户上传时的原始文件名。")
+    target_path: str = Field(description="服务端生成的知识库目标路径。")
+    department_code: str = Field(description="目标文档所属部门编码。")
+    document_type: str = Field(description="文档类型，例如 pptx 或 xlsx。")
+    file_size: int = Field(description="上传文件实际字节数。")
+    base_sha256: str | None = Field(
+        default=None,
+        description="更新任务开始时的旧文件 SHA-256；创建任务为空。",
+    )
+    new_sha256: str | None = Field(
+        default=None,
+        description="本次上传文件的 SHA-256。",
+    )
+    attempt_count: int = Field(description="任务已被 Worker 尝试执行的次数。")
+    max_attempts: int = Field(description="任务允许的最大尝试次数。")
+    document_count: int = Field(description="本次解析产生的 LoadedDocument 数量。")
+    chunk_count: int = Field(description="本次目标版本的唯一 Chunk 数量。")
+    requires_configuration: bool = Field(
+        description="是否需要用户确认或重新配置 Excel Profile。"
+    )
+    excel_preview: dict[str, Any] | None = Field(
+        default=None,
+        description="Excel 待确认的 Sheet、表头和候选主键预览。",
+    )
+    excel_profile_id: str | None = Field(
+        default=None,
+        description="本任务使用或等待激活的 Excel Profile ID。",
+    )
+    diff_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="增量对比计数，例如 added、changed、removed 和 embedded。",
+    )
+    warnings: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="解析、Profile 或索引过程中产生的结构化警告。",
+    )
+    error_code: str | None = Field(default=None, description="稳定机器可读错误码。")
+    error_message: str | None = Field(default=None, description="供用户或管理员查看的错误摘要。")
+    created_at: datetime = Field(description="任务创建时间。")
+    updated_at: datetime = Field(description="任务最近更新时间。")
+    started_at: datetime | None = Field(default=None, description="Worker 首次开始执行时间。")
+    finished_at: datetime | None = Field(default=None, description="任务进入终态的时间。")
+    status_url: str = Field(description="前端轮询该任务状态的 API 路径。")
+    request_id: str | None = Field(default=None, description="创建或查询请求 ID。")
+    trace_id: str | None = Field(default=None, description="跨组件追踪 ID。")
 
 
 class KnowledgeImportJobListResponse(BaseModel):
     """导入任务列表响应。"""
 
-    items: list[KnowledgeImportJobResponse]
+    items: list[KnowledgeImportJobResponse] = Field(description="按查询条件返回的导入任务。")
 
 
 class ExcelFieldProfile(BaseModel):
     """一个稳定业务字段及其当前可接受表头名称。"""
 
-    field_id: str = Field(min_length=1, max_length=128)
-    display_name: str = Field(min_length=1, max_length=128)
-    header_aliases: list[str] = Field(default_factory=list)
-    required: bool = False
-    indexed: bool = True
-    field_group: str | None = Field(default=None, max_length=128)
+    field_id: str = Field(
+        min_length=1,
+        max_length=128,
+        description="跨版本稳定的业务字段 ID，不使用物理列坐标。",
+    )
+    display_name: str = Field(
+        min_length=1,
+        max_length=128,
+        description="Profile 和前端展示的字段名称。",
+    )
+    header_aliases: list[str] = Field(
+        default_factory=list,
+        description="允许匹配该字段的历史或替代表头文本。",
+    )
+    required: bool = Field(default=False, description="更新文件中是否必须匹配到该字段。")
+    indexed: bool = Field(default=True, description="该字段内容是否进入检索 Chunk。")
+    field_group: str | None = Field(
+        default=None,
+        max_length=128,
+        description="宽表分组标识；为空时该记录使用默认分组。",
+    )
 
 
 class ExcelSheetProfile(BaseModel):
     """一个工作表的稳定身份、表头位置、主键和字段映射。"""
 
-    sheet_key: str = Field(min_length=1, max_length=128)
+    sheet_key: str = Field(
+        min_length=1,
+        max_length=128,
+        description="跨版本稳定的 Sheet 身份，不依赖当前工作表名称。",
+    )
     # mixed Profile 必须逐 Sheet 声明模式；旧 Profile 省略时继承 Workbook mode。
-    mode: Literal["record", "section"] | None = None
-    sheet_name_aliases: list[str] = Field(default_factory=list)
-    header_row: int = Field(default=1, ge=1, le=100_000)
-    identity_field_ids: list[str] = Field(default_factory=list)
-    fields: list[ExcelFieldProfile] = Field(default_factory=list)
+    mode: Literal["record", "section"] | None = Field(
+        default=None,
+        description="该 Sheet 的处理模式；非 mixed Profile 可省略并继承顶层 mode。",
+    )
+    sheet_name_aliases: list[str] = Field(
+        default_factory=list,
+        description="用于跨版本匹配该 Sheet 的当前名称和历史别名。",
+    )
+    header_row: int = Field(
+        default=1,
+        ge=1,
+        le=100_000,
+        description="Record 模式业务表头所在的原始 Excel 行号。",
+    )
+    identity_field_ids: list[str] = Field(
+        default_factory=list,
+        description="Record 模式组合主键使用的稳定 field_id 列表。",
+    )
+    fields: list[ExcelFieldProfile] = Field(
+        default_factory=list,
+        description="Record 模式的稳定字段映射；Section 模式可为空。",
+    )
 
 
 class ExcelProfileConfirmRequest(BaseModel):
     """React 在预览后提交的 Profile 确认请求。"""
 
-    preview_fingerprint: str = Field(min_length=64, max_length=64)
-    mode: Literal["record", "section", "mixed"]
-    profile_name: str = Field(min_length=1, max_length=128)
-    sheets: list[ExcelSheetProfile] = Field(default_factory=list)
+    preview_fingerprint: str = Field(
+        min_length=64,
+        max_length=64,
+        description="用户当前看到的 Excel 预览指纹，用于防止确认过期预览。",
+    )
+    mode: Literal["record", "section", "mixed"] = Field(
+        description="Workbook 顶层模式；mixed 要求每个可见非空 Sheet 声明 mode。"
+    )
+    profile_name: str = Field(
+        min_length=1,
+        max_length=128,
+        description="供用户识别该版本 Profile 的名称。",
+    )
+    sheets: list[ExcelSheetProfile] = Field(
+        default_factory=list,
+        description="可见非空 Sheet 的身份和处理配置。",
+    )
 
 
 class ExcelProfileResponse(BaseModel):
     """当前任务或文档所使用的 Excel Profile。"""
 
-    id: str
-    doc_id: str
-    version: int
-    status: str
-    mode: str
-    profile_name: str
-    sheets: list[dict[str, Any]]
-    preview_fingerprint: str
+    id: str = Field(description="Excel Profile 唯一 ID。")
+    doc_id: str = Field(description="该 Profile 所属的稳定文档 ID。")
+    version: int = Field(description="Profile 版本号。")
+    status: str = Field(description="Profile 状态：draft、active 或 superseded。")
+    mode: str = Field(description="Workbook 顶层处理模式。")
+    profile_name: str = Field(description="Profile 展示名称。")
+    sheets: list[dict[str, Any]] = Field(description="已保存的逐 Sheet 配置快照。")
+    preview_fingerprint: str = Field(description="创建该 Profile 时确认的预览指纹。")
 
 
 def get_import_job_repository(

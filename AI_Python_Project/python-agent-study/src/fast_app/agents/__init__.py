@@ -27,6 +27,7 @@ from fast_app.agents.runtime.langchain_agent_middlewares import (
     build_agent_limit_middlewares,
     build_agent_safety_middlewares,
     build_default_create_agent_middlewares,
+    build_document_deep_agent_middlewares,
     log_agent_model_call,
 )
 from fast_app.agents.tools.document_management_tools import (
@@ -109,6 +110,7 @@ __all__ = [
     "build_agent_error_answer",
     "build_agent_safety_middlewares",
     "build_default_create_agent_middlewares",
+    "build_document_deep_agent_middlewares",
     "build_agent_loop_limits_from_settings",
     "build_calculator_tool",
     "build_knowledge_document_management_tools",

@@ -4,7 +4,7 @@ from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from fast_app.core.config import Settings
 from fast_app.core.logging import format_log_fields, get_logger
@@ -48,12 +48,15 @@ QUERY_REWRITE_HUMAN_PROMPT = """【会话记忆上下文】
 class QueryRewriteResult(BaseModel):
     """query rewrite 的可观察结果。"""
 
-    original_query: str
-    rewritten_query: str
-    used_history: bool
-    used_summary: bool = False
-    summary_version: int | None = None
-    reason: str
+    original_query: str = Field(description="用户本次提交的原始问题。")
+    rewritten_query: str = Field(description="结合有限会话上下文后可独立检索的问题。")
+    used_history: bool = Field(description="改写是否实际使用了最近消息窗口。")
+    used_summary: bool = Field(default=False, description="改写是否实际使用了会话摘要。")
+    summary_version: int | None = Field(
+        default=None,
+        description="使用的会话摘要版本；未使用摘要时为空。",
+    )
+    reason: str = Field(description="保持原问题或执行改写的简短理由。")
 
 
 class ConversationQueryRewriter:

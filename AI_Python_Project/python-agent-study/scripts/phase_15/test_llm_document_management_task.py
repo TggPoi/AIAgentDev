@@ -657,7 +657,7 @@ async def main() -> None:
         assert "## 最终答案\n\n综合答案" in question_markdown
 
         seen_actions: dict[str, str] = {}
-        await executor._document_executor._prepare_document_dry_run(
+        await executor._document_executor._change_plan_service.prepare_dry_run(
             user=user,
             operation=KnowledgeDocumentOperation.CREATE,
             target_path="development/conflict.md",
@@ -669,7 +669,7 @@ async def main() -> None:
             document_actions=seen_actions,
         )
         try:
-            await executor._document_executor._prepare_document_dry_run(
+            await executor._document_executor._change_plan_service.prepare_dry_run(
                 user=user,
                 operation=KnowledgeDocumentOperation.CREATE,
                 target_path="development/conflict.md",

@@ -1188,6 +1188,13 @@ Ingestion Worker：保持确定性，不 Agent 化
 ```
 多 Agent 负责思考、研究、起草和审查
 现有服务负责校验、确认、写入、回滚和索引同步
+
+## 当前实现说明（2026-07-18）
+
+上述文档链路现已使用 `deepagents==0.5.4` 实现。当前代码、虚拟工作区、真实 LLM 调用、
+服务端交叉校验、确认和回滚的逐步讲解见：
+
+[Deep Agents文档多Agent实现与验收指南.md](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/docs/Deep%20Agents文档多Agent实现与验收指南.md)
 ```
 
 这既能提升复杂文档任务的质量，也不会破坏当前已经建立的权限、人工确认和数据一致性边界。
@@ -6518,3 +6525,693 @@ Annotated[list[...], operator.add]
 所以整套机制可以压缩成一句话：
 
 > `select_ready_wave` 决定哪些任务现在能运行，`Send` 把这些任务动态并行派发给 Worker，reducer 汇总 Worker 结果，`merge_wave` 形成波次屏障，然后继续计算下一批任务。
+
+# 文档多Agent架构实现方案【Plan】：
+
+## 方案摘要
+
+采用“确定性外层 + Deep Agents 内容生产层”的混合架构：
+
+```text
+Router
+→ TaskPlan
+→ Document Supervisor
+   ├─ simple：复用现有 Document Tool Loop
+   └─ agentic：进入 DeepDocumentAgent
+                  ├─ Document Researcher
+                  ├─ Document Writer
+                  └─ Document Reviewer
+→ 服务端校验
+→ 生成现有 dry-run / AgentToolStep
+→ waiting_confirmation
+→ 用户确认
+→ 现有确定性写入、索引同步和失败补偿
+```
+
+核心原则：
+
+- 单文档删除、精确单点更新等简单操作继续走现有链路。
+- 多文档编写、跨来源调研、方案整合、审查修订等复杂任务进入 Deep Agents。
+- Deep Agents 只负责研究、写作、审查和生成变更建议。
+- Deep Agents 不直接修改真实文件、ES 或 Milvus。
+- ACL、路径、Hash、dry-run、确认、写入和回滚继续由现有服务端规则控制。
+- 整个任务只在真实写入前进行一次人工确认。
+- 不改现有 HTTP API、TaskPlan 存储方式和 React 确认入口。
+
+## 1. 依赖与框架边界
+
+新增固定依赖：
+
+```text
+deepagents==0.5.4
+```
+
+实施前先执行依赖兼容检查：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --dry-run deepagents==0.5.4
+```
+
+约束：
+
+- 不主动升级现有 LangChain、LangGraph、LangSmith 版本。
+- 如果 `deepagents==0.5.4` 无法与现有固定版本共同解析，停止实施并报告依赖冲突，不静默升级主框架。
+- 不引入 CrewAI、AutoGen、Pydantic AI、OpenAI Agents SDK 或 Google ADK。
+- 不使用仍处于预览状态的异步 SubAgent。
+- Deep Agents 继续运行在 LangGraph 之上，不替换现有 FastAPI、TaskPlan 和 LangGraph Research 链路。
+
+## 2. Middleware 复用策略
+
+### 2.1 直接使用 Deep Agents 内置 Middleware
+
+通过 `create_deep_agent()` 使用框架已经提供的能力：
+
+- `TodoListMiddleware`：管理复杂文档任务的待办事项。
+- `FilesystemMiddleware`：管理任务级虚拟工作区。
+- `SubAgentMiddleware`：创建并调用 Researcher、Writer、Reviewer。
+- `SummarizationMiddleware`：上下文接近限制时压缩历史。
+- `SkillsMiddleware`：按需加载文档研究、写作和审查技能。
+- `PatchToolCallsMiddleware`：修复不完整或中断的 ToolCall 状态。
+
+不手动实现这些 Middleware，也不重复实现 Todo、文件工作区、上下文摘要或 SubAgent 调度。
+
+### 2.2 复用工程已有 LangChain Middleware
+
+复用并扩展现有 `langchain_agent_middlewares.py`：
+
+- `PIIMiddleware`：处理输入输出中的敏感字段。
+- `ModelCallLimitMiddleware`：限制整个 Deep Agent 的模型调用数量。
+- `ToolCallLimitMiddleware`：限制工具调用数量。
+- `log_agent_model_call`：保持模型调用日志和追踪。
+
+为文档 Agent 增加一个组装函数，例如：
+
+```python
+build_document_deep_agent_middlewares(settings)
+```
+
+该函数只负责组合已有 Middleware，不重新实现它们。现有硬编码限制改为从 `Settings` 和已有 Agent 限制配置读取。
+
+### 2.3 明确不启用的 Middleware
+
+本阶段不启用：
+
+- `HumanInTheLoopMiddleware`：已有 TaskPlan confirm API 是唯一确认入口，避免双重确认状态。
+- `MemoryMiddleware`：会话历史已经在 RAG 边界冻结，不能再形成隐式全局 Agent 状态。
+- Async SubAgent Middleware：预览能力不满足当前稳定性要求。
+- 新的自定义 ACL Middleware：权限更适合由具体工具包装器强制检查。
+
+### 2.4 Middleware 无法替代的安全逻辑
+
+以下逻辑保留在普通服务或工具包装器中：
+
+- 当前用户和部门 ACL。
+- 候选 `doc_id` 范围校验。
+- 文件路径规范化和目录边界。
+- Web 联网许可。
+- 取消状态检查。
+- Tool 参数校验。
+- 敏感内容是否允许发送到 Web。
+- dry-run、Hash、差异计算。
+- 审计、确认、实际写入和失败回滚。
+
+Deep Agents 的 Filesystem 权限只约束虚拟工作区，不视为自定义工具的权限边界。
+
+本阶段默认不新增自定义 Middleware。只有在实现时确认某项横切逻辑无法通过框架 Middleware、现有服务或工具包装器可靠完成，才允许新增，并需要在代码注释和测试中说明理由。
+
+## 3. Supervisor 与任务分类
+
+新增 `DocumentSupervisorAgent`，使用一次结构化 LLM 调用输出：
+
+```text
+DocumentWorkflowDecision:
+  execution_mode: direct | agentic
+  objective
+  deliverables
+  dependencies
+  required_capabilities
+  source_requirements
+  web_policy
+  reason
+```
+
+Supervisor 只负责判断复杂度和拆解交付物，不生成：
+
+- 可信 `doc_id`。
+- 最终目标路径。
+- 用户权限。
+- ACL。
+- 真实 Tool 参数。
+- 可直接执行的写入步骤。
+
+规则层在 LLM 后校验输出：
+
+- 交付物数量最多 6 个。
+- ID 唯一。
+- 依赖必须存在。
+- 不允许自依赖或循环依赖。
+- 不允许 Supervisor 扩大用户授权的联网范围。
+- 不允许产生创建、修改、删除之外的未知操作。
+
+直接走现有链路的典型任务：
+
+- 删除一个已明确定位的文档。
+- 对一个文档进行精确字符串替换。
+- 创建一个内容和路径都已明确的短文档。
+- 不需要跨文档研究、审查或多轮修订的操作。
+
+进入 agentic 链路的典型任务：
+
+- 同时生成或修改多个文档。
+- 需要先检索多个知识来源再写作。
+- 多个交付物存在依赖。
+- 需要审查一致性、完整性或证据覆盖。
+- 需要依据 Reviewer 意见进行修订。
+
+## 4. DeepDocumentAgent
+
+新增 `DeepDocumentAgent`，内部使用 `create_deep_agent()`。
+
+它负责：
+
+```text
+读取 Supervisor 计划
+→ 建立 Todo
+→ 调用 Researcher 收集证据
+→ 调用 Writer 生成草稿
+→ 调用 Reviewer 审查
+→ 必要时让 Writer 修订
+→ 输出结构化 DocumentWorkflowResult
+```
+
+### 4.1 虚拟工作区
+
+每个 TaskPlan 使用独立、临时的虚拟工作区：
+
+```text
+/workspace/research/
+/workspace/drafts/
+/workspace/reviews/
+/workspace/final/
+```
+
+用途：
+
+- 保存研究摘要。
+- 保存文档草稿。
+- 保存 Reviewer 意见。
+- 保存最终待提交内容。
+
+限制：
+
+- 工作区不能映射到真实知识库目录。
+- SubAgent 不能通过工作区修改真实文件。
+- 私有知识库完整正文只存在于当前授权任务的内存或隔离工作区。
+- TaskPlan JSON 只保存摘要、引用、最终草稿和结构化结果，不保存全部检索正文。
+- 进程中断后允许重新运行内容准备阶段；真实写入尚未确认，因此不会产生重复业务写入。
+
+### 4.2 Skills
+
+新增三个最小 Skill：
+
+```text
+document-research
+document-writing
+document-review
+```
+
+分别规定：
+
+- Researcher 如何收集、引用和标注证据。
+- Writer 如何根据交付物类型、证据和模板生成内容。
+- Reviewer 如何检查事实依据、遗漏、冲突和格式要求。
+
+Skill 只承载稳定的工作方法和模板，不保存用户权限、文档正文或任务状态。
+
+## 5. 显式 SubAgent
+
+### 5.1 Document Researcher
+
+允许使用：
+
+- ACL 过滤后的知识库检索。
+- ACL 过滤后的文档读取。
+- 用户明确许可时的 WebSearch。
+- 已登记的只读 MCP 工具。
+
+输出：
+
+```text
+DocumentResearchResult:
+  deliverable_id
+  status
+  findings
+  evidence
+  conflicts
+  missing_points
+  warnings
+```
+
+LLM 负责：
+
+- 构造研究查询。
+- 选择允许的只读工具。
+- 综合多来源证据。
+- 识别证据冲突和缺失内容。
+
+规则负责：
+
+- ACL。
+- Web 许可。
+- 工具白名单。
+- 返回文档范围。
+- 调用预算。
+- 取消检查。
+- 禁止把私有 Chunk 正文或内部路径发送到 Web。
+
+### 5.2 Document Writer
+
+输入：
+
+- 当前交付物。
+- 直接依赖的结果。
+- Researcher 证据。
+- 用户要求。
+- 文档模板和格式限制。
+- 上一轮 Reviewer 意见。
+
+输出：
+
+```text
+DocumentDraftResult:
+  deliverable_id
+  operation
+  candidate_target
+  title
+  content
+  evidence_refs
+  assumptions
+  unresolved_points
+```
+
+Writer 只能写虚拟工作区，不能调用真实 create/update/delete 工具。
+
+### 5.3 Document Reviewer
+
+输入：
+
+- Supervisor 定义的验收目标。
+- Writer 草稿。
+- Researcher 证据。
+- 用户格式要求。
+- 直接依赖结果。
+
+输出：
+
+```text
+DocumentReviewResult:
+  verdict: approved | revision_required | rejected
+  confidence
+  factual_issues
+  unsupported_claims
+  missing_sections
+  conflicts
+  revision_instructions
+```
+
+Reviewer 不能修改草稿，只能给出结构化审查结果。
+
+规则：
+
+- 最多修订 2 轮。
+- `approved` 才能进入最终 ChangeSet。
+- 达到修订上限仍不通过时，该交付物标记失败。
+- 一个交付物失败不终止其他没有依赖关系的交付物。
+- 依赖失败交付物的任务标记 `skipped / DEPENDENCY_FAILED`。
+
+不保留可以继承全部工具的通用 SubAgent；所有 SubAgent 使用显式工具白名单。
+
+## 6. ChangeSet 与现有 dry-run 对接
+
+Deep Agents 最终输出：
+
+```text
+DocumentWorkflowResult:
+  deliverables
+  approved_changes
+  failed_deliverables
+  skipped_deliverables
+  warnings
+  used_tools
+  evidence
+```
+
+每个待执行变更包含：
+
+```text
+DocumentChangeProposal:
+  deliverable_id
+  operation: create | update | delete
+  candidate_doc_id
+  candidate_source_path
+  content
+  evidence_refs
+  review
+```
+
+服务端对结果进行确定性转换：
+
+```text
+DocumentWorkflowResult
+→ 校验目标和权限
+→ 解析唯一 doc_id / 目标路径
+→ 调用现有文档 dry-run
+→ 生成 AgentToolStep
+→ 保存 before_hash、preview 和权限决策
+→ waiting_confirmation
+```
+
+将当前 `DocumentTaskExecutor` 中可复用的 dry-run 转换逻辑提取为内部服务，由以下两条链路共同调用：
+
+- 现有 direct Document Tool Loop。
+- 新增 DeepDocumentAgent。
+
+约束：
+
+- 不复制第二套 dry-run。
+- 创建路径继续由服务端生成。
+- 更新和删除的 `doc_id` 必须来自当前 ACL 范围内的候选集合。
+- 更新继续要求读取目标文档并保存 `before_hash`。
+- 同一目标只能生成一个最终动作。
+- 同一目标同时出现 update/delete 等冲突时，该目标组失败，其他独立目标仍可继续。
+- 规则无法唯一确定目标时，允许 LLM 在服务端给定的候选集合中选择；选择结果必须重新校验，且置信度不得低于 `0.80`。
+- Reviewer 通过不代表可以执行；最终权限和变更合法性仍由服务端判断。
+
+## 7. 确认、执行与失败处理
+
+### 7.1 唯一人工确认点
+
+仅在所有可执行动作完成 dry-run 后进入：
+
+```text
+waiting_confirmation
+```
+
+React 确认页面显示：
+
+- 每个文档的创建、修改或删除操作。
+- before/after 摘要。
+- Reviewer 结论。
+- 证据来源。
+- 失败和跳过的交付物。
+- 风险与 warning。
+
+仍使用现有：
+
+```text
+POST /agent/task-plans/{task_plan_id}/confirm
+```
+
+确认时重新读取当前用户权限、部门范围和目标文档状态。
+
+### 7.2 真实写入
+
+确认后继续调用现有：
+
+```text
+KnowledgeDocumentManagementService.execute_confirmed_actions()
+```
+
+保持：
+
+- 写入前 Hash 检查。
+- 重复目标检查。
+- 文件和 sidecar 更新。
+- ES/Milvus 同步。
+- 审计记录。
+- 失败时逆序补偿。
+
+Deep Agents 不参与确认后的实际写入。
+
+### 7.3 任务终态
+
+| 执行结果                        | TaskPlan 状态             |
+| ------------------------------- | ------------------------- |
+| 所有交付物准备并执行成功        | `completed`               |
+| 部分交付物成功，部分失败或跳过  | `completed_with_warnings` |
+| 准备阶段全部失败                | `failed`                  |
+| 权限、TaskPlan 损坏或持久化异常 | `failed`                  |
+| 用户取消                        | `cancelled`               |
+| 有部分可执行动作，尚未确认      | `waiting_confirmation`    |
+
+部分成功时只把 Reviewer 通过且服务端校验成功的动作放入确认计划。
+
+### 7.4 retry
+
+准备阶段失败或进程中断时：
+
+- 使用冻结的原始任务、Supervisor 计划和当前 ACL 重新运行 agentic 准备阶段。
+- 不依赖 Deep Agents 隐式内存。
+- 已经产生但尚未确认的真实文件写入为零，因此重新生成是安全的。
+- retry 时重新校验知识库候选和源文档 Hash。
+- `cancelled` 任务不能 retry。
+- 已进入真实写入的任务继续使用现有补偿和恢复语义。
+
+## 8. LLM 与规则的职责划分
+
+### 使用真实 LLM 的环节
+
+1. 现有 Router：识别文档管理意图。
+2. Document Supervisor：判断 direct/agentic 并拆解交付物。
+3. Deep Agent Coordinator：维护 Todo、决定 SubAgent 调用顺序。
+4. Researcher：构造查询、选择只读工具、综合证据。
+5. Writer：生成或修订文档草稿。
+6. Reviewer：评估事实支持、完整性和冲突。
+7. 仅在规则无法唯一解析目标时，从受限候选集合中选择目标。
+
+### 使用硬编码规则的环节
+
+1. 身份认证和权限。
+2. 部门 ACL。
+3. 工具白名单。
+4. 路径生成和目录边界。
+5. `doc_id` 候选范围。
+6. Web 联网许可。
+7. 任务依赖合法性。
+8. 模型和工具调用预算。
+9. Hash、差异和 dry-run。
+10. before/after 校验。
+11. Reviewer 最大修订轮数。
+12. 人工确认状态。
+13. 文件、ES、Milvus 写入。
+14. 审计与失败补偿。
+15. TaskPlan 最终状态判定。
+
+## 9. 配置与可观测性
+
+复用现有配置：
+
+```text
+AGENT_MAX_STEPS
+AGENT_MAX_TOOL_CALLS
+AGENT_MAX_PARALLEL_TOOL_CALLS
+AGENT_DOCUMENT_TOOLS_MAX_CONTENT_CHARS
+```
+
+新增：
+
+```text
+AGENT_DOCUMENT_MAX_DELIVERABLES=6
+AGENT_DOCUMENT_MAX_REVISION_ROUNDS=2
+AGENT_DOCUMENT_WORKER_TIMEOUT_SECONDS=180
+AGENT_DOCUMENT_MAX_TOTAL_DRAFT_CHARS=400000
+```
+
+LangSmith 继续复用 `fast_app.core.langsmith` 的公共 metadata、敏感字段策略和子调用配置。
+
+Run name：
+
+```text
+document.supervisor
+document.deep_agent
+document.deliverable.{id}.researcher
+document.deliverable.{id}.writer.round_{n}
+document.deliverable.{id}.reviewer.round_{n}
+document.change_set.validation
+document.confirmed_execution
+```
+
+TaskPlan `final_output` 增加：
+
+```text
+document_workflow
+deliverables
+research_results
+draft_results
+review_results
+failed_deliverables
+skipped_deliverables
+warnings
+approved_changes
+```
+
+不持久化：
+
+- Deep Agents 完整消息历史。
+- 全部私有 Chunk 正文。
+- 虚拟工作区的中间临时文件。
+- 模型隐藏推理内容。
+
+## 10. API 与 SSE
+
+保持现有 API 路径和请求模型不变：
+
+```text
+POST /rag/chat
+POST /rag/chat/stream/events
+POST /agent/task-plans/{id}/confirm
+POST /agent/task-plans/{id}/retry
+POST /agent/task-plans/{id}/cancel
+```
+
+新增结构化 SSE 事件：
+
+```text
+agent_task_document_supervised
+agent_task_document_subagent_started
+agent_task_document_subagent_completed
+agent_task_document_subagent_failed
+agent_task_document_draft_created
+agent_task_document_review_completed
+agent_task_document_revision_started
+agent_task_document_action_prepared
+```
+
+本阶段不引入后台队列或新的流式协议。沿用当前请求生命周期和 TaskPlan 快照机制；事件可以在现有 structured SSE 中输出或基于快照重放。
+
+Legacy `/rag/chat/stream` 不增加这些事件。
+
+## 11. 实施顺序
+
+1. 验证并固定 Deep Agents 依赖。
+2. 在现有 Middleware 文件中增加文档 Agent 组合函数，确认没有重复实现框架 Middleware。
+3. 新增 Supervisor 结构化模型和规则校验。
+4. 新增隔离虚拟工作区及三个 Skills。
+5. 实现 Researcher、Writer、Reviewer 显式 SubAgent。
+6. 实现 `DeepDocumentAgent` 和结构化 `DocumentWorkflowResult`。
+7. 提取并复用现有 dry-run/ChangeSet 转换逻辑。
+8. 在 `DocumentTaskExecutor` 中增加 direct/agentic 分派。
+9. 对接现有 TaskPlan、confirm、write 和 rollback。
+10. 增加 SSE、LangSmith 和学习文档。
+11. 完成 mock 回归和真实模型验收。
+
+## 12. 测试与验收
+
+### Middleware 与依赖
+
+- `deepagents==0.5.4` 可与当前依赖共同安装。
+- Deep Agents 内置 Middleware 没有被项目重复实现。
+- PII、模型调用限制、工具调用限制和日志 Middleware 各装配一次。
+- 未启用 Memory、Deep Agents HITL 和异步 SubAgent。
+- 自定义工具即使处于虚拟 Filesystem 权限范围外，仍必须通过现有 ACL 包装器。
+
+### direct 链路回归
+
+- 单文档删除仍走原 Document Tool Loop。
+- 精确单文档更新行为不变。
+- dry-run、确认、审计和补偿结果不变。
+- 不会因为安装 Deep Agents 而让简单任务进入多 Agent。
+
+### agentic 链路
+
+- 多文档任务进入 DeepDocumentAgent。
+- Researcher、Writer、Reviewer 使用不同工具白名单。
+- Writer 无法调用真实写入工具。
+- Reviewer 无法直接修改草稿。
+- Reviewer 要求修订时最多执行两轮。
+- 一个交付物失败不影响无依赖交付物。
+- 失败依赖的下游交付物被跳过。
+- 同一目标的冲突动作被服务端拒绝。
+- 所有交付物失败时不进入确认。
+- 部分通过时生成可确认动作和 warning。
+
+### 安全与隔离
+
+- 不同 TaskPlan 的虚拟工作区完全隔离。
+- Deep Agent 无法访问真实知识库文件路径。
+- 非授权文档不能被检索、读取或选为更新目标。
+- 私有 Chunk 正文不会进入 WebSearch 请求。
+- Web disabled 时任何 SubAgent 都不能联网。
+- 用户在计划生成后权限被撤销，confirm 必须拒绝。
+- 模型伪造的 `doc_id` 和路径不能通过最终校验。
+
+### 确认与写入
+
+- 整个复杂任务只出现一次人工确认。
+- 确认页包含所有通过校验的文档动作。
+- confirm 后仍复用现有写入和补偿服务。
+- 写入前文档 Hash 变化时拒绝执行。
+- ES 或 Milvus 失败时按现有逻辑回滚。
+- 部分交付物失败、其余执行成功时终态为 `completed_with_warnings`。
+
+### 预算、取消和恢复
+
+- 模型调用、工具调用、交付物数量和草稿总量限制生效。
+- 超时只影响当前交付物，除非属于任务级异常。
+- 取消后不再启动新的模型或工具调用。
+- 准备阶段进程中断后 retry 可安全重新生成。
+- retry 使用当前 ACL，不复用旧权限。
+
+### 兼容回归
+
+至少执行：
+
+```powershell
+$env:PYTHONPATH = "src"
+$env:LANGSMITH_TRACING = "false"
+$env:LANGCHAIN_TRACING_V2 = "false"
+
+.\.venv\Scripts\python.exe scripts\phase_15\test_llm_document_management_task.py
+.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_tool_loop.py
+.\.venv\Scripts\python.exe scripts\phase_15\test_agentic_research_orchestration.py
+.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_sub_question_execution.py
+.\.venv\Scripts\python.exe scripts\test_langsmith_tracing.py
+```
+
+同时执行：
+
+- Deep Agents 独立单元测试。
+- FastAPI OpenAPI 装载。
+- Structured SSE 回归。
+- Prompt Guard 回归。
+- 文档权限和审计回归。
+- `python -m compileall src/fast_app scripts`。
+- `git diff --check`。
+
+### 真实链路验收
+
+使用真实 Qwen、ES、Milvus 和现有知识库验证：
+
+1. 基于多个内部文档生成一份新方案。
+2. 同时修改两个存在依赖关系的文档。
+3. Researcher 获得证据后 Writer 写作，Reviewer 要求一次修订。
+4. 一个交付物失败，其他交付物继续并进入统一确认。
+5. Web disabled 时只使用内部知识库。
+6. 用户授权后，内部证据不足才允许补充 Web。
+7. 确认前真实文件和双存储没有变化。
+8. 确认后文件、ES、Milvus 和审计记录一致。
+9. LangSmith 能看到 Supervisor、Coordinator、Researcher、Writer、Reviewer 和真实写入边界。
+
+## 已确定的默认决策
+
+- Deep Agents 仅用于复杂文档内容准备，不接管真实写入。
+- 简单文档操作继续使用现有 Document Tool Loop。
+- 第一阶段支持多文档交付物。
+- 只在真实写入前进行一次人工确认。
+- 使用同步显式 SubAgent，不使用预览版异步 SubAgent。
+- 优先使用框架内置和工程已有 Middleware。
+- 本阶段默认不新增自定义 Middleware。
+- 不使用 Deep Agents Memory 和 HITL Middleware。
+- 不改变 Research 多 Agent 链路。
+- 不增加数据库迁移、后台任务队列或新的 Agent 框架。
+
