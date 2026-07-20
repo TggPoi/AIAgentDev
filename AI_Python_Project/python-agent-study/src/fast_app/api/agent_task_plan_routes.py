@@ -138,7 +138,7 @@ async def cancel_agent_task_plan_endpoint(
         task_plan_id=task_plan_id,
         user_id=user.user_id,
     ) as trace_run:
-        plan = task_executor.cancel(task_plan_id, user=user)
+        plan = await task_executor.cancel(task_plan_id, user=user)
         if trace_run is not None:
             trace_run.add_outputs(
                 {"task_plan_id": plan.task_plan_id, "status": plan.status.value}

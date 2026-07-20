@@ -534,7 +534,7 @@ async def main() -> None:
         assert "## Tool Loop 检查点" in resumed_markdown
         assert "最近完整轮次: `2`" in resumed_markdown
         assert "已消耗 ToolCall: `2`" in resumed_markdown
-        cancelled = executor.cancel(resumed.task_plan_id, user=user)
+        cancelled = await executor.cancel(resumed.task_plan_id, user=user)
         assert cancelled.status == AgentTaskPlanStatus.CANCELLED
         assert all(step.status.value == "skipped" for step in cancelled.steps)
         try:

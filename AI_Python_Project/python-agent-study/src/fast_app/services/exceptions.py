@@ -52,6 +52,28 @@ class ToolPermissionDeniedError(AppServiceError):
     status_code = 403
 
 
+class AgentTaskPlanBusyError(AppServiceError):
+    """同一 TaskPlan 已被当前进程中的另一个控制请求占用。"""
+
+    error_code = "AGENT_TASK_PLAN_BUSY"
+    status_code = 409
+
+
+class DocumentAgentCheckpointConflictError(AppServiceError):
+    """Deep Agent 运行记录版本与调用方期望不一致。"""
+
+    error_code = "DOCUMENT_AGENT_CHECKPOINT_CONFLICT"
+    status_code = 409
+
+
+class DocumentAgentCheckpointUnavailableError(AppServiceError):
+    """新格式 TaskPlan 声明 checkpoint，但持久化数据不可恢复。"""
+
+    error_code = "DOCUMENT_AGENT_CHECKPOINT_UNAVAILABLE"
+    error_category = "system_error"
+    status_code = 503
+
+
 class ExternalServiceError(AppServiceError):
     """外部服务调用失败。"""
 

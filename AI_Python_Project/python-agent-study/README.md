@@ -141,6 +141,8 @@ fastapi==0.136.1
 uvicorn==0.47.0
 langchain==1.3.2
 langgraph==1.2.2
+langgraph-checkpoint-postgres==3.1.0
+deepagents==0.5.4
 langsmith==0.8.6
 elasticsearch==8.17.0
 pymilvus==3.0.0
@@ -160,6 +162,16 @@ $env:KEYWORD_RETRIEVER_PROVIDER="mock"
 $env:RERANKER_PROVIDER="mock"
 
 .\.venv\Scripts\uvicorn.exe fast_app.main:app --reload
+```
+
+启用文档 Agent 时还必须提供独立的 AES-256 Base64 密钥；启动阶段会严格校验解码后恰好为
+32 字节，并初始化 LangGraph 官方 PostgreSQL checkpoint/store 表：
+
+```powershell
+$bytes = New-Object byte[] 32
+[System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+$env:LANGGRAPH_AES_KEY_BASE64 = [Convert]::ToBase64String($bytes)
+$env:AGENT_DOCUMENT_CHECKPOINT_RETENTION_DAYS = "7"
 ```
 
 健康检查：

@@ -1,10 +1,28 @@
-"""Deep Agents 文档内容生产层；只生成受审查的变更建议，不执行真实写入。"""
+"""Deep Agents 文档内容生产层；只生成受审查的变更建议，不执行真实写入。
+
+该模块处在 ``DocumentTaskExecutor`` 与 Deep Agents 框架之间，主要完成五件事：
+
+1. 根据 Supervisor 已确认的 ``DocumentWorkflowDecision`` 创建 Coordinator、
+   Researcher、Writer 和 Reviewer。
+2. 只向 Researcher 提供受 ACL 约束的读取工具，Writer/Reviewer 只能操作
+   ``StateBackend`` 中的虚拟文件。
+3. 把虚拟工作区和 LangGraph 节点进度加密写入 PostgreSQL checkpoint，
+   让任务失败后可以续跑。
+4. 将候选文档、原文 SHA 和已用工具记录在服务端闭包和 Runtime Store 中，
+   不信任模型自行报告这些事实。
+5. 只返回结构化变更建议；真实文件、ES 和 Milvus 写入仍由人工确认后的
+   ``DocumentTaskExecutor`` 执行。
+
+阅读主线是：``run()`` 准备运行时 -> 构建工具与 SubAgent ->
+``graph.ainvoke()`` -> 校验并返回 ``DeepDocumentAgentRunResult``。
+"""
 
 from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -40,11 +58,20 @@ from fast_app.domain.document_workflow import (
 from fast_app.domain.rag_models import RetrievalFilters, RetrievedDoc
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
+from fast_app.services.agent_tasks.deep_document_runtime import (
+    DeepDocumentRuntime,
+    DeepDocumentRuntimeRecord,
+    DocumentRuntimeReadSnapshot,
+    build_document_acl_fingerprint,
+)
 from fast_app.services.agent_tasks.agent_task_tool_support import (
     build_mcp_task_tools,
     doc_to_evidence,
 )
-from fast_app.services.exceptions import AppServiceError
+from fast_app.services.exceptions import (
+    AppServiceError,
+    DocumentAgentCheckpointUnavailableError,
+)
 from fast_app.services.knowledge.knowledge_document_management_service import (
     KnowledgeDocumentManagementService,
 )
@@ -56,8 +83,17 @@ from fast_app.services.research.research_tool_loop import (
 from fast_app.agents.tools.rag_agent_tools import retrieve_knowledge_docs
 
 
+# ---------------------------------------------------------------------------
+# LLM 可调用工具的输入契约
+# ---------------------------------------------------------------------------
+
+
 class DocumentReadInput(BaseModel):
-    """Researcher 读取检索候选完整正文的受限参数。"""
+    """Researcher 读取检索候选完整正文的受限参数。
+
+    模型只能提交 ``doc_id``，真实 ``source_path`` 必须由服务端从当前
+    ACL 检索已登记的 candidates 中取得。
+    """
 
     model_config = ConfigDict(extra="forbid")
     doc_id: str = Field(
@@ -67,7 +103,11 @@ class DocumentReadInput(BaseModel):
 
 
 class DocumentWebResearchInput(BaseModel):
-    """只接收公开缺失主题，服务端自行构造 Web 查询。"""
+    """只接收公开缺失主题，服务端自行构造 Web 查询。
+
+    这个 Schema 是从私有知识库跨越到外部网络的信任边界：它有意不接收
+    Chunk 正文、内部路径和 ACL metadata。
+    """
 
     model_config = ConfigDict(extra="forbid")
     deliverable_id: str = Field(
@@ -89,36 +129,63 @@ class DocumentWebResearchInput(BaseModel):
 
 @dataclass(frozen=True)
 class DocumentReadSnapshot:
-    """一次授权读取形成的并发保护事实。"""
+    """一次授权读取形成的并发保护事实。
 
+    ``content`` 仅保留在当前 Worker 内存和加密 checkpoint 中；Runtime Store
+    只保存 ``doc_id/source_path/sha256``，恢复时再从可信文件路径重读正文。
+    """
+
+    # 服务端稳定文档身份，不由 Writer 猜测。
     doc_id: str
+    # 本次授权读取时实际使用的知识库路径。
     source_path: str
+    # 只在当前运行时使用的完整正文。
     content: str
+    # 读取时正文哈希，用于 dry-run/恢复前检测并发修改。
     sha256: str
 
 
 @dataclass(frozen=True)
 class DeepDocumentAgentRunResult:
-    """模型结果与服务端候选事实分离，后者不会由模型伪造。"""
+    """模型结果与服务端候选事实分离，后者不会由模型伪造。
+
+    ``workflow`` 是 LLM 编排产物，下游仍要验证；``candidates`` 和
+    ``read_snapshots`` 是工具执行时由服务端捕获的信任事实。
+    """
 
     workflow: DocumentWorkflowResult
     candidates: dict[str, dict[str, Any]]
     read_snapshots: dict[str, DocumentReadSnapshot]
+    resumed_from_checkpoint: bool = False
+    checkpoint_record_version: int = 1
+    checkpoint_warnings: list[str] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Deep Agents Middleware：取消边界和可视化进度
+# ---------------------------------------------------------------------------
 
 
 class _TaskPlanCancellationMiddleware(AgentMiddleware):
     """Deep Agents 没有项目 TaskPlan 取消语义，因此在每次模型调用前补此边界。"""
 
     def __init__(self, store: AgentTaskPlanStore, task_plan_id: str) -> None:
+        """固定当前 TaskPlan Store 和任务 ID，供每次模型调用前检查。"""
+
         self._store = store
         self._task_plan_id = task_plan_id
 
     def _ensure_active(self) -> None:
+        """重读最新 TaskPlan，已取消时用 CancelledError 终止当前图。"""
+
+        # 取消是服务端 TaskPlan 事实，不是依赖旧 LangGraph State 中的状态。
         latest = self._store.load(self._task_plan_id)
         if latest.status == AgentTaskPlanStatus.CANCELLED:
             raise asyncio.CancelledError("文档 TaskPlan 已取消")
 
     async def awrap_model_call(self, request, handler):
+        """在外部 LLM 请求启动前检查取消，通过后不改写模型调用。"""
+
         self._ensure_active()
         return await handler(request)
 
@@ -127,12 +194,17 @@ class _DocumentCoordinatorProgressMiddleware(_TaskPlanCancellationMiddleware):
     """在 Coordinator 的 task 工具边界记录真实 SubAgent 开始和结束事件。"""
 
     def __init__(self, store: AgentTaskPlanStore, task_plan_id: str) -> None:
+        """在基础取消检查之上，为并行 task 事件更新创建单任务锁。"""
+
         super().__init__(store, task_plan_id)
         self._save_lock = asyncio.Lock()
 
     async def awrap_tool_call(self, request, handler):
+        """只拦截 Coordinator 的 ``task`` 工具，记录 SubAgent 开始、完成或失败。"""
+
         self._ensure_active()
         tool_call = request.tool_call
+        # write_todos 等其他内置工具不是 SubAgent 派发，直接交给下层执行。
         if tool_call.get("name") != "task":
             return await handler(request)
         args = tool_call.get("args") or {}
@@ -146,6 +218,7 @@ class _DocumentCoordinatorProgressMiddleware(_TaskPlanCancellationMiddleware):
         try:
             result = await handler(request)
         except Exception as exc:
+            # 记录事件后必须重新抛出，不能把 SubAgent 失败伪装为成功返回。
             await self._append_event(
                 {
                     "event": "agent_task_document_subagent_failed",
@@ -166,6 +239,8 @@ class _DocumentCoordinatorProgressMiddleware(_TaskPlanCancellationMiddleware):
         """串行原子更新 TaskPlan，避免并行 task 调用互相覆盖进度。"""
 
         async with self._save_lock:
+            # 每次都重读最新 TaskPlan，避免并行 SubAgent 基于同一旧快照
+            # 各自 save，导致后写入的事件覆盖先写入的事件。
             latest = self._store.load(self._task_plan_id)
             progress = dict(latest.final_output.get("document_progress") or {})
             events = list(progress.get("events") or [])
@@ -173,6 +248,12 @@ class _DocumentCoordinatorProgressMiddleware(_TaskPlanCancellationMiddleware):
             progress["events"] = events
             latest.final_output["document_progress"] = progress
             self._store.save(latest)
+
+
+# ---------------------------------------------------------------------------
+# 四个 Agent 的职责 Prompt。Prompt 只约束模型行为，真实安全边界仍由
+# Tool args_schema、权限闭包、FilesystemPermission 和下游确定性验证强制执行。
+# ---------------------------------------------------------------------------
 
 
 COORDINATOR_PROMPT = """你是复杂知识库文档任务的协调 Agent。
@@ -213,8 +294,18 @@ REVIEWER_PROMPT = """你是独立 Document Reviewer。
 """
 
 
+# ---------------------------------------------------------------------------
+# Deep Document Agent 主流程
+# ---------------------------------------------------------------------------
+
+
 class DeepDocumentAgent:
-    """为一个 TaskPlan 创建隔离 Deep Agent，并把最终输出收敛成领域模型。"""
+    """为一个 TaskPlan 创建隔离 Deep Agent，并把最终输出收敛成领域模型。
+
+    这个类是“内容生产”边界，不是“真实写入”边界。它可以读取经 ACL
+    授权的文档、生成虚拟草稿并审查，但不能直接调用知识库创建/修改/删除
+    入口。返回的 proposal 还要由 ``DocumentTaskExecutor`` 和人工确认再次验证。
+    """
 
     def __init__(
         self,
@@ -225,13 +316,21 @@ class DeepDocumentAgent:
         document_management_service: KnowledgeDocumentManagementService,
         task_plan_store: AgentTaskPlanStore,
         prompt_guard: PromptGuardService | None = None,
+        runtime: DeepDocumentRuntime | None = None,
     ) -> None:
+        """注入模型配置、检索器、可信文件读取服务、TaskPlan Store 和 Runtime。
+
+        ``runtime`` 仅保留可选类型是为了兼容旧测试替身；生产 ``run()`` 开始时
+        会强制要求它已由 FastAPI lifespan 注入。
+        """
+
         self._settings = settings
         self._vector_retriever = vector_retriever
         self._keyword_retriever = keyword_retriever
         self._document_management_service = document_management_service
         self._task_plan_store = task_plan_store
         self._prompt_guard = prompt_guard
+        self._runtime = runtime
 
     async def run(
         self,
@@ -245,15 +344,76 @@ class DeepDocumentAgent:
         min_score: float,
         filters: RetrievalFilters,
         langchain_config: RunnableConfig | None = None,
+        resume: bool = False,
     ) -> DeepDocumentAgentRunResult:
-        """运行隔离内容生产流程；所有真实业务事实保存在闭包而不是模型状态中。"""
+        """运行或恢复隔离内容生产流程；真实业务事实由加密状态和 Store 共同保护。
+
+        输入可分为三组：
+
+        - ``plan/decision``：Supervisor 已生成并由上游验证的任务与交付物规划。
+        - ``user/filters``：当前请求重新鉴权后的可信身份和 ACL 检索边界。
+        - 检索参数与 ``langchain_config``：本轮工具策略和 LangSmith 子 run 配置。
+
+        主流程是：准备/恢复 Runtime -> 构建只读工具 -> 创建显式 SubAgent ->
+        以 sync durability 执行 LangGraph -> 校验结构化结果 -> 返回模型产物和
+        服务端事实。本方法不写入真实知识库。
+        """
+
+        if self._runtime is None:
+            raise AppServiceError("Deep Agent PostgreSQL checkpoint/store 未装配")
+
+        # _prepare_runtime() 是每次首次执行或 /retry 的统一入口。它会根据
+        # Store、Saver、当前 ACL 和源文件 SHA 决定是续跑旧 thread 还是安全重启。
+        (
+            record,
+            candidates,
+            read_snapshots,
+            used_tools,
+            resume_from_checkpoint,
+            checkpoint_warnings,
+        ) = await self._prepare_runtime(
+            plan=plan,
+            user=user,
+            filters=filters,
+            resume=resume,
+        )
+        # 嵌套工具函数在每次成功写 Store 后都需更新期望版本。使用单元
+        # list 是为了让闭包原地更改该值，而不是将它暴露给模型。
+        record_version = [record.record_version]
+        # Coordinator 可并行派发多个 Researcher，它们会共享 candidates/snapshots。
+        # 该锁只保护当前 run 内的 Store 读版本和写入顺序；跨 HTTP 请求的
+        # 同 TaskPlan 互斥由 AgentTaskExecutor 的 task_plan_id 锁负责。
+        runtime_write_lock = asyncio.Lock()
+
+        async def persist_runtime_facts() -> None:
+            """串行保存并发 Researcher 产生的服务端事实，同时检查 record_version。"""
+
+            async with runtime_write_lock:
+                # 完整正文不进 Store。_persistent_candidates() 会去掉 Chunk 摘要，
+                # read_snapshots 也只转换成 doc_id/path/SHA 证明。正文恢复由加密
+                # checkpoint 和后续从可信 source_path 重读共同完成。
+                updated = await self._runtime.update_record(
+                    plan.task_plan_id,
+                    expected_version=record_version[0],
+                    updates={
+                        "candidates": _persistent_candidates(candidates),
+                        "read_snapshots": {
+                            doc_id: DocumentRuntimeReadSnapshot(
+                                doc_id=snapshot.doc_id,
+                                source_path=snapshot.source_path,
+                                sha256=snapshot.sha256,
+                            )
+                            for doc_id, snapshot in read_snapshots.items()
+                        },
+                        "used_tools": sorted(used_tools),
+                        "status": "running",
+                    },
+                )
+                record_version[0] = updated.record_version
 
         # 这三组数据由服务端工具闭包维护，不放进模型可自由改写的结构化输出：
         # candidates 证明目标来自当前 ACL 检索，read_snapshots 证明 update 读取过哪个版本，
         # used_tools 则记录实际执行事实，而不是采信模型自己报告的工具名称。
-        candidates: dict[str, dict[str, Any]] = {}
-        read_snapshots: dict[str, DocumentReadSnapshot] = {}
-        used_tools: set[str] = set()
         tools = await self._build_research_tools(
             plan=plan,
             decision=decision,
@@ -266,7 +426,10 @@ class DeepDocumentAgent:
             candidates=candidates,
             read_snapshots=read_snapshots,
             used_tools=used_tools,
+            persist_runtime_facts=persist_runtime_facts,
         )
+        # Coordinator 和三个 SubAgent 共用同一个无随机性模型客户端，
+        # 但通过不同 system prompt、tools、filesystem permissions 分离职责。
         model = self._build_model()
         # 通用 PII/预算/日志直接复用已有 Middleware；这里只额外连接项目自己的
         # TaskPlan 取消信号和 SubAgent 进度事件。
@@ -279,6 +442,8 @@ class DeepDocumentAgent:
         ]
         # 这些权限只约束 StateBackend 中的虚拟文件，不代表真实知识库 ACL。
         # Coordinator 可组织整个工作区；三个 SubAgent 只得到完成职责所需的最小目录。
+        # 权限顺序表达“先对指定目录 allow，再对其他路径 deny”。这只保护
+        # StateBackend 的 /workspace 和 /skills，真实文档读取仍要经过下方工具闭包。
         permissions = [
             FilesystemPermission(["read", "write"], ["/workspace/**"], "allow"),
             FilesystemPermission(["read"], ["/skills/**"], "allow"),
@@ -310,6 +475,8 @@ class DeepDocumentAgent:
         ]
         # Researcher 能调用只读业务工具；Writer/Reviewer 没有真实知识库工具，
         # 因而即使模型偏离 Prompt，也只能处理虚拟工作区中的研究材料和草稿。
+        # 每个 SubAgent 都拥有独立 Prompt、输出 Schema 和最小工具/文件权限：
+        # Researcher 找证据，Writer 产生草稿，Reviewer 只审查；Coordinator 负责编排。
         subagents: list[SubAgent | CompiledSubAgent] = [
             {
                 "name": "document-researcher",
@@ -374,33 +541,67 @@ class DeepDocumentAgent:
             skills=["/skills/"],
             permissions=permissions,
             backend=StateBackend(),
+            checkpointer=self._runtime.checkpointer,
             response_format=DocumentWorkflowResult,
             name="document.deep_agent",
         )
-        # 启动前只放入冻结任务和 Skill；真实文档必须通过受控 read 工具取得。
-        files = self._initial_files(plan=plan, decision=decision)
-        result = await asyncio.wait_for(
-            graph.ainvoke(
-                {
-                    "messages": [
-                        HumanMessage(
-                            content=json.dumps(
-                                {
-                                    "task_plan_id": plan.task_plan_id,
-                                    "original_query": plan.original_query,
-                                    "decision": decision.model_dump(mode="json"),
-                                    "max_revision_rounds": self._settings.agent_document_max_revision_rounds,
-                                },
-                                ensure_ascii=False,
-                            )
-                        )
-                    ],
-                    "files": files,
-                },
-                config=langchain_config,
-            ),
-            timeout=self._settings.agent_document_worker_timeout_seconds,
+        config = _checkpoint_config(
+            langchain_config,
+            thread_id=record.thread_id,
         )
+        # 新任务提供初始状态；恢复必须传 None，LangGraph 才会从同一 thread 的
+        # 最近同步 checkpoint 继续，而不是重新创建一套消息和虚拟文件。
+        graph_input = None
+        if not resume_from_checkpoint:
+            # task.json 和 Skills 在首次调用时作为 StateBackend.files 初始值进入图。
+            # 恢复时不再重新生成，否则会覆盖 checkpoint 中已有的 Todo 和草稿。
+            graph_input = {
+                "messages": [
+                    HumanMessage(
+                        content=json.dumps(
+                            {
+                                "task_plan_id": plan.task_plan_id,
+                                "original_query": plan.original_query,
+                                "decision": decision.model_dump(mode="json"),
+                                "max_revision_rounds": self._settings.agent_document_max_revision_rounds,
+                            },
+                            ensure_ascii=False,
+                        )
+                    )
+                ],
+                "files": self._initial_files(plan=plan, decision=decision),
+            }
+        try:
+            result = await asyncio.wait_for(
+                graph.ainvoke(
+                    graph_input,
+                    config=config,
+                    # sync 保证当前节点 checkpoint 写完后才进入下一节点；进程崩溃时
+                    # 最多重做尚未完成的节点，不会丢失已确认完成的虚拟工作区状态。
+                    durability="sync",
+                ),
+                timeout=self._settings.agent_document_worker_timeout_seconds,
+            )
+        except asyncio.CancelledError:
+            # 用户显式取消是终态，释放私有工作区；其他 CancelledError
+            # 可能来自请求/进程中断，需保留 checkpoint 供 /retry。
+            latest = self._task_plan_store.load(plan.task_plan_id)
+            if latest.status == AgentTaskPlanStatus.CANCELLED:
+                await self.release_checkpoint(latest, status="released")
+            else:
+                await self._mark_checkpoint_resumable(
+                    plan,
+                    expected_version=record_version[0],
+                )
+            raise
+        except Exception:
+            # 模型、工具、超时或图节点异常都先将当前现场标记为 failed，
+            # 再把原始异常交给 DocumentTaskExecutor 生成任务级错误。
+            await self._mark_checkpoint_resumable(
+                plan,
+                expected_version=record_version[0],
+            )
+            raise
         # response_format 只保证输出形状；内容仍要在 DocumentTaskExecutor 中与
         # Supervisor、Draft、Review、ACL 候选和 SHA 快照逐项交叉验证。
         raw_workflow = result.get("structured_response")
@@ -409,6 +610,8 @@ class DeepDocumentAgent:
             if isinstance(raw_workflow, DocumentWorkflowResult)
             else DocumentWorkflowResult.model_validate(raw_workflow)
         )
+        # 字符上限是服务端硬约束，不依赖 Prompt 中的模型自律，防止过大
+        # 草稿进入 TaskPlan JSON、人工确认页面和后续 dry-run。
         total_chars = sum(len(item.content or "") for item in workflow.approved_changes)
         if total_chars > self._settings.agent_document_max_total_draft_chars:
             raise AppServiceError("复杂文档草稿总字符数超过服务端上限")
@@ -432,14 +635,313 @@ class DeepDocumentAgent:
                         proposal.content = guard_result.sanitized_text
         # used_tools 是服务端工具闭包记录的事实，不信任模型自行填写的同名字段。
         workflow.used_tools = sorted(used_tools)
+        # 工具闭包在图执行期间可能多次递增 record_version，因此结束时不使用
+        # run() 刚开始时的 record，而是重读最新 Store 记录写入 TaskPlan 摘要。
+        latest_record = await self._runtime.load_record(plan.task_plan_id)
+        if latest_record is None:
+            raise DocumentAgentCheckpointUnavailableError(
+                "Deep Agent 完成后运行记录意外缺失"
+            )
+        record_version[0] = latest_record.record_version
+        self._set_checkpoint_summary(
+            plan,
+            status="active",
+            record=latest_record,
+            resumed_from_checkpoint=resume_from_checkpoint,
+        )
+        self._task_plan_store.save(plan)
         return DeepDocumentAgentRunResult(
             workflow=workflow,
             candidates=candidates,
             read_snapshots=read_snapshots,
+            resumed_from_checkpoint=resume_from_checkpoint,
+            checkpoint_record_version=record_version[0],
+            checkpoint_warnings=checkpoint_warnings,
         )
 
+    async def _prepare_runtime(
+        self,
+        *,
+        plan: AgentTaskPlan,
+        user: CurrentUserContext,
+        filters: RetrievalFilters,
+        resume: bool,
+    ) -> tuple[
+        DeepDocumentRuntimeRecord,
+        dict[str, dict[str, Any]],
+        dict[str, DocumentReadSnapshot],
+        set[str],
+        bool,
+        list[str],
+    ]:
+        """决定恢复还是安全重启，并重建不会由模型提供的服务端事实。
+
+        该方法是 checkpoint 恢复的安全门，返回值依次是：
+
+        1. 当前 Runtime Store 记录。
+        2. 经当前 ACL 检索登记的候选文档。
+        3. 已重读并验证 SHA 的完整原文快照。
+        4. 服务端真实执行过的工具名。
+        5. 是否应对 ``graph.ainvoke()`` 传入 ``None`` 续跑 checkpoint。
+        6. 需要向 TaskPlan/前端展示的兼容或失效警告。
+
+        恢复不会信任创建 TaskPlan 时的旧权限，也不会盲目信任 Store 中的
+        源文件事实；它使用当前 ``user/filters`` 重算 ACL 指纹，并重读原文校验 SHA。
+        """
+
+        assert self._runtime is not None
+        # 指纹用来判断两次执行的授权边界是否完全相同，但它不替代
+        # AgentTaskExecutor/DocumentTaskExecutor 在 /retry 边界已执行的实时鉴权。
+        acl_fingerprint = build_document_acl_fingerprint(user, filters)
+        checkpoint_warnings: list[str] = []
+        invalidation_reason: str | None = None
+        record = await self._runtime.load_record(plan.task_plan_id)
+        checkpoint_metadata = plan.final_output.get("deep_agent_checkpoint")
+
+        # 新格式 TaskPlan 已写入 checkpoint 摘要却找不到 Store 记录，属于持久化
+        # 不一致。此时不能静默重跑，否则可能重复高成本模型操作。
+        if resume and record is None and isinstance(checkpoint_metadata, dict):
+            raise DocumentAgentCheckpointUnavailableError(
+                "TaskPlan 声明了 Deep Agent checkpoint，但运行记录不存在"
+            )
+        if resume and record is None:
+            # 旧 TaskPlan 从未写入 PostgreSQL checkpoint，只能兼容性完整重跑。
+            checkpoint_warnings.append("legacy_checkpoint_missing")
+
+        candidates: dict[str, dict[str, Any]] = {}
+        read_snapshots: dict[str, DocumentReadSnapshot] = {}
+        used_tools: set[str] = set()
+        resume_from_checkpoint = False
+
+        if resume and record is not None:
+            # ACL 不同时不读取旧 candidates 和私有正文，后面会删除旧 thread
+            # 并在当前权限边界下重新检索。
+            if record.acl_fingerprint != acl_fingerprint:
+                invalidation_reason = "acl_changed"
+            else:
+                # candidates 不含 Chunk 正文，可从 Store 安全恢复。used_tools 也是
+                # 之前工具闭包成功后持久化的服务端事实。
+                candidates = {
+                    doc_id: dict(candidate)
+                    for doc_id, candidate in record.candidates.items()
+                }
+                used_tools = set(record.used_tools)
+                for doc_id, snapshot in record.read_snapshots.items():
+                    # Store 只有 path/SHA，完整正文必须重新经过可信文档服务读取。
+                    # 读取失败或哈希变化都表示旧推理的输入已不稳定。
+                    try:
+                        content = self._document_management_service.read_document_content(
+                            snapshot.source_path
+                        )
+                    except Exception:
+                        invalidation_reason = "source_changed"
+                        break
+                    if sha256(content.encode("utf-8")).hexdigest() != snapshot.sha256:
+                        invalidation_reason = "source_changed"
+                        break
+                    read_snapshots[doc_id] = DocumentReadSnapshot(
+                        doc_id=doc_id,
+                        source_path=snapshot.source_path,
+                        content=content,
+                        sha256=snapshot.sha256,
+                    )
+                if invalidation_reason is None:
+                    # RuntimeRecord 和 LangGraph checkpoint 是两套数据，必须同时存在。
+                    # 读取/解密失败统一转换成稳定业务错误，不降级为重跑。
+                    try:
+                        has_checkpoint = await self._runtime.has_checkpoint(
+                            plan.task_plan_id
+                        )
+                    except Exception as exc:
+                        raise DocumentAgentCheckpointUnavailableError(
+                            "Deep Agent checkpoint 无法解密或读取"
+                        ) from exc
+                    if not has_checkpoint:
+                        raise DocumentAgentCheckpointUnavailableError(
+                            "Deep Agent 运行记录存在，但 LangGraph checkpoint 缺失"
+                        )
+                    # 只有 ACL、源文件和 Saver 全部验证通过后，才将 Store 状态
+                    # 改回 running 并递增 resume_count。
+                    record = await self._runtime.update_record(
+                        plan.task_plan_id,
+                        expected_version=record.record_version,
+                        updates={
+                            "status": "running",
+                            "resume_count": record.resume_count + 1,
+                        },
+                    )
+                    resume_from_checkpoint = True
+
+        if not resume_from_checkpoint:
+            # 新任务、legacy 任务或 ACL/源文件变化都从空 thread 开始；绝不把旧
+            # 私有虚拟文件带入当前权限边界。
+            if record is not None:
+                await self._runtime.release(plan.task_plan_id)
+            record = await self._runtime.create_record(
+                task_plan_id=plan.task_plan_id,
+                acl_fingerprint=acl_fingerprint,
+            )
+            candidates = {}
+            read_snapshots = {}
+            used_tools = set()
+            if invalidation_reason is not None:
+                checkpoint_warnings.append(invalidation_reason)
+
+        self._set_checkpoint_summary(
+            plan,
+            status="active",
+            record=record,
+            resumed_from_checkpoint=resume_from_checkpoint,
+            invalidation_reason=invalidation_reason,
+        )
+        if checkpoint_warnings:
+            # dict.fromkeys 在保留首次出现顺序的同时去重，避免多次 /retry
+            # 把同一 legacy/ACL/source 警告反复追加到前端展示。
+            existing_warnings = list(plan.final_output.get("warnings") or [])
+            plan.final_output["warnings"] = list(
+                dict.fromkeys([*existing_warnings, *checkpoint_warnings])
+            )
+        self._task_plan_store.save(plan)
+        return (
+            record,
+            candidates,
+            read_snapshots,
+            used_tools,
+            resume_from_checkpoint,
+            checkpoint_warnings,
+        )
+
+    async def retain_checkpoint(self, plan: AgentTaskPlan) -> None:
+        """把当前可恢复运行记录标记为 failed，供任务级异常处理调用。
+
+        该公开方法让 ``DocumentTaskExecutor`` 在 Deep Agent 外层验证失败时也能保留
+        执行现场。没有 Runtime 或记录时是兼容性无操作，不伪造新 checkpoint。
+        """
+
+        if self._runtime is None:
+            return
+        record = await self._runtime.load_record(plan.task_plan_id)
+        if record is None:
+            return
+        await self._mark_checkpoint_resumable(
+            plan,
+            expected_version=record.record_version,
+        )
+
+    async def _mark_checkpoint_resumable(
+        self,
+        plan: AgentTaskPlan,
+        *,
+        expected_version: int,
+    ) -> None:
+        """保留失败现场并把前端摘要更新为 resumable。
+
+        这里只把 Store record 标记为 failed，不删除 Saver 中的 thread；否则
+        ``/retry`` 无法恢复虚拟文件和已完成节点。
+        """
+
+        assert self._runtime is not None
+        record = await self._runtime.update_record(
+            plan.task_plan_id,
+            expected_version=expected_version,
+            updates={"status": "failed"},
+        )
+        self._set_checkpoint_summary(
+            plan,
+            status="resumable",
+            record=record,
+            resumed_from_checkpoint=False,
+        )
+        self._task_plan_store.save(plan)
+
+    async def release_checkpoint(
+        self,
+        plan: AgentTaskPlan,
+        *,
+        status: str = "released",
+    ) -> bool:
+        """释放终态 thread；失败时保留 cleanup_pending 供下次启动重试。
+
+        返回 ``True`` 表示 Saver thread 和 Runtime Store 均已释放；``False`` 表示
+        任务业务终态可以继续保存，但持久化清理需要后续重试。
+        """
+
+        if self._runtime is None:
+            return True
+        try:
+            await self._runtime.release(plan.task_plan_id)
+        except Exception:
+            # 清理失败不伪装成 released。先把 TaskPlan 这个前端可见事实标记为
+            # cleanup_pending，再尽力将 Store record 也改为同样状态。
+            metadata = dict(plan.final_output.get("deep_agent_checkpoint") or {})
+            metadata["status"] = "cleanup_pending"
+            metadata["durability"] = "sync"
+            plan.final_output["deep_agent_checkpoint"] = metadata
+            try:
+                record = await self._runtime.load_record(plan.task_plan_id)
+                if record is not None:
+                    await self._runtime.update_record(
+                        plan.task_plan_id,
+                        expected_version=record.record_version,
+                        updates={"status": "cleanup_pending"},
+                    )
+            except Exception:
+                # 原始清理错误已经决定 cleanup_pending；事实 Store 也不可用时
+                # 仍先保留 TaskPlan 摘要，等待管理员或下次启动再次处理。
+                pass
+            self._task_plan_store.save(plan)
+            return False
+        # 释放成功后保留 resume_count/record_version 等已写入的历史摘要，
+        # 只移除已无意义的 retained_until。TaskPlan 因此仍能展示任务是否续跑过。
+        metadata = dict(plan.final_output.get("deep_agent_checkpoint") or {})
+        metadata.update(
+            {
+                "status": status,
+                "durability": "sync",
+                "resumed_from_checkpoint": bool(
+                    metadata.get("resumed_from_checkpoint")
+                ),
+            }
+        )
+        metadata.pop("retained_until", None)
+        plan.final_output["deep_agent_checkpoint"] = metadata
+        self._task_plan_store.save(plan)
+        return True
+
+    @staticmethod
+    def _set_checkpoint_summary(
+        plan: AgentTaskPlan,
+        *,
+        status: str,
+        record: DeepDocumentRuntimeRecord,
+        resumed_from_checkpoint: bool,
+        invalidation_reason: str | None = None,
+    ) -> None:
+        """只向 TaskPlan 暴露可展示摘要，不写数据库连接或内部事实。
+
+        TaskPlan JSON 是 React 任务状态页和管理接口的稳定数据；它只需知道
+        checkpoint 是 active/resumable/released，不需要复制 Store candidates、SHA 或
+        LangGraph 内部 channel 数据。
+        """
+
+        summary: dict[str, Any] = {
+            "status": status,
+            "durability": "sync",
+            "resume_count": record.resume_count,
+            "resumed_from_checkpoint": resumed_from_checkpoint,
+            "record_version": record.record_version,
+            "retained_until": record.expires_at.isoformat(),
+        }
+        if invalidation_reason is not None:
+            summary["invalidation_reason"] = invalidation_reason
+        plan.final_output["deep_agent_checkpoint"] = summary
+
     def _build_model(self) -> ChatOpenAI:
-        """所有 Coordinator/SubAgent 复用同一 Qwen 模型配置。"""
+        """所有 Coordinator/SubAgent 复用同一 Qwen/OpenAI 兼容模型配置。
+
+        ``temperature=0`` 减少文档工作流的随机分支。Qwen 显式关闭 thinking
+        是为了保持 ToolCall 和结构化输出兼容；其他模型不接收这个 Qwen 专用参数。
+        """
 
         return ChatOpenAI(
             model=self._settings.llm_model_name,
@@ -468,14 +970,23 @@ class DeepDocumentAgent:
         candidates: dict[str, dict[str, Any]],
         read_snapshots: dict[str, DocumentReadSnapshot],
         used_tools: set[str],
+        persist_runtime_facts: Callable[[], Awaitable[None]],
     ) -> list[BaseTool]:
-        """构造 Researcher 专用只读工具；权限事实只存在服务端闭包中。"""
+        """构造 Researcher 专用只读工具；权限事实只存在服务端闭包中。
 
-        # 闭包固定本次请求的 ACL filters 和检索参数，模型只能提供 query，
-        # 不能在 ToolCall 中覆盖用户、部门或 source_path 权限范围。
+        返回的工具至少包含知识库检索和候选原文读取；WebSearch/MCP 只在
+        Supervisor 策略和当前用户权限同时允许时添加。每个工具成功后都先更新
+        candidates/read_snapshots/used_tools，再持久化 Runtime Store，因此下游不需要
+        信任模型生成的“我已调用某工具”文本。
+        """
+
+        # 闭包固定本次请求的 ACL filters、candidate_k 和 min_score。模型可以
+        # 在 args_schema 允许范围内提供 query/mode/top_k，但无法在 ToolCall 中覆盖
+        # 用户、部门、source_path 或 section_path 等授权边界。
         async def knowledge_retrieval(query: str, mode: str = mode, top_k: int = top_k) -> str:
+            """在当前 ACL 下检索 Chunk，并登记后续可读取/可修改的文档候选。"""
+
             self._ensure_not_cancelled(plan.task_plan_id)
-            used_tools.add("knowledge_retrieval")
             docs = await retrieve_knowledge_docs(
                 settings=self._settings,
                 vector_retriever=self._vector_retriever,
@@ -495,8 +1006,12 @@ class DeepDocumentAgent:
                 )
             # 后续 read/update 只能引用这里登记的 doc_id；仅出现在模型文本中的
             # doc_id 不会进入 candidates，因此无法成为真实操作目标。
+            # 检索返回的是 Chunk，真实文档操作需要先按 doc_id 聚合。
+            # candidates 是当前 run 的服务端白名单，read_document() 只认这个映射。
             found = _document_candidates(docs)
             candidates.update({item["doc_id"]: item for item in found})
+            used_tools.add("knowledge_retrieval")
+            await persist_runtime_facts()
             return json.dumps(
                 {
                     "candidates": found,
@@ -506,8 +1021,9 @@ class DeepDocumentAgent:
             )
 
         async def read_document(doc_id: str) -> str:
+            """读取已登记候选的完整原文，并保存内容 SHA 作为并发基线。"""
+
             self._ensure_not_cancelled(plan.task_plan_id)
-            used_tools.add("knowledge_document_read")
             candidate = candidates.get(doc_id)
             if candidate is None:
                 raise AppServiceError("doc_id 不在当前 ACL 检索候选中")
@@ -523,6 +1039,10 @@ class DeepDocumentAgent:
                 content=content,
                 sha256=digest,
             )
+            used_tools.add("knowledge_document_read")
+            await persist_runtime_facts()
+            # 完整 content 返回给 Researcher，由其写入 StateBackend 的
+            # /workspace/research/.../source.md；Runtime Store 中仍只写 path/SHA。
             return json.dumps(
                 {
                     "doc_id": doc_id,
@@ -533,6 +1053,8 @@ class DeepDocumentAgent:
                 ensure_ascii=False,
             )
 
+        # StructuredTool 把 Pydantic args_schema 一起暴露给 LLM，但 Schema 只限制
+        # 输入形状；候选归属、ACL 和路径信任仍由上面的确定性代码验证。
         tools: list[BaseTool] = [
             StructuredTool.from_function(
                 coroutine=knowledge_retrieval,
@@ -555,8 +1077,11 @@ class DeepDocumentAgent:
                 missing_topics: list[str],
                 site: str | None = None,
             ) -> str:
+                """根据公开缺失主题构造外部查询，不将私有文档作为查询输入。"""
+
                 self._ensure_not_cancelled(plan.task_plan_id)
-                used_tools.add("web_search")
+                # deliverable_id 必须来自 Supervisor 已验证的规划，防止模型自行扩大
+                # 网络研究范围或为不存在的交付物消耗外部配额。
                 deliverable = next(
                     (
                         item
@@ -581,6 +1106,8 @@ class DeepDocumentAgent:
                         count=5,
                         site=site,
                     )
+                used_tools.add("web_search")
+                await persist_runtime_facts()
                 return json.dumps(
                     [item.model_dump(mode="json") for item in results],
                     ensure_ascii=False,
@@ -595,6 +1122,8 @@ class DeepDocumentAgent:
                 )
             )
         if _has_permission(user, PermissionCode.AGENT_TOOL_MCP):
+            # MCP 工具本身由 build_mcp_task_tools() 执行白名单和参数边界处理。
+            # 这里只再包装一层取消检查和 used_tools/Runtime 事实记录。
             for mcp_tool in await build_mcp_task_tools(self._settings):
                 original_coroutine = getattr(mcp_tool, "coroutine", None)
                 if original_coroutine is None:
@@ -605,14 +1134,23 @@ class DeepDocumentAgent:
                     _name=mcp_tool.name,
                     **kwargs: Any,
                 ) -> Any:
+                    """在原 MCP coroutine 外增加 TaskPlan 取消检查和成功工具记录。"""
+
                     self._ensure_not_cancelled(plan.task_plan_id)
+                    # 只有原工具成功返回后才记录 used_tools；异常的工具不应被伪装
+                    # 为已获得有效证据。_default 参数会为每次循环绑定当前工具，
+                    # 避免 Python 闭包的 late binding 让所有 wrapper 都调到最后一个 MCP 工具。
+                    result = await _original(**kwargs)
                     used_tools.add(_name)
-                    return await _original(**kwargs)
+                    await persist_runtime_facts()
+                    return result
 
                 tools.append(mcp_tool.model_copy(update={"coroutine": guarded_mcp_call}))
         return tools
 
     def _ensure_not_cancelled(self, task_plan_id: str) -> None:
+        """在每次工具外调用前重读 TaskPlan，取消后不再启动新的外部请求。"""
+
         latest = self._task_plan_store.load(task_plan_id)
         if latest.status == AgentTaskPlanStatus.CANCELLED:
             raise asyncio.CancelledError("文档 TaskPlan 已取消")
@@ -623,8 +1161,15 @@ class DeepDocumentAgent:
         plan: AgentTaskPlan,
         decision: DocumentWorkflowDecision,
     ) -> dict[str, Any]:
-        """把 Skill 和任务清单放进 StateBackend；不会创建真实知识库文件。"""
+        """把 Skill 和任务清单放进 StateBackend；不会创建真实知识库文件。
 
+        返回值是 ``create_deep_agent`` 初始 ``files`` State，key 是虚拟 Unix 风格路径，
+        value 是 Deep Agents 认识的 FileData。它们会进入加密 checkpoint，不会通过
+        ``Path.write_text()`` 落到 Windows 文件系统。
+        """
+
+        # __file__ 位于 services/agent_tasks，parents[2] 回到 fast_app，再定位工程
+        # 内置 Skills。这里只从真实文件系统读取受控 SKILL.md 模板。
         skills_root = Path(__file__).parents[2] / "agents" / "skills"
         files: dict[str, Any] = {
             "/workspace/task.json": create_file_data(
@@ -639,16 +1184,29 @@ class DeepDocumentAgent:
             )
         }
         for skill_name in ("document-research", "document-writing", "document-review"):
+            # 写入的 /skills/... 是 StateBackend 内的虚拟副本，SubAgent 只获得读权限。
             content = (skills_root / skill_name / "SKILL.md").read_text(encoding="utf-8")
             files[f"/skills/{skill_name}/SKILL.md"] = create_file_data(content)
         return files
 
 
+# ---------------------------------------------------------------------------
+# 无状态辅助函数：SubAgent 禁用、候选聚合、Checkpoint config 和输入边界
+# ---------------------------------------------------------------------------
+
+
 def _disabled_general_purpose_subagent() -> CompiledSubAgent:
-    """覆盖 Deep Agents 默认通用 Agent，避免它继承协调器的全部工具。"""
+    """覆盖 Deep Agents 默认通用 Agent，避免它继承协调器的全部工具。
+
+    Deep Agents 会默认提供 ``general-purpose``。如果只在 Prompt 中说“不要调用”，
+    工具仍存在于模型可选空间。用同名 CompiledSubAgent 显式覆盖后，即使
+    Coordinator 误调用它，也只会返回拒绝消息，不会获得 Researcher 工具。
+    """
 
     def refuse(_state: dict[str, Any]) -> dict[str, Any]:
-        return {"messages": [AIMessage(content="general-purpose 已禁用，请使用显式文档 SubAgent。")]} 
+        """用有效 LangGraph state update 明确告知 Coordinator 改用显式 SubAgent。"""
+
+        return {"messages": [AIMessage(content="general-purpose 已禁用，请使用显式文档 SubAgent。")]}
 
     return {
         "name": "general-purpose",
@@ -658,7 +1216,12 @@ def _disabled_general_purpose_subagent() -> CompiledSubAgent:
 
 
 def _document_candidates(docs: list[RetrievedDoc]) -> list[dict[str, Any]]:
-    """按 doc_id 聚合命中 Chunk，只暴露服务端可验证的文档候选。"""
+    """按 doc_id 聚合命中 Chunk，只暴露服务端可验证的文档候选。
+
+    Retriever 返回粒度是 Chunk，而 update/delete 的授权粒度是文档。该函数
+    使用 ``doc_id`` 去重，同时保留匹配 Chunk 数和短预览供 Researcher 选择；
+    缺少 doc_id/source_path 的索引结果不能成为可操作候选。
+    """
 
     candidates: dict[str, dict[str, Any]] = {}
     for doc in docs:
@@ -666,6 +1229,8 @@ def _document_candidates(docs: list[RetrievedDoc]) -> list[dict[str, Any]]:
         source_path = str(doc.metadata.get("source_path") or "").strip()
         if not doc_id or not source_path:
             continue
+        # setdefault 保留同一文档首个命中 Chunk 的标题/路径，后续 Chunk
+        # 只累加命中数和预览，不会生成重复文档候选。
         item = candidates.setdefault(
             doc_id,
             {
@@ -681,12 +1246,57 @@ def _document_candidates(docs: list[RetrievedDoc]) -> list[dict[str, Any]]:
     return list(candidates.values())
 
 
+def _persistent_candidates(
+    candidates: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Store 只保存恢复授权所需字段，不重复持久化私有 Chunk 摘要。
+
+    ``matched_chunks`` 仅在当前 Researcher 运行时帮助模型选择文档，不是
+    /retry 授权所必需的事实。去除它可避免将私有 Chunk 正文副本写入未加密 Store。
+    """
+
+    return {
+        doc_id: {
+            "doc_id": doc_id,
+            "source_path": str(candidate.get("source_path") or ""),
+            "title": candidate.get("title"),
+            "chunk_count": int(candidate.get("chunk_count") or 0),
+        }
+        for doc_id, candidate in candidates.items()
+    }
+
+
+def _checkpoint_config(
+    config: RunnableConfig | None,
+    *,
+    thread_id: str,
+) -> RunnableConfig:
+    """保留 LangSmith 配置，但强制覆盖调用方可能提供的 thread_id。
+
+    callbacks、tags、metadata 等上游 RunnableConfig 仍会传给子图，保持 LangSmith
+    trace 父子关系；只有 ``configurable.thread_id`` 必须由 Runtime 使用
+    ``document:{task_plan_id}`` 生成，防止请求跨任务读写 checkpoint。
+    """
+
+    merged: dict[str, Any] = dict(config or {})
+    configurable = dict(merged.get("configurable") or {})
+    configurable["thread_id"] = thread_id
+    merged["configurable"] = configurable
+    return merged  # type: ignore[return-value]
+
+
 def _validate_public_topic(
     topic: str,
     read_snapshots: dict[str, DocumentReadSnapshot],
 ) -> str:
-    """阻止模型把内部正文或路径伪装成 WebSearch 缺失主题。"""
+    """阻止模型把内部正文或路径伪装成 WebSearch 缺失主题。
 
+    该检查是确定性的出站数据边界：先规范化空白并限长，再拒绝显式
+    内部路径/ACL 标记，最后与已读私有正文比对。它不让 LLM 自己判断
+    “这段内容能否发往外网”。
+    """
+
+    # split/join 只规范化查询主题空白，不修改任务或私有文档本身。
     normalized = " ".join(topic.split())
     if not normalized or len(normalized) > 100:
         raise AppServiceError("WebSearch 缺失主题为空或过长")
@@ -694,12 +1304,18 @@ def _validate_public_topic(
     if any(marker in lowered for marker in ("runtime/", "runtime\\", ".md", ".txt", "allowed_departments")):
         raise AppServiceError("WebSearch 缺失主题包含内部路径或 ACL metadata")
     for snapshot in read_snapshots.values():
+        # 过短字符串容易偶然出现在文档中，因此只对较长的连续原文执行
+        # 直接匹配；路径和 ACL marker 无论长度都会在上方拒绝。
         if len(normalized) >= 20 and normalized in snapshot.content:
             raise AppServiceError("WebSearch 缺失主题包含私有文档原文")
     return normalized
 
 
 def _has_permission(user: CurrentUserContext, permission: PermissionCode) -> bool:
+    """判断当前用户是否可以把某类可选工具注入 Researcher。"""
+
+    # 管理员角色拥有工具权限；普通用户必须在当前重新加载的 permissions
+    # 中显式包含对应 PermissionCode。该判断不从模型输出或会话历史读取权限。
     return user.role in {"admin", "system_admin"} or permission.value in user.permissions
 
 

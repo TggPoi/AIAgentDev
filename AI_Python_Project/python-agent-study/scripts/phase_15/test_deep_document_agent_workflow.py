@@ -45,6 +45,7 @@ from fast_app.services.agent_tasks.deep_document_agent import (
     DeepDocumentAgentRunResult,
     DocumentReadSnapshot,
 )
+from fast_app.services.agent_tasks.deep_document_runtime import DeepDocumentRuntime
 from fast_app.services.agent_tasks.document_task_executor import DocumentTaskExecutor
 from langchain_core.callbacks import AsyncCallbackHandler
 
@@ -298,41 +299,41 @@ async def test_real_deep_agent() -> None:
             user_id="tool_admin",
             research_policy=AgentResearchPolicy(web_policy="disabled"),
         )
+        # 生产入口会在调用 DeepDocumentAgent 前创建进度容器；直接测试需模拟同一前置状态。
+        plan.final_output["document_progress"] = {"stage": "deep_agent_running", "events": []}
         store.save(plan)
-        agent = DeepDocumentAgent(
-            settings=settings,
-            vector_retriever=FakeRetriever(),
-            keyword_retriever=FakeRetriever(),
-            document_management_service=FakeManagementService(),  # type: ignore[arg-type]
-            task_plan_store=store,
-        )
-        trace_handler = RealModelTraceHandler()
-        result = await agent.run(
-            plan=plan,
-            decision=build_decision(),
-            user=build_user(),
-            mode="hybrid",
-            top_k=5,
-            candidate_k=None,
-            min_score=0.0,
-            filters=RetrievalFilters(can_read_all=True),
-            langchain_config={"callbacks": [trace_handler]},
-        )
+        runtime = await DeepDocumentRuntime.start(settings)
+        try:
+            agent = DeepDocumentAgent(
+                settings=settings,
+                vector_retriever=FakeRetriever(),
+                keyword_retriever=FakeRetriever(),
+                document_management_service=FakeManagementService(),  # type: ignore[arg-type]
+                task_plan_store=store,
+                runtime=runtime,
+            )
+            trace_handler = RealModelTraceHandler()
+            result = await agent.run(
+                plan=plan,
+                decision=build_decision(),
+                user=build_user(),
+                mode="hybrid",
+                top_k=5,
+                candidate_k=None,
+                min_score=0.0,
+                filters=RetrievalFilters(can_read_all=True),
+                langchain_config={"callbacks": [trace_handler]},
+            )
+        finally:
+            await runtime.release(plan.task_plan_id)
+            await runtime.close()
         assert result.workflow.approved_changes, result.workflow.model_dump(mode="json")
         proposal = result.workflow.approved_changes[0]
         assert proposal.candidate_doc_id == DOC_ID
         assert proposal.base_sha256 == sha256(ORIGINAL.encode("utf-8")).hexdigest()
         assert "knowledge_document_read" in result.workflow.used_tools
-        latest = store.load(plan.task_plan_id)
-        events = latest.final_output["document_progress"]["events"]
-        assert any(
-            event.get("event") == "agent_task_document_subagent_started"
-            for event in events
-        )
-        assert any(
-            event.get("event") == "agent_task_document_subagent_completed"
-            for event in events
-        )
+        assert result.resumed_from_checkpoint is False
+        assert result.checkpoint_record_version >= 1
         # Coordinator 与三个显式 SubAgent 各自受同一模型调用上限约束。
         assert trace_handler.call_count <= settings.agent_max_tool_calls * 4
         print(f"real_model_call_count={trace_handler.call_count}", flush=True)

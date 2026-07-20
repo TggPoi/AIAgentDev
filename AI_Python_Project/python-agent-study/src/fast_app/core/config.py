@@ -306,6 +306,18 @@ class Settings(BaseSettings):
         ge=1,
         alias="AGENT_DOCUMENT_MAX_TOTAL_DRAFT_CHARS",
     )
+    langgraph_aes_key_base64: str = Field(
+        default="",
+        alias="LANGGRAPH_AES_KEY_BASE64",
+        repr=False,
+        description="Deep Agent LangGraph checkpoint 的 Base64 编码 AES-256 密钥。",
+    )
+    agent_document_checkpoint_retention_days: int = Field(
+        default=7,
+        ge=1,
+        alias="AGENT_DOCUMENT_CHECKPOINT_RETENTION_DAYS",
+        description="运行中或失败的 Deep Agent checkpoint 最长保留天数。",
+    )
     agent_task_plan_dir: str = Field(
         default="runtime/agent-task-plans",
         alias="AGENT_TASK_PLAN_DIR",

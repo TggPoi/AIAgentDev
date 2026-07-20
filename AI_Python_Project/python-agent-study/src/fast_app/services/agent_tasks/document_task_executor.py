@@ -77,9 +77,6 @@ class _TaskPlanCancelledError(AppServiceError):
     pass
 
 
-_ACTIVE_DOCUMENT_TASK_PLAN_IDS: set[str] = set()
-
-
 class DocumentTaskExecutor:
     """只负责文档任务的 Tool Loop、确认和补偿状态。"""
 
@@ -132,6 +129,7 @@ class DocumentTaskExecutor:
         min_score: float,
         filters: RetrievalFilters,
         langchain_config_factory: LangChainConfigFactory | None = None,
+        resume: bool = False,
     ) -> AgentTaskPlan:
         """先判断 direct/agentic，再停在唯一的真实写入确认点。"""
 
@@ -200,6 +198,7 @@ class DocumentTaskExecutor:
             min_score=min_score,
             filters=filters,
             langchain_config_factory=langchain_config_factory,
+            resume=resume,
         )
 
     async def _execute_agentic_document_workflow(
@@ -214,14 +213,12 @@ class DocumentTaskExecutor:
         min_score: float,
         filters: RetrievalFilters,
         langchain_config_factory: LangChainConfigFactory | None,
+        resume: bool,
     ) -> AgentTaskPlan:
         """运行 Deep Agents 内容生产，再逐项收敛为现有 dry-run 步骤。"""
 
-        if plan.task_plan_id in _ACTIVE_DOCUMENT_TASK_PLAN_IDS:
-            raise AppServiceError("Agent task plan 当前仍在执行")
         if self._deep_document_agent is None:
             raise AppServiceError("DeepDocumentAgent 未装配")
-        _ACTIVE_DOCUMENT_TASK_PLAN_IDS.add(plan.task_plan_id)
         try:
             plan.user_id = plan.user_id or user.user_id
             plan.status = AgentTaskPlanStatus.RUNNING
@@ -272,6 +269,7 @@ class DocumentTaskExecutor:
                     if langchain_config_factory is not None
                     else None
                 ),
+                resume=resume,
             )
             workflow = run_result.workflow
             failed = list(workflow.failed_deliverables)
@@ -420,7 +418,15 @@ class DocumentTaskExecutor:
                         item.model_dump(mode="json")
                         for item in workflow.skipped_deliverables
                     ],
-                    "warnings": workflow.warnings,
+                    "warnings": list(
+                        dict.fromkeys(
+                            [
+                                *list(plan.final_output.get("warnings") or []),
+                                *run_result.checkpoint_warnings,
+                                *workflow.warnings,
+                            ]
+                        )
+                    ),
                     "used_tools": workflow.used_tools,
                     "evidence": workflow.evidence,
                     "document_progress": {
@@ -438,6 +444,7 @@ class DocumentTaskExecutor:
                 plan.status = AgentTaskPlanStatus.FAILED
                 plan.error = "复杂文档任务没有产生可确认动作"
                 plan.final_output["status"] = plan.status.value
+                await self._retain_agentic_checkpoint(plan)
                 self._task_plan_store.save(plan)
                 return plan
             plan.status = AgentTaskPlanStatus.WAITING_CONFIRMATION
@@ -449,6 +456,8 @@ class DocumentTaskExecutor:
                 }
             )
             self._task_plan_store.save(plan)
+            # TaskPlan JSON 已原子保存完整待确认正文；此后不再依赖虚拟工作区。
+            await self.release_agentic_checkpoint(plan)
             return plan
         except asyncio.CancelledError:
             if self._sync_cancelled_state(plan):
@@ -459,13 +468,12 @@ class DocumentTaskExecutor:
             self._task_plan_store.save(plan)
             raise
         except Exception as exc:
+            await self._retain_agentic_checkpoint(plan)
             plan.status = AgentTaskPlanStatus.FAILED
             plan.error = f"{type(exc).__name__}: {exc}"
             plan.final_output["status"] = plan.status.value
             self._task_plan_store.save(plan)
             raise
-        finally:
-            _ACTIVE_DOCUMENT_TASK_PLAN_IDS.discard(plan.task_plan_id)
 
     async def _prepare_agentic_proposal(
         self,
@@ -650,9 +658,6 @@ class DocumentTaskExecutor:
             document_actions=document_actions,
         )
 
-        if plan.task_plan_id in _ACTIVE_DOCUMENT_TASK_PLAN_IDS:
-            raise AppServiceError("Agent task plan 当前仍在执行")
-        _ACTIVE_DOCUMENT_TASK_PLAN_IDS.add(plan.task_plan_id)
         try:
             while True:
                 # 每轮上下文都包含此前 AIMessage 和 ToolMessage，因此依赖工具必须跨轮顺序产生。
@@ -926,9 +931,6 @@ class DocumentTaskExecutor:
             plan.final_output["status"] = plan.status.value
             self._task_plan_store.save(plan)
             raise
-        finally:
-            _ACTIVE_DOCUMENT_TASK_PLAN_IDS.discard(plan.task_plan_id)
-
     def _save_document_tool_progress(
         self,
         plan: AgentTaskPlan,
@@ -1157,13 +1159,28 @@ class DocumentTaskExecutor:
     ) -> AgentTaskPlan:
         """重新鉴权全部文档步骤，再交给 service 做整批执行和补偿。"""
 
-        if plan.task_plan_id in _ACTIVE_DOCUMENT_TASK_PLAN_IDS:
-            raise AppServiceError("文档 TaskPlan 当前仍在执行，不能重复确认")
-        _ACTIVE_DOCUMENT_TASK_PLAN_IDS.add(plan.task_plan_id)
-        try:
-            return await self._confirm_once(plan=plan, user=user)
-        finally:
-            _ACTIVE_DOCUMENT_TASK_PLAN_IDS.discard(plan.task_plan_id)
+        result = await self._confirm_once(plan=plan, user=user)
+        await self.release_agentic_checkpoint(result)
+        return result
+
+    async def release_agentic_checkpoint(self, plan: AgentTaskPlan) -> None:
+        """终态文档任务幂等释放 Deep Agent thread；direct 任务无需处理。"""
+
+        workflow = plan.final_output.get("document_workflow")
+        release = getattr(self._deep_document_agent, "release_checkpoint", None)
+        if (
+            callable(release)
+            and isinstance(workflow, dict)
+            and workflow.get("execution_mode") == "agentic"
+        ):
+            await release(plan)
+
+    async def _retain_agentic_checkpoint(self, plan: AgentTaskPlan) -> None:
+        """生产 Deep Agent 保留失败现场；旧测试替身没有此持久化接口。"""
+
+        retain = getattr(self._deep_document_agent, "retain_checkpoint", None)
+        if callable(retain):
+            await retain(plan)
 
     async def _confirm_once(
         self,

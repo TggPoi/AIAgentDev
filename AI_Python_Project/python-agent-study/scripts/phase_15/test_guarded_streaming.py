@@ -295,7 +295,7 @@ async def test_task_plan_control_contract() -> None:
     )
 
     class FakeExecutor:
-        def cancel(self, task_plan_id, user):
+        async def cancel(self, task_plan_id, user):
             assert task_plan_id == cancelled_plan.task_plan_id
             assert user.user_id == "user-test"
             return cancelled_plan

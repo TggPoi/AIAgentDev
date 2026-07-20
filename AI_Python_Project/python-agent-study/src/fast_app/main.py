@@ -29,6 +29,7 @@ from redis.asyncio import Redis
 
 from fast_app.components.retrievers.milvus_vector_retriever import build_milvus_uri
 from fast_app.db.session import create_database_engine, create_session_factory
+from fast_app.services.agent_tasks.deep_document_runtime import DeepDocumentRuntime
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -74,6 +75,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.db_session_factory = create_session_factory(app.state.db_engine)
     logger.info("PostgreSQL async engine 已创建")
 
+    if settings.agent_document_tools_enabled:
+        # Deep Agent 的 StateBackend.files 随加密 checkpoint 持久化；同一 runtime
+        # 在整个 FastAPI lifespan 内复用，避免每个请求重复创建 psycopg 连接池。
+        app.state.deep_document_runtime = await DeepDocumentRuntime.start(settings)
+        logger.info("Deep Agent PostgreSQL checkpoint/store 已创建")
+
     try:
         yield
     finally:
@@ -96,6 +103,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if redis_client is not None:
             await redis_client.aclose()
             logger.info("Redis client 已关闭")
+
+        deep_document_runtime = getattr(app.state, "deep_document_runtime", None)
+        if deep_document_runtime is not None:
+            await deep_document_runtime.close()
+            logger.info("Deep Agent PostgreSQL checkpoint/store 已关闭")
 
         db_engine = getattr(app.state, "db_engine", None)
         if db_engine is not None:

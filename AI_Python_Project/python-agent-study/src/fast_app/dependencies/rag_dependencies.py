@@ -35,6 +35,7 @@ from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor,
 from fast_app.services.research.agentic_research_executor import AgenticResearchExecutor
 from fast_app.services.agent_tasks.document_task_executor import DocumentTaskExecutor
 from fast_app.services.agent_tasks.deep_document_agent import DeepDocumentAgent
+from fast_app.services.agent_tasks.deep_document_runtime import DeepDocumentRuntime
 from fast_app.services.agent_tasks.document_supervisor_agent import DocumentSupervisorAgent
 from fast_app.services.research.research_evidence_evaluator import ResearchEvidenceEvaluator
 from fast_app.services.research.research_tool_loop import ResearchToolLoop
@@ -312,6 +313,7 @@ def get_knowledge_document_management_service(
 
 
 def get_agent_task_executor(
+    request: Request,
     settings: Settings = Depends(get_settings),
     vector_retriever: BaseRetriever = Depends(get_vector_retriever),
     keyword_retriever: BaseRetriever = Depends(get_keyword_retriever),
@@ -327,6 +329,17 @@ def get_agent_task_executor(
     prompt_guard: PromptGuardService = Depends(get_prompt_guard_service),
 ) -> AgentTaskExecutor:
     """提供 Agent TaskPlan 执行器。"""
+
+    deep_document_runtime = getattr(
+        request.app.state,
+        "deep_document_runtime",
+        None,
+    )
+    if settings.agent_document_tools_enabled and not isinstance(
+        deep_document_runtime,
+        DeepDocumentRuntime,
+    ):
+        raise AppServiceError("Deep Agent PostgreSQL checkpoint/store 未初始化")
 
     # 两条多 Agent 链路在依赖层显式装配，Facade 只负责按 task_kind 分派：
     # Research 使用父图 + Worker 子图；文档任务使用 Supervisor + Deep Agents。
@@ -365,6 +378,7 @@ def get_agent_task_executor(
             document_management_service=document_management_service,
             task_plan_store=task_plan_store,
             prompt_guard=prompt_guard,
+            runtime=deep_document_runtime,
         ),
     )
     return AgentTaskExecutor(

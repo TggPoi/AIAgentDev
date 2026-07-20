@@ -29,6 +29,7 @@
 |---|---|
 | `services/agent_tasks/document_supervisor_agent.py` | 用结构化 Qwen 输出判断 direct/agentic，并拆分交付物 |
 | `services/agent_tasks/deep_document_agent.py` | 装配 Deep Agents Coordinator、三个显式 SubAgent、虚拟工作区和只读工具 |
+| `services/agent_tasks/deep_document_runtime.py` | 管理加密 PostgreSQL checkpoint、可信运行事实、版本与过期清理 |
 | `domain/document_workflow.py` | 定义 Supervisor、Research、Draft、Review、Proposal 的 Pydantic 契约 |
 | `services/agent_tasks/document_change_plan_service.py` | 把 direct/agentic 建议统一转换成现有安全 dry-run |
 | `services/agent_tasks/document_task_executor.py` | 选择链路、复验模型结果、准备步骤、确认后调用确定性写入服务 |
@@ -74,6 +75,12 @@ Supervisor 不能生成可信 `doc_id`、文件路径、ACL 或写入参数。
 `DeepDocumentAgent.run()` 使用 `deepagents.create_deep_agent()` 创建一次任务隔离图，后端是
 `StateBackend`。因此 `/workspace` 和 `/skills` 都是当前 LangGraph state 中的虚拟文件，不是
 Windows 文件，也不是知识库目录。
+
+当前图同时注入 PostgreSQL Checkpointer。`StateBackend.files` 仍是 LangGraph State 的一部分，
+但每个节点完成后会使用 `durability="sync"` 先加密写入 PostgreSQL，再进入下一节点。因此应用
+重启后可以用稳定的 `thread_id=document:{task_plan_id}` 恢复虚拟文件、Todo、消息和结构化结果。
+Windows 默认 Proactor loop 不支持 psycopg 异步连接，工程使用官方同步 `PostgresSaver/PostgresStore`
+加一层 `asyncio.to_thread()` 适配；LangGraph 图和模型调用仍保持异步。
 
 Coordinator 可以调用框架内置 `task` 工具派发：
 
@@ -240,7 +247,7 @@ agent_task_document_action_prepared
 - Agent 创建或修改：`.md`、`.txt`；
 - PPTX/XLSX：继续支持导入、受控更新和检索，不允许 Agent 自由写 Office 文件；
 - Markdown：确认后整文档替换，不是 Chunk 级增量更新；
-- Deep Agents 工作区：只保存临时研究和草稿，不是最终文件系统；
+- Deep Agents 工作区：是加密 PostgreSQL checkpoint 中的可恢复中间状态，不是最终文件系统；
 - 真正写入、ES/Milvus 同步与回滚：继续由确定性 Service 完成。
 
 ## 9. 验收命令
@@ -251,6 +258,7 @@ $env:LANGSMITH_TRACING = "false"
 $env:LANGCHAIN_TRACING_V2 = "false"
 
 .\.venv\Scripts\python.exe scripts\phase_15\test_deep_document_agent_workflow.py
+.\.venv\Scripts\python.exe scripts\phase_15\test_deep_document_checkpoint_runtime.py
 .\.venv\Scripts\python.exe scripts\phase_15\test_llm_document_management_task.py
 .\.venv\Scripts\python.exe scripts\phase_15\test_agentic_research_orchestration.py
 .\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_sub_question_execution.py
@@ -261,6 +269,7 @@ $env:LANGCHAIN_TRACING_V2 = "false"
 
 ```powershell
 $env:RUN_REAL_LLM = "1"
+$env:REAL_LLM_WORKER_TIMEOUT_SECONDS = "360"
 .\.venv\Scripts\python.exe scripts\phase_15\test_deep_document_agent_workflow.py
 ```
 
@@ -743,7 +752,7 @@ AgentToolStep.output["action_request"]
 
 所以更准确地说：
 
-- `/workspace/drafts/...` 虚拟文件是临时内存状态。
+- `/workspace/drafts/...` 虚拟文件属于 LangGraph State，并以 AES 加密 checkpoint 持久化到 PostgreSQL。
 - 最终正文会从虚拟文件提取到 Pydantic 对象。
 - 最终正文随后保存在 TaskPlan JSON 的 `action_request.content` 中。
 - 当前 `final_output.draft_results` 也会保存草稿正文，因此正文可能在 TaskPlan JSON 中出现不止一次。
@@ -854,13 +863,15 @@ Update 保留原来的权限 sidecar，模型不能通过修改正文改变 ACL�
 
 ## 6. 是否写入 PostgreSQL
 
-这条 `.md/.txt` 文档操作链路目前不会把文档正文写入 PostgreSQL。
+这条 `.md/.txt` 文档操作链路不会把 PostgreSQL 当作最终文档库，但执行期间的原文、草稿和
+虚拟文件会进入加密 LangGraph checkpoint；到达 `waiting_confirmation` 后释放 checkpoint，
+最终待确认正文继续按现有契约保存在 TaskPlan JSON。
 
 实际存储关系是：
 
 | 数据                | 存储位置                                      |
 | ------------------- | --------------------------------------------- |
-| Deep Agent 虚拟文件 | 临时 LangGraph State                          |
+| Deep Agent 虚拟文件 | AES 加密的 PostgreSQL LangGraph checkpoint    |
 | 等待确认的完整正文  | TaskPlan runtime JSON                         |
 | 知识库源文档        | `KNOWLEDGE_BASE_DIR` 下的真实 `.md/.txt` 文件 |
 | 全文检索 Chunk      | Elasticsearch                                 |
@@ -908,7 +919,8 @@ backend=StateBackend()
 - `/workspace/drafts/...`。
 - Writer、Reviewer、Coordinator 的结构化结果。
 
-当前没有配置外部 State Store 或持久化 Checkpointer，因此虚拟工作区本身是当前执行过程中的临时内存状态。
+当前已经配置 PostgreSQL Checkpointer，因此虚拟工作区可在进程中断后按同一 `thread_id` 恢复。
+服务端候选、读取 SHA 和 `record_version` 另存到 PostgreSQL Store；完整正文不在该明文事实记录中重复保存。
 
 ## Deep Agent 结束后
 
@@ -1013,7 +1025,7 @@ Markdown 人工审查视图还会保存：
 
 ```
 Deep Agent 执行期间：
-  LangGraph State
+  AES 加密 PostgreSQL LangGraph checkpoint
   ├─ 原始正文
   ├─ 研究材料
   └─ 全部草稿
@@ -1032,4 +1044,51 @@ Deep Agent 执行期间：
 
 所以准确结论是：
 
-> 虚拟工作区本身是临时内存状态，但进入等待确认阶段后，Writer 草稿和最终批准正文都会完整写入 TaskPlan runtime JSON。当前还会因为 `draft_results` 和 `action_request` 同时保存正文而产生重复存储。
+> 虚拟工作区现在可通过加密 PostgreSQL checkpoint 恢复；进入等待确认阶段后，Writer 草稿和最终批准正文仍会完整写入 TaskPlan runtime JSON。checkpoint 随后释放，确认接口不再依赖 Deep Agent 工作区。
+
+## 11. 2026-07-19 checkpoint 与断点恢复实现
+
+启动前必须配置专用 AES-256 密钥：
+
+```powershell
+$bytes = New-Object byte[] 32
+[System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+$env:LANGGRAPH_AES_KEY_BASE64 = [Convert]::ToBase64String($bytes)
+```
+
+运行机制：
+
+```text
+FastAPI lifespan
+→ 复用 PostgreSQL Saver/Store 连接池
+→ Deep Agent 首次执行写入稳定 thread_id
+→ 每个节点以 durability="sync" 同步 checkpoint
+→ 失败保留 7 天
+→ /retry 重新鉴权并从同一 thread 恢复
+→ waiting_confirmation/completed/cancelled 释放 thread
+```
+
+`/retry`、`/confirm` 和同一文档 TaskPlan 的首次 agentic 执行共用进程级
+`task_plan_id → asyncio.Lock`。第二个并发请求不会排队后重复运行，而是返回 HTTP 409 和
+`AGENT_TASK_PLAN_BUSY`。运行事实使用 `record_version` 递增；当前单进程由锁串行更新，未来多
+Worker 部署时应升级为数据库租约或真正的条件更新 CAS。
+
+恢复前还会比较当前 ACL 指纹和已读取源文件 SHA：权限或源文件变化时删除旧 thread 并在当前
+安全边界下完整重启；新格式 TaskPlan 声明 checkpoint 但数据缺失、损坏或无法解密时返回
+`DOCUMENT_AGENT_CHECKPOINT_UNAVAILABLE`，不会静默重新调用模型。
+
+### 11.1 真实模型验收结果
+
+2026-07-19 使用工程实际 Qwen 配置执行 Deep Agent 文档工作流，结果如下：
+
+```text
+Exit code: 0
+Wall time: 108.5 seconds
+real_model_call_count=17
+deep_document_agent_workflow=passed
+```
+
+该结果证明真实模型链路能够完成 Researcher、Writer、Reviewer 和 Coordinator
+的当前工作流。checkpoint 的加密、进程重建后恢复、精确节点续跑、ACL/源文件
+变化后安全重启和同任务并发保护，由 `test_deep_document_checkpoint_runtime.py` 的真实
+PostgreSQL 回归测试覆盖。
