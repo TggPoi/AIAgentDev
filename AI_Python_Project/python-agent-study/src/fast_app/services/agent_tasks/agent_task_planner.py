@@ -21,6 +21,9 @@ from fast_app.domain.agent_task_plan import (
     AgentTaskSubQuestion,
     AgentTaskType,
 )
+from fast_app.graph.research.agentic_research_graph import (
+    validate_research_dependencies,
+)
 
 
 logger = get_logger(__name__)
@@ -351,6 +354,21 @@ class AgentTaskPlanner:
         )
         if not sub_questions:
             # 没有合法子问题时不能继续信任 LLM plan，否则后续只能执行空壳任务。
+            return self._plan_with_rules(query, user_id, research_policy)
+
+        # sub_question_id 和 depends_on 都来自 LLM，不能等到用户确认后才发现
+        # `sqsq_1`、不存在依赖或循环依赖。这里复用执行图的同一套确定性校验；
+        # 任何非法图都整体丢弃并切换规则兜底计划，避免“猜测修正”错误的 ID。
+        try:
+            validate_research_dependencies(sub_questions)
+        except ValueError as exc:
+            logger.warning(
+                "agent_task_planner %s",
+                format_log_fields(
+                    event="agent_task_planner.llm.invalid_dependency_graph",
+                    reason=str(exc),
+                ),
+            )
             return self._plan_with_rules(query, user_id, research_policy)
 
         return self._build_plan(

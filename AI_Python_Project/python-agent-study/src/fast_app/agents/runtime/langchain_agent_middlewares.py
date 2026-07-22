@@ -90,15 +90,34 @@ def build_default_create_agent_middlewares() -> list[AgentMiddleware]:
 
 def build_document_deep_agent_middlewares(
     settings: Settings,
+    *,
+    model_run_limit: int | None = None,
+    tool_run_limits: dict[str, int] | None = None,
 ) -> list[AgentMiddleware]:
-    """复用已有安全、预算和日志 Middleware，不复制 Deep Agents 内置能力。"""
+    """复用框架安全与预算 Middleware，并可限制指定文档工具的单次调用数。
+
+    ``tool_run_limits`` 主要供 Researcher 使用。例如限制重复检索时，仍由
+    LangChain 官方 ``ToolCallLimitMiddleware`` 返回可继续处理的 ToolMessage，
+    不在业务工具中重复实现另一套计数器。
+    """
 
     return [
         *build_agent_safety_middlewares(),
+        # 默认模型循环使用 AGENT_MAX_STEPS；只有负责派发多个子 Agent 的
+        # Coordinator 会显式传入更高上限。工具总预算始终独立使用
+        # AGENT_MAX_TOOL_CALLS，不能把高上限扩散到每个 SubAgent。
         *build_agent_limit_middlewares(
             settings,
-            model_run_limit=settings.agent_max_tool_calls,
+            model_run_limit=model_run_limit,
         ),
+        *[
+            ToolCallLimitMiddleware(
+                tool_name=tool_name,
+                run_limit=run_limit,
+                exit_behavior="continue",
+            )
+            for tool_name, run_limit in (tool_run_limits or {}).items()
+        ],
         log_agent_model_call,
     ]
 

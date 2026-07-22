@@ -143,6 +143,14 @@ class Settings(BaseSettings):
         default=True,
         alias="PROMPT_GUARD_ENABLED",
     )
+    prompt_guard_retrieved_document_check_enabled: bool = Field(
+        default=True,
+        alias="PROMPT_GUARD_RETRIEVED_DOCUMENT_CHECK_ENABLED",
+        description=(
+            "是否检查检索返回的文档正文；关闭后跳过逐 Chunk 的规则和 LLM 分类，"
+            "但不影响用户输入与模型输出的 Prompt Guard。"
+        ),
+    )
 
     prompt_guard_mode: str = Field(
         default="rule",
@@ -297,9 +305,23 @@ class Settings(BaseSettings):
         alias="AGENT_DOCUMENT_MAX_REVISION_ROUNDS",
     )
     agent_document_worker_timeout_seconds: float = Field(
-        default=180.0,
+        default=300.0,
         gt=0.0,
         alias="AGENT_DOCUMENT_WORKER_TIMEOUT_SECONDS",
+        description=(
+            "一次复杂文档 Deep Agent 工作流的总墙钟超时秒数；局部模型步骤和工具"
+            "调用仍由各自预算限制，默认值覆盖真实检索、写作、审查和最终汇总。"
+        ),
+    )
+    agent_document_subagent_max_steps: int = Field(
+        default=12,
+        ge=3,
+        le=20,
+        alias="AGENT_DOCUMENT_SUBAGENT_MAX_STEPS",
+        description=(
+            "每个文档 Researcher、Writer 或 Reviewer 在一次运行中允许的模型调用步数；"
+            "包含 Deep Agents 虚拟文件读写后的后续决策，不影响普通 Agent 的全局步数。"
+        ),
     )
     agent_document_max_total_draft_chars: int = Field(
         default=400_000,

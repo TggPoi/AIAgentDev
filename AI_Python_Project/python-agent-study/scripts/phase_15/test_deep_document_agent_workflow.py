@@ -44,10 +44,14 @@ from fast_app.services.agent_tasks.deep_document_agent import (
     DeepDocumentAgent,
     DeepDocumentAgentRunResult,
     DocumentReadSnapshot,
+    _DocumentCoordinatorProgressMiddleware,
 )
 from fast_app.services.agent_tasks.deep_document_runtime import DeepDocumentRuntime
 from fast_app.services.agent_tasks.document_task_executor import DocumentTaskExecutor
+from fast_app.services.agent_tasks.document_supervisor_agent import DocumentSupervisorAgent
+from langchain.agents.middleware.model_call_limit import ModelCallLimitExceededError
 from langchain_core.callbacks import AsyncCallbackHandler
+from langchain_core.messages import ToolMessage
 
 
 ORIGINAL = "# Damage Rules\n\nBase damage is attack minus defense.\n"
@@ -202,6 +206,13 @@ class StubDeepAgent:
         )
 
 
+class TimeoutDeepAgent:
+    """模拟外部模型链路超过文档 Worker 总墙钟预算。"""
+
+    async def run(self, **kwargs):
+        raise TimeoutError("document worker timed out")
+
+
 def build_decision() -> DocumentWorkflowDecision:
     return DocumentWorkflowDecision(
         execution_mode="agentic",
@@ -281,6 +292,141 @@ async def test_deterministic_boundary() -> None:
         )
 
 
+async def test_recoverable_document_failure_returns_task_plan() -> None:
+    """可重试的模型/超时错误应返回 failed TaskPlan，而不是冒泡成通用 500。"""
+
+    with TemporaryDirectory() as temp_dir:
+        settings = Settings(
+            _env_file=None,
+            OPENAI_API_KEY="test-key",
+            AGENT_DOCUMENT_TOOLS_ENABLED=True,
+            AGENT_TASK_PLAN_DIR=temp_dir,
+        )
+        store = AgentTaskPlanStore(settings)
+        plan = AgentTaskPlanner(settings).build_document_management_plan(
+            query="Create a researched document",
+            user_id="tool_admin",
+            research_policy=AgentResearchPolicy(web_policy="disabled"),
+        )
+        store.save(plan)
+        executor = DocumentTaskExecutor(
+            settings=settings,
+            vector_retriever=FakeRetriever(),
+            keyword_retriever=FakeRetriever(),
+            document_management_service=FakeManagementService(),  # type: ignore[arg-type]
+            tool_permission_service=FakePermissionService(),  # type: ignore[arg-type]
+            tool_audit_service=FakeAuditService(),  # type: ignore[arg-type]
+            task_plan_store=store,
+            supervisor_agent=StubSupervisor(),  # type: ignore[arg-type]
+            deep_document_agent=TimeoutDeepAgent(),  # type: ignore[arg-type]
+        )
+        result = await executor.execute(
+            plan=plan,
+            user=build_user(),
+            mode="hybrid",
+            top_k=5,
+            candidate_k=None,
+            min_score=0.0,
+            filters=RetrievalFilters(can_read_all=True),
+        )
+        assert result.status == AgentTaskPlanStatus.FAILED
+        assert result.error == "TimeoutError: document worker timed out"
+
+
+async def test_subagent_model_limit_isolated_as_tool_failure() -> None:
+    """Reviewer 预算耗尽只能失败当前 task，不能让整个 Deep Agent 图返回 500。"""
+
+    with TemporaryDirectory() as temp_dir:
+        settings = Settings(
+            _env_file=None,
+            OPENAI_API_KEY="test-key",
+            AGENT_TASK_PLAN_DIR=temp_dir,
+        )
+        store = AgentTaskPlanStore(settings)
+        plan = AgentTaskPlanner(settings).build_document_management_plan(
+            query="Create a reviewed document",
+            user_id="tool_admin",
+            research_policy=AgentResearchPolicy(web_policy="disabled"),
+        )
+        plan.final_output["document_progress"] = {"events": []}
+        store.save(plan)
+        middleware = _DocumentCoordinatorProgressMiddleware(store, plan.task_plan_id)
+
+        class Request:
+            tool_call = {
+                "id": "task-reviewer-1",
+                "name": "task",
+                "args": {"subagent_type": "document-reviewer"},
+            }
+
+        async def exhausted_handler(_request):
+            raise ModelCallLimitExceededError(
+                thread_count=12,
+                run_count=12,
+                thread_limit=None,
+                run_limit=12,
+            )
+
+        result = await middleware.awrap_tool_call(Request(), exhausted_handler)
+        assert isinstance(result, ToolMessage)
+        assert "SUBAGENT_MODEL_CALL_LIMIT_EXCEEDED" in str(result.content)
+        latest = store.load(plan.task_plan_id)
+        event = latest.final_output["document_progress"]["events"][-1]
+        assert event["event"] == "agent_task_document_subagent_failed"
+        assert event["error_code"] == "SUBAGENT_MODEL_CALL_LIMIT_EXCEEDED"
+
+
+async def test_supervisor_collapses_internal_agent_stages() -> None:
+    """一个目标文件的研究、写作、审查是阶段，不是三个独立交付物。"""
+
+    settings = Settings(_env_file=None, OPENAI_API_KEY="test-key")
+    staged = DocumentWorkflowDecision(
+        execution_mode="agentic",
+        objective="创建 development/example.md 并完成研究、写作和审查",
+        deliverables=[
+            DocumentDeliverable(
+                deliverable_id="research",
+                title="研究证据",
+                operation="create",
+                objective="收集证据",
+                required_capabilities=["knowledge_base_search"],
+            ),
+            DocumentDeliverable(
+                deliverable_id="draft",
+                title="文档初稿",
+                operation="create",
+                objective="编写草稿",
+                depends_on=["research"],
+                required_capabilities=["document_writing"],
+            ),
+            DocumentDeliverable(
+                deliverable_id="review",
+                title="审查方案",
+                operation="create",
+                objective="审查草稿",
+                depends_on=["draft"],
+                required_capabilities=["document_review"],
+            ),
+        ],
+        web_policy="fallback",
+        reason="需要三个角色协作",
+    )
+    normalized = DocumentSupervisorAgent(settings).validate_saved_decision(
+        staged,
+        allowed_web_policy="fallback",
+        original_query="请创建 development/example.md，并由 Researcher、Writer、Reviewer 处理。",
+    )
+    assert len(normalized.deliverables) == 1
+    deliverable = normalized.deliverables[0]
+    assert deliverable.target_hint == "development/example.md"
+    assert deliverable.depends_on == []
+    assert set(deliverable.required_capabilities) == {
+        "knowledge_base_search",
+        "document_writing",
+        "document_review",
+    }
+
+
 async def test_real_deep_agent() -> None:
     with TemporaryDirectory() as temp_dir:
         settings = get_settings().model_copy(
@@ -334,13 +480,20 @@ async def test_real_deep_agent() -> None:
         assert "knowledge_document_read" in result.workflow.used_tools
         assert result.resumed_from_checkpoint is False
         assert result.checkpoint_record_version >= 1
-        # Coordinator 与三个显式 SubAgent 各自受同一模型调用上限约束。
-        assert trace_handler.call_count <= settings.agent_max_tool_calls * 4
+        # Coordinator 需要派发多个 task，可使用总工具预算；三个显式
+        # SubAgent 的各自循环仍严格使用 AGENT_MAX_STEPS。
+        assert trace_handler.call_count <= (
+            settings.agent_max_tool_calls
+            + settings.agent_document_subagent_max_steps * 3
+        )
         print(f"real_model_call_count={trace_handler.call_count}", flush=True)
 
 
 async def main() -> None:
     await test_deterministic_boundary()
+    await test_recoverable_document_failure_returns_task_plan()
+    await test_subagent_model_limit_isolated_as_tool_failure()
+    await test_supervisor_collapses_internal_agent_stages()
     if os.getenv("RUN_REAL_LLM") == "1":
         await test_real_deep_agent()
     print("deep_document_agent_workflow=passed")

@@ -69,7 +69,11 @@ class DocumentWorkflowDecision(BaseModel):
         description="Supervisor 从用户请求中提炼出的整体文档任务目标。",
     )
     deliverables: list[DocumentDeliverable] = Field(
-        description="agentic 模式下需要完成的独立交付物；direct 模式下应为空。"
+        description=(
+            "agentic 模式下最终要创建、更新或删除的独立文档交付物；Researcher、"
+            "Writer、Reviewer 是每个交付物内部的处理阶段，禁止拆成独立交付物；"
+            "direct 模式下应为空。"
+        )
     )
     web_policy: Literal["disabled", "fallback", "required"] = Field(
         default="disabled",

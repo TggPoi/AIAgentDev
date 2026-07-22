@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from collections.abc import Iterable
@@ -112,6 +113,10 @@ RISK_LEVEL_ORDER = {
     PromptRiskLevel.HIGH: 2,
     PromptRiskLevel.CRITICAL: 3,
 }
+
+# 一次检索通常返回多个 Chunk。LLM 安全分类彼此独立，可以并发，但必须限制
+# 并发度，避免一个请求把外部分类模型的连接池和限流额度瞬间占满。
+MAX_PARALLEL_DOCUMENT_CLASSIFICATIONS = 4
 
 
 PROMPT_GUARD_CLASSIFIER_SYSTEM_PROMPT = """你是一个 Prompt Injection 安全分类器。
@@ -251,14 +256,29 @@ class PromptGuardService:
     ) -> list[RetrievedDoc]:
         """过滤包含间接 Prompt Injection 指令的检索文档。"""
 
-        if not self.enabled or not docs:
+        # 文档正文分类会按 Chunk 调用安全模型，是检索链路中最明显的可选延迟。
+        # 该开关只跳过召回正文检查，不关闭用户输入和最终输出防护。
+        if (
+            not self.enabled
+            or not self.settings.prompt_guard_retrieved_document_check_enabled
+            or not docs
+        ):
             return docs
+
+        # 原实现逐个 await：10 个 Chunk、单次分类约 8 秒时，仅 Guard 就需要
+        # 约 80 秒。分类之间没有数据依赖，因此用有界并发执行；gather 的返回
+        # 顺序与 docs 一致，后续证据排序和检索排名不会被完成先后打乱。
+        semaphore = asyncio.Semaphore(MAX_PARALLEL_DOCUMENT_CLASSIFICATIONS)
+
+        async def classify(doc: RetrievedDoc) -> PromptGuardResult:
+            async with semaphore:
+                return await self.classify_retrieved_doc(doc, source=source)
+
+        results = await asyncio.gather(*(classify(doc) for doc in docs))
 
         safe_docs: list[RetrievedDoc] = []
         blocked_doc_ids: list[str] = []
-
-        for doc in docs:
-            result = await self.classify_retrieved_doc(doc, source=source)
+        for doc, result in zip(docs, results, strict=True):
             if result.should_block:
                 blocked_doc_ids.append(doc.id)
                 self.audit_guard_result(

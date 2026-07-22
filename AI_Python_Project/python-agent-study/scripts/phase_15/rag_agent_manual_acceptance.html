@@ -199,6 +199,10 @@
         <input id="topK" type="number" min="1" max="20" value="5" />
       </div>
     </div>
+    <label>
+      <input id="allowWebFallback" type="checkbox" style="width:auto" />
+      允许本次任务在本地证据不足时联网检索
+    </label>
     <label for="query">query</label>
     <textarea id="query">请分析 https://example.com 这个页面说明了什么，并结合知识库中的 RAG Agent 工具调用设计，说明 Fetch MCP 在当前系统中的作用。</textarea>
     <div class="row">
@@ -209,7 +213,12 @@
       <button id="cancelPlanBtn" class="danger" disabled>取消 TaskPlan</button>
       <button id="retryPlanBtn" class="secondary" disabled>重试 TaskPlan</button>
       <button id="loadPlanBtn" class="secondary" disabled>读取 TaskPlan</button>
+      <button id="exportBtn" class="secondary">导出当前验收快照</button>
       <span class="status" id="taskStatus">无 TaskPlan</span>
+    </div>
+    <div class="row">
+      <input id="manualTaskPlanId" placeholder="已有 TaskPlan ID（用于失败或中断后的恢复验收）" />
+      <button id="useTaskPlanBtn" class="secondary">加载已有 TaskPlan</button>
     </div>
   </section>
 
@@ -237,6 +246,8 @@
   let currentTaskPlanId = "";
   let currentConfirmEndpoint = "";
   let streamController = null;
+  let requestInFlight = false;
+  let lastStatusEventSignature = "";
 
   if (accessToken) {
     $("authStatus").textContent = "已加载本地 token";
@@ -261,6 +272,7 @@
       mode: $("mode").value,
       top_k: Number($("topK").value || 5),
       min_score: 0,
+      allow_web_fallback: $("allowWebFallback").checked,
       filters: {source_path: null, section_path: []}
     };
   }
@@ -297,13 +309,36 @@
     $("taskStatus").textContent = currentTaskPlanId
       ? `${status || "task_plan"}: ${currentTaskPlanId}`
       : "无 TaskPlan";
-    $("confirmBtn").disabled = !currentTaskPlanId;
+    $("confirmBtn").disabled = !currentTaskPlanId || requestInFlight;
     $("cancelPlanBtn").disabled = !currentTaskPlanId;
-    $("retryPlanBtn").disabled = !currentTaskPlanId;
+    $("retryPlanBtn").disabled = !currentTaskPlanId || requestInFlight;
     $("loadPlanBtn").disabled = !currentTaskPlanId;
     if (currentTaskPlanId) {
       loadTaskPlanMarkdown();
     }
+  }
+
+  // 验收页面一次只允许一个聊天、确认或重试请求运行。否则多个 SSE
+  // 响应会同时改写全局 TaskPlan，人工看到的状态就可能来自另一条请求。
+  function beginRequest() {
+    if (requestInFlight) {
+      log("已有请求正在执行，请先等待完成或停止流式请求。");
+      return false;
+    }
+    requestInFlight = true;
+    $("nonStreamBtn").disabled = true;
+    $("streamBtn").disabled = true;
+    $("confirmBtn").disabled = true;
+    $("retryPlanBtn").disabled = true;
+    return true;
+  }
+
+  function endRequest() {
+    requestInFlight = false;
+    $("nonStreamBtn").disabled = false;
+    $("streamBtn").disabled = false;
+    $("confirmBtn").disabled = !currentTaskPlanId;
+    $("retryPlanBtn").disabled = !currentTaskPlanId;
   }
 
   async function loadTaskPlanMarkdown() {
@@ -368,6 +403,7 @@
   });
 
   $("nonStreamBtn").addEventListener("click", async () => {
+    if (!beginRequest()) return;
     log("请求 /rag/chat ...", false);
     setAnswer("");
     setTaskPlan("", "", "");
@@ -383,10 +419,13 @@
       setTaskPlan(data.agent_task_plan_id, data.task_confirm_endpoint, data.agent_task_status);
     } catch (error) {
       log(String(error), false);
+    } finally {
+      endRequest();
     }
   });
 
   $("streamBtn").addEventListener("click", async () => {
+    if (!beginRequest()) return;
     log("请求 /rag/chat/stream/events ...", false);
     setAnswer("");
     setTaskPlan("", "", "");
@@ -410,6 +449,7 @@
     } finally {
       $("stopStreamBtn").disabled = true;
       streamController = null;
+      endRequest();
     }
   });
 
@@ -421,22 +461,51 @@
 
   $("confirmBtn").addEventListener("click", async () => {
     if (!currentTaskPlanId) return;
+    if (!beginRequest()) return;
     log(`确认并流式执行 ${currentTaskPlanId} ...`, false);
     setAnswer("");
+    streamController = new AbortController();
+    $("stopStreamBtn").disabled = false;
     try {
       const endpoint = `/agent/task-plans/${currentTaskPlanId}/confirm/stream`;
       const response = await fetch(`${baseUrl()}${endpoint}`, {
         method: "POST",
         headers: headers(),
-        body: JSON.stringify({confirmed: true})
+        body: JSON.stringify({confirmed: true}),
+        signal: streamController.signal
       });
       if (!response.ok || !response.body) {
         throw new Error(`${response.status} ${response.statusText}\n${await response.text()}`);
       }
       await readSse(response.body);
     } catch (error) {
-      log(String(error), false);
+      if (error.name !== "AbortError") {
+        log(String(error));
+      }
+    } finally {
+      $("stopStreamBtn").disabled = true;
+      streamController = null;
+      endRequest();
     }
+  });
+
+  $("exportBtn").addEventListener("click", () => {
+    const snapshot = {
+      exported_at: new Date().toISOString(),
+      api_base_url: baseUrl(),
+      request: chatBody(),
+      task_plan_id: currentTaskPlanId || null,
+      task_status: $("taskStatus").textContent,
+      answer: $("answerBox").textContent,
+      events: $("logBox").textContent,
+      task_plan_markdown: $("planBox").textContent
+    };
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], {type: "application/json"});
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `rag-agent-acceptance-${Date.now()}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
   });
 
   $("cancelPlanBtn").addEventListener("click", async () => {
@@ -457,6 +526,7 @@
 
   $("retryPlanBtn").addEventListener("click", async () => {
     if (!currentTaskPlanId) return;
+    if (!beginRequest()) return;
     log(`从最近完整检查点重试 ${currentTaskPlanId} ...`, false);
     try {
       const response = await fetch(
@@ -468,6 +538,8 @@
       setTaskPlan(data.task_plan_id, "", data.status);
     } catch (error) {
       log(String(error), false);
+    } finally {
+      endRequest();
     }
   });
 
@@ -482,6 +554,13 @@
     } catch (error) {
       log(String(error), false);
     }
+  });
+
+  $("useTaskPlanBtn").addEventListener("click", async () => {
+    const taskPlanId = $("manualTaskPlanId").value.trim();
+    if (!taskPlanId) return;
+    setTaskPlan(taskPlanId, "", "manual_selected");
+    $("loadPlanBtn").click();
   });
 
   async function readSse(body) {
@@ -519,6 +598,19 @@
     try {
       data = raw ? JSON.parse(raw) : {};
     } catch {}
+
+    // 长任务轮询可能连续返回完全相同的 running 状态。只去掉相邻重复项，
+    // 状态真正变化后仍会完整记录，避免日志被心跳事件淹没。
+    if (event === "agent_task_status") {
+      const signature = JSON.stringify({
+        task_plan_id: data.task_plan_id,
+        status: data.status
+      });
+      if (signature === lastStatusEventSignature) return;
+      lastStatusEventSignature = signature;
+    } else {
+      lastStatusEventSignature = "";
+    }
 
     log({event, data});
     if (event === "answer_delta") {

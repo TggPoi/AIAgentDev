@@ -207,11 +207,17 @@ class ResearchToolLoop:
                     # 模型明确停止调用工具后，跳出循环，随后用已成功的调用统一生成答案。
                     break
 
+                # LLM 不负责强制预算，可能在只剩 1 次调用时仍返回 2~3 个并行
+                # ToolCall。拒绝整个批次会浪费最后一次合法调用（尤其会让 Web
+                # fallback 永远没有机会执行），因此按模型给出的稳定顺序只保留
+                # 预算能够容纳的前 N 项。未保留项没有真正执行，也不计入调用数。
+                remaining_calls = max_tool_calls - call_count
+                selections = selections[:remaining_calls]
                 batch_size = len(selections)
-                # 一个批次中的每个 ToolCall 都计入总预算，即使该批次随后因不安全而被拒绝，
-                # 也避免模型反复提交同一非法批次而无限消耗轮次。
+                # 一个批次中的每个实际候选 ToolCall 都计入总预算；即使随后因
+                # 未注册或并行不安全被拒绝，也避免模型重复提交非法批次。
                 call_count += batch_size
-                # 先整体校验再启动协程：未知工具、超额调用或含串行工具时，本轮一个也不执行。
+                # 先整体校验再启动协程：未知工具或含串行工具时，本轮一个也不执行。
                 batch_error = parallel_batch_error(
                     tool_names=[
                         str(item.get("selected_tool") or "") for item in selections
@@ -219,7 +225,7 @@ class ResearchToolLoop:
                     registered_tool_names={tool.name for tool in available_tools},
                     parallel_safe_tool_names=PARALLEL_SAFE_TASK_TOOL_NAMES,
                     max_parallel_calls=self._settings.agent_max_parallel_tool_calls,
-                    remaining_calls=max_tool_calls - (call_count - batch_size),
+                    remaining_calls=remaining_calls,
                 )
                 if batch_error:
                     # 被拒绝的调用仍写入 trace，供下一轮模型根据 ToolMessage/轨迹调整方案。

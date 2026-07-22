@@ -34,7 +34,8 @@ from deepagents.backends.utils import create_file_data
 from deepagents.middleware.permissions import FilesystemPermission
 from deepagents.middleware.subagents import CompiledSubAgent, SubAgent
 from langchain.agents.middleware import AgentMiddleware
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain.agents.middleware.model_call_limit import ModelCallLimitExceededError
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langchain_core.tools import BaseTool, StructuredTool
 from langchain_openai import ChatOpenAI
@@ -217,6 +218,35 @@ class _DocumentCoordinatorProgressMiddleware(_TaskPlanCancellationMiddleware):
         )
         try:
             result = await handler(request)
+        except ModelCallLimitExceededError as exc:
+            # 模型调用上限是“当前 SubAgent 的预算耗尽”，不是权限、取消或
+            # Checkpoint 损坏等任务级异常。把它转换成 task 工具的失败结果，
+            # Coordinator 才能记录 failed_deliverables，并继续处理无依赖的交付物。
+            # 这里只捕获框架的专用异常；其他异常仍在下方记录后重新抛出。
+            error_code = "SUBAGENT_MODEL_CALL_LIMIT_EXCEEDED"
+            await self._append_event(
+                {
+                    "event": "agent_task_document_subagent_failed",
+                    "subagent_type": subagent_type,
+                    "error_code": error_code,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+            return ToolMessage(
+                content=json.dumps(
+                    {
+                        "status": "failed",
+                        "error_code": error_code,
+                        "subagent_type": subagent_type,
+                        "reason": (
+                            "当前子 Agent 已达到模型调用预算。请勿重试同一子任务；"
+                            "将对应交付物写入 failed_deliverables，并继续无依赖交付物。"
+                        ),
+                    },
+                    ensure_ascii=False,
+                ),
+                tool_call_id=str(tool_call.get("id") or "unknown"),
+            )
         except Exception as exc:
             # 记录事件后必须重新抛出，不能把 SubAgent 失败伪装为成功返回。
             await self._append_event(
@@ -268,6 +298,8 @@ COORDINATOR_PROMPT = """你是复杂知识库文档任务的协调 Agent。
 不得声称已经修改真实知识库。不得把工作区路径当成真实目标路径。
 只有 Reviewer approved 的交付物可以进入 approved_changes。
 依赖失败的交付物必须进入 skipped_deliverables；其他独立交付物继续。
+task 返回 status=failed 时，必须把对应交付物记入 failed_deliverables；
+error_code=SUBAGENT_MODEL_CALL_LIMIT_EXCEEDED 时不得重试同一子任务。
 派发 Researcher 时必须明确告诉它：真实知识库不在虚拟文件系统中，必须先调用 knowledge_retrieval；update 必须再调用 knowledge_document_read。
 Researcher 返回的 candidate_doc_id、source_path 和 base_sha256 必须原样传给 Writer，不能让 Writer 猜测目标。
 最终必须按 DocumentWorkflowResult 返回结构化结果。
@@ -434,7 +466,13 @@ class DeepDocumentAgent:
         # 通用 PII/预算/日志直接复用已有 Middleware；这里只额外连接项目自己的
         # TaskPlan 取消信号和 SubAgent 进度事件。
         main_middleware = [
-            *build_document_deep_agent_middlewares(self._settings),
+            *build_document_deep_agent_middlewares(
+                self._settings,
+                # Coordinator 每派发一次 task 都需要一次后续模型决策，
+                # 因此使用总工具预算；三个 SubAgent 仍在下方使用独立的
+                # AGENT_DOCUMENT_SUBAGENT_MAX_STEPS，避免都扩张到 12 轮。
+                model_run_limit=self._settings.agent_max_tool_calls,
+            ),
             _DocumentCoordinatorProgressMiddleware(
                 self._task_plan_store,
                 plan.task_plan_id,
@@ -485,7 +523,20 @@ class DeepDocumentAgent:
                 "model": model,
                 "tools": tools,
                 "middleware": [
-                    *build_document_deep_agent_middlewares(self._settings),
+                    *build_document_deep_agent_middlewares(
+                        self._settings,
+                        model_run_limit=(
+                            self._settings.agent_document_subagent_max_steps
+                        ),
+                        # 一个 Researcher 允许一次初始检索和一次纠正检索；
+                        # 超出后由官方 Middleware 返回 ToolMessage，避免模型
+                        # 重复召回相同知识并耗尽整个文档 Worker 的时间预算。
+                        tool_run_limits={
+                            "knowledge_retrieval": 2,
+                            "knowledge_document_read": 1,
+                            "web_search": 2,
+                        },
+                    ),
                     _TaskPlanCancellationMiddleware(
                         self._task_plan_store,
                         plan.task_plan_id,
@@ -502,7 +553,12 @@ class DeepDocumentAgent:
                 "model": model,
                 "tools": [],
                 "middleware": [
-                    *build_document_deep_agent_middlewares(self._settings),
+                    *build_document_deep_agent_middlewares(
+                        self._settings,
+                        model_run_limit=(
+                            self._settings.agent_document_subagent_max_steps
+                        ),
+                    ),
                     _TaskPlanCancellationMiddleware(
                         self._task_plan_store,
                         plan.task_plan_id,
@@ -519,7 +575,12 @@ class DeepDocumentAgent:
                 "model": model,
                 "tools": [],
                 "middleware": [
-                    *build_document_deep_agent_middlewares(self._settings),
+                    *build_document_deep_agent_middlewares(
+                        self._settings,
+                        model_run_limit=(
+                            self._settings.agent_document_subagent_max_steps
+                        ),
+                    ),
                     _TaskPlanCancellationMiddleware(
                         self._task_plan_store,
                         plan.task_plan_id,
@@ -983,17 +1044,22 @@ class DeepDocumentAgent:
         # 闭包固定本次请求的 ACL filters、candidate_k 和 min_score。模型可以
         # 在 args_schema 允许范围内提供 query/mode/top_k，但无法在 ToolCall 中覆盖
         # 用户、部门、source_path 或 section_path 等授权边界。
+        # LLM 可以为某次检索申请更小的 top_k，但不能突破用户请求中冻结的
+        # 检索上限。这样每次召回后的 Prompt Guard 工作量也具有确定上界。
+        policy_top_k = top_k
+
         async def knowledge_retrieval(query: str, mode: str = mode, top_k: int = top_k) -> str:
             """在当前 ACL 下检索 Chunk，并登记后续可读取/可修改的文档候选。"""
 
             self._ensure_not_cancelled(plan.task_plan_id)
+            effective_top_k = min(top_k, policy_top_k)
             docs = await retrieve_knowledge_docs(
                 settings=self._settings,
                 vector_retriever=self._vector_retriever,
                 keyword_retriever=self._keyword_retriever,
                 query=query,
                 mode=mode,  # type: ignore[arg-type]
-                top_k=top_k,
+                top_k=effective_top_k,
                 candidate_k=candidate_k,
                 min_score=min_score,
                 filters=filters,

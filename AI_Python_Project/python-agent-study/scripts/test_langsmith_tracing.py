@@ -66,6 +66,7 @@ def run_checks() -> None:
         rag_langsmith_pipeline_trace(safe_settings, req, "classic", "stream_events")
         assert captured["name"] == "classic_rag_pipeline.stream_events"
         assert captured["inputs"] == safe_inputs
+        assert captured["run_id"].version == 4
         assert "operation:stream_events" in captured["tags"]
         assert "team:rag" in captured["tags"]
 

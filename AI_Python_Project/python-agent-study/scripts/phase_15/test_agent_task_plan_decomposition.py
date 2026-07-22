@@ -175,6 +175,44 @@ async def main() -> None:
     assert len(parsed_plan.sub_questions) == 2
     assert parsed_plan.source_query == "rerank Prompt Guard 协同机制"
 
+    # LLM 偶尔会把 `sq_1` 重复拼成 `sqsq_1`。非法依赖图必须在计划创建阶段
+    # 被拒绝并切换规则兜底，不能等到用户确认后才由 Research Graph 抛异常。
+    invalid_dependency_payload = {
+        **incomplete_payload,
+        "sub_questions": [
+            *incomplete_payload["sub_questions"],
+            {
+                "sub_question_id": "sq_3",
+                "order": 3,
+                "question": "如何综合前两个模块的关系？",
+                "purpose": "综合已有结论。",
+                "depends_on": ["sqsq_1", "sqsq_2"],
+                "information_source_hint": "none",
+                "reason": "生成最终综合结论。",
+                "expected_evidence": "前置子问题结论。",
+            },
+        ],
+    }
+    fallback_from_invalid_graph = planner._plan_from_payload(
+        query=incomplete_query,
+        payload=invalid_dependency_payload,
+        user_id="planner-user",
+    )
+    assert fallback_from_invalid_graph is not None
+    valid_ids = {
+        item.sub_question_id for item in fallback_from_invalid_graph.sub_questions
+    }
+    assert all(
+        dependency_id in valid_ids
+        for item in fallback_from_invalid_graph.sub_questions
+        for dependency_id in item.depends_on
+    )
+    assert not any(
+        dependency_id.startswith("sqsq_")
+        for item in fallback_from_invalid_graph.sub_questions
+        for dependency_id in item.depends_on
+    )
+
     print("agent_task_plan_decomposition=passed")
 
 

@@ -172,6 +172,24 @@ class ParallelResearchToolLoop(LoopResearchToolLoop):
         )
 
 
+class BudgetTrimmingResearchToolLoop(LoopResearchToolLoop):
+    """模拟 LLM 在仅剩一次预算时仍返回两个候选 ToolCall。"""
+
+    async def _select_tool_for_sub_question(self, *args, **kwargs):
+        return [
+            {
+                "call_id": "within_budget",
+                "selected_tool": "knowledge_retrieval",
+                "tool_input": {"query": "first"},
+            },
+            {
+                "call_id": "over_budget",
+                "selected_tool": "knowledge_retrieval",
+                "tool_input": {"query": "second"},
+            },
+        ]
+
+
 class CorrectionResearchToolLoop(ResearchToolLoop):
     """让 Worker 连续执行两次本地检索，记录第二次收到的纠正上下文。"""
 
@@ -687,6 +705,32 @@ async def main() -> None:
         assert parallel_result.status == "completed"
         assert len(parallel_llm.generate_calls) == 1
         assert "parallel full context" in parallel_llm.generate_calls[0][1].context_text
+
+        # 只剩 1 次预算时不能因为 LLM 返回 2 个候选就整批拒绝；应稳定执行
+        # 第一个合法调用，并保证实际 ToolCall 数不突破 Worker 预算。
+        budget_llm = FakeLLM()
+        budget_loop = BudgetTrimmingResearchToolLoop(
+            settings=settings,
+            vector_retriever=FakeRetriever(),
+            keyword_retriever=FakeRetriever(),
+            llm_client=budget_llm,
+        )
+        budget_outcome = await budget_loop.run_attempt(
+            plan=build_plan("task_plan_budget_trim"),
+            sub_question=build_plan("task_plan_budget_trim").sub_questions[0],
+            dependency_results=[],
+            mode="hybrid",
+            top_k=3,
+            candidate_k=None,
+            min_score=0.0,
+            filters=RetrievalFilters(),
+            max_tool_calls_override=1,
+        )
+        assert budget_outcome.result.status == "completed"
+        assert [call.call_id for call in budget_outcome.result.tool_calls] == [
+            "sq_loop_attempt_1_within_budget"
+        ]
+        assert len(budget_llm.generate_calls) == 1
 
         server_path = ROOT / "scripts" / "mcp_demo_server.py"
         mcp_settings = Settings(

@@ -1,6 +1,7 @@
 import os
 from contextlib import nullcontext
 from typing import Any
+from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
 from langsmith import trace
@@ -241,6 +242,10 @@ def langsmith_trace(
         project_name=settings.langsmith_project,
         metadata=sanitize_langsmith_payload(settings, metadata),
         tags=tags,
+        # 当前部署对应的 LangSmith 服务端无法读回 SDK 自动生成的 UUIDv7 run，
+        # 但同一 Key/项目使用 UUIDv4 可稳定 create/update/read。所有项目自定义
+        # 根 trace 都在此集中指定 UUIDv4，子 LangChain run 继续继承该父上下文。
+        run_id=uuid4(),
     )
 
 

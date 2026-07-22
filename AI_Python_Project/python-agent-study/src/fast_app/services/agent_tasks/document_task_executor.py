@@ -11,10 +11,12 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from langchain.agents.middleware.model_call_limit import ModelCallLimitExceededError
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage, messages_from_dict, messages_to_dict
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 from langchain_openai import ChatOpenAI
+from openai import APIError
 from pydantic import ValidationError
 
 from fast_app.agents.tools.document_management_tools import (
@@ -165,6 +167,7 @@ class DocumentTaskExecutor:
             decision = self._supervisor_agent.validate_saved_decision(
                 DocumentWorkflowDecision.model_validate(saved_supervisor),
                 allowed_web_policy=web_policy,
+                original_query=plan.original_query,
             )
         else:
             decision = await self._supervisor_agent.decide(
@@ -467,6 +470,16 @@ class DocumentTaskExecutor:
             plan.final_output["status"] = plan.status.value
             self._task_plan_store.save(plan)
             raise
+        except (APIError, TimeoutError, ModelCallLimitExceededError) as exc:
+            # 外部模型失败、文档 Worker 超时和模型预算耗尽都属于本次文档任务
+            # 的可诊断终态。TaskPlan 已持久化且 Checkpoint 可重试，应返回结构化
+            # failed 计划给 SSE/React，而不是丢失 task_plan_id 后只显示通用 500。
+            await self._retain_agentic_checkpoint(plan)
+            plan.status = AgentTaskPlanStatus.FAILED
+            plan.error = f"{type(exc).__name__}: {exc}"
+            plan.final_output["status"] = plan.status.value
+            self._task_plan_store.save(plan)
+            return plan
         except Exception as exc:
             await self._retain_agentic_checkpoint(plan)
             plan.status = AgentTaskPlanStatus.FAILED
