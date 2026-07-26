@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from fast_app.agents.tools.rag_agent_tools import KNOWLEDGE_RETRIEVAL_TOOL_NAME, retrieve_knowledge_docs
 from fast_app.agents.tools.web_search_tools import WEB_SEARCH_TOOL_NAME, WebSearchToolInput, search_web_with_bocha
 from fast_app.components.llms.base import BaseLLMClient
+from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.domain.agent_task_plan import AgentTaskPlan, AgentTaskSubQuestion, AgentTaskSubQuestionResult, AgentTaskToolCallTrace
@@ -28,8 +29,15 @@ from fast_app.services.agent_tasks.agent_task_tool_support import (
     build_mcp_task_tools, coerce_int, doc_to_evidence, extract_first_url,
     find_registered_tool, normalize_tool_input, parallel_batch_error,
 )
-from fast_app.services.exceptions import AppServiceError, ToolPermissionDeniedError
-from fast_app.services.rag.rag_pipeline_service import build_content_preview, build_rag_context, build_top_doc_ids
+from fast_app.services.exceptions import (
+    AppServiceError,
+    ExternalServiceError,
+    ToolPermissionDeniedError,
+)
+from fast_app.services.rag.rag_pipeline_service import build_content_preview, build_top_doc_ids
+from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
+from fast_app.services.rag.prompt_guard_service import PromptGuardService
+from fast_app.services.rag.rag_context_assembler import assemble_rag_context
 
 LangChainConfigFactory = Callable[[str], RunnableConfig]
 PARALLEL_SAFE_TASK_TOOL_NAMES = {KNOWLEDGE_RETRIEVAL_TOOL_NAME, WEB_SEARCH_TOOL_NAME}
@@ -101,11 +109,23 @@ TASK_TOOL_SELECTION_PROMPT = """你是 Agent TaskPlan 的工具选择器。
 class ResearchToolLoop:
     """完成一次子问题候选答案生成，不负责证据充分性纠正。"""
 
-    def __init__(self, settings: Settings, vector_retriever: BaseRetriever, keyword_retriever: BaseRetriever, llm_client: BaseLLMClient) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        vector_retriever: BaseRetriever,
+        keyword_retriever: BaseRetriever,
+        llm_client: BaseLLMClient,
+        reranker: BaseReranker | None = None,
+        prompt_guard: PromptGuardService | None = None,
+        parent_expander: MarkdownParentContextExpander | None = None,
+    ) -> None:
         self._settings = settings
         self._vector_retriever = vector_retriever
         self._keyword_retriever = keyword_retriever
         self._llm_client = llm_client
+        self._reranker = reranker
+        self._prompt_guard = prompt_guard
+        self._parent_expander = parent_expander
 
     async def _generate_with_trace(
         self,
@@ -350,6 +370,7 @@ class ResearchToolLoop:
                     sub_question=sub_question,
                     dependency_results=dependency_results,
                     context_docs=all_context_docs,
+                    filters=filters,
                     retry_missing_points=retry_missing_points,
                     langchain_config_factory=langchain_config_factory,
                 )
@@ -811,6 +832,15 @@ class ResearchToolLoop:
             filters=filters,
             pipeline_provider="rag_agent_task_sub_question",
         )
+        if self._reranker is not None and docs:
+            try:
+                docs = await self._reranker.rerank(
+                    query=query,
+                    docs=docs,
+                    top_k=min(selected_top_k, len(docs)),
+                )
+            except ExternalServiceError:
+                docs = docs[:selected_top_k]
         # 完整 docs 交给 attempt 结束后的统一回答，TaskPlan 只保存下面的摘要。
         return ToolExecutionResult(
             tool_output={
@@ -901,13 +931,29 @@ class ResearchToolLoop:
         sub_question: AgentTaskSubQuestion,
         dependency_results: list[AgentTaskSubQuestionResult],
         context_docs: list[RetrievedDoc],
+        filters: RetrievalFilters,
         retry_missing_points: list[str],
         langchain_config_factory: LangChainConfigFactory | None = None,
     ) -> str:
         """用历史和当前 attempt 的全部工具原始上下文生成一次候选答案。"""
 
         context = _append_dependency_answers(
-            build_rag_context(sub_question.question, context_docs),
+            await assemble_rag_context(
+                settings=self._settings,
+                query=sub_question.question,
+                docs=context_docs,
+                filters={
+                    "source_path": filters.source_path,
+                    "section_path": filters.section_path,
+                    "can_read_all": filters.can_read_all,
+                    "user_id": filters.user_id,
+                    "department_codes": filters.department_codes,
+                    "allow_public": filters.allow_public,
+                },
+                source="research.build_context",
+                parent_expander=self._parent_expander,
+                prompt_guard=self._prompt_guard,
+            ),
             dependency_results,
         )
         # 上一次attempt执行后，是否信息不足导致需要补充的要点。在本轮attempt进行补充查询

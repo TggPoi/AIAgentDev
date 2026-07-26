@@ -84,6 +84,14 @@ class KnowledgeDocumentActionPreview(BaseModel):
     risk_level: KnowledgeDocumentRiskLevel = Field(description="根据动作和目标状态计算出的风险等级。")
     affected_doc_id: str | None = Field(default=None, description="预计受影响的文档 ID；新建时可为空。")
     affected_chunk_count: int = Field(default=0, description="预计受影响的 chunk 数量。")
+    affected_parent_count: int = Field(
+        default=0,
+        description="预计写入或删除的 Markdown 父块数量；TXT 文档固定为 0。",
+    )
+    affected_child_count: int = Field(
+        default=0,
+        description="预计写入或删除的检索子块数量；兼容字段 affected_chunk_count 与此值一致。",
+    )
     before_hash: str | None = Field(default=None, description="执行前文档内容 hash；新建时为空。")
     after_hash: str | None = Field(default=None, description="执行后目标内容 hash；删除时可为空。")
     permission_metadata: dict[str, Any] = Field(default_factory=dict, description="从目标路径或文档推断出的权限 metadata。")

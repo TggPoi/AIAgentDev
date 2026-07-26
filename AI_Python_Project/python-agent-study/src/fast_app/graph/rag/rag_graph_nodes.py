@@ -19,8 +19,10 @@ from fast_app.services.knowledge.knowledge_permission_policy import (
 )
 from fast_app.services.rag.rag_pipeline_service import (
     build_top_doc_ids,
-    build_rag_context,
 )
+from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
+from fast_app.services.rag.rag_context_assembler import assemble_rag_context
+from fast_app.services.rag.rag_context_assembler import build_context_observation
 from fast_app.services.rag.prompt_guard_service import PromptGuardService
 
 from fast_app.components.rerankers.base import BaseReranker
@@ -448,6 +450,7 @@ def create_retrieve_node(
 def create_build_context_node(
     settings: Settings,
     prompt_guard: PromptGuardService | None = None,
+    parent_expander: MarkdownParentContextExpander | None = None,
 ) -> Callable[[GraphRagState], dict[str, object]]:
 
     async def build_context_node(state: GraphRagState) -> dict[str, object]:
@@ -455,13 +458,20 @@ def create_build_context_node(
 
         logger.info("LangGraph 开始构造上下文: docs_count=%s", len(docs))
 
-        if prompt_guard is not None:
-            docs = await prompt_guard.filter_retrieved_docs(
-                docs,
-                source="langgraph.build_context",
-            )
-
-        context = build_rag_context(state["query"], docs)
+        context = await assemble_rag_context(
+            settings=settings,
+            query=state["query"],
+            docs=docs,
+            filters=state["filters"],
+            source="langgraph.build_context",
+            parent_expander=(
+                parent_expander
+                if state.get("operation", "run") != "stream"
+                else None
+            ),
+            prompt_guard=prompt_guard,
+        )
+        docs = context.docs
 
         logger.info(
             "LangGraph 上下文构造完成: context_docs_count=%s",
@@ -495,6 +505,7 @@ def create_build_context_node(
                     {
                         "context_doc_count": len(context.docs),
                         "context_length": len(context.context_text),
+                        **build_context_observation(context),
                     }
                 )
             return result

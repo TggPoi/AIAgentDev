@@ -22,6 +22,9 @@ from fast_app.services.knowledge.knowledge_permission_policy import (
 )
 from fast_app.services.rag.retrieval_fusion import reciprocal_rank_fusion
 from fast_app.services.rag.rag_context_builder import build_rag_context
+from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
+from fast_app.services.rag.rag_context_assembler import assemble_rag_context
+from fast_app.services.rag.rag_context_assembler import build_context_observation
 from fast_app.components.rerankers.base import BaseReranker
 from fast_app.domain.rag_stream_models import RagStreamEvent
 from fast_app.services.rag.guarded_streaming import (
@@ -473,6 +476,20 @@ def docs_to_sources(docs: list[RetrievedDoc]) -> list[RagSource]:
     return [
         RagSource(
             id=doc.id,
+            parent_id=(
+                str(doc.metadata["parent_id"])
+                if doc.metadata.get("parent_id")
+                else None
+            ),
+            matched_child_ids=[
+                str(child_id)
+                for child_id in doc.metadata.get("matched_child_ids", [])
+            ],
+            chunk_level=(
+                doc.metadata.get("chunk_level")
+                if doc.metadata.get("chunk_level") in {"parent", "child"}
+                else None
+            ),
             source=doc.source,
             retrieval_sources=normalize_retrieval_sources(doc),
             title=doc.title,
@@ -505,6 +522,7 @@ class RagPipeline:
         llm_client: BaseLLMClient,
         reranker: BaseReranker,
         prompt_guard: PromptGuardService | None = None,
+        parent_expander: MarkdownParentContextExpander | None = None,
     ):
         """初始化 RAG Pipeline 依赖。
         """
@@ -514,21 +532,11 @@ class RagPipeline:
         self.llm_client = llm_client
         self.reranker = reranker
         self.prompt_guard = prompt_guard
+        self.parent_expander = parent_expander
 
     async def _ensure_query_allowed(self, query: str, *, source: str) -> None:
         if self.prompt_guard is not None:
             await self.prompt_guard.ensure_user_input_allowed(query, source=source)
-
-    async def _filter_docs_with_prompt_guard(
-        self,
-        docs: list[RetrievedDoc],
-        *,
-        source: str,
-    ) -> list[RetrievedDoc]:
-        if self.prompt_guard is None:
-            return docs
-
-        return await self.prompt_guard.filter_retrieved_docs(docs, source=source)
 
     async def _ensure_output_allowed(self, answer: str, *, source: str) -> str:
         if self.prompt_guard is None:
@@ -539,6 +547,28 @@ class RagPipeline:
     async def _audit_stream_output(self, answer: str, *, source: str) -> None:
         if self.prompt_guard is not None:
             await self.prompt_guard.audit_stream_output(answer, source=source)
+
+    async def _assemble_context(
+        self,
+        req: RagChatRequest,
+        docs: list[RetrievedDoc],
+        *,
+        source: str,
+        expand_parents: bool = True,
+    ) -> RagContext:
+        filters = merge_permission_scope_into_filter_dict(
+            filters=req.filters.model_dump(),
+            permission_scope=req._retrieval_permission_scope,
+        )
+        return await assemble_rag_context(
+            settings=self.settings,
+            query=req.query,
+            docs=docs,
+            filters=filters,
+            source=source,
+            parent_expander=self.parent_expander if expand_parents else None,
+            prompt_guard=self.prompt_guard,
+        )
 
     def _langsmith_trace(self, req: RagChatRequest, operation: str):
         return rag_langsmith_pipeline_trace(
@@ -732,13 +762,6 @@ class RagPipeline:
                         }
                     )
 
-            state["docs"] = docs
-            docs = await self._filter_docs_with_prompt_guard(
-                docs,
-                source="classic.run.documents",
-            )
-            state["docs"] = docs
-
             logger.info("RAG 召回完成: docs_count=%s", len(docs))
 
             with self._langsmith_step_trace(
@@ -753,15 +776,22 @@ class RagPipeline:
                     "top_doc_ids": build_top_doc_ids(docs),
                 },
             ) as trace_run:
-                context = build_rag_context(req.query, docs)
+                context = await self._assemble_context(
+                    req,
+                    docs,
+                    source="classic.run.documents",
+                )
+                docs = context.docs
                 if trace_run is not None:
                     trace_run.add_outputs(
                         {
                             "context_doc_count": len(context.docs),
                             "context_length": len(context.context_text),
+                            **build_context_observation(context),
                         }
                     )
             state["context"] = context
+            state["docs"] = docs
 
             logger.info("RAG 上下文构造完成: context_docs_count=%s", len(context.docs))
 
@@ -931,11 +961,6 @@ class RagPipeline:
                     }
                 )
 
-        docs = await self._filter_docs_with_prompt_guard(
-            docs,
-            source="classic.stream.documents",
-        )
-
         logger.info("RAG Stream 召回完成: docs_count=%s", len(docs))
 
         with self._langsmith_step_trace(
@@ -950,12 +975,19 @@ class RagPipeline:
                 "top_doc_ids": build_top_doc_ids(docs),
             },
         ) as trace_run:
-            context = build_rag_context(req.query, docs)
+            context = await self._assemble_context(
+                req,
+                docs,
+                source="classic.stream.documents",
+                expand_parents=False,
+            )
+            docs = context.docs
             if trace_run is not None:
                 trace_run.add_outputs(
                     {
                         "context_doc_count": len(context.docs),
                         "context_length": len(context.context_text),
+                        **build_context_observation(context),
                     }
                 )
 
@@ -1400,11 +1432,13 @@ class RagPipeline:
                 "top_doc_ids": build_top_doc_ids(docs),
             },
         ) as trace_run:
-            docs = await self._filter_docs_with_prompt_guard(
+            context = await self._assemble_context(
+                req,
                 docs,
                 source="classic.stream_events.documents",
             )
-            sources = docs_to_sources(docs)
+            docs = context.docs
+            sources = docs_to_sources(context.docs)
             if trace_run is not None:
                 trace_run.add_outputs(
                     {
@@ -1432,12 +1466,12 @@ class RagPipeline:
                 "top_doc_ids": build_top_doc_ids(docs),
             },
         ) as trace_run:
-            context = build_rag_context(req.query, docs)
             if trace_run is not None:
                 trace_run.add_outputs(
                     {
                         "context_doc_count": len(context.docs),
                         "context_length": len(context.context_text),
+                        **build_context_observation(context),
                     }
                 )
 

@@ -111,7 +111,21 @@ class RagScoreBreakdown(BaseModel):
 
 # 检索来源
 class RagSource(BaseModel):
-    id: str = Field(description="命中的 chunk id")
+    id: str = Field(
+        description="最终送入 LLM 的上下文记录 ID；Markdown 父块扩展成功时为 parent_id，其他情况为原 chunk ID。"
+    )
+    parent_id: str | None = Field(
+        default=None,
+        description="Markdown 子块所属父块 ID；非 Markdown 来源为空，降级为子块时仍保留目标父块 ID。",
+    )
+    matched_child_ids: list[str] = Field(
+        default_factory=list,
+        description="支撑该父块排序与来源合并的命中子块 ID；未执行父块扩展时为空。",
+    )
+    chunk_level: Literal["parent", "child"] | None = Field(
+        default=None,
+        description="最终上下文的 Markdown 块层级；parent 表示已授权回查父块，child 表示子块或降级子块，非 Markdown 为空。",
+    )
     source: str = Field(description="检索来源，例如 milvus / elasticsearch")
     retrieval_sources: list[str] = Field(
         default_factory=list,

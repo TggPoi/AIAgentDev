@@ -543,6 +543,65 @@ class Settings(BaseSettings):
         default=20,
         alias="MARKDOWN_CHUNK_MIN_CHARS",
     )
+    markdown_parent_target_tokens: int = Field(
+        default=900,
+        ge=1,
+        alias="MARKDOWN_PARENT_TARGET_TOKENS",
+        description="Markdown 有界父块的目标 token 数；达到后优先在完整 block 边界结束父块。",
+    )
+    markdown_parent_max_tokens: int = Field(
+        default=1200,
+        ge=1,
+        alias="MARKDOWN_PARENT_MAX_TOKENS",
+        description="Markdown 父块允许的最大预算 token 数。",
+    )
+    markdown_parent_max_chars: int = Field(
+        default=6000,
+        ge=1,
+        alias="MARKDOWN_PARENT_MAX_CHARS",
+        description="Markdown 父块字符硬上限，用于兜底本地 tokenizer 与模型 tokenizer 的差异。",
+    )
+    markdown_child_target_tokens: int = Field(
+        default=260,
+        ge=1,
+        alias="MARKDOWN_CHILD_TARGET_TOKENS",
+        description="Markdown 检索子块的目标 token 数。",
+    )
+    markdown_child_max_tokens: int = Field(
+        default=350,
+        ge=1,
+        alias="MARKDOWN_CHILD_MAX_TOKENS",
+        description="Markdown 检索子块允许的最大 token 数。",
+    )
+    markdown_child_min_tokens: int = Field(
+        default=80,
+        ge=1,
+        alias="MARKDOWN_CHILD_MIN_TOKENS",
+        description="Markdown 子块期望的最小 token 数；短 section 不会因此被丢弃。",
+    )
+    markdown_child_overlap_tokens: int = Field(
+        default=50,
+        ge=0,
+        alias="MARKDOWN_CHILD_OVERLAP_TOKENS",
+        description="相邻 Markdown 子块最多复用的完整 block token 数。",
+    )
+    rag_parent_context_max_tokens: int = Field(
+        default=3000,
+        ge=1,
+        alias="RAG_PARENT_CONTEXT_MAX_TOKENS",
+        description="父块扩展后允许送入 RAG 上下文的检索资料总 token 预算。",
+    )
+    rag_parent_context_max_parents: int = Field(
+        default=3,
+        ge=1,
+        alias="RAG_PARENT_CONTEXT_MAX_PARENTS",
+        description="单次 RAG 请求最多采用的 Markdown 父块数量。",
+    )
+    rag_parent_expansion_enabled: bool = Field(
+        default=False,
+        alias="RAG_PARENT_EXPANSION_ENABLED",
+        description="是否把 rerank 后的 Markdown 子块安全扩展为有界父块；重建 v2 索引后再开启。",
+    )
     # ingestion 的基础配置 end
 
     @model_validator(mode="after")
@@ -553,6 +612,28 @@ class Settings(BaseSettings):
             raise ValueError(
                 "MAX_UPLOAD_REQUEST_BODY_BYTES 必须大于 MAX_UPLOAD_FILE_BYTES"
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_markdown_parent_child_limits(self) -> "Settings":
+        """校验 Markdown 父子预算关系，避免运行时产生越界或无法前进的窗口。"""
+
+        if not (
+            self.markdown_child_min_tokens
+            <= self.markdown_child_target_tokens
+            <= self.markdown_child_max_tokens
+            < self.markdown_parent_max_tokens
+        ):
+            raise ValueError(
+                "Markdown token 配置必须满足 "
+                "child_min <= child_target <= child_max < parent_max"
+            )
+        if self.markdown_child_overlap_tokens >= self.markdown_child_target_tokens:
+            raise ValueError("MARKDOWN_CHILD_OVERLAP_TOKENS 必须小于 child target")
+        if self.markdown_parent_target_tokens > self.markdown_parent_max_tokens:
+            raise ValueError("MARKDOWN_PARENT_TARGET_TOKENS 不能大于 parent max")
+        if self.rag_parent_context_max_tokens < self.markdown_parent_max_tokens:
+            raise ValueError("父块上下文总预算至少要容纳一个最大父块")
         return self
 
     @field_validator("calculator_mode", mode="before")

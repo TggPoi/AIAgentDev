@@ -16,6 +16,8 @@ MILVUS_CHUNK_INDEX_FIELD = "chunk_index"
 #ES mapping字段常量
 ES_ID_FIELD = "id"
 ES_CONTENT_FIELD = "content"
+ES_SEARCH_TEXT_FIELD = "search_text"
+ES_RECORD_TYPE_FIELD = "record_type"
 ES_TITLE_FIELD = "title"
 ES_SOURCE_FIELD = "source"
 ES_METADATA_FIELD = "metadata"
@@ -60,6 +62,8 @@ def build_es_mappings() -> dict[str, Any]:
         "properties": {
             ES_ID_FIELD: {"type": "keyword"},
             ES_CONTENT_FIELD: build_es_text_field_mapping(),
+            ES_SEARCH_TEXT_FIELD: build_es_text_field_mapping(),
+            ES_RECORD_TYPE_FIELD: {"type": "keyword"},
             ES_TITLE_FIELD: build_es_text_field_mapping(with_keyword=True),
             ES_SOURCE_FIELD: {"type": "keyword"},
             ES_METADATA_FIELD: {
@@ -85,6 +89,16 @@ def build_es_mappings() -> dict[str, Any]:
                     "heading_level": {"type": "integer"},
                     "section_index": {"type": "integer"},
                     "chunk_index": {"type": "integer"},
+                    "record_type": {"type": "keyword"},
+                    "parent_id": {"type": "keyword"},
+                    "section_key": {"type": "keyword"},
+                    "parent_index": {"type": "integer"},
+                    "child_index": {"type": "integer"},
+                    "token_count": {"type": "integer"},
+                    "char_count": {"type": "integer"},
+                    "line_start": {"type": "integer"},
+                    "line_end": {"type": "integer"},
+                    "chunk_strategy_version": {"type": "keyword"},
                 }
             },
             ES_CREATED_AT_FIELD: {"type": "date"},

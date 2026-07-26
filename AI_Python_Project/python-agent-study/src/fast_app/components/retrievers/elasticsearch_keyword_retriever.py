@@ -11,6 +11,9 @@ from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RetrievalFilters, RetrievalOptions, RetrievedDoc, ScoreBreakdown
 from fast_app.ingestion.stores.rag_store_schema import (
     ES_CONTENT_FIELD,
+    ES_SEARCH_TEXT_FIELD,
+    ES_TITLE_FIELD,
+    ES_RECORD_TYPE_FIELD,
     ES_ID_FIELD,
     ES_IK_INDEX_ANALYZER,
     ES_IK_SEARCH_ANALYZER,
@@ -20,7 +23,6 @@ from fast_app.ingestion.stores.rag_store_schema import (
     ES_METADATA_SECTION_PATH_FIELD,
     ES_METADATA_SOURCE_PATH_FIELD,
     ES_METADATA_VISIBILITY_FIELD,
-    ES_TITLE_FIELD,
 )
 from fast_app.services.exceptions import ExternalServiceError
 
@@ -162,27 +164,26 @@ def build_es_query(query: str, filters: RetrievalFilters) -> dict[str, Any]:
 
     filter_clauses = build_es_filters(filters)
 
-    if not filter_clauses:
-        return {
-            "match": {
-                ES_CONTENT_FIELD: {
-                    "query": query,
-                }
-            }
-        }
-
     return {
         "bool": {
             "must": [
                 {
-                    "match": {
-                        ES_CONTENT_FIELD: {
-                            "query": query,
-                        }
+                    "multi_match": {
+                        "query": query,
+                        "fields": [
+                            f"{ES_SEARCH_TEXT_FIELD}^3",
+                            f"{ES_TITLE_FIELD}^2",
+                            ES_CONTENT_FIELD,
+                        ],
                     }
                 }
             ],
             "filter": filter_clauses,
+            # 父块只负责命中后的安全上下文扩展，不参加初始关键词召回。
+            # must_not 对缺少 record_type 的旧 TXT/PPTX/XLSX 记录不会产生影响。
+            "must_not": [
+                {"term": {ES_RECORD_TYPE_FIELD: "markdown_parent"}}
+            ],
         }
     }
 

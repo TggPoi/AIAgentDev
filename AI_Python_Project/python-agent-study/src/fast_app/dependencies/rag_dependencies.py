@@ -27,6 +27,7 @@ from fast_app.services.conversation.query_rewrite import ConversationQueryRewrit
 from fast_app.services.rag.rag_agent_pipeline_service import RagAgentPipeline
 from fast_app.services.rag.rag_pipeline_service import RagPipeline
 from fast_app.services.rag.prompt_guard_service import PromptGuardService
+from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
 from fast_app.services.auth.auth_service import AuthService
 from fast_app.services.auth.user_repository import UserRepository
 from fast_app.services.auth.permission_repository import PermissionRepository
@@ -293,6 +294,16 @@ def get_prompt_guard_service(
     return PromptGuardService(settings=settings)
 
 
+def get_markdown_parent_context_expander(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> MarkdownParentContextExpander:
+    return MarkdownParentContextExpander(
+        settings=settings,
+        client=getattr(request.app.state, "elasticsearch_client", None),
+    )
+
+
 def get_knowledge_document_management_service(
     request: Request,
     settings: Settings = Depends(get_settings),
@@ -318,6 +329,7 @@ def get_agent_task_executor(
     vector_retriever: BaseRetriever = Depends(get_vector_retriever),
     keyword_retriever: BaseRetriever = Depends(get_keyword_retriever),
     llm_client: BaseLLMClient = Depends(get_llm_client),
+    reranker: BaseReranker = Depends(get_reranker),
     document_management_service: KnowledgeDocumentManagementService = Depends(
         get_knowledge_document_management_service
     ),
@@ -327,6 +339,9 @@ def get_agent_task_executor(
     tool_audit_service: AgentToolAuditService = Depends(get_agent_tool_audit_service),
     task_plan_store: AgentTaskPlanStore = Depends(get_agent_task_plan_store),
     prompt_guard: PromptGuardService = Depends(get_prompt_guard_service),
+    parent_expander: MarkdownParentContextExpander = Depends(
+        get_markdown_parent_context_expander
+    ),
 ) -> AgentTaskExecutor:
     """提供 Agent TaskPlan 执行器。"""
 
@@ -348,6 +363,9 @@ def get_agent_task_executor(
         vector_retriever=vector_retriever,
         keyword_retriever=keyword_retriever,
         llm_client=llm_client,
+        reranker=reranker,
+        prompt_guard=prompt_guard,
+        parent_expander=parent_expander,
     )
     research_worker = ResearchWorkerAgent(
         settings=settings,
@@ -405,6 +423,9 @@ def get_rag_pipeline(
     llm_client: BaseLLMClient = Depends(get_llm_client),
     reranker: BaseReranker = Depends(get_reranker),
     prompt_guard: PromptGuardService = Depends(get_prompt_guard_service),
+    parent_expander: MarkdownParentContextExpander = Depends(
+        get_markdown_parent_context_expander
+    ),
     task_router: AgentTaskRouter = Depends(get_agent_task_router),
     task_planner: AgentTaskPlanner = Depends(get_agent_task_planner),
     task_executor: AgentTaskExecutor = Depends(get_agent_task_executor),
@@ -422,6 +443,7 @@ def get_rag_pipeline(
             llm_client=llm_client,
             reranker=reranker,
             prompt_guard=prompt_guard,
+            parent_expander=parent_expander,
         )
 
     if provider == "langgraph":
@@ -432,6 +454,7 @@ def get_rag_pipeline(
             llm_client=llm_client,
             reranker=reranker,
             prompt_guard=prompt_guard,
+            parent_expander=parent_expander,
         )
 
     # 13-11 新增的第三条执行路线。
@@ -459,6 +482,7 @@ def get_rag_pipeline(
             task_router=task_router,
             task_planner=task_planner,
             task_executor=task_executor,
+            parent_expander=parent_expander,
         )
 
     raise AppServiceError(

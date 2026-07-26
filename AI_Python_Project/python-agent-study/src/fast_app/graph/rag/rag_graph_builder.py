@@ -15,6 +15,7 @@ from fast_app.graph.rag.rag_graph_nodes import (
 )
 from fast_app.graph.rag.rag_graph_state import GraphRagState
 from fast_app.services.rag.prompt_guard_service import PromptGuardService
+from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
 
 # 组装完整 graph 可运行对象结构
 def build_rag_graph(
@@ -25,6 +26,7 @@ def build_rag_graph(
     reranker: BaseReranker,
     rerank_top_k: int,
     prompt_guard: PromptGuardService | None = None,
+    parent_expander: MarkdownParentContextExpander | None = None,
 ):
     builder = StateGraph(GraphRagState)
 
@@ -45,6 +47,7 @@ def build_rag_graph(
         create_build_context_node(
             settings=settings,
             prompt_guard=prompt_guard,
+            parent_expander=parent_expander,
         ),
     )
     builder.add_node(

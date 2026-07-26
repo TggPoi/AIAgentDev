@@ -16,6 +16,11 @@ from fast_app.domain.knowledge_document_actions import (
 from fast_app.domain.knowledge_models import DocumentType, KnowledgeChunk, LoadedDocument
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.ingestion.processing.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
+from fast_app.ingestion.processing.markdown_hierarchy import (
+    MarkdownHierarchyBuilder,
+    MarkdownHierarchyOptions,
+    MarkdownParentChunk,
+)
 from fast_app.ingestion.processing.metadata_models import (
     PERMISSION_RULES_FILE_NAME,
     build_document_metadata,
@@ -62,8 +67,10 @@ class PreparedDocumentMutation:
     before_sidecar: str | None
     # 旧、新 chunks 及向量提前算好，执行和回滚阶段都无需再次调用 embedding。
     old_chunks: list[KnowledgeChunk]
+    old_parents: list[MarkdownParentChunk]
     old_vectors: list[list[float]]
     new_chunks: list[KnowledgeChunk]
+    new_parents: list[MarkdownParentChunk]
     new_vectors: list[list[float]]
 
 
@@ -82,6 +89,7 @@ class KnowledgeDocumentManagementService:
         elasticsearch_client: Any | None = None,
         milvus_client: Any | None = None,
         chunk_builder: MarkdownChunkBuilder | None = None,
+        hierarchy_builder: MarkdownHierarchyBuilder | None = None,
     ):
         # settings 控制工具是否启用、是否只允许 dry-run、允许编辑的后缀和内容大小等安全边界。
         self.settings = settings
@@ -91,6 +99,7 @@ class KnowledgeDocumentManagementService:
         self.milvus_client = milvus_client
         # 当前预览需要估算 affected_chunk_count，因此复用 ingestion 的 MarkdownChunkBuilder。
         self.chunk_builder = chunk_builder or MarkdownChunkBuilder()
+        self.hierarchy_builder = hierarchy_builder or MarkdownHierarchyBuilder()
 
     async def plan_action(
         self,
@@ -218,22 +227,22 @@ class KnowledgeDocumentManagementService:
             before_sidecar = sidecar.read_text(encoding="utf-8") if sidecar.exists() else None
             permission = normalize_permission_metadata(preview.permission_metadata)
             # update/delete 沿用预览阶段冻结的 ACL；LLM 请求不能提供或改写这些字段。
-            old_chunks = self._build_chunks(
+            old_parents, old_chunks = self._build_artifacts(
                 target=target,
                 content=before_content or "",
                 permission_metadata=permission,
             )
-            new_chunks = self._build_chunks(
+            new_parents, new_chunks = self._build_artifacts(
                 target=target,
                 content=request.content or "",
                 permission_metadata=permission,
-            ) if request.operation != KnowledgeDocumentOperation.DELETE else []
+            ) if request.operation != KnowledgeDocumentOperation.DELETE else ([], [])
             # embedding 也属于预计算：任何向量生成失败都会发生在真实写入之前。
             old_vectors = await self.embedding_client.embed_documents(
-                [chunk.content for chunk in old_chunks]
+                [chunk.search_text or chunk.content for chunk in old_chunks]
             ) if old_chunks and sync_stores else []
             new_vectors = await self.embedding_client.embed_documents(
-                [chunk.content for chunk in new_chunks]
+                [chunk.search_text or chunk.content for chunk in new_chunks]
             ) if new_chunks and sync_stores else []
             prepared.append(
                 PreparedDocumentMutation(
@@ -243,8 +252,10 @@ class KnowledgeDocumentManagementService:
                     before_content=before_content,
                     before_sidecar=before_sidecar,
                     old_chunks=old_chunks,
+                    old_parents=old_parents,
                     old_vectors=old_vectors,
                     new_chunks=new_chunks,
+                    new_parents=new_parents,
                     new_vectors=new_vectors,
                 )
             )
@@ -277,7 +288,7 @@ class KnowledgeDocumentManagementService:
                     )
             if rollback_errors:
                 raise AppServiceError(
-                    "文档批量执行失败且补偿未完全成功；需要修复 doc_id: "
+                    "repair_required：文档批量执行失败且补偿未完全成功；需要修复 doc_id: "
                     + "; ".join(rollback_errors)
                 ) from exc
             raise AppServiceError("文档批量执行失败，已完成补偿回滚") from exc
@@ -313,6 +324,7 @@ class KnowledgeDocumentManagementService:
             settings=self.settings,
             chunks=item.new_chunks,
             vectors=item.new_vectors,
+            parents=item.new_parents,
         )
 
     async def _restore_prepared_mutation(self, item: PreparedDocumentMutation) -> None:
@@ -341,6 +353,7 @@ class KnowledgeDocumentManagementService:
                 settings=self.settings,
                 chunks=item.old_chunks,
                 vectors=item.old_vectors,
+                parents=item.old_parents,
             )
         else:
             # create 原先不存在，没有旧 chunks 可恢复，只需删除刚写入的 doc_id。
@@ -526,10 +539,10 @@ class KnowledgeDocumentManagementService:
                 await self._load_stored_permission_metadata(str(metadata["doc_id"]))
             )
         # dry-run 不写索引，只在内存里构建 chunk，用于估算影响范围。
-        chunks = self._build_preview_chunks(
+        parents, chunks = self._build_artifacts(
             target=target,
             content=preview_content,
-            metadata=metadata,
+            permission_metadata=normalize_permission_metadata(metadata),
         )
         # warnings 不阻断执行，只给 plan review / 前端确认页展示潜在风险。
         warnings = self._build_warnings(
@@ -546,6 +559,8 @@ class KnowledgeDocumentManagementService:
             risk_level=self._risk_level_for_operation(request.operation),
             affected_doc_id=str(metadata.get("doc_id")),
             affected_chunk_count=len(chunks),
+            affected_parent_count=len(parents),
+            affected_child_count=len(chunks),
             # before_hash / after_hash 是人工确认和并发保护的重要事实。
             before_hash=self._sha256_text(before_content) if before_content else None,
             after_hash=self._sha256_text(preview_content) if preview_content else None,
@@ -573,33 +588,16 @@ class KnowledgeDocumentManagementService:
             return request.content or ""
         return before_content or ""
 
-    def _build_preview_chunks(
-        self,
-        target: SafeDocumentTarget,
-        content: str,
-        metadata: dict[str, Any],
-    ) -> list[object]:
-        """按真实 ingestion 规则在内存中估算 dry-run 会影响的 chunks。"""
-
-        if not content.strip():
-            return []
-
-        return self._build_chunks(
-            target=target,
-            content=content,
-            permission_metadata=normalize_permission_metadata(metadata),
-        )
-
-    def _build_chunks(
+    def _build_artifacts(
         self,
         target: SafeDocumentTarget,
         content: str,
         permission_metadata: dict[str, Any],
-    ) -> list[KnowledgeChunk]:
+    ) -> tuple[list[MarkdownParentChunk], list[KnowledgeChunk]]:
         """使用统一 metadata 和 chunk 配置构造可写入检索存储的 chunks。"""
 
         if not content.strip():
-            return []
+            return [], []
         # 从 source_path 重新生成 doc_id 等普通 metadata，再覆盖已冻结的权限字段。
         metadata = build_document_metadata(
             source_path=target.source_path,
@@ -613,7 +611,22 @@ class KnowledgeDocumentManagementService:
             document_type=target.document_type,
             metadata=metadata,
         )
-        return self.chunk_builder.build(
+        if target.document_type == "markdown":
+            hierarchy = self.hierarchy_builder.build(
+                documents=[document],
+                options=MarkdownHierarchyOptions(
+                    source=self.settings.ingestion_source_name,
+                    parent_target_tokens=self.settings.markdown_parent_target_tokens,
+                    parent_max_tokens=self.settings.markdown_parent_max_tokens,
+                    parent_max_chars=self.settings.markdown_parent_max_chars,
+                    child_target_tokens=self.settings.markdown_child_target_tokens,
+                    child_max_tokens=self.settings.markdown_child_max_tokens,
+                    child_min_tokens=self.settings.markdown_child_min_tokens,
+                    child_overlap_tokens=self.settings.markdown_child_overlap_tokens,
+                ),
+            )
+            return hierarchy.parents, hierarchy.children
+        return [], self.chunk_builder.build(
             documents=[document],
             options=ChunkBuildOptions(
                 source=self.settings.ingestion_source_name,

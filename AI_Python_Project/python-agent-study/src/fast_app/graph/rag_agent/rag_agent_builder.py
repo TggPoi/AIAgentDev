@@ -24,6 +24,7 @@ from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor
 from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 from fast_app.services.agent_tasks.agent_task_router import AgentTaskRouter
 from fast_app.services.rag.prompt_guard_service import PromptGuardService
+from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
 
 
 def build_rag_agent_graph(
@@ -34,6 +35,7 @@ def build_rag_agent_graph(
     reranker: BaseReranker,
     rerank_top_k: int,
     prompt_guard: PromptGuardService | None = None,
+    parent_expander: MarkdownParentContextExpander | None = None,
     task_router: AgentTaskRouter | None = None,
     task_planner: AgentTaskPlanner | None = None,
     task_executor: AgentTaskExecutor | None = None,
@@ -88,6 +90,7 @@ def build_rag_agent_graph(
         create_agent_build_context_node(
             settings=settings,
             prompt_guard=prompt_guard,
+            parent_expander=parent_expander,
         ),
     )
     builder.add_node(

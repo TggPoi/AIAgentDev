@@ -60,6 +60,7 @@ from fast_app.services.rag.guarded_streaming import (
     text_to_async_tokens,
 )
 from fast_app.services.rag.prompt_guard_service import PromptGuardService
+from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.conversation.query_rewrite import ConversationQueryRewriter
 from fast_app.services.rag.rag_pipeline_service import docs_to_sources
@@ -87,6 +88,7 @@ class RagAgentPipeline:
         task_router: AgentTaskRouter | None = None,
         task_planner: AgentTaskPlanner | None = None,
         task_executor: AgentTaskExecutor | None = None,
+        parent_expander: MarkdownParentContextExpander | None = None,
     ):
         """保存依赖并构建非流式图与流式路径共用的 Agent 节点。"""
         # 保存底层组件引用，方便非流式 graph 和流式手写路径复用同一批依赖。
@@ -104,6 +106,7 @@ class RagAgentPipeline:
         self.task_router = task_router
         self.task_planner = task_planner
         self.task_executor = task_executor
+        self.parent_expander = parent_expander
         # run() 使用 compiled graph，完整展示 LangGraph Agent 状态机。
         self.graph = build_rag_agent_graph(
             settings=settings,
@@ -116,6 +119,7 @@ class RagAgentPipeline:
             task_router=task_router,
             task_planner=task_planner,
             task_executor=task_executor,
+            parent_expander=parent_expander,
         )
 
         # stream / stream_events 需要在生成阶段逐 token yield。
@@ -152,6 +156,7 @@ class RagAgentPipeline:
         self.build_context_node = create_agent_build_context_node(
             settings=settings,
             prompt_guard=prompt_guard,
+            parent_expander=parent_expander,
         )
         self.error_answer_node = create_agent_error_answer_node(settings=settings)
         self.fail_request_node = create_agent_fail_request_node(settings=settings)
@@ -160,18 +165,6 @@ class RagAgentPipeline:
         """在启用 Prompt Guard 时校验指定边界上的用户查询。"""
         if self.prompt_guard is not None:
             await self.prompt_guard.ensure_user_input_allowed(query, source=source)
-
-    async def _filter_docs_with_prompt_guard(
-        self,
-        docs: list,
-        *,
-        source: str,
-    ) -> list:
-        """在启用 Prompt Guard 时过滤检索结果中的不安全文档。"""
-        if self.prompt_guard is None:
-            return docs
-
-        return await self.prompt_guard.filter_retrieved_docs(docs, source=source)
 
     async def _audit_stream_output(self, answer: str, *, source: str) -> None:
         """在 legacy token 流结束后审计完整回答内容。"""
@@ -1205,12 +1198,10 @@ class RagAgentPipeline:
             )
             return
 
+        build_context_update = await self.build_context_node(state)
+        state.update(build_context_update)
         docs = state["docs"]
-        docs = await self._filter_docs_with_prompt_guard(
-            docs,
-            source="rag_agent.stream_events.documents",
-        )
-        state["docs"] = docs
+        context = state["context"]
         # 检索路径先把 sources 发给前端，再开始 token 流。
         # 这和现有 LangGraphRagPipeline.stream_events 的用户体验保持一致。
         async with rag_agent_langsmith_step_trace(
@@ -1236,10 +1227,6 @@ class RagAgentPipeline:
             event="sources",
             data={"sources": sources},
         )
-
-        build_context_update = await self.build_context_node(state)
-        state.update(build_context_update)
-        context = state["context"]
 
         if context is None:
             raise ExternalServiceError(

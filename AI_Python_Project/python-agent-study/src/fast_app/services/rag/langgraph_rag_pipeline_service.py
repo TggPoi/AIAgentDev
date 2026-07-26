@@ -36,6 +36,7 @@ from fast_app.services.rag.guarded_streaming import (
     text_to_async_tokens,
 )
 from fast_app.services.rag.prompt_guard_service import PromptGuardService
+from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
 
 from fast_app.domain.rag_stream_models import RagStreamEvent
 
@@ -53,6 +54,7 @@ class LangGraphRagPipeline:
         llm_client: BaseLLMClient,
         reranker: BaseReranker,
         prompt_guard: PromptGuardService | None = None,
+        parent_expander: MarkdownParentContextExpander | None = None,
     ):
         self.settings = settings
         self.vector_retriever = vector_retriever
@@ -60,6 +62,7 @@ class LangGraphRagPipeline:
         self.llm_client = llm_client
         self.reranker = reranker
         self.prompt_guard = prompt_guard
+        self.parent_expander = parent_expander
         self.rerank_node = create_rerank_node(
             settings=settings,
             reranker=reranker,
@@ -75,6 +78,7 @@ class LangGraphRagPipeline:
             reranker=reranker,
             mode="explicit_graph", #设置使用graph还是 create Agent[未实现]模式
             prompt_guard=prompt_guard,
+            parent_expander=parent_expander,
         )
 
         self.retrieve_node = create_retrieve_node(
@@ -85,6 +89,7 @@ class LangGraphRagPipeline:
         self.build_context_node = create_build_context_node(
             settings=settings,
             prompt_guard=prompt_guard,
+            parent_expander=parent_expander,
         )
         self.route_query_node = create_route_query_node(settings=settings)
         self.direct_answer_node = create_direct_answer_node(settings=settings)
@@ -105,17 +110,6 @@ class LangGraphRagPipeline:
     async def _audit_stream_output(self, answer: str, *, source: str) -> None:
         if self.prompt_guard is not None:
             await self.prompt_guard.audit_stream_output(answer, source=source)
-
-    async def _filter_docs_with_prompt_guard(
-        self,
-        docs: list,
-        *,
-        source: str,
-    ) -> list:
-        if self.prompt_guard is None:
-            return docs
-
-        return await self.prompt_guard.filter_retrieved_docs(docs, source=source)
 
     def _langsmith_step_trace(
         self,
@@ -485,12 +479,10 @@ class LangGraphRagPipeline:
         rerank_update = await self.rerank_node(state)
         state.update(rerank_update)
 
+        build_context_update = await self.build_context_node(state)
+        state.update(build_context_update)
         docs = state["docs"]
-        docs = await self._filter_docs_with_prompt_guard(
-            docs,
-            source="langgraph.stream_events.documents",
-        )
-        state["docs"] = docs
+        context = state["context"]
 
         with self._langsmith_step_trace(
             req=req,
@@ -518,11 +510,6 @@ class LangGraphRagPipeline:
                 "sources": sources,
             },
         )
-
-        build_context_update = await self.build_context_node(state)
-        state.update(build_context_update)
-
-        context = state["context"]
 
         if context is None:
             raise ExternalServiceError("LangGraph RAG Stream Events 上下文为空，无法流式生成回答")

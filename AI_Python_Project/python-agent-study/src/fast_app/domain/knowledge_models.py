@@ -103,3 +103,6 @@ class KnowledgeChunk:
     title: str
     # chunk 级 metadata，例如 section_path、doc_id、department_codes。
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Markdown 父子分块使用的检索文本；为空时继续以 content 作为索引和向量化输入。
+    # Office/TXT Builder 不设置该字段，因此其既有行为保持不变。
+    search_text: str | None = None

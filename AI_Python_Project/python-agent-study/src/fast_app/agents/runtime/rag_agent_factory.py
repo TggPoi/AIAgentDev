@@ -6,6 +6,7 @@ from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.graph.rag.rag_graph_builder import build_rag_graph
 from fast_app.services.rag.prompt_guard_service import PromptGuardService
+from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
 
 
 RagAgentAssemblyMode = Literal["explicit_graph", "create_agent"]
@@ -18,6 +19,7 @@ def build_explicit_rag_agent(
     llm_client: BaseLLMClient,
     reranker: BaseReranker,
     prompt_guard: PromptGuardService | None = None,
+    parent_expander: MarkdownParentContextExpander | None = None,
 ):
     return build_rag_graph(
         settings=settings,
@@ -27,6 +29,7 @@ def build_explicit_rag_agent(
         reranker=reranker,
         rerank_top_k=settings.rerank_top_k,
         prompt_guard=prompt_guard,
+        parent_expander=parent_expander,
     )
 
 
@@ -38,6 +41,7 @@ def build_rag_agent(
     reranker: BaseReranker,
     mode: RagAgentAssemblyMode = "explicit_graph",
     prompt_guard: PromptGuardService | None = None,
+    parent_expander: MarkdownParentContextExpander | None = None,
 ):
     if mode == "explicit_graph":
         return build_explicit_rag_agent(
@@ -47,6 +51,7 @@ def build_rag_agent(
             llm_client=llm_client,
             reranker=reranker,
             prompt_guard=prompt_guard,
+            parent_expander=parent_expander,
         )
 
     raise ValueError("create_agent assembly is planned for a later phase.")

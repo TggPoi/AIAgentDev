@@ -7,6 +7,10 @@ from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.core.config import Settings
 from fast_app.domain.knowledge_models import KnowledgeChunk
 from fast_app.ingestion.processing.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
+from fast_app.ingestion.processing.markdown_hierarchy import (
+    MarkdownHierarchyBuilder,
+    MarkdownHierarchyOptions,
+)
 from fast_app.ingestion.stores.rag_store_writer import write_rag_stores
 from fast_app.ingestion.processing.document_loaders import (
     BaseDocumentLoader,
@@ -20,6 +24,7 @@ class MarkdownIngestionResult:
     # 上层 CLI 或 API 只需要知道处理了多少文档、多少 chunk、写入是否成功。
     document_count: int
     chunk_count: int
+    parent_count: int
     es_success_count: int
     milvus_insert_result: dict
 
@@ -42,6 +47,7 @@ class MarkdownIngestionService:
         milvus_client: MilvusClient,
         document_loader: BaseDocumentLoader | None = None,
         chunk_builder: MarkdownChunkBuilder | None = None,
+        hierarchy_builder: MarkdownHierarchyBuilder | None = None,
     ):
         # settings 是本次导入使用的配置来源，例如知识库目录、chunk 大小、
         # ES index 名称、Milvus collection 名称、写入模式等。
@@ -62,6 +68,7 @@ class MarkdownIngestionService:
         # chunk_builder 负责把领域文档切成 KnowledgeChunk，并生成稳定的 chunk_id / metadata。
         # 主流程只消费它的结果，不在这里写具体切分规则。
         self.chunk_builder = chunk_builder or MarkdownChunkBuilder()
+        self.hierarchy_builder = hierarchy_builder or MarkdownHierarchyBuilder()
 
     async def ingest(self) -> MarkdownIngestionResult:
         # 第一步：从配置中的知识库目录读取原始文档。
@@ -71,8 +78,27 @@ class MarkdownIngestionService:
         # 第二步：把文档拆成可检索、可向量化的 chunk。
         # ChunkBuildOptions 把配置层的参数集中传给 chunk_builder，
         # 避免 chunk_builder 直接依赖 Settings。
-        chunks = self.chunk_builder.build(
-            documents=documents,
+        markdown_documents = [
+            document for document in documents if document.document_type == "markdown"
+        ]
+        legacy_documents = [
+            document for document in documents if document.document_type != "markdown"
+        ]
+        hierarchy = self.hierarchy_builder.build(
+            documents=markdown_documents,
+            options=MarkdownHierarchyOptions(
+                source=self.settings.ingestion_source_name,
+                parent_target_tokens=self.settings.markdown_parent_target_tokens,
+                parent_max_tokens=self.settings.markdown_parent_max_tokens,
+                parent_max_chars=self.settings.markdown_parent_max_chars,
+                child_target_tokens=self.settings.markdown_child_target_tokens,
+                child_max_tokens=self.settings.markdown_child_max_tokens,
+                child_min_tokens=self.settings.markdown_child_min_tokens,
+                child_overlap_tokens=self.settings.markdown_child_overlap_tokens,
+            ),
+        )
+        legacy_chunks = self.chunk_builder.build(
+            documents=legacy_documents,
             options=ChunkBuildOptions(
                 source=self.settings.ingestion_source_name,
                 max_chars=self.settings.markdown_chunk_max_chars,
@@ -81,12 +107,13 @@ class MarkdownIngestionService:
                 min_chars=self.settings.markdown_chunk_min_chars,
             ),
         )
+        chunks = [*hierarchy.children, *legacy_chunks]
 
         # 第三步：按 chunks 的顺序生成 embedding。
         # 这里必须只传 chunk.content，因为 embedding 模型只需要正文文本。
         # vectors 的顺序后面会和 chunks 的顺序一一配对，不能打乱。
         vectors = await self.embedding_client.embed_documents(
-            [chunk.content for chunk in chunks]
+            [chunk.search_text or chunk.content for chunk in chunks]
         )
 
         # 第四步：写入存储前先做数量和维度校验。
@@ -102,12 +129,14 @@ class MarkdownIngestionService:
             settings=self.settings,
             chunks=chunks,
             vectors=vectors,
+            parents=hierarchy.parents,
         )
 
         # 第六步：把底层写入结果整理成上层更容易理解的导入结果。
         return MarkdownIngestionResult(
             document_count=len(documents),
             chunk_count=len(chunks),
+            parent_count=len(hierarchy.parents),
             es_success_count=store_write_result.es.success_count,
             milvus_insert_result=store_write_result.milvus.detail,
         )

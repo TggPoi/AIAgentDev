@@ -44,7 +44,10 @@ from fast_app.services.agent_tasks.agent_task_router import AgentTaskRouter
 from fast_app.services.knowledge.knowledge_permission_policy import (
     build_retrieval_filters_from_mapping,
 )
-from fast_app.services.rag.rag_pipeline_service import build_rag_context, build_top_doc_ids
+from fast_app.services.rag.rag_pipeline_service import build_top_doc_ids
+from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
+from fast_app.services.rag.rag_context_assembler import assemble_rag_context
+from fast_app.services.rag.rag_context_assembler import build_context_observation
 from fast_app.services.rag.prompt_guard_service import PromptGuardService
 
 
@@ -972,6 +975,7 @@ def create_agent_rerank_node(
 def create_agent_build_context_node(
     settings: Settings,
     prompt_guard: PromptGuardService | None = None,
+    parent_expander: MarkdownParentContextExpander | None = None,
 ) -> Callable[[RagAgentState], dict[str, object]]:
     """构造将安全检索文档转换为 LLM 上下文的节点。"""
     # build_context 是 RAG 和 LLM 之间的适配层：
@@ -990,13 +994,20 @@ def create_agent_build_context_node(
                 top_doc_ids=build_top_doc_ids(docs),
             ),
         ) as trace_run:
-            if prompt_guard is not None:
-                docs = await prompt_guard.filter_retrieved_docs(
-                    docs,
-                    source="rag_agent.build_context",
-                )
-
-            context = build_rag_context(state["query"], docs)
+            context = await assemble_rag_context(
+                settings=settings,
+                query=state["query"],
+                docs=docs,
+                filters=state["filters"],
+                source="rag_agent.build_context",
+                parent_expander=(
+                    parent_expander
+                    if state.get("operation", "run") != "stream"
+                    else None
+                ),
+                prompt_guard=prompt_guard,
+            )
+            docs = context.docs
             logger.info(
                 "rag_agent_context %s",
                 format_log_fields(
@@ -1011,6 +1022,7 @@ def create_agent_build_context_node(
                     {
                         "context_doc_count": len(context.docs),
                         "context_length": len(context.context_text),
+                        **build_context_observation(context),
                     }
                 )
             return {

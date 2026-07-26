@@ -16,6 +16,11 @@ from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingCl
 from fast_app.core.config import Settings, get_settings
 from fast_app.domain.knowledge_models import KnowledgeChunk, LoadedDocument
 from fast_app.ingestion.processing.chunk_builders import ChunkBuildOptions, MarkdownChunkBuilder
+from fast_app.ingestion.processing.markdown_hierarchy import (
+    MarkdownHierarchyBuilder,
+    MarkdownHierarchyOptions,
+    MarkdownParentChunk,
+)
 from fast_app.ingestion.processing.document_loaders import (
     build_default_document_loader,
 )
@@ -34,6 +39,10 @@ def apply_arg_overrides(args: argparse.Namespace) -> None:
         os.environ["INGESTION_SOURCE_NAME"] = args.source_name
     if getattr(args, "write_mode", None):
         os.environ["INGESTION_WRITE_MODE"] = args.write_mode
+    if getattr(args, "elasticsearch_index_name", None):
+        os.environ["ELASTICSEARCH_INDEX_NAME"] = args.elasticsearch_index_name
+    if getattr(args, "milvus_collection_name", None):
+        os.environ["MILVUS_COLLECTION_NAME"] = args.milvus_collection_name
     if getattr(args, "max_chars", None) is not None:
         os.environ["MARKDOWN_CHUNK_MAX_CHARS"] = str(args.max_chars)
     if getattr(args, "overlap_chars", None) is not None:
@@ -42,6 +51,18 @@ def apply_arg_overrides(args: argparse.Namespace) -> None:
         os.environ["MARKDOWN_CHUNK_MAX_TOKENS"] = str(args.max_tokens)
     if getattr(args, "min_chars", None) is not None:
         os.environ["MARKDOWN_CHUNK_MIN_CHARS"] = str(args.min_chars)
+    for argument, environment_name in (
+        ("parent_target_tokens", "MARKDOWN_PARENT_TARGET_TOKENS"),
+        ("parent_max_tokens", "MARKDOWN_PARENT_MAX_TOKENS"),
+        ("parent_max_chars", "MARKDOWN_PARENT_MAX_CHARS"),
+        ("child_target_tokens", "MARKDOWN_CHILD_TARGET_TOKENS"),
+        ("child_max_tokens", "MARKDOWN_CHILD_MAX_TOKENS"),
+        ("child_min_tokens", "MARKDOWN_CHILD_MIN_TOKENS"),
+        ("child_overlap_tokens", "MARKDOWN_CHILD_OVERLAP_TOKENS"),
+    ):
+        value = getattr(args, argument, None)
+        if value is not None:
+            os.environ[environment_name] = str(value)
     if getattr(args, "no_es_auth", False):
         os.environ["ELASTICSEARCH_USERNAME"] = ""
         os.environ["ELASTICSEARCH_PASSWORD"] = ""
@@ -114,7 +135,9 @@ def build_embedding_client(
     return QwenEmbeddingClient(settings=settings)
 
 
-def build_chunks(settings: Settings) -> tuple[list[LoadedDocument], list[KnowledgeChunk]]:
+def build_chunks(
+    settings: Settings,
+) -> tuple[list[LoadedDocument], list[MarkdownParentChunk], list[KnowledgeChunk]]:
     # dry-run 和真实 ingestion 都需要先确认知识库目录存在。
     # 这里提前失败，比后面 loader 递归读取时才失败更容易定位问题。
     root = Path(settings.knowledge_base_dir)
@@ -129,8 +152,27 @@ def build_chunks(settings: Settings) -> tuple[list[LoadedDocument], list[Knowled
     # Loader 负责把本地文件读成 LoadedDocument。
     # ChunkBuilder 再负责把 LoadedDocument 切成 KnowledgeChunk。
     documents = document_loader.load(settings.knowledge_base_dir)
-    chunks = MarkdownChunkBuilder().build(
-        documents=documents,
+    markdown_documents = [
+        document for document in documents if document.document_type == "markdown"
+    ]
+    legacy_documents = [
+        document for document in documents if document.document_type != "markdown"
+    ]
+    hierarchy = MarkdownHierarchyBuilder().build(
+        documents=markdown_documents,
+        options=MarkdownHierarchyOptions(
+            source=settings.ingestion_source_name,
+            parent_target_tokens=settings.markdown_parent_target_tokens,
+            parent_max_tokens=settings.markdown_parent_max_tokens,
+            parent_max_chars=settings.markdown_parent_max_chars,
+            child_target_tokens=settings.markdown_child_target_tokens,
+            child_max_tokens=settings.markdown_child_max_tokens,
+            child_min_tokens=settings.markdown_child_min_tokens,
+            child_overlap_tokens=settings.markdown_child_overlap_tokens,
+        ),
+    )
+    legacy_chunks = MarkdownChunkBuilder().build(
+        documents=legacy_documents,
         options=ChunkBuildOptions(
             source=settings.ingestion_source_name,
             max_chars=settings.markdown_chunk_max_chars,
@@ -140,7 +182,7 @@ def build_chunks(settings: Settings) -> tuple[list[LoadedDocument], list[Knowled
         ),
     )
 
-    return documents, chunks
+    return documents, hierarchy.parents, [*hierarchy.children, *legacy_chunks]
 
 
 def print_json(data: dict[str, Any]) -> None:
@@ -150,7 +192,7 @@ def print_json(data: dict[str, Any]) -> None:
 async def run_dry_run(args: argparse.Namespace, settings: Settings) -> int:
     # dry-run 只验证“读取 + 切分 + metadata”。
     # 它不会调用 embedding，也不会连接 ES / Milvus。
-    documents, chunks = build_chunks(settings)
+    documents, parents, chunks = build_chunks(settings)
 
     print_json(
         {
@@ -160,6 +202,11 @@ async def run_dry_run(args: argparse.Namespace, settings: Settings) -> int:
             "write_mode": settings.ingestion_write_mode,
             "document_count": len(documents),
             "chunk_count": len(chunks),
+            "parent_count": len(parents),
+            "child_count": sum(
+                chunk.metadata.get("record_type") == "markdown_child"
+                for chunk in chunks
+            ),
             "chunk_options": {
                 "max_chars": settings.markdown_chunk_max_chars,
                 "overlap_chars": settings.markdown_chunk_overlap_chars,
@@ -176,6 +223,15 @@ async def run_dry_run(args: argparse.Namespace, settings: Settings) -> int:
                 }
                 for chunk in chunks[: args.sample_size]
             ],
+            "sample_parents": [
+                {
+                    "id": parent.id,
+                    "title": parent.title,
+                    "content_preview": " ".join(parent.content.split())[:120],
+                    "metadata": parent.metadata,
+                }
+                for parent in parents[: args.sample_size]
+            ],
         }
     )
     return 0
@@ -184,10 +240,11 @@ async def run_dry_run(args: argparse.Namespace, settings: Settings) -> int:
 async def run_validate(args: argparse.Namespace, settings: Settings) -> int:
     # validate 只验证本地文档读取、chunk 构造和 metadata 规范。
     # 它不调用 embedding，也不连接 ES / Milvus，适合作为阶段 10 的快速回归检查。
-    documents, chunks = build_chunks(settings)
+    documents, parents, chunks = build_chunks(settings)
     report = validate_ingestion_result(
         documents=documents,
         chunks=chunks,
+        parents=parents,
     )
 
     print_json(
@@ -290,6 +347,8 @@ def add_ingestion_common_args(parser: argparse.ArgumentParser) -> None:
     # 抽成 helper 可以避免两个子命令重复声明同一组参数。
     parser.add_argument("--knowledge-base-dir", default=None)
     parser.add_argument("--source-name", default=None)
+    parser.add_argument("--elasticsearch-index-name", default=None)
+    parser.add_argument("--milvus-collection-name", default=None)
     parser.add_argument(
         "--write-mode",
         choices=["recreate", "upsert", "replace_docs"],
@@ -299,6 +358,13 @@ def add_ingestion_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--overlap-chars", type=int, default=None)
     parser.add_argument("--max-tokens", type=int, default=None)
     parser.add_argument("--min-chars", type=int, default=None)
+    parser.add_argument("--parent-target-tokens", type=int, default=None)
+    parser.add_argument("--parent-max-tokens", type=int, default=None)
+    parser.add_argument("--parent-max-chars", type=int, default=None)
+    parser.add_argument("--child-target-tokens", type=int, default=None)
+    parser.add_argument("--child-max-tokens", type=int, default=None)
+    parser.add_argument("--child-min-tokens", type=int, default=None)
+    parser.add_argument("--child-overlap-tokens", type=int, default=None)
 
 
 def parse_args() -> argparse.Namespace:
@@ -336,6 +402,8 @@ def parse_args() -> argparse.Namespace:
         default="both",
     )
     reset_parser.add_argument("--drop-only", action="store_true")
+    reset_parser.add_argument("--elasticsearch-index-name", default=None)
+    reset_parser.add_argument("--milvus-collection-name", default=None)
     reset_parser.add_argument("--yes", action="store_true")
     reset_parser.add_argument("--no-es-auth", action="store_true")
 

@@ -3,6 +3,10 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from fast_app.domain.knowledge_models import KnowledgeChunk, LoadedDocument
+from fast_app.ingestion.processing.markdown_hierarchy import (
+    MARKDOWN_CHILD_RECORD_TYPE,
+    MarkdownParentChunk,
+)
 
 
 IssueLevel = Literal["error", "warning"]
@@ -40,6 +44,11 @@ class IngestionValidationReport:
     source_path_count: int
     min_chunk_chars: int
     max_chunk_chars: int
+    parent_count: int
+    orphan_child_count: int
+    parent_without_child_count: int
+    max_parent_tokens: int
+    max_child_tokens: int
     issues: list[IngestionValidationIssue]
 
     @property
@@ -58,8 +67,10 @@ class IngestionValidationReport:
 def validate_ingestion_result(
     documents: list[LoadedDocument],
     chunks: list[KnowledgeChunk],
+    parents: list[MarkdownParentChunk] | None = None,
 ) -> IngestionValidationReport:
     issues: list[IngestionValidationIssue] = []
+    parent_records = parents or []
 
     if not documents:
         issues.append(
@@ -90,6 +101,11 @@ def validate_ingestion_result(
         doc_ids=doc_ids,
         issues=issues,
     )
+    orphan_child_count, parent_without_child_count = _validate_parent_links(
+        chunks=chunks,
+        parents=parent_records,
+        issues=issues,
+    )
 
     chunk_lengths = [len(chunk.content) for chunk in chunks]
 
@@ -100,8 +116,76 @@ def validate_ingestion_result(
         source_path_count=len(source_paths),
         min_chunk_chars=min(chunk_lengths, default=0),
         max_chunk_chars=max(chunk_lengths, default=0),
+        parent_count=len(parent_records),
+        orphan_child_count=orphan_child_count,
+        parent_without_child_count=parent_without_child_count,
+        max_parent_tokens=max(
+            (int(parent.metadata.get("token_count") or 0) for parent in parent_records),
+            default=0,
+        ),
+        max_child_tokens=max(
+            (int(chunk.metadata.get("token_count") or 0) for chunk in chunks),
+            default=0,
+        ),
         issues=issues,
     )
+
+
+def _validate_parent_links(
+    *,
+    chunks: list[KnowledgeChunk],
+    parents: list[MarkdownParentChunk],
+    issues: list[IngestionValidationIssue],
+) -> tuple[int, int]:
+    parent_by_id = {parent.id: parent for parent in parents}
+    if len(parent_by_id) != len(parents):
+        issues.append(
+            IngestionValidationIssue(
+                level="error",
+                code="duplicate_parent_ids",
+                message="Markdown parent.id 存在重复",
+            )
+        )
+    child_parent_ids: set[str] = set()
+    orphan_count = 0
+    for chunk in chunks:
+        if chunk.metadata.get("record_type") != MARKDOWN_CHILD_RECORD_TYPE:
+            continue
+        parent_id = str(chunk.metadata.get("parent_id") or "")
+        parent = parent_by_id.get(parent_id)
+        if parent is None:
+            orphan_count += 1
+            issues.append(
+                IngestionValidationIssue(
+                    level="error",
+                    code="orphan_markdown_child",
+                    message="Markdown child 无法关联 parent",
+                    detail={"chunk_id": chunk.id, "parent_id": parent_id},
+                )
+            )
+            continue
+        child_parent_ids.add(parent_id)
+        for key in ("doc_id", "visibility", "allowed_departments", "allowed_users"):
+            if chunk.metadata.get(key) != parent.metadata.get(key):
+                issues.append(
+                    IngestionValidationIssue(
+                        level="error",
+                        code="parent_child_metadata_mismatch",
+                        message=f"Markdown parent/child metadata.{key} 不一致",
+                        detail={"chunk_id": chunk.id, "parent_id": parent_id},
+                    )
+                )
+    parent_without_child = len(set(parent_by_id) - child_parent_ids)
+    if parent_without_child:
+        issues.append(
+            IngestionValidationIssue(
+                level="error",
+                code="markdown_parent_without_child",
+                message="存在没有 child 的 Markdown parent",
+                detail={"count": parent_without_child},
+            )
+        )
+    return orphan_count, parent_without_child
 
 
 def _validate_documents(
