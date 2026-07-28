@@ -202,17 +202,14 @@ class _TaskPlanCancellationMiddleware(AgentMiddleware):
         return await handler(request)
 
 
-class _ResearcherToolExclusionMiddleware(_ToolExclusionMiddleware):
-    """移除 Todo，并在证据工具达到上限后强制 Researcher 转入综合阶段。"""
+class _TodoToolExclusionMiddleware(_ToolExclusionMiddleware):
+    """同时移除 Todo 工具及其框架提示，供非 Coordinator 角色复用。"""
 
-    MAX_RETRIEVAL_CALLS = 5
-
-    def __init__(self, *, allow_document_read: bool = False) -> None:
+    def __init__(self) -> None:
         super().__init__(excluded=frozenset({"write_todos"}))
-        self._allow_document_read = allow_document_read
 
     def _prepare_request(self, request):
-        """成对删除提示/工具，并隐藏已经成功用满的证据工具。"""
+        """成对删除 Todo 提示和工具，避免模型收到互相矛盾的指令。"""
 
         system_message = request.system_message
         blocks = (
@@ -224,6 +221,45 @@ class _ResearcherToolExclusionMiddleware(_ToolExclusionMiddleware):
                     and WRITE_TODOS_SYSTEM_PROMPT in str(block.get("text") or "")
                 )
             ]
+            if system_message is not None
+            else []
+        )
+        return request.override(
+            system_message=SystemMessage(content=blocks) if blocks else None,
+            tools=[
+                tool
+                for tool in request.tools
+                if _tool_name(tool) != "write_todos"
+            ],
+        )
+
+    def wrap_model_call(self, request, handler):
+        """同步模型调用同时应用 Todo 提示和工具过滤。"""
+
+        return handler(self._prepare_request(request))
+
+    async def awrap_model_call(self, request, handler):
+        """异步模型调用同时应用 Todo 提示和工具过滤。"""
+
+        return await handler(self._prepare_request(request))
+
+
+class _ResearcherToolExclusionMiddleware(_TodoToolExclusionMiddleware):
+    """移除 Todo，并在证据工具达到上限后强制 Researcher 转入综合阶段。"""
+
+    MAX_RETRIEVAL_CALLS = 5
+
+    def __init__(self, *, allow_document_read: bool = False) -> None:
+        super().__init__()
+        self._allow_document_read = allow_document_read
+
+    def _prepare_request(self, request):
+        """先移除 Todo，再隐藏已经成功用满的证据工具。"""
+
+        request = super()._prepare_request(request)
+        system_message = request.system_message
+        blocks = (
+            list(system_message.content_blocks)
             if system_message is not None
             else []
         )
@@ -240,7 +276,7 @@ class _ResearcherToolExclusionMiddleware(_ToolExclusionMiddleware):
             and message.status != "error"
             for message in messages
         )
-        excluded = {"write_todos"}
+        excluded: set[str] = set()
         completed: list[str] = []
         if retrieval_count >= self.MAX_RETRIEVAL_CALLS:
             completed.append(
@@ -270,16 +306,6 @@ class _ResearcherToolExclusionMiddleware(_ToolExclusionMiddleware):
                 if _tool_name(tool) not in excluded
             ],
         )
-
-    def wrap_model_call(self, request, handler):
-        """同步模型调用同时应用提示和工具过滤。"""
-
-        return handler(self._prepare_request(request))
-
-    async def awrap_model_call(self, request, handler):
-        """异步模型调用同时应用提示和工具过滤。"""
-
-        return await handler(self._prepare_request(request))
 
     async def awrap_tool_call(self, request, handler):
         """把超过证据边界的重复调用收敛成成功的停止信号，避免错误重试循环。"""
@@ -1098,6 +1124,7 @@ class DeepDocumentAgent:
                 "tools": [],
                 "middleware": [
                     shared_model_budget,
+                    _TodoToolExclusionMiddleware(),
                     *build_document_deep_agent_middlewares(
                         self._settings,
                         model_run_limit=(
@@ -1121,6 +1148,7 @@ class DeepDocumentAgent:
                 "tools": [],
                 "middleware": [
                     shared_model_budget,
+                    _TodoToolExclusionMiddleware(),
                     *build_document_deep_agent_middlewares(
                         self._settings,
                         model_run_limit=(

@@ -54,13 +54,17 @@ from fast_app.services.agent_tasks.deep_document_agent import (
     _CoordinatorToolExclusionMiddleware,
     _DocumentCoordinatorProgressMiddleware,
     _ResearcherToolExclusionMiddleware,
+    _TodoToolExclusionMiddleware,
 )
 from fast_app.services.agent_tasks.deep_document_runtime import DeepDocumentRuntime
 from fast_app.services.agent_tasks.document_task_executor import DocumentTaskExecutor
 from fast_app.services.agent_tasks.document_supervisor_agent import DocumentSupervisorAgent
+from langchain.agents import create_agent
+from langchain.agents.middleware import TodoListMiddleware
 from langchain.agents.middleware.model_call_limit import ModelCallLimitExceededError
 from langchain_core.callbacks import AsyncCallbackHandler
 from langchain.agents.middleware.todo import WRITE_TODOS_SYSTEM_PROMPT
+from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 
@@ -928,6 +932,51 @@ async def test_researcher_excludes_todo_tool_and_prompt_together() -> None:
     assert "next_action" in str(boundary_result.content)
 
 
+async def test_non_coordinator_todo_exclusion_runs_in_compiled_graph() -> None:
+    """编译后的 Agent 也必须在模型边界移除框架注入的 Todo 工具和提示。"""
+
+    class CapturingModel(FakeMessagesListChatModel):
+        bound_tool_names: list[str] = []
+        received_messages: list[object] = []
+
+        def bind_tools(self, tools, **kwargs):
+            self.bound_tool_names = [
+                str(tool.get("name", ""))
+                if isinstance(tool, dict)
+                else str(tool.name)
+                for tool in tools
+            ]
+            return self
+
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            self.received_messages = list(messages)
+            return super()._generate(
+                messages,
+                stop=stop,
+                run_manager=run_manager,
+                **kwargs,
+            )
+
+    model = CapturingModel(responses=[AIMessage(content="done")])
+    graph = create_agent(
+        model=model,
+        middleware=[
+            TodoListMiddleware(),
+            _TodoToolExclusionMiddleware(),
+        ],
+    )
+
+    await graph.ainvoke({"messages": [{"role": "user", "content": "write"}]})
+
+    assert "write_todos" not in model.bound_tool_names
+    system_text = "\n".join(
+        str(message.content)
+        for message in model.received_messages
+        if isinstance(message, SystemMessage)
+    )
+    assert WRITE_TODOS_SYSTEM_PROMPT not in system_text
+
+
 async def test_create_researcher_does_not_receive_full_document_tool() -> None:
     """纯创建任务只消费检索证据，不把参考文档全文带入模型上下文。"""
 
@@ -1113,6 +1162,7 @@ async def main() -> None:
     test_document_content_models_have_streaming_retry_policy()
     await test_coordinator_cannot_use_virtual_file_tools()
     await test_researcher_excludes_todo_tool_and_prompt_together()
+    await test_non_coordinator_todo_exclusion_runs_in_compiled_graph()
     await test_create_researcher_does_not_receive_full_document_tool()
     await test_supervisor_collapses_internal_agent_stages()
     if os.getenv("RUN_REAL_LLM") == "1":
