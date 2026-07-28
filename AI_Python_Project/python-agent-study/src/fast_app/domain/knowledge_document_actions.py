@@ -112,6 +112,30 @@ class KnowledgeDocumentActionResult(BaseModel):
     preview: KnowledgeDocumentActionPreview = Field(description="执行前生成的结构化预览。")
     message: str = Field(description="面向 Agent / API 调用方展示的结果说明。")
     audit_id: str | None = Field(default=None, description="审计记录 ID；没有落审计时为空。")
+    gitlab_source_id: str | None = Field(
+        default=None,
+        description="已提交 MR 时对应的 GitLab Source ID；本地兼容路径为空。",
+    )
+    gitlab_branch: str | None = Field(
+        default=None,
+        description="Agent 创建或复用的临时分支；尚未提交 GitLab 时为空。",
+    )
+    gitlab_commit_sha: str | None = Field(
+        default=None,
+        description="Agent 临时分支上的 Commit SHA；尚未提交时为空。",
+    )
+    merge_request_iid: int | None = Field(
+        default=None,
+        description="Merge Request 在目标 Project 内的 IID；尚未创建时为空。",
+    )
+    merge_request_url: str | None = Field(
+        default=None,
+        description="供资产管理者人工审核的 Merge Request URL；尚未创建时为空。",
+    )
+    merge_request_status: str | None = Field(
+        default=None,
+        description="GitLab 返回的 Merge Request 状态；尚未创建时为空。",
+    )
 
 
 __all__ = [

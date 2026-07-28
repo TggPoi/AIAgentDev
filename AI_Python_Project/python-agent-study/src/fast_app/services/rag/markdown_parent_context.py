@@ -257,6 +257,10 @@ class MarkdownParentContextExpander:
             {
                 "chunk_level": "parent",
                 "matched_child_ids": [child.id for child in children],
+                "matched_logical_child_ids": [
+                    str(child.metadata.get("logical_record_id") or child.id)
+                    for child in children
+                ],
                 "parent_expansion_degraded": False,
             }
         )
@@ -287,6 +291,10 @@ class MarkdownParentContextExpander:
             {
                 "chunk_level": "child",
                 "matched_child_ids": [child.id for child in children],
+                "matched_logical_child_ids": [
+                    str(child.metadata.get("logical_record_id") or child.id)
+                    for child in children
+                ],
                 "parent_expansion_degraded": True,
             }
         )

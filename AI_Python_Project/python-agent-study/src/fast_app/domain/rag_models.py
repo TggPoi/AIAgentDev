@@ -20,6 +20,8 @@ class RetrievalFilters:
     department_codes: list[str] = field(default_factory=list)
     # 是否允许读取公共文档。
     allow_public: bool = True
+    # 服务端在请求入口冻结的知识版本；客户端不能直接决定该值。
+    knowledge_version: int | None = None
 
 
 @dataclass

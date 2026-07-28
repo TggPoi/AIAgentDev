@@ -1,5 +1,7 @@
 from functools import lru_cache
+import os
 
+from dotenv import dotenv_values
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -305,22 +307,70 @@ class Settings(BaseSettings):
         alias="AGENT_DOCUMENT_MAX_REVISION_ROUNDS",
     )
     agent_document_worker_timeout_seconds: float = Field(
-        default=300.0,
+        default=480.0,
         gt=0.0,
         alias="AGENT_DOCUMENT_WORKER_TIMEOUT_SECONDS",
         description=(
             "一次复杂文档 Deep Agent 工作流的总墙钟超时秒数；局部模型步骤和工具"
-            "调用仍由各自预算限制，默认值覆盖真实检索、写作、审查和最终汇总。"
+            "调用仍由各自预算限制；默认值覆盖长文初稿、一次 Writer 返工和复审。"
+        ),
+    )
+    agent_document_researcher_timeout_seconds: float = Field(
+        default=120.0,
+        gt=0.0,
+        alias="AGENT_DOCUMENT_RESEARCHER_TIMEOUT_SECONDS",
+        description=(
+            "Document Researcher 单次长上下文模型调用的超时秒数；独立于普通"
+            " LLM_TIMEOUT_SECONDS，覆盖检索结果和获准全文的综合处理。"
+        ),
+    )
+    agent_document_researcher_max_retries: int = Field(
+        default=0,
+        ge=0,
+        le=2,
+        alias="AGENT_DOCUMENT_RESEARCHER_MAX_RETRIES",
+        description=(
+            "Document Researcher 单次模型调用的 SDK 自动重试次数；默认不重试，"
+            "避免用相同长上下文重复占用整个文档 Worker 的墙钟预算。"
+        ),
+    )
+    agent_document_coordinator_timeout_seconds: float = Field(
+        default=120.0,
+        gt=0.0,
+        alias="AGENT_DOCUMENT_COORDINATOR_TIMEOUT_SECONDS",
+        description=(
+            "Document Coordinator 和 Reviewer 单次长上下文流式模型调用的超时秒数；"
+            "覆盖编排决策和完整草稿审查，不改变整体 Worker 超时。"
         ),
     )
     agent_document_subagent_max_steps: int = Field(
-        default=12,
+        default=10,
         ge=3,
         le=20,
         alias="AGENT_DOCUMENT_SUBAGENT_MAX_STEPS",
         description=(
-            "每个文档 Researcher、Writer 或 Reviewer 在一次运行中允许的模型调用步数；"
-            "包含 Deep Agents 虚拟文件读写后的后续决策，不影响普通 Agent 的全局步数。"
+            "每个文档 Writer 或 Reviewer 在一次运行中允许的模型调用步数；包含"
+            " Deep Agents 虚拟文件读写、修订后复核和最终结构化返回。"
+        ),
+    )
+    agent_document_researcher_max_steps: int = Field(
+        default=12,
+        ge=3,
+        le=20,
+        alias="AGENT_DOCUMENT_RESEARCHER_MAX_STEPS",
+        description=(
+            "Document Researcher 一次运行允许的模型调用步数；为检索、全文读取、"
+            "研究文件写入和最终结构化返回保留独立预算，不扩大 Writer/Reviewer。"
+        ),
+    )
+    agent_document_max_total_model_calls: int = Field(
+        default=36,
+        ge=4,
+        le=200,
+        alias="AGENT_DOCUMENT_MAX_TOTAL_MODEL_CALLS",
+        description=(
+            "一次 Deep Document Agent 执行中 Coordinator 与全部 SubAgent 共享的模型"
+            "调用总上限；恢复请求重新计数，但已写入 checkpoint 的角色派发限制继续生效。"
         ),
     )
     agent_document_max_total_draft_chars: int = Field(
@@ -560,6 +610,71 @@ class Settings(BaseSettings):
         ge=1,
         alias="MARKDOWN_PARENT_MAX_CHARS",
         description="Markdown 父块字符硬上限，用于兜底本地 tokenizer 与模型 tokenizer 的差异。",
+    )
+    gitlab_integration_enabled: bool = Field(
+        default=False,
+        alias="GITLAB_INTEGRATION_ENABLED",
+        description="是否启用 GitLab 企业文档数据源、Webhook 和后台同步能力。",
+    )
+    gitlab_request_timeout_seconds: float = Field(
+        default=20.0,
+        gt=0.0,
+        alias="GITLAB_REQUEST_TIMEOUT_SECONDS",
+        description="GitLab HTTP API 单次请求超时秒数。",
+    )
+    gitlab_max_retries: int = Field(
+        default=3,
+        ge=0,
+        le=10,
+        alias="GITLAB_MAX_RETRIES",
+        description="GitLab 网络错误、429 和 5xx 的最大自动重试次数。",
+    )
+    gitlab_archive_max_bytes: int = Field(
+        default=200 * 1024 * 1024,
+        ge=1024,
+        alias="GITLAB_ARCHIVE_MAX_BYTES",
+        description="单个 GitLab Archive 允许下载和解压的最大字节数。",
+    )
+    gitlab_archive_max_files: int = Field(
+        default=10_000,
+        ge=1,
+        alias="GITLAB_ARCHIVE_MAX_FILES",
+        description="一次 GitLab Archive 全量同步允许包含的最大文件数量。",
+    )
+    gitlab_source_file_max_bytes: int = Field(
+        default=20 * 1024 * 1024,
+        ge=1024,
+        alias="GITLAB_SOURCE_FILE_MAX_BYTES",
+        description="GitLab 仓库中单个可导入文档允许的最大字节数。",
+    )
+    gitlab_worker_poll_seconds: float = Field(
+        default=2.0,
+        gt=0.0,
+        alias="GITLAB_WORKER_POLL_SECONDS",
+        description="GitLab 独立 Worker 在队列为空时的轮询间隔。",
+    )
+    gitlab_worker_lease_seconds: int = Field(
+        default=300,
+        ge=30,
+        alias="GITLAB_WORKER_LEASE_SECONDS",
+        description="GitLab 同步任务租约持续秒数。",
+    )
+    gitlab_worker_heartbeat_seconds: int = Field(
+        default=60,
+        ge=5,
+        alias="GITLAB_WORKER_HEARTBEAT_SECONDS",
+        description="GitLab 同步 Worker 续租心跳间隔秒数。",
+    )
+    gitlab_reconcile_interval_seconds: int = Field(
+        default=600,
+        ge=60,
+        alias="GITLAB_RECONCILE_INTERVAL_SECONDS",
+        description="GitLab 周期性对账的默认间隔秒数。",
+    )
+    gitlab_agent_changes_enabled: bool = Field(
+        default=False,
+        alias="GITLAB_AGENT_CHANGES_ENABLED",
+        description="是否将确认后的 Agent 文档写操作转换为 GitLab 分支和 Merge Request。",
     )
     markdown_child_target_tokens: int = Field(
         default=260,
@@ -856,6 +971,15 @@ def _split_csv_secret_values(raw_value: str) -> list[str]:
 
 # @lru_cache 第一次调用 get_settings() 时创建 Settings。后续再次调用，直接返回第一次创建好的对象。
 # Settings 在应用运行期间通常是稳定的。没有必要每个请求都重新读取 .env。
+def get_secret_env_value(name: str, env_file: str = ".env") -> str:
+    """优先读取服务器环境变量，本地开发时回退到未提交的 .env。"""
+
+    value = os.environ.get(name)
+    if value is not None:
+        return value
+    return str(dotenv_values(env_file).get(name) or "")
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()

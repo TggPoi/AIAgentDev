@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.core.config import Settings
@@ -36,6 +38,12 @@ from fast_app.services.exceptions import (
     AppServiceError,
     ToolExecutionRequiresConfirmationError,
 )
+
+if TYPE_CHECKING:
+    from fast_app.integrations.gitlab.agent_change_service import (
+        GitLabAgentChangeService,
+        GitLabDocumentSnapshot,
+    )
 
 
 @dataclass(frozen=True)
@@ -90,6 +98,7 @@ class KnowledgeDocumentManagementService:
         milvus_client: Any | None = None,
         chunk_builder: MarkdownChunkBuilder | None = None,
         hierarchy_builder: MarkdownHierarchyBuilder | None = None,
+        gitlab_change_service: GitLabAgentChangeService | None = None,
     ):
         # settings 控制工具是否启用、是否只允许 dry-run、允许编辑的后缀和内容大小等安全边界。
         self.settings = settings
@@ -100,11 +109,13 @@ class KnowledgeDocumentManagementService:
         # 当前预览需要估算 affected_chunk_count，因此复用 ingestion 的 MarkdownChunkBuilder。
         self.chunk_builder = chunk_builder or MarkdownChunkBuilder()
         self.hierarchy_builder = hierarchy_builder or MarkdownHierarchyBuilder()
+        self.gitlab_change_service = gitlab_change_service
 
     async def plan_action(
         self,
         request: KnowledgeDocumentActionRequest,
         user: CurrentUserContext,
+        candidate_doc_id: str | None = None,
     ) -> KnowledgeDocumentActionResult:
         """生成文档管理动作的 dry-run 预览，或拒绝真实执行。"""
 
@@ -114,13 +125,35 @@ class KnowledgeDocumentManagementService:
 
         # 先做路径安全解析，再做 create/update/delete 的业务前置条件检查。
         target = self._resolve_safe_target_path(request.target_path)
-        self._validate_operation_requirements(request=request, target=target)
+        snapshot: GitLabDocumentSnapshot | None = None
+        if self.settings.gitlab_agent_changes_enabled:
+            if self.gitlab_change_service is None:
+                raise AppServiceError("GitLab Agent 变更服务未配置")
+            department = (
+                request.expected_department_codes[0]
+                if len(request.expected_department_codes) == 1
+                else user.primary_department_code
+            )
+            snapshot = await self.gitlab_change_service.load_snapshot(
+                target_path=target.relative_path,
+                doc_id=candidate_doc_id,
+                department_code=department,
+                allow_missing=request.operation == KnowledgeDocumentOperation.CREATE,
+            )
+            self._validate_operation_requirements(
+                request=request,
+                target=target,
+                exists_before=snapshot.content is not None,
+            )
+        else:
+            self._validate_operation_requirements(request=request, target=target)
 
         # preview 是后续权限网关、TaskPlan 确认页面的事实输入。
         preview = await self._build_preview(
             request=request,
             target=target,
             user=user,
+            gitlab_snapshot=snapshot,
         )
 
         # plan_action 默认只负责 dry-run；真实写入必须经过确认执行入口。
@@ -160,6 +193,23 @@ class KnowledgeDocumentManagementService:
             raise AppServiceError("目标文档不存在")
         return content
 
+    async def read_document_content_current(
+        self,
+        target_path: str,
+        *,
+        doc_id: str | None = None,
+        department_code: str | None = None,
+    ) -> str:
+        if self.settings.gitlab_agent_changes_enabled:
+            if self.gitlab_change_service is None:
+                raise AppServiceError("GitLab Agent 变更服务未配置")
+            return await self.gitlab_change_service.read_document(
+                target_path=target_path,
+                doc_id=doc_id,
+                department_code=department_code,
+            )
+        return self.read_document_content(target_path)
+
     async def execute_confirmed_action(
         self,
         request: KnowledgeDocumentActionRequest,
@@ -178,6 +228,9 @@ class KnowledgeDocumentManagementService:
         self,
         actions: list[tuple[KnowledgeDocumentActionRequest, str | None]],
         user: CurrentUserContext,
+        *,
+        task_plan_id: str | None = None,
+        confirmed_previews: list[KnowledgeDocumentActionPreview] | None = None,
     ) -> list[KnowledgeDocumentActionResult]:
         """预计算整批变更，任一执行失败时恢复文件与两个检索存储。"""
 
@@ -192,6 +245,55 @@ class KnowledgeDocumentManagementService:
 
         if not actions:
             raise AppServiceError("确认执行缺少文档动作")
+
+        if self.settings.gitlab_agent_changes_enabled:
+            if self.gitlab_change_service is None:
+                raise AppServiceError("GitLab Agent 变更服务未配置")
+            if not task_plan_id or confirmed_previews is None:
+                raise AppServiceError("GitLab Agent 变更缺少 TaskPlan 或确认预览")
+            if len(confirmed_previews) != len(actions):
+                raise AppServiceError("GitLab Agent 变更动作与确认预览数量不一致")
+            for (request, _), preview in zip(
+                actions, confirmed_previews, strict=True
+            ):
+                target = self._resolve_safe_target_path(request.target_path)
+                self._validate_operation_requirements(
+                    request=request,
+                    target=target,
+                    exists_before=preview.exists_before,
+                )
+            submitted = await self.gitlab_change_service.submit_changes(
+                task_plan_id=task_plan_id,
+                actions=[
+                    (request, preview, expected_hash)
+                    for (request, expected_hash), preview in zip(
+                        actions, confirmed_previews, strict=True
+                    )
+                ],
+                user=user,
+            )
+            return [
+                KnowledgeDocumentActionResult(
+                    operation=request.operation,
+                    target_path=request.target_path,
+                    dry_run=False,
+                    executed=True,
+                    preview=preview,
+                    message=(
+                        "已提交 GitLab Merge Request；main 合并前不会修改 "
+                        "Elasticsearch 或 Milvus。"
+                    ),
+                    gitlab_source_id=result.source_id,
+                    gitlab_branch=result.branch_name,
+                    gitlab_commit_sha=result.commit_sha,
+                    merge_request_iid=result.merge_request_iid,
+                    merge_request_url=result.merge_request_url,
+                    merge_request_status=result.status,
+                )
+                for (request, _), preview, result in zip(
+                    actions, confirmed_previews, submitted, strict=True
+                )
+            ]
 
         # 三个 client 是一组不可拆分的同步能力：要么全部存在并同步双库，要么全部缺省用于纯文件测试。
         # 禁止只配置其中一部分，否则文件写入成功后可能留下不一致的检索数据。
@@ -462,8 +564,13 @@ class KnowledgeDocumentManagementService:
         self,
         request: KnowledgeDocumentActionRequest,
         target: SafeDocumentTarget,
+        exists_before: bool | None = None,
     ) -> None:
-        exists_before = target.absolute_path.exists()
+        exists_before = (
+            target.absolute_path.exists()
+            if exists_before is None
+            else exists_before
+        )
         content = request.content or ""
 
         # create 只能创建新文件，并且必须提供非空内容。
@@ -498,9 +605,18 @@ class KnowledgeDocumentManagementService:
         request: KnowledgeDocumentActionRequest,
         target: SafeDocumentTarget,
         user: CurrentUserContext,
+        gitlab_snapshot: GitLabDocumentSnapshot | None = None,
     ) -> KnowledgeDocumentActionPreview:
-        exists_before = target.absolute_path.exists()
-        before_content = self._read_text_if_exists(target.absolute_path)
+        exists_before = (
+            gitlab_snapshot.content is not None
+            if gitlab_snapshot is not None
+            else target.absolute_path.exists()
+        )
+        before_content = (
+            gitlab_snapshot.content
+            if gitlab_snapshot is not None
+            else self._read_text_if_exists(target.absolute_path)
+        )
         # preview_content 表示“执行后预计会参与 ingestion 的内容”。
         # 对 delete 来说，它仍使用旧内容来估算会影响多少 chunk。
         preview_content = self._preview_content(
@@ -508,12 +624,25 @@ class KnowledgeDocumentManagementService:
             before_content=before_content,
         )
         # 复用 ingestion metadata 构建逻辑，保证 preview 里的权限信息和真实入库逻辑一致。
-        metadata = build_document_metadata(
-            source_path=target.source_path,
-            document_type=target.document_type,
-            knowledge_base_dir=self.settings.knowledge_base_dir,
-        )
-        if request.operation == KnowledgeDocumentOperation.CREATE:
+        if gitlab_snapshot is not None:
+            metadata = {
+                "doc_id": gitlab_snapshot.doc_id,
+                "source_path": gitlab_snapshot.repository_path,
+                "source_id": gitlab_snapshot.source.id,
+                "source_revision": gitlab_snapshot.source_revision,
+                "document_type": target.document_type,
+                **gitlab_snapshot.acl,
+            }
+        else:
+            metadata = build_document_metadata(
+                source_path=target.source_path,
+                document_type=target.document_type,
+                knowledge_base_dir=self.settings.knowledge_base_dir,
+            )
+        if (
+            request.operation == KnowledgeDocumentOperation.CREATE
+            and gitlab_snapshot is None
+        ):
             # create 没有历史 ACL：优先继承当前用户主部门；无部门时退化为仅本人可见。
             if user.primary_department_code:
                 metadata.update(
@@ -533,7 +662,11 @@ class KnowledgeDocumentManagementService:
                         "permission_source": "creator_scope",
                     }
                 )
-        elif self.elasticsearch_client is not None and self.milvus_client is not None:
+        elif (
+            gitlab_snapshot is None
+            and self.elasticsearch_client is not None
+            and self.milvus_client is not None
+        ):
             # update/delete 的 ACL 以现有 ES/Milvus 共同记录为准，不能由请求内容决定。
             metadata.update(
                 await self._load_stored_permission_metadata(str(metadata["doc_id"]))

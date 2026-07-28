@@ -59,6 +59,13 @@ class AgentTaskPlanBusyError(AppServiceError):
     status_code = 409
 
 
+class KnowledgeVersionNotReadyError(AppServiceError):
+    """客户端要求的最低正式知识版本尚未发布。"""
+
+    error_code = "KNOWLEDGE_VERSION_NOT_READY"
+    status_code = 409
+
+
 class DocumentAgentCheckpointConflictError(AppServiceError):
     """Deep Agent 运行记录版本与调用方期望不一致。"""
 

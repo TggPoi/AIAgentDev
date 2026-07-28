@@ -17,6 +17,8 @@ from fast_app.ingestion.stores.rag_store_schema import (
     MILVUS_METADATA_FIELD,
     MILVUS_SOURCE_PATH_FIELD,
     MILVUS_TITLE_FIELD,
+    MILVUS_VALID_FROM_VERSION_FIELD,
+    MILVUS_VALID_TO_VERSION_FIELD,
     build_milvus_output_fields,
 )
 
@@ -71,6 +73,14 @@ def build_milvus_filter_expr(filters: RetrievalFilters) -> str | None:
         section_path = escape_milvus_string(filters.section_path[-1])
         expressions.append(
             f'array_contains({MILVUS_METADATA_FIELD}["section_path"], "{section_path}")'
+        )
+
+    if filters.knowledge_version is not None:
+        version = filters.knowledge_version
+        expressions.append(f"{MILVUS_VALID_FROM_VERSION_FIELD} <= {version}")
+        expressions.append(
+            f"({MILVUS_VALID_TO_VERSION_FIELD} == 0 or "
+            f"{MILVUS_VALID_TO_VERSION_FIELD} > {version})"
         )
 
     permission_expr = build_milvus_permission_filter_expr(filters)

@@ -14,6 +14,7 @@ from fast_app.api.rag_routes import router as rag_router
 from fast_app.api.stream_routes import router as stream_router
 from fast_app.api.error_demo_routes import router as error_demo_router
 from fast_app.api.debug_trace_routes import router as debug_trace_router
+from fast_app.api.gitlab_routes import router as gitlab_router
 from fast_app.core.config import get_settings
 from fast_app.core.langsmith import configure_langsmith
 from fast_app.core.logging import get_logger, setup_logging
@@ -153,3 +154,4 @@ app.include_router(rag_chat_router)
 app.include_router(stream_router)
 app.include_router(error_demo_router)
 app.include_router(debug_trace_router)
+app.include_router(gitlab_router)

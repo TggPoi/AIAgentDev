@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 from hashlib import sha256
@@ -15,6 +16,10 @@ os.environ.setdefault("LANGSMITH_TRACING", "false")
 os.environ.setdefault("LANGCHAIN_TRACING_V2", "false")
 
 from fast_app.components.retrievers.base import BaseRetriever
+from fast_app.agents.runtime.langchain_agent_middlewares import (
+    SharedModelCallBudgetExceededError,
+    SharedModelCallBudgetMiddleware,
+)
 from fast_app.core.config import Settings, get_settings
 from fast_app.domain.agent_task_plan import AgentResearchPolicy, AgentTaskPlanStatus
 from fast_app.domain.agent_tool_permissions import (
@@ -44,14 +49,20 @@ from fast_app.services.agent_tasks.deep_document_agent import (
     DeepDocumentAgent,
     DeepDocumentAgentRunResult,
     DocumentReadSnapshot,
+    REVIEWER_PROMPT,
+    WRITER_PROMPT,
+    _CoordinatorToolExclusionMiddleware,
     _DocumentCoordinatorProgressMiddleware,
+    _ResearcherToolExclusionMiddleware,
 )
 from fast_app.services.agent_tasks.deep_document_runtime import DeepDocumentRuntime
 from fast_app.services.agent_tasks.document_task_executor import DocumentTaskExecutor
 from fast_app.services.agent_tasks.document_supervisor_agent import DocumentSupervisorAgent
 from langchain.agents.middleware.model_call_limit import ModelCallLimitExceededError
 from langchain_core.callbacks import AsyncCallbackHandler
-from langchain_core.messages import ToolMessage
+from langchain.agents.middleware.todo import WRITE_TODOS_SYSTEM_PROMPT
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
+from langgraph.graph import END, START, StateGraph
 
 
 ORIGINAL = "# Damage Rules\n\nBase damage is attack minus defense.\n"
@@ -92,7 +103,19 @@ class FakeManagementService:
         assert target_path == SOURCE_PATH
         return self.content
 
-    async def plan_action(self, request, user):
+    async def read_document_content_current(
+        self,
+        target_path: str,
+        *,
+        doc_id: str | None = None,
+        department_code: str | None = None,
+    ) -> str:
+        assert doc_id in {None, DOC_ID}
+        assert department_code is None
+        return self.read_document_content(target_path)
+
+    async def plan_action(self, request, user, candidate_doc_id=None):
+        assert candidate_doc_id in {None, DOC_ID}
         before_hash = sha256(self.content.encode("utf-8")).hexdigest()
         after_hash = (
             sha256((request.content or "").encode("utf-8")).hexdigest()
@@ -350,13 +373,37 @@ async def test_subagent_model_limit_isolated_as_tool_failure() -> None:
         )
         plan.final_output["document_progress"] = {"events": []}
         store.save(plan)
-        middleware = _DocumentCoordinatorProgressMiddleware(store, plan.task_plan_id)
+        middleware = _DocumentCoordinatorProgressMiddleware(
+            store,
+            plan.task_plan_id,
+            deliverable_ids=("damage_update",),
+            deliverables=(
+                DocumentDeliverable(
+                    deliverable_id="damage_update",
+                    title="Damage update",
+                    operation="create",
+                    target_hint="development/damage-update.md",
+                    objective="Create the reviewed damage document",
+                ),
+            ),
+            max_revision_rounds=2,
+        )
+
+        researcher_call = {
+            "id": "task-researcher-1",
+            "name": "task",
+            "args": {
+                "subagent_type": "document-researcher",
+                "description": "Research deliverable damage_update",
+            },
+        }
 
         class Request:
-            tool_call = {
-                "id": "task-reviewer-1",
-                "name": "task",
-                "args": {"subagent_type": "document-reviewer"},
+            tool_call = researcher_call
+            state = {
+                "messages": [
+                    AIMessage(content="", tool_calls=[researcher_call]),
+                ]
             }
 
         async def exhausted_handler(_request):
@@ -374,6 +421,577 @@ async def test_subagent_model_limit_isolated_as_tool_failure() -> None:
         event = latest.final_output["document_progress"]["events"][-1]
         assert event["event"] == "agent_task_document_subagent_failed"
         assert event["error_code"] == "SUBAGENT_MODEL_CALL_LIMIT_EXCEEDED"
+
+        failed_state = {
+            "messages": [
+                AIMessage(content="", tool_calls=[researcher_call]),
+                result,
+            ]
+        }
+        graph = StateGraph(dict)
+        graph.add_node("coordinator_before_model", middleware.before_model)
+        graph.add_edge(START, "coordinator_before_model")
+        graph.add_edge("coordinator_before_model", END)
+        terminal = await graph.compile().ainvoke(failed_state)
+        assert terminal is not None
+        assert terminal["jump_to"] == "end"
+        workflow = terminal["structured_response"]
+        assert workflow.failed_deliverables[0].deliverable_id == "damage_update"
+        assert (
+            workflow.failed_deliverables[0].error_code
+            == "SUBAGENT_MODEL_CALL_LIMIT_EXCEEDED"
+        )
+
+        class WriterRequest:
+            tool_call = {
+                "id": "task-writer-1",
+                "name": "task",
+                "args": {
+                    "subagent_type": "document-writer",
+                    "description": "Write deliverable damage_update",
+                },
+            }
+            state = failed_state
+
+        writer_called = False
+
+        async def forbidden_writer(_request):
+            nonlocal writer_called
+            writer_called = True
+            return "unexpected"
+
+        rejected = await middleware.awrap_tool_call(
+            WriterRequest(),
+            forbidden_writer,
+        )
+        assert writer_called is False
+        assert isinstance(rejected, ToolMessage)
+        assert "UPSTREAM_RESEARCH_FAILED" in str(rejected.content)
+
+        successful_research_call = {
+            **researcher_call,
+            "id": "task-researcher-2",
+        }
+        successful_research = ToolMessage(
+            content=json.dumps(
+                {
+                    "deliverable_id": "damage_update",
+                    "status": "partial",
+                    "evidence": [{"source_id": "doc-1"}],
+                }
+            ),
+            tool_call_id="task-researcher-2",
+            name="task",
+        )
+
+        class SuccessfulWriterRequest:
+            tool_call = WriterRequest.tool_call
+            state = {
+                "messages": [
+                    AIMessage(content="", tool_calls=[successful_research_call]),
+                    successful_research,
+                ],
+                "files": {
+                    "/workspace/research/damage_update/summary.md": {
+                        "content": "verified evidence"
+                    }
+                },
+            }
+
+        async def allowed_writer(_request):
+            return "allowed"
+
+        assert (
+            await middleware.awrap_tool_call(
+                SuccessfulWriterRequest(),
+                allowed_writer,
+            )
+            == "allowed"
+        )
+
+        writer_failure_call = SuccessfulWriterRequest.tool_call
+        writer_failure = ToolMessage(
+            content=json.dumps(
+                {
+                    "status": "failed",
+                    "error_code": "SUBAGENT_MODEL_CALL_LIMIT_EXCEEDED",
+                    "subagent_type": "document-writer",
+                    "deliverable_id": "damage_update",
+                    "reason": "writer budget exhausted",
+                }
+            ),
+            tool_call_id="task-writer-1",
+            name="task",
+            status="error",
+        )
+        writer_failed_state = {
+            "messages": [
+                AIMessage(content="", tool_calls=[successful_research_call]),
+                successful_research,
+                AIMessage(content="", tool_calls=[writer_failure_call]),
+                writer_failure,
+            ]
+        }
+        terminal = await graph.compile().ainvoke(writer_failed_state)
+        failure = terminal["structured_response"].failed_deliverables[0]
+        assert failure.deliverable_id == "damage_update"
+        assert failure.error_code == "SUBAGENT_MODEL_CALL_LIMIT_EXCEEDED"
+
+        writer_success_call = {
+            "id": "task-writer-approved",
+            "name": "task",
+            "args": {
+                "subagent_type": "document-writer",
+                "description": "Write deliverable damage_update",
+            },
+        }
+        reviewer_success_call = {
+            "id": "task-reviewer-approved",
+            "name": "task",
+            "args": {
+                "subagent_type": "document-reviewer",
+                "description": "Review deliverable damage_update",
+            },
+        }
+        approved_review = DocumentReviewResult(
+            deliverable_id="damage_update",
+            verdict="approved",
+            confidence=1.0,
+        )
+        approved_state = {
+            "messages": [
+                AIMessage(content="", tool_calls=[successful_research_call]),
+                successful_research,
+                AIMessage(content="", tool_calls=[writer_success_call]),
+                ToolMessage(
+                    content=DocumentDraftResult(
+                        deliverable_id="damage_update",
+                        operation="update",
+                        candidate_doc_id="wrong-doc",
+                        candidate_source_path="development/wrong.md",
+                        base_sha256="wrong-sha",
+                        content="# Approved\n",
+                    ).model_dump_json(),
+                    tool_call_id="task-writer-approved",
+                    name="task",
+                ),
+                AIMessage(content="", tool_calls=[reviewer_success_call]),
+                ToolMessage(
+                    content=approved_review.model_dump_json(),
+                    tool_call_id="task-reviewer-approved",
+                    name="task",
+                ),
+            ]
+        }
+        terminal = await graph.compile().ainvoke(approved_state)
+        approved_workflow = terminal["structured_response"]
+        assert approved_workflow.approved_changes[0].content == "# Approved\n"
+        assert approved_workflow.approved_changes[0].operation == "create"
+        assert approved_workflow.approved_changes[0].filename == "damage-update.md"
+        assert approved_workflow.approved_changes[0].candidate_doc_id is None
+        assert approved_workflow.draft_results[0].operation == "create"
+        assert approved_workflow.review_results[0].verdict == "approved"
+
+
+async def test_shared_model_budget_and_deterministic_revision_limits() -> None:
+    """全角色共享总预算，checkpoint 历史还必须阻止失败重试和超额返工。"""
+
+    budget = SharedModelCallBudgetMiddleware(limit=2)
+
+    async def model_handler(_request):
+        return "ok"
+
+    assert await budget.awrap_model_call(object(), model_handler) == "ok"
+    assert await budget.awrap_model_call(object(), model_handler) == "ok"
+    try:
+        await budget.awrap_model_call(object(), model_handler)
+    except SharedModelCallBudgetExceededError as exc:
+        assert exc.used_calls == 2
+        assert exc.limit == 2
+    else:
+        raise AssertionError("第三次模型调用应被共享总预算拒绝")
+
+    with TemporaryDirectory() as temp_dir:
+        settings = Settings(
+            _env_file=None,
+            OPENAI_API_KEY="test-key",
+            AGENT_TASK_PLAN_DIR=temp_dir,
+        )
+        store = AgentTaskPlanStore(settings)
+        plan = AgentTaskPlanner(settings).build_document_management_plan(
+            query="Create a reviewed document",
+            user_id="tool_admin",
+            research_policy=AgentResearchPolicy(web_policy="disabled"),
+        )
+        plan.final_output["document_progress"] = {"events": []}
+        store.save(plan)
+        middleware = _DocumentCoordinatorProgressMiddleware(
+            store,
+            plan.task_plan_id,
+            deliverable_ids=("damage_update",),
+            max_revision_rounds=1,
+        )
+        description = "Revise deliverable damage_update using its fixed draft path"
+        failed_call = {
+            "id": "writer-failed",
+            "name": "task",
+            "args": {
+                "subagent_type": "document-writer",
+                "description": description,
+            },
+        }
+        retry_call = {
+            "id": "writer-retry",
+            "name": "task",
+            "args": {
+                "subagent_type": "document-writer",
+                "description": description,
+            },
+        }
+
+        class RetryRequest:
+            tool_call = retry_call
+            state = {
+                "messages": [
+                    AIMessage(content="", tool_calls=[failed_call]),
+                    ToolMessage(
+                        content='{"error_code":"SUBAGENT_MODEL_CALL_LIMIT_EXCEEDED"}',
+                        tool_call_id="writer-failed",
+                        name="task",
+                        status="error",
+                    ),
+                    AIMessage(content="", tool_calls=[retry_call]),
+                ]
+            }
+
+        called = False
+
+        async def forbidden_handler(_request):
+            nonlocal called
+            called = True
+            return "unexpected"
+
+        rejected = await middleware.awrap_tool_call(
+            RetryRequest(),
+            forbidden_handler,
+        )
+        assert called is False
+        assert isinstance(rejected, ToolMessage)
+        assert rejected.status == "error"
+        assert "SUBAGENT_RETRY_FORBIDDEN" in str(rejected.content)
+
+        prior_calls = [
+            {
+                "id": f"writer-{index}",
+                "name": "task",
+                "args": {
+                    "subagent_type": "document-writer",
+                    "description": (
+                        f"Writer pass {index} for deliverable damage_update"
+                    ),
+                },
+            }
+            for index in (1, 2)
+        ]
+        current_call = {
+            "id": "writer-3",
+            "name": "task",
+            "args": {
+                "subagent_type": "document-writer",
+                "description": "Writer pass 3 for deliverable damage_update",
+            },
+        }
+
+        class RevisionLimitRequest:
+            tool_call = current_call
+            state = {
+                "messages": [
+                    *[
+                        message
+                        for call in prior_calls
+                        for message in (
+                            AIMessage(content="", tool_calls=[call]),
+                            ToolMessage(
+                                content='{"status":"completed"}',
+                                tool_call_id=str(call["id"]),
+                                name="task",
+                            ),
+                        )
+                    ],
+                    AIMessage(content="", tool_calls=[current_call]),
+                ]
+            }
+
+        rejected = await middleware.awrap_tool_call(
+            RevisionLimitRequest(),
+            forbidden_handler,
+        )
+        assert isinstance(rejected, ToolMessage)
+        assert "SUBAGENT_REVISION_LIMIT_EXCEEDED" in str(rejected.content)
+
+
+def test_document_content_models_have_streaming_retry_policy() -> None:
+    """Researcher 和 Writer 的长内容请求必须流式接收且不得自动重放。"""
+
+    with TemporaryDirectory() as temp_dir:
+        settings = Settings(
+            _env_file=None,
+            OPENAI_API_KEY="test-key",
+            OPENAI_BASE_URL="http://127.0.0.1:1",
+            LLM_TIMEOUT_SECONDS=60,
+            EXTERNAL_CALL_MAX_RETRIES=2,
+            AGENT_DOCUMENT_RESEARCHER_TIMEOUT_SECONDS=120,
+            AGENT_DOCUMENT_RESEARCHER_MAX_RETRIES=0,
+            AGENT_DOCUMENT_COORDINATOR_TIMEOUT_SECONDS=120,
+            AGENT_DOCUMENT_SUBAGENT_MAX_STEPS=10,
+            AGENT_DOCUMENT_RESEARCHER_MAX_STEPS=12,
+            AGENT_TASK_PLAN_DIR=temp_dir,
+        )
+        agent = DeepDocumentAgent(
+            settings=settings,
+            vector_retriever=FakeRetriever(),
+            keyword_retriever=FakeRetriever(),
+            document_management_service=FakeManagementService(),  # type: ignore[arg-type]
+            task_plan_store=AgentTaskPlanStore(settings),
+        )
+        standard_model = agent._build_model()
+        coordinator_model = agent._build_model(
+            timeout_seconds=settings.agent_document_coordinator_timeout_seconds,
+            max_retries=0,
+            streaming=True,
+        )
+        researcher_model = agent._build_model(
+            timeout_seconds=settings.agent_document_researcher_timeout_seconds,
+            max_retries=settings.agent_document_researcher_max_retries,
+            streaming=True,
+        )
+        writer_model = agent._build_model(max_retries=0, streaming=True)
+
+        assert standard_model.request_timeout == 60
+        assert standard_model.max_retries == 2
+        assert standard_model.streaming is False
+        assert coordinator_model.max_retries == 0
+        assert coordinator_model.streaming is True
+        assert coordinator_model.request_timeout == 120
+        assert researcher_model.request_timeout == 120
+        assert researcher_model.max_retries == 0
+        assert researcher_model.streaming is True
+        assert writer_model.request_timeout == 60
+        assert writer_model.max_retries == 0
+        assert writer_model.streaming is True
+        assert settings.agent_document_worker_timeout_seconds == 480
+        assert settings.agent_document_max_total_model_calls == 36
+        assert settings.agent_document_subagent_max_steps == 10
+        assert settings.agent_document_researcher_max_steps == 12
+        assert "offset=0、limit=1000" in WRITER_PROMPT
+        assert "并行发出所有互不依赖的 edit_file" in WRITER_PROMPT
+        assert "offset=0、limit=1000" in REVIEWER_PROMPT
+
+
+async def test_coordinator_cannot_use_virtual_file_tools() -> None:
+    """Coordinator 只能派发 SubAgent，不能接管 Writer 的虚拟草稿。"""
+
+    class Request:
+        def __init__(self, tools):
+            self.tools = tools
+
+        def override(self, **updates):
+            return Request(updates.get("tools", self.tools))
+
+    captured = None
+
+    async def handler(filtered_request):
+        nonlocal captured
+        captured = filtered_request
+        return "ok"
+
+    result = await _CoordinatorToolExclusionMiddleware().awrap_model_call(
+        Request(
+            [
+                {"name": "task"},
+                {"name": "write_todos"},
+                {"name": "read_file"},
+                {"name": "edit_file"},
+            ]
+        ),
+        handler,
+    )
+    assert result == "ok"
+    assert captured is not None
+    assert [tool["name"] for tool in captured.tools] == ["task", "write_todos"]
+
+
+async def test_researcher_excludes_todo_tool_and_prompt_together() -> None:
+    """隐藏 write_todos 时不得保留要求模型调用它的框架提示。"""
+
+    class Request:
+        def __init__(self, *, system_message, tools, state=None):
+            self.system_message = system_message
+            self.tools = tools
+            self.state = state or {}
+
+        def override(self, **updates):
+            return Request(
+                system_message=updates.get("system_message", self.system_message),
+                tools=updates.get("tools", self.tools),
+                state=self.state,
+            )
+
+    request = Request(
+        system_message=SystemMessage(
+            content=[
+                {"type": "text", "text": "research instructions"},
+                {"type": "text", "text": f"\n\n{WRITE_TODOS_SYSTEM_PROMPT}"},
+            ]
+        ),
+        tools=[
+            {"name": "write_todos"},
+            {"name": "knowledge_retrieval"},
+            {"name": "knowledge_document_read"},
+        ],
+    )
+    captured = None
+
+    async def handler(filtered_request):
+        nonlocal captured
+        captured = filtered_request
+        return "ok"
+
+    result = await _ResearcherToolExclusionMiddleware().awrap_model_call(
+        request,
+        handler,
+    )
+    assert result == "ok"
+    assert captured is not None
+    assert [tool["name"] for tool in captured.tools] == ["knowledge_retrieval"]
+    prompt = "\n".join(
+        str(block.get("text") or "")
+        for block in captured.system_message.content_blocks
+        if isinstance(block, dict)
+    )
+    assert prompt == "research instructions"
+
+    completed_request = Request(
+        system_message=SystemMessage(content="research instructions"),
+        tools=[
+            {"name": "knowledge_retrieval"},
+            {"name": "knowledge_document_read"},
+            {"name": "write_file"},
+        ],
+        state={
+            "messages": [
+                ToolMessage(
+                    content=f"evidence {index}",
+                    tool_call_id=f"retrieval-{index}",
+                    name="knowledge_retrieval",
+                    status="success",
+                )
+                for index in range(
+                    1,
+                    _ResearcherToolExclusionMiddleware.MAX_RETRIEVAL_CALLS + 1,
+                )
+            ]
+        },
+    )
+    await _ResearcherToolExclusionMiddleware(
+        allow_document_read=True
+    ).awrap_model_call(completed_request, handler)
+    assert captured is not None
+    assert [tool["name"] for tool in captured.tools] == [
+        "knowledge_retrieval",
+        "knowledge_document_read",
+        "write_file",
+    ]
+    assert "不得再次调用这些工具" in str(captured.system_message.content)
+
+    class ToolRequest:
+        tool_call = {
+            "id": "retrieval-over-boundary",
+            "name": "knowledge_retrieval",
+            "args": {"query": "duplicate"},
+        }
+        state = completed_request.state
+
+    called = False
+
+    async def forbidden_tool_handler(_request):
+        nonlocal called
+        called = True
+        return "unexpected"
+
+    boundary_result = await _ResearcherToolExclusionMiddleware(
+        allow_document_read=True
+    ).awrap_tool_call(ToolRequest(), forbidden_tool_handler)
+    assert called is False
+    assert isinstance(boundary_result, ToolMessage)
+    assert boundary_result.status == "success"
+    assert "next_action" in str(boundary_result.content)
+
+
+async def test_create_researcher_does_not_receive_full_document_tool() -> None:
+    """纯创建任务只消费检索证据，不把参考文档全文带入模型上下文。"""
+
+    with TemporaryDirectory() as temp_dir:
+        settings = Settings(
+            _env_file=None,
+            OPENAI_API_KEY="test-key",
+            AGENT_TASK_PLAN_DIR=temp_dir,
+        )
+        store = AgentTaskPlanStore(settings)
+        plan = AgentTaskPlanner(settings).build_document_management_plan(
+            query="Create a researched document",
+            user_id="tool_admin",
+            research_policy=AgentResearchPolicy(web_policy="disabled"),
+        )
+        agent = DeepDocumentAgent(
+            settings=settings,
+            vector_retriever=FakeRetriever(),
+            keyword_retriever=FakeRetriever(),
+            document_management_service=FakeManagementService(),  # type: ignore[arg-type]
+            task_plan_store=store,
+        )
+
+        async def persist() -> None:
+            return None
+
+        async def tool_names(decision: DocumentWorkflowDecision) -> list[str]:
+            tools = await agent._build_research_tools(
+                plan=plan,
+                decision=decision,
+                user=build_user(),
+                mode="hybrid",
+                top_k=5,
+                candidate_k=None,
+                min_score=0.0,
+                filters=RetrievalFilters(can_read_all=True),
+                candidates={},
+                read_snapshots={},
+                used_tools=set(),
+                persist_runtime_facts=persist,
+            )
+            return [tool.name for tool in tools]
+
+        create_decision = DocumentWorkflowDecision(
+            execution_mode="agentic",
+            objective="Create a governance document",
+            deliverables=[
+                DocumentDeliverable(
+                    deliverable_id="governance_create",
+                    title="Governance",
+                    operation="create",
+                    target_hint="development/governance.md",
+                    objective="Create the document from retrieved evidence",
+                )
+            ],
+            web_policy="disabled",
+            reason="Requires research and writing",
+        )
+        create_tool_names = await tool_names(create_decision)
+        update_tool_names = await tool_names(build_decision())
+        assert "knowledge_retrieval" in create_tool_names
+        assert "knowledge_document_read" not in create_tool_names
+        assert "knowledge_retrieval" in update_tool_names
+        assert "knowledge_document_read" in update_tool_names
 
 
 async def test_supervisor_collapses_internal_agent_stages() -> None:
@@ -480,11 +1098,9 @@ async def test_real_deep_agent() -> None:
         assert "knowledge_document_read" in result.workflow.used_tools
         assert result.resumed_from_checkpoint is False
         assert result.checkpoint_record_version >= 1
-        # Coordinator 需要派发多个 task，可使用总工具预算；三个显式
-        # SubAgent 的各自循环仍严格使用 AGENT_MAX_STEPS。
-        assert trace_handler.call_count <= (
-            settings.agent_max_tool_calls
-            + settings.agent_document_subagent_max_steps * 3
+        assert (
+            trace_handler.call_count
+            <= settings.agent_document_max_total_model_calls
         )
         print(f"real_model_call_count={trace_handler.call_count}", flush=True)
 
@@ -493,6 +1109,11 @@ async def main() -> None:
     await test_deterministic_boundary()
     await test_recoverable_document_failure_returns_task_plan()
     await test_subagent_model_limit_isolated_as_tool_failure()
+    await test_shared_model_budget_and_deterministic_revision_limits()
+    test_document_content_models_have_streaming_retry_policy()
+    await test_coordinator_cannot_use_virtual_file_tools()
+    await test_researcher_excludes_todo_tool_and_prompt_together()
+    await test_create_researcher_does_not_receive_full_document_tool()
     await test_supervisor_collapses_internal_agent_stages()
     if os.getenv("RUN_REAL_LLM") == "1":
         await test_real_deep_agent()

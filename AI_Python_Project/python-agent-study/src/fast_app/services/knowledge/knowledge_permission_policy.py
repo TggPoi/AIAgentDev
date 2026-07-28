@@ -77,20 +77,31 @@ def build_retrieval_filters_from_mapping(
         user_id=str(user_id) if user_id else None,
         department_codes=department_codes,
         allow_public=bool(filters.get("allow_public", True)),
+        knowledge_version=(
+            int(filters["knowledge_version"])
+            if filters.get("knowledge_version") is not None
+            else None
+        ),
     )
 
 
 def merge_permission_scope_into_filter_dict(
     filters: Mapping[str, Any] | None,
     permission_scope: RetrievalPermissionScope | None,
+    *,
+    knowledge_version: int | None = None,
 ) -> dict[str, Any]:
     """把服务端权限 scope 合并进传给检索链路的 filters dict。"""
 
     merged = dict(filters or {})
     if permission_scope is None:
+        if knowledge_version is not None:
+            merged["knowledge_version"] = knowledge_version
         return merged
 
     merged.update(permission_scope.model_dump())
+    if knowledge_version is not None:
+        merged["knowledge_version"] = knowledge_version
     return merged
 
 

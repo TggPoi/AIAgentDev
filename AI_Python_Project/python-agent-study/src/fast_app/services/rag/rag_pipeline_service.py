@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import AsyncGenerator
 from time import perf_counter
+from typing import Any
 
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
@@ -218,6 +219,7 @@ def build_retrieval_options(req: RagChatRequest) -> RetrievalOptions:
     filters = merge_permission_scope_into_filter_dict(
         filters=req.filters.model_dump(),
         permission_scope=req._retrieval_permission_scope,
+        knowledge_version=req._knowledge_version,
     )
 
     return RetrievalOptions(
@@ -475,15 +477,44 @@ def build_content_preview(
 def docs_to_sources(docs: list[RetrievedDoc]) -> list[RagSource]:
     return [
         RagSource(
-            id=doc.id,
+            id=str(doc.metadata.get("logical_record_id") or doc.id),
+            doc_id=(
+                str(doc.metadata["doc_id"])
+                if doc.metadata.get("doc_id")
+                else None
+            ),
+            logical_chunk_id=(
+                str(doc.metadata["logical_record_id"])
+                if doc.metadata.get("logical_record_id")
+                else None
+            ),
+            logical_parent_id=(
+                str(doc.metadata["logical_parent_id"])
+                if doc.metadata.get("logical_parent_id")
+                else None
+            ),
+            source_revision=(
+                str(doc.metadata["source_revision"])
+                if doc.metadata.get("source_revision")
+                else None
+            ),
             parent_id=(
-                str(doc.metadata["parent_id"])
-                if doc.metadata.get("parent_id")
+                str(
+                    doc.metadata.get("logical_parent_id")
+                    or doc.metadata.get("parent_id")
+                )
+                if (
+                    doc.metadata.get("logical_parent_id")
+                    or doc.metadata.get("parent_id")
+                )
                 else None
             ),
             matched_child_ids=[
                 str(child_id)
-                for child_id in doc.metadata.get("matched_child_ids", [])
+                for child_id in doc.metadata.get(
+                    "matched_logical_child_ids",
+                    doc.metadata.get("matched_child_ids", []),
+                )
             ],
             chunk_level=(
                 doc.metadata.get("chunk_level")
@@ -494,13 +525,30 @@ def docs_to_sources(docs: list[RetrievedDoc]) -> list[RagSource]:
             retrieval_sources=normalize_retrieval_sources(doc),
             title=doc.title,
             section_path=extract_section_path(doc),
-            metadata=doc.metadata,
+            metadata=_public_source_metadata(doc.metadata),
             score=doc.score,
             scores=score_breakdown_to_source_scores(doc),
             content_preview=build_content_preview(doc.content),
         )
         for doc in docs
     ]
+
+
+def _public_source_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    """移除版本化物理主键，避免 React 把内部存储 ID 当成稳定身份。"""
+
+    internal_fields = {
+        "physical_record_id",
+        "physical_parent_id",
+        "parent_id",
+        "chunk_id",
+        "matched_child_ids",
+    }
+    return {
+        key: value
+        for key, value in metadata.items()
+        if key not in internal_fields
+    }
 
 
 class RagPipeline:
@@ -559,6 +607,7 @@ class RagPipeline:
         filters = merge_permission_scope_into_filter_dict(
             filters=req.filters.model_dump(),
             permission_scope=req._retrieval_permission_scope,
+            knowledge_version=req._knowledge_version,
         )
         return await assemble_rag_context(
             settings=self.settings,

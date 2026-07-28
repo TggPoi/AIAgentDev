@@ -1,5 +1,7 @@
 """LangChain/Deep Agents 共用的横切 Middleware 装配。"""
 
+from threading import Lock
+
 from langchain.agents.middleware import (
     AgentMiddleware,
     ModelCallLimitMiddleware,
@@ -12,6 +14,54 @@ from fast_app.core.logging import format_log_fields, get_logger
 
 
 logger = get_logger(__name__)
+
+
+class SharedModelCallBudgetExceededError(RuntimeError):
+    """一次多 Agent 工作流已耗尽所有角色共享的模型调用预算。"""
+
+    def __init__(self, used_calls: int, limit: int) -> None:
+        self.used_calls = used_calls
+        self.limit = limit
+        super().__init__(f"文档 Agent 总模型调用预算已耗尽（{used_calls}/{limit}）")
+
+
+class SharedModelCallBudgetMiddleware(AgentMiddleware):
+    """让 Coordinator 与全部临时 SubAgent 共用同一个进程内调用计数器。"""
+
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        self._used_calls = 0
+        self._lock = Lock()
+
+    @property
+    def used_calls(self) -> int:
+        """返回本次工作流已经启动的模型调用数。"""
+
+        with self._lock:
+            return self._used_calls
+
+    def _reserve(self) -> None:
+        """在请求发往模型前原子占用一个名额，失败调用也计入预算。"""
+
+        with self._lock:
+            if self._used_calls >= self.limit:
+                raise SharedModelCallBudgetExceededError(
+                    used_calls=self._used_calls,
+                    limit=self.limit,
+                )
+            self._used_calls += 1
+
+    def wrap_model_call(self, request, handler):
+        """同步 Agent 调用共享同一预算。"""
+
+        self._reserve()
+        return handler(request)
+
+    async def awrap_model_call(self, request, handler):
+        """异步 Agent 调用共享同一预算。"""
+
+        self._reserve()
+        return await handler(request)
 
 
 def build_agent_safety_middlewares() -> list[AgentMiddleware]:
@@ -123,6 +173,8 @@ def build_document_deep_agent_middlewares(
 
 
 __all__ = [
+    "SharedModelCallBudgetExceededError",
+    "SharedModelCallBudgetMiddleware",
     "build_agent_limit_middlewares",
     "build_agent_safety_middlewares",
     "build_default_create_agent_middlewares",

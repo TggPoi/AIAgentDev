@@ -31,7 +31,12 @@ from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.domain.agent_task_plan import AgentTaskPlan, AgentTaskPlanStatus, AgentTaskToolCallTrace, AgentToolStep, AgentToolStepStatus
 from fast_app.domain.agent_tool_permissions import AgentToolCallContext, AgentToolPermissionAction, PermissionCode
-from fast_app.domain.knowledge_document_actions import KnowledgeDocumentActionRequest, KnowledgeDocumentOperation, KnowledgeDocumentRiskLevel
+from fast_app.domain.knowledge_document_actions import (
+    KnowledgeDocumentActionPreview,
+    KnowledgeDocumentActionRequest,
+    KnowledgeDocumentOperation,
+    KnowledgeDocumentRiskLevel,
+)
 from fast_app.domain.document_workflow import (
     DocumentChangeProposal,
     DocumentDeliverable,
@@ -530,7 +535,10 @@ class DocumentTaskExecutor:
                 raise AppServiceError("复杂 update 缺少授权读取快照")
             if snapshot.source_path != target_path or snapshot.sha256 != proposal.base_sha256:
                 raise AppServiceError("复杂 update 的 base_sha256 与读取快照不一致")
-            current = self._document_management_service.read_document_content(target_path)
+            current = await self._document_management_service.read_document_content_current(
+                target_path,
+                doc_id=proposal.candidate_doc_id,
+            )
             if sha256(current.encode("utf-8")).hexdigest() != snapshot.sha256:
                 raise AppServiceError("目标文档在 Deep Agents 编写期间已变化")
             if content == current:
@@ -1029,8 +1037,9 @@ class DocumentTaskExecutor:
         async def read_document(doc_id: str) -> str:
             # 候选校验先于文件读取，防止模型用猜测的 doc_id/path 读取任意知识库文档。
             candidate = _require_document_candidate(doc_id, candidates)
-            content = self._document_management_service.read_document_content(
-                candidate["source_path"]
+            content = await self._document_management_service.read_document_content_current(
+                candidate["source_path"],
+                doc_id=doc_id,
             )
             # 只有读取成功后才记入 read_doc_ids；这正是 update 的“读过原文”凭据。
             read_doc_ids.add(doc_id)
@@ -1068,8 +1077,9 @@ class DocumentTaskExecutor:
             # update 必须基于本轮刚读取的完整原文，不能只根据检索摘要自由重写。
             if doc_id not in read_doc_ids:
                 raise AppServiceError("update 前必须先调用 knowledge_document_read")
-            before = self._document_management_service.read_document_content(
-                candidate["source_path"]
+            before = await self._document_management_service.read_document_content_current(
+                candidate["source_path"],
+                doc_id=doc_id,
             )
             after = _apply_unique_replacements(before, replacements)
             # diff 是确认页面的审查材料；真正执行仍使用确定性替换后的完整 content。
@@ -1256,9 +1266,15 @@ class DocumentTaskExecutor:
                 actions.append((request, preview_payload.get("before_hash")))
                 contexts.append(context)
 
+            confirmed_previews = [
+                KnowledgeDocumentActionPreview.model_validate(step.output["preview"])
+                for step in plan.steps
+            ]
             results = await self._document_management_service.execute_confirmed_actions(
                 actions=actions,
                 user=user,
+                task_plan_id=plan.task_plan_id,
+                confirmed_previews=confirmed_previews,
             )
             for step, result, context in zip(
                 plan.steps, results, contexts, strict=True

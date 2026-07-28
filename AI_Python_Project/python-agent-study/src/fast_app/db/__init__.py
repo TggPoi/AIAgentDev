@@ -26,6 +26,16 @@ from fast_app.db.ingestion_tables import (
     KnowledgeExcelImportProfileTable,
     KnowledgeIngestionJobTable,
 )
+from fast_app.db.gitlab_tables import (
+    GitLabChangeRequestTable,
+    GitLabDocumentTable,
+    GitLabSourceTable,
+    GitLabSyncJobTable,
+    GitLabWebhookDeliveryTable,
+    KnowledgeChangeEventTable,
+    KnowledgePublicationStateTable,
+    KnowledgePublicationTable,
+)
 from fast_app.db.session import create_database_engine, create_session_factory
 
 __all__ = [
@@ -38,6 +48,14 @@ __all__ = [
     "KnowledgeDocumentTable",
     "KnowledgeExcelImportProfileTable",
     "KnowledgeIngestionJobTable",
+    "GitLabChangeRequestTable",
+    "GitLabDocumentTable",
+    "GitLabSourceTable",
+    "GitLabSyncJobTable",
+    "GitLabWebhookDeliveryTable",
+    "KnowledgeChangeEventTable",
+    "KnowledgePublicationStateTable",
+    "KnowledgePublicationTable",
     "PermissionTable",
     "RefreshTokenTable",
     "RolePermissionTable",

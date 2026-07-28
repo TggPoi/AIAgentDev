@@ -17,17 +17,35 @@ from fast_app.ingestion.stores.rag_store_admin import (
 )
 from fast_app.ingestion.stores.rag_store_schema import (
     ES_CONTENT_FIELD,
+    ES_DOC_ID_FIELD,
     ES_SEARCH_TEXT_FIELD,
     ES_RECORD_TYPE_FIELD,
+    ES_LOGICAL_PARENT_ID_FIELD,
+    ES_PHYSICAL_PARENT_ID_FIELD,
+    ES_PHYSICAL_RECORD_ID_FIELD,
     ES_CREATED_AT_FIELD,
     ES_ID_FIELD,
     ES_METADATA_FIELD,
+    ES_LOGICAL_RECORD_ID_FIELD,
+    ES_SOURCE_ID_FIELD,
+    ES_SOURCE_REVISION_FIELD,
+    ES_VALID_FROM_VERSION_FIELD,
+    ES_VALID_TO_VERSION_FIELD,
     ES_SOURCE_FIELD,
     ES_TITLE_FIELD,
     MILVUS_CHUNK_INDEX_FIELD,
     MILVUS_DOC_ID_FIELD,
     MILVUS_DOCUMENT_TYPE_FIELD,
     MILVUS_METADATA_FIELD,
+    MILVUS_PHYSICAL_RECORD_ID_FIELD,
+    MILVUS_LOGICAL_RECORD_ID_FIELD,
+    MILVUS_RECORD_TYPE_FIELD,
+    MILVUS_LOGICAL_PARENT_ID_FIELD,
+    MILVUS_PHYSICAL_PARENT_ID_FIELD,
+    MILVUS_SOURCE_ID_FIELD,
+    MILVUS_SOURCE_REVISION_FIELD,
+    MILVUS_VALID_FROM_VERSION_FIELD,
+    MILVUS_VALID_TO_VERSION_FIELD,
     MILVUS_SOURCE_FIELD,
     MILVUS_SOURCE_PATH_FIELD,
     MILVUS_TITLE_FIELD,
@@ -232,13 +250,36 @@ def build_es_bulk_actions(
             "_id": chunk.id,
             "_source": {
                 ES_ID_FIELD: chunk.id,
+                ES_PHYSICAL_RECORD_ID_FIELD: str(
+                    chunk.metadata.get("physical_record_id") or chunk.id
+                ),
+                ES_DOC_ID_FIELD: str(chunk.metadata["doc_id"]),
                 ES_CONTENT_FIELD: chunk.content,
                 ES_SEARCH_TEXT_FIELD: chunk.search_text or chunk.content,
                 ES_RECORD_TYPE_FIELD: chunk.metadata.get(
                     "record_type", "chunk"
                 ),
+                ES_LOGICAL_PARENT_ID_FIELD: str(
+                    chunk.metadata.get("logical_parent_id") or ""
+                ),
+                ES_PHYSICAL_PARENT_ID_FIELD: str(
+                    chunk.metadata.get("physical_parent_id") or ""
+                ),
                 ES_TITLE_FIELD: chunk.title,
                 ES_SOURCE_FIELD: chunk.source,
+                ES_LOGICAL_RECORD_ID_FIELD: str(
+                    chunk.metadata.get("logical_record_id") or chunk.id
+                ),
+                ES_SOURCE_ID_FIELD: str(chunk.metadata.get("source_id") or ""),
+                ES_SOURCE_REVISION_FIELD: str(
+                    chunk.metadata.get("source_revision") or ""
+                ),
+                ES_VALID_FROM_VERSION_FIELD: int(
+                    chunk.metadata.get("valid_from_version", 0)
+                ),
+                ES_VALID_TO_VERSION_FIELD: int(
+                    chunk.metadata.get("valid_to_version", 0)
+                ),
                 ES_METADATA_FIELD: chunk.metadata,
                 ES_CREATED_AT_FIELD: now,
             },
@@ -259,11 +300,34 @@ def build_es_parent_bulk_actions(
             "_id": parent.id,
             "_source": {
                 ES_ID_FIELD: parent.id,
+                ES_PHYSICAL_RECORD_ID_FIELD: str(
+                    parent.metadata.get("physical_record_id") or parent.id
+                ),
+                ES_DOC_ID_FIELD: str(parent.metadata["doc_id"]),
                 ES_CONTENT_FIELD: parent.content,
                 ES_SEARCH_TEXT_FIELD: parent.content,
                 ES_RECORD_TYPE_FIELD: parent.metadata["record_type"],
+                ES_LOGICAL_PARENT_ID_FIELD: str(
+                    parent.metadata.get("logical_parent_id") or ""
+                ),
+                ES_PHYSICAL_PARENT_ID_FIELD: str(
+                    parent.metadata.get("physical_parent_id") or ""
+                ),
                 ES_TITLE_FIELD: parent.title,
                 ES_SOURCE_FIELD: parent.source,
+                ES_LOGICAL_RECORD_ID_FIELD: str(
+                    parent.metadata.get("logical_record_id") or parent.id
+                ),
+                ES_SOURCE_ID_FIELD: str(parent.metadata.get("source_id") or ""),
+                ES_SOURCE_REVISION_FIELD: str(
+                    parent.metadata.get("source_revision") or ""
+                ),
+                ES_VALID_FROM_VERSION_FIELD: int(
+                    parent.metadata.get("valid_from_version", 0)
+                ),
+                ES_VALID_TO_VERSION_FIELD: int(
+                    parent.metadata.get("valid_to_version", 0)
+                ),
                 ES_METADATA_FIELD: parent.metadata,
                 ES_CREATED_AT_FIELD: now,
             },
@@ -355,6 +419,44 @@ async def delete_es_docs_by_doc_ids(
     return dict(result)
 
 
+async def close_es_docs_for_version(
+    *,
+    client: AsyncElasticsearch,
+    settings: Settings,
+    doc_ids: list[str],
+    valid_to_version: int,
+) -> dict[str, Any]:
+    """关闭旧 ES 记录，但保留它们供已冻结旧版本的请求读取。"""
+
+    if not doc_ids:
+        return {"updated": 0}
+    await ensure_es_index(client=client, settings=settings)
+    result = await client.update_by_query(
+        index=settings.elasticsearch_index_name,
+        body={
+            "script": {
+                "lang": "painless",
+                "source": (
+                    "ctx._source.valid_to_version = params.version; "
+                    "ctx._source.metadata.valid_to_version = params.version"
+                ),
+                "params": {"version": valid_to_version},
+            },
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"terms": {"metadata.doc_id": doc_ids}},
+                        {"term": {"valid_to_version": 0}},
+                    ]
+                }
+            },
+        },
+        conflicts="proceed",
+        refresh=True,
+    )
+    return dict(result)
+
+
 async def replace_docs_es_index(
     client: AsyncElasticsearch,
     settings: Settings,
@@ -392,6 +494,31 @@ def build_milvus_rows(
             MILVUS_SOURCE_PATH_FIELD: str(chunk.metadata["source_path"]),
             MILVUS_DOCUMENT_TYPE_FIELD: str(chunk.metadata["document_type"]),
             MILVUS_CHUNK_INDEX_FIELD: int(chunk.metadata["chunk_index"]),
+            MILVUS_PHYSICAL_RECORD_ID_FIELD: str(
+                chunk.metadata.get("physical_record_id") or chunk.id
+            ),
+            MILVUS_LOGICAL_RECORD_ID_FIELD: str(
+                chunk.metadata.get("logical_record_id") or chunk.id
+            ),
+            MILVUS_RECORD_TYPE_FIELD: str(
+                chunk.metadata.get("record_type") or "chunk"
+            ),
+            MILVUS_LOGICAL_PARENT_ID_FIELD: str(
+                chunk.metadata.get("logical_parent_id") or ""
+            ),
+            MILVUS_PHYSICAL_PARENT_ID_FIELD: str(
+                chunk.metadata.get("physical_parent_id") or ""
+            ),
+            MILVUS_SOURCE_ID_FIELD: str(chunk.metadata.get("source_id") or ""),
+            MILVUS_SOURCE_REVISION_FIELD: str(
+                chunk.metadata.get("source_revision") or ""
+            ),
+            MILVUS_VALID_FROM_VERSION_FIELD: int(
+                chunk.metadata.get("valid_from_version", 0)
+            ),
+            MILVUS_VALID_TO_VERSION_FIELD: int(
+                chunk.metadata.get("valid_to_version", 0)
+            ),
             MILVUS_METADATA_FIELD: chunk.metadata,
         }
         for chunk, vector in zip(chunks, vectors, strict=True)
@@ -487,6 +614,93 @@ def delete_milvus_docs_by_doc_ids(
     client.flush(collection_name=settings.milvus_collection_name)
     client.load_collection(collection_name=settings.milvus_collection_name)
     return result
+
+
+def close_milvus_docs_for_version(
+    *,
+    client: MilvusClient,
+    settings: Settings,
+    doc_ids: list[str],
+    valid_to_version: int,
+) -> int:
+    """查询并 upsert 完整 Milvus 行，以关闭旧子块版本。"""
+
+    if not doc_ids:
+        return 0
+    ensure_milvus_collection(client=client, settings=settings)
+    quoted_doc_ids = ", ".join(
+        f'"{escape_milvus_string(doc_id)}"' for doc_id in doc_ids
+    )
+    filter_expr = (
+        f"{MILVUS_DOC_ID_FIELD} in [{quoted_doc_ids}] and "
+        f"{MILVUS_VALID_TO_VERSION_FIELD} == 0"
+    )
+    output_fields = [
+        settings.milvus_id_field,
+        settings.milvus_vector_field,
+        settings.milvus_content_field,
+        MILVUS_SOURCE_FIELD,
+        MILVUS_TITLE_FIELD,
+        MILVUS_DOC_ID_FIELD,
+        MILVUS_SOURCE_PATH_FIELD,
+        MILVUS_DOCUMENT_TYPE_FIELD,
+        MILVUS_CHUNK_INDEX_FIELD,
+        MILVUS_PHYSICAL_RECORD_ID_FIELD,
+        MILVUS_LOGICAL_RECORD_ID_FIELD,
+        MILVUS_RECORD_TYPE_FIELD,
+        MILVUS_LOGICAL_PARENT_ID_FIELD,
+        MILVUS_PHYSICAL_PARENT_ID_FIELD,
+        MILVUS_SOURCE_ID_FIELD,
+        MILVUS_SOURCE_REVISION_FIELD,
+        MILVUS_VALID_FROM_VERSION_FIELD,
+        MILVUS_VALID_TO_VERSION_FIELD,
+        MILVUS_METADATA_FIELD,
+    ]
+    updated = 0
+    while True:
+        rows = client.query(
+            collection_name=settings.milvus_collection_name,
+            filter=filter_expr,
+            output_fields=output_fields,
+            limit=1000,
+        )
+        if not rows:
+            break
+        for row in rows:
+            row[MILVUS_VALID_TO_VERSION_FIELD] = valid_to_version
+            metadata = dict(row.get(MILVUS_METADATA_FIELD) or {})
+            metadata["valid_to_version"] = valid_to_version
+            row[MILVUS_METADATA_FIELD] = metadata
+        client.upsert(
+            collection_name=settings.milvus_collection_name,
+            data=rows,
+        )
+        updated += len(rows)
+    if updated:
+        client.flush(collection_name=settings.milvus_collection_name)
+    return updated
+
+
+async def close_rag_docs_for_version(
+    *,
+    elasticsearch_client: AsyncElasticsearch,
+    milvus_client: MilvusClient,
+    settings: Settings,
+    doc_ids: list[str],
+    valid_to_version: int,
+) -> None:
+    await close_es_docs_for_version(
+        client=elasticsearch_client,
+        settings=settings,
+        doc_ids=doc_ids,
+        valid_to_version=valid_to_version,
+    )
+    close_milvus_docs_for_version(
+        client=milvus_client,
+        settings=settings,
+        doc_ids=doc_ids,
+        valid_to_version=valid_to_version,
+    )
 
 
 def replace_docs_milvus_collection(
@@ -679,6 +893,7 @@ async def upsert_rag_stores(
     chunks: list[KnowledgeChunk],
     vectors: list[list[float]],
     parents: list[MarkdownParentChunk] | None = None,
+    verify_convergence: bool = True,
 ) -> DualStoreWriteResult:
     validate_store_write_inputs(chunks, vectors)
     validate_parent_write_inputs(parents or [])
@@ -764,7 +979,7 @@ async def replace_docs_rag_stores(
         chunks=chunks,
         vectors=vectors,
     )
-    if parents:
+    if parents and verify_convergence:
         await verify_markdown_store_convergence(
             elasticsearch_client=elasticsearch_client,
             milvus_client=milvus_client,

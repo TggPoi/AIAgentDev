@@ -49,6 +49,7 @@ def build_graph_initial_state(
         "filters": merge_permission_scope_into_filter_dict(
             filters=req.filters.model_dump(),
             permission_scope=req._retrieval_permission_scope,
+            knowledge_version=req._knowledge_version,
         ),
         "operation": operation,
         "need_retrieval": None,

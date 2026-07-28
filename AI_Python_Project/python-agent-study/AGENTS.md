@@ -94,3 +94,22 @@ Use the pattern "centralized tracing policy, distributed business instrumentatio
 2. The Router only decides intent. It must not generate trusted document steps, paths, doc IDs, ACL values, or Tool arguments.
 3. Knowledge-document TaskPlan steps may only be created from document dry-run ToolCalls that passed server-side validation.
 4. A Router decision never replaces authorization, candidate-scope checks, path validation, document preview, or human confirmation.
+
+## Deep document multi-Agent rules
+
+Use `scripts/docs/多Agent端到端测试复盘与工程规则.md` as the durable incident
+runbook for Researcher / Writer / Reviewer / Coordinator work.
+
+1. Prompt instructions never replace deterministic workflow state. Researcher failure, missing evidence, repeated dispatch, revision limits, tool limits, and terminal-state convergence must be enforced by server-side code that survives checkpoint resume.
+2. If Researcher fails or returns no valid evidence and fixed-path summary, the affected deliverable must fail immediately. Do not dispatch Writer or Reviewer, and do not allow Writer to continue from general knowledge.
+3. Give each role only its real Tool Schema before the model call. Researcher, Writer, and Reviewer must not see `write_todos`; Coordinator must not use document file tools to take over failed Writer work.
+4. Keep separate and observable limits for shared model calls, per-role model calls, tool calls, context size, revision rounds, per-request timeout, and whole-workflow wall-clock time. A maximum budget is a fuse, not an acceptable normal-path target.
+5. Use one deterministic draft path per deliverable. Prefer one bounded full-file read and batched independent edits over repeated discovery, pagination, and serial edit loops.
+6. After Reviewer approval, assemble `DocumentWorkflowResult` deterministically from the approved draft and review result. Do not ask Coordinator to regenerate the full document.
+7. Operation, doc ID, target path, source/project identity, base SHA, ACL, and publication version are trusted server-side facts. Writer and Reviewer output must never override them.
+8. Test LangGraph middleware and runtime injection through a compiled graph with `invoke()` or `ainvoke()`; direct function calls alone do not validate the framework contract.
+9. Use an old TaskPlan only for resume/recovery testing. After a workflow fix, successful acceptance must use a new TaskPlan with no inherited failed or repeated-dispatch history.
+10. A document target path must remain identical across TaskPlan preview, dry-run, GitLab Commit, Compare diff, ACL matching, Manifest, and notification events. Do not strip department prefixes based on Project assumptions.
+11. MR creation is not lifecycle completion. Reconcile local change-request state with GitLab `opened/merged/closed`, and verify the post-merge Webhook, Worker, publication, ES, and Milvus state before claiming end-to-end success.
+12. Retry only classified transient failures. Path, permission, format, schema, and other deterministic business validation failures must become terminal structured failures without automatic replay.
+13. Every terminal path must converge TaskPlan status, deliverable status, progress stage, checkpoint state, structured error, and SSE output. React must receive the TaskPlan ID and stable error code without inferring state from natural-language text.

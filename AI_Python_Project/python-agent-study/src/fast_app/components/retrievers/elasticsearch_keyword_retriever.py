@@ -23,6 +23,8 @@ from fast_app.ingestion.stores.rag_store_schema import (
     ES_METADATA_SECTION_PATH_FIELD,
     ES_METADATA_SOURCE_PATH_FIELD,
     ES_METADATA_VISIBILITY_FIELD,
+    ES_VALID_FROM_VERSION_FIELD,
+    ES_VALID_TO_VERSION_FIELD,
 )
 from fast_app.services.exceptions import ExternalServiceError
 
@@ -62,6 +64,23 @@ def build_es_filters(filters: RetrievalFilters) -> list[dict[str, Any]]:
         # terms 表示“命中任意一个章节路径即可”，适合用户传入多个 section_path 的场景。
         es_filters.append(
             {"terms": {ES_METADATA_SECTION_PATH_FIELD: filters.section_path}}
+        )
+
+    if filters.knowledge_version is not None:
+        version = filters.knowledge_version
+        es_filters.extend(
+            [
+                {"range": {ES_VALID_FROM_VERSION_FIELD: {"lte": version}}},
+                {
+                    "bool": {
+                        "should": [
+                            {"term": {ES_VALID_TO_VERSION_FIELD: 0}},
+                            {"range": {ES_VALID_TO_VERSION_FIELD: {"gt": version}}},
+                        ],
+                        "minimum_should_match": 1,
+                    }
+                },
+            ]
         )
 
     permission_filter = build_es_permission_filter(filters)

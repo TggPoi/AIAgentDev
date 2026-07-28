@@ -13,15 +13,33 @@ MILVUS_DOC_ID_FIELD = "doc_id"
 MILVUS_SOURCE_PATH_FIELD = "source_path"
 MILVUS_DOCUMENT_TYPE_FIELD = "document_type"
 MILVUS_CHUNK_INDEX_FIELD = "chunk_index"
+MILVUS_PHYSICAL_RECORD_ID_FIELD = "physical_record_id"
+MILVUS_LOGICAL_RECORD_ID_FIELD = "logical_record_id"
+MILVUS_RECORD_TYPE_FIELD = "record_type"
+MILVUS_LOGICAL_PARENT_ID_FIELD = "logical_parent_id"
+MILVUS_PHYSICAL_PARENT_ID_FIELD = "physical_parent_id"
+MILVUS_SOURCE_ID_FIELD = "source_id"
+MILVUS_SOURCE_REVISION_FIELD = "source_revision"
+MILVUS_VALID_FROM_VERSION_FIELD = "valid_from_version"
+MILVUS_VALID_TO_VERSION_FIELD = "valid_to_version"
 #ES mapping字段常量
 ES_ID_FIELD = "id"
+ES_PHYSICAL_RECORD_ID_FIELD = "physical_record_id"
+ES_DOC_ID_FIELD = "doc_id"
 ES_CONTENT_FIELD = "content"
 ES_SEARCH_TEXT_FIELD = "search_text"
 ES_RECORD_TYPE_FIELD = "record_type"
+ES_LOGICAL_PARENT_ID_FIELD = "logical_parent_id"
+ES_PHYSICAL_PARENT_ID_FIELD = "physical_parent_id"
 ES_TITLE_FIELD = "title"
 ES_SOURCE_FIELD = "source"
 ES_METADATA_FIELD = "metadata"
 ES_CREATED_AT_FIELD = "created_at"
+ES_LOGICAL_RECORD_ID_FIELD = "logical_record_id"
+ES_SOURCE_ID_FIELD = "source_id"
+ES_SOURCE_REVISION_FIELD = "source_revision"
+ES_VALID_FROM_VERSION_FIELD = "valid_from_version"
+ES_VALID_TO_VERSION_FIELD = "valid_to_version"
 
 ES_IK_INDEX_ANALYZER = "ik_max_word"
 ES_IK_SEARCH_ANALYZER = "ik_smart"
@@ -61,11 +79,20 @@ def build_es_mappings() -> dict[str, Any]:
     return {
         "properties": {
             ES_ID_FIELD: {"type": "keyword"},
+            ES_PHYSICAL_RECORD_ID_FIELD: {"type": "keyword"},
+            ES_DOC_ID_FIELD: {"type": "keyword"},
             ES_CONTENT_FIELD: build_es_text_field_mapping(),
             ES_SEARCH_TEXT_FIELD: build_es_text_field_mapping(),
             ES_RECORD_TYPE_FIELD: {"type": "keyword"},
+            ES_LOGICAL_PARENT_ID_FIELD: {"type": "keyword"},
+            ES_PHYSICAL_PARENT_ID_FIELD: {"type": "keyword"},
             ES_TITLE_FIELD: build_es_text_field_mapping(with_keyword=True),
             ES_SOURCE_FIELD: {"type": "keyword"},
+            ES_LOGICAL_RECORD_ID_FIELD: {"type": "keyword"},
+            ES_SOURCE_ID_FIELD: {"type": "keyword"},
+            ES_SOURCE_REVISION_FIELD: {"type": "keyword"},
+            ES_VALID_FROM_VERSION_FIELD: {"type": "long"},
+            ES_VALID_TO_VERSION_FIELD: {"type": "long"},
             ES_METADATA_FIELD: {
                 "properties": {
                     "doc_id": {"type": "keyword"},
@@ -169,6 +196,49 @@ def build_milvus_schema(settings: Settings):
         datatype=DataType.INT64,
     )
     schema.add_field(
+        field_name=MILVUS_LOGICAL_RECORD_ID_FIELD,
+        datatype=DataType.VARCHAR,
+        max_length=128,
+    )
+    schema.add_field(
+        field_name=MILVUS_PHYSICAL_RECORD_ID_FIELD,
+        datatype=DataType.VARCHAR,
+        max_length=128,
+    )
+    schema.add_field(
+        field_name=MILVUS_RECORD_TYPE_FIELD,
+        datatype=DataType.VARCHAR,
+        max_length=32,
+    )
+    schema.add_field(
+        field_name=MILVUS_LOGICAL_PARENT_ID_FIELD,
+        datatype=DataType.VARCHAR,
+        max_length=128,
+    )
+    schema.add_field(
+        field_name=MILVUS_PHYSICAL_PARENT_ID_FIELD,
+        datatype=DataType.VARCHAR,
+        max_length=128,
+    )
+    schema.add_field(
+        field_name=MILVUS_SOURCE_ID_FIELD,
+        datatype=DataType.VARCHAR,
+        max_length=64,
+    )
+    schema.add_field(
+        field_name=MILVUS_SOURCE_REVISION_FIELD,
+        datatype=DataType.VARCHAR,
+        max_length=64,
+    )
+    schema.add_field(
+        field_name=MILVUS_VALID_FROM_VERSION_FIELD,
+        datatype=DataType.INT64,
+    )
+    schema.add_field(
+        field_name=MILVUS_VALID_TO_VERSION_FIELD,
+        datatype=DataType.INT64,
+    )
+    schema.add_field(
         field_name=MILVUS_METADATA_FIELD,
         datatype=DataType.JSON,
     )
@@ -185,6 +255,15 @@ def build_milvus_output_fields(settings: Settings) -> list[str]:
         MILVUS_SOURCE_PATH_FIELD,
         MILVUS_DOCUMENT_TYPE_FIELD,
         MILVUS_CHUNK_INDEX_FIELD,
+        MILVUS_PHYSICAL_RECORD_ID_FIELD,
+        MILVUS_LOGICAL_RECORD_ID_FIELD,
+        MILVUS_RECORD_TYPE_FIELD,
+        MILVUS_LOGICAL_PARENT_ID_FIELD,
+        MILVUS_PHYSICAL_PARENT_ID_FIELD,
+        MILVUS_SOURCE_ID_FIELD,
+        MILVUS_SOURCE_REVISION_FIELD,
+        MILVUS_VALID_FROM_VERSION_FIELD,
+        MILVUS_VALID_TO_VERSION_FIELD,
         MILVUS_METADATA_FIELD,
     ]
 

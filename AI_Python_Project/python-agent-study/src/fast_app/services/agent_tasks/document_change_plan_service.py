@@ -75,7 +75,15 @@ class DocumentChangePlanService:
         )
         # 路径规范化、doc_id、风险、before_hash 和 ACL metadata 均由确定性
         # ManagementService 计算，不能由模型传入。
-        result = await self._document_management_service.plan_action(request, user=user)
+        result = await self._document_management_service.plan_action(
+            request,
+            user=user,
+            candidate_doc_id=(
+                str(candidate.get("doc_id"))
+                if isinstance(candidate, dict) and candidate.get("doc_id")
+                else None
+            ),
+        )
         preview = result.preview
         doc_id = str(preview.affected_doc_id or "")
         if not doc_id:

@@ -45,6 +45,8 @@ from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 from fast_app.services.agent_tasks.agent_task_router import AgentTaskRouter
 from fast_app.services.agent_tasks.agent_tool_audit_service import AgentToolAuditService
 from fast_app.services.agent_tasks.agent_tool_permission_service import AgentToolPermissionService
+from fast_app.integrations.gitlab.agent_change_service import GitLabAgentChangeService
+from fast_app.integrations.gitlab.repository import GitLabRepository
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingClient
@@ -308,6 +310,7 @@ def get_knowledge_document_management_service(
     request: Request,
     settings: Settings = Depends(get_settings),
     embedding_client: BaseEmbeddingClient = Depends(get_embedding_client),
+    session: AsyncSession = Depends(get_db_session),
 ) -> KnowledgeDocumentManagementService:
     """提供 Agent 文档管理工具的后端服务边界。
 
@@ -320,6 +323,10 @@ def get_knowledge_document_management_service(
         embedding_client=embedding_client,
         elasticsearch_client=getattr(request.app.state, "elasticsearch_client", None),
         milvus_client=getattr(request.app.state, "milvus_client", None),
+        gitlab_change_service=GitLabAgentChangeService(
+            settings=settings,
+            repository=GitLabRepository(session),
+        ),
     )
 
 

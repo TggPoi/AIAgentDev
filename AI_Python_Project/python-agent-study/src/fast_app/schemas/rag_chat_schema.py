@@ -26,6 +26,7 @@ class RagChatRequest(BaseModel):
     _retrieval_permission_scope: RetrievalPermissionScope | None = PrivateAttr(
         default=None
     )
+    _knowledge_version: int | None = PrivateAttr(default=None)
 
     session_id: str | None = Field(
         default=None,
@@ -79,6 +80,11 @@ class RagChatRequest(BaseModel):
         default=False,
         description="复杂研究本地证据不足时，是否允许把公开问题发送给 WebSearch。",
     )
+    min_knowledge_version: int | None = Field(
+        default=None,
+        ge=0,
+        description="可选的最低正式知识版本；服务端版本更低时返回 409，而不是检索旧数据。",
+    )
 
     @field_validator("query")
     @classmethod
@@ -114,6 +120,22 @@ class RagSource(BaseModel):
     id: str = Field(
         description="最终送入 LLM 的上下文记录 ID；Markdown 父块扩展成功时为 parent_id，其他情况为原 chunk ID。"
     )
+    doc_id: str | None = Field(
+        default=None,
+        description="跨 Chunk、父块和知识版本稳定的文档 ID。",
+    )
+    logical_chunk_id: str | None = Field(
+        default=None,
+        description="不包含 publication_version 的稳定 Chunk 身份。",
+    )
+    logical_parent_id: str | None = Field(
+        default=None,
+        description="Markdown 子块对应的不包含版本号的稳定父块身份。",
+    )
+    source_revision: str | None = Field(
+        default=None,
+        description="生成该检索记录的 GitLab main Commit SHA。",
+    )
     parent_id: str | None = Field(
         default=None,
         description="Markdown 子块所属父块 ID；非 Markdown 来源为空，降级为子块时仍保留目标父块 ID。",
@@ -148,6 +170,18 @@ class RagChatResponse(BaseModel):
     trace_id: str | None = Field(
         default=None,
         description="本次请求的 trace_id，当前阶段默认与 request_id 相同",
+    )
+    knowledge_version: int = Field(
+        default=0,
+        description="本次请求从入口到父块扩展全程冻结使用的正式知识版本。",
+    )
+    stale: bool = Field(
+        default=False,
+        description="响应完成时其引用文档是否已有更高正式版本。",
+    )
+    stale_doc_ids: list[str] = Field(
+        default_factory=list,
+        description="响应生成期间发生正式更新且与 sources 相交的文档 ID。",
     )
     query: str = Field(description="实际用于回答或检索的 query，可能是多轮改写后的问题。")
     answer: str = Field(description="RAG / Agent 生成的最终回答文本。")
