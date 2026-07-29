@@ -389,8 +389,6 @@ async def main() -> None:
             user_id="u1",
             is_authenticated=True,
             auth_source="jwt",
-            role="user",
-            permissions=[PermissionCode.KNOWLEDGE_DOCUMENT_CREATE.value],
             department_codes=["development"],
             primary_department_code="development",
         )

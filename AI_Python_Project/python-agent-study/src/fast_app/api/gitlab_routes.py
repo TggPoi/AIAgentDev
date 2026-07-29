@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fast_app.core.config import Settings, get_secret_env_value, get_settings
 from fast_app.dependencies.rag_dependencies import get_db_session
 from fast_app.dependencies.user_context import get_current_user_context
+from fast_app.domain.agent_tool_permissions import PermissionCode, RoleCode
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.integrations.gitlab.client import GitLabClient
 from fast_app.integrations.gitlab.models import (
@@ -222,12 +223,18 @@ def _require_authenticated(user: CurrentUserContext) -> None:
 
 def _require_admin(user: CurrentUserContext) -> None:
     _require_authenticated(user)
-    if user.role != "admin" and "*" not in user.permissions:
+    if not (
+        user.has_global_role(RoleCode.SYSTEM_ADMIN.value)
+        or user.has_global_permission(PermissionCode.GITLAB_SOURCE_MANAGE.value)
+    ):
         raise ToolPermissionDeniedError("该 GitLab 管理接口仅允许管理员访问")
 
 
 def _can_read_change(user: CurrentUserContext, item: dict) -> bool:
-    if user.role == "admin" or "*" in user.permissions or "knowledge:read:all" in user.permissions:
+    if (
+        user.has_global_role(RoleCode.SYSTEM_ADMIN.value)
+        or user.has_global_permission(PermissionCode.GITLAB_CHANGE_READ_ALL.value)
+    ):
         return True
     if item.get("visibility") == "public":
         return True

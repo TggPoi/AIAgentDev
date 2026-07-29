@@ -44,7 +44,6 @@ class ToolTestUser:
     department_code: str | None
     department_role_code: str | None
     global_role_code: str | None = None
-    app_role: str = "user"
 
 
 TOOL_TEST_USERS = {
@@ -76,7 +75,6 @@ TOOL_TEST_USERS = {
         department_code="development",
         department_role_code=None,
         global_role_code="system_admin",
-        app_role="admin",
     ),
     "unscoped": ToolTestUser(
         username="tool_unscoped",
@@ -516,8 +514,14 @@ def print_user_summary(user: dict[str, Any]) -> None:
     print("current_user:")
     print(f"  user_id={user.get('user_id')}")
     print(f"  auth_source={user.get('auth_source')}")
-    print(f"  role={user.get('role')}")
-    print(f"  permissions={','.join(str(item) for item in user.get('permissions', []))}")
+    print(
+        "  global_roles="
+        f"{','.join(str(item) for item in user.get('global_role_codes', []))}"
+    )
+    print(
+        "  global_permissions="
+        f"{','.join(str(item) for item in user.get('global_permission_codes', []))}"
+    )
     print(
         "  departments="
         f"{','.join(str(item) for item in user.get('department_codes', []))}"
@@ -626,6 +630,9 @@ async def assert_required_tool_roles_exist(session: Any) -> None:
 
     required = {
         "system_admin",
+        "knowledge_global_reader",
+        "agent_tool_operator",
+        "gitlab_manager",
         "department_reader",
         "department_editor",
         "department_document_manager",
@@ -646,7 +653,7 @@ async def upsert_tool_test_user(
     user: ToolTestUser,
     password_hash: str,
 ) -> str:
-    """按 username 幂等创建测试用户，并刷新密码和基础权限。"""
+    """按 username 幂等创建测试用户并刷新密码。"""
 
     from sqlalchemy import text
 
@@ -655,14 +662,12 @@ async def upsert_tool_test_user(
             text(
                 """
                 insert into users
-                    (id, username, email, display_name, password_hash, role, status, permissions_json)
+                    (id, username, email, display_name, password_hash, status)
                 values
-                    (:id, :username, :email, :display_name, :password_hash, :role, 'active', cast(:permissions_json as jsonb))
+                    (:id, :username, :email, :display_name, :password_hash, 'active')
                 on conflict (username) do update set
                     password_hash = excluded.password_hash,
-                    role = excluded.role,
                     status = 'active',
-                    permissions_json = excluded.permissions_json,
                     updated_at = now()
                 returning id
                 """
@@ -673,8 +678,6 @@ async def upsert_tool_test_user(
                 "email": f"{user.username}@example.com",
                 "display_name": user.username,
                 "password_hash": password_hash,
-                "role": user.app_role,
-                "permissions_json": json.dumps(["rag:chat"], ensure_ascii=False),
             },
         )
     ).one()

@@ -10,10 +10,10 @@ from fast_app.domain.auth_models import (
     CredentialStatus,
     JwtTokenPair,
     RefreshTokenRecord,
-    UserRole,
     UserStatus,
 )
 from fast_app.domain.user_context import CurrentUserContext
+from fast_app.services.auth.permission_service import PermissionService
 from fast_app.services.auth.auth_crypto import (
     build_api_key_prefix,
     fingerprint_api_key,
@@ -43,9 +43,11 @@ class AuthService:
         self,
         settings: Settings,
         repository: UserRepository,
+        permission_service: PermissionService,
     ) -> None:
         self._settings = settings
         self._repository = repository
+        self._permission_service = permission_service
         self._jwt_service = JwtService(settings)
 
     async def create_user(
@@ -54,8 +56,6 @@ class AuthService:
         password: str,
         email: str | None = None,
         display_name: str | None = None,
-        role: UserRole = UserRole.USER,
-        permissions: list[str] | None = None,
     ) -> AuthUser:
         """创建用户，主要供初始化脚本或后续管理接口复用。"""
 
@@ -66,9 +66,7 @@ class AuthService:
             email=email.strip().lower() if email else None,
             display_name=display_name.strip() if display_name else None,
             password_hash=hash_password(password),
-            role=role,
             status=UserStatus.ACTIVE,
-            permissions=permissions or [],
             created_at=now,
             updated_at=now,
         )
@@ -146,7 +144,7 @@ class AuthService:
 
         self._ensure_active_user(user)
         await self._repository.update_api_key_last_used_at(credential.id)
-        return self.build_current_user_context(
+        return await self.build_current_user_context(
             user=user,
             auth_source="api_key",
             api_key_id=credential.id,
@@ -165,7 +163,7 @@ class AuthService:
             raise AuthenticationError("JWT 对应用户不存在")
 
         self._ensure_active_user(user)
-        return self.build_current_user_context(
+        return await self.build_current_user_context(
             user=user,
             auth_source="jwt",
             token_id=subject.token_id,
@@ -235,21 +233,24 @@ class AuthService:
             api_key_id=api_key_id,
         )
 
-    def build_current_user_context(
+    async def build_current_user_context(
         self,
         user: AuthUser,
         auth_source: str,
         token_id: str | None = None,
         api_key_id: str | None = None,
     ) -> CurrentUserContext:
-        """把真实用户转换成 RAG 主链路使用的统一用户上下文。"""
+        """把数据库用户和实时 RBAC 全局权限转换为统一请求上下文。"""
 
+        effective = await self._permission_service.get_effective_permissions(user.id)
         return CurrentUserContext(
             user_id=user.id,
             is_authenticated=True,
             auth_source=auth_source,  # type: ignore[arg-type]
-            role=user.role.value,
-            permissions=list(user.permissions),
+            global_role_codes=list(effective.global_role_codes),
+            global_permission_codes=sorted(
+                permission.value for permission in effective.global_permission_codes
+            ),
             department_codes=[
                 department_code.value
                 for department_code in user.department_codes
@@ -314,15 +315,9 @@ def require_permission(
     user: CurrentUserContext,
     permission: str,
 ) -> None:
-    """检查当前用户是否拥有某个权限。
+    """检查当前请求的 RBAC 全局权限快照。"""
 
-    admin 角色默认通过；更细粒度的权限矩阵放到后续阶段继续扩展。
-    """
-
-    if user.role == UserRole.ADMIN.value:
-        return
-
-    if permission in user.permissions:
+    if user.has_global_permission(permission):
         return
 
     raise AppServiceError("当前用户没有执行该操作的权限")

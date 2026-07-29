@@ -30,7 +30,12 @@ from fast_app.agents.tools.web_search_tools import WEB_SEARCH_TOOL_NAME, WebSear
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.domain.agent_task_plan import AgentTaskPlan, AgentTaskPlanStatus, AgentTaskToolCallTrace, AgentToolStep, AgentToolStepStatus
-from fast_app.domain.agent_tool_permissions import AgentToolCallContext, AgentToolPermissionAction, PermissionCode
+from fast_app.domain.agent_tool_permissions import (
+    AgentToolCallContext,
+    AgentToolPermissionAction,
+    PermissionCode,
+    RoleCode,
+)
 from fast_app.domain.knowledge_document_actions import (
     KnowledgeDocumentActionPreview,
     KnowledgeDocumentActionRequest,
@@ -1431,7 +1436,9 @@ def _user_has_permission(
 ) -> bool:
     """判断用户是否可看到某个可选工具；真正执行时仍会经过权限服务。"""
 
-    return user.role in {"admin", "system_admin"} or permission.value in user.permissions
+    return user.has_global_role(
+        RoleCode.SYSTEM_ADMIN.value
+    ) or user.has_global_permission(permission.value)
 
 
 def _require_document_candidate(

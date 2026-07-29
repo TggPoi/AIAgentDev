@@ -23,6 +23,7 @@ from fast_app.dependencies.rag_dependencies import (
 )
 from fast_app.dependencies.user_context import get_current_user_context
 from fast_app.domain.user_context import CurrentUserContext
+from fast_app.domain.agent_tool_permissions import RoleCode
 from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
 from fast_app.services.exceptions import AppServiceError, ToolPermissionDeniedError
 from fast_app.services.rag.guarded_streaming import (
@@ -104,7 +105,9 @@ async def get_agent_task_plan_endpoint(
     """读取 Agent 多步骤任务计划。"""
 
     plan = task_plan_store.load(task_plan_id)
-    if plan.user_id != user.user_id and user.role != "admin":
+    if plan.user_id != user.user_id and not user.has_global_role(
+        RoleCode.SYSTEM_ADMIN.value
+    ):
         raise ToolPermissionDeniedError("只能查看自己创建的 Agent task plan")
     return plan.model_dump(mode="json")
 
@@ -118,7 +121,9 @@ async def get_agent_task_plan_markdown_endpoint(
     """读取 Agent TaskPlan 的 Markdown 审查视图。"""
 
     plan = task_plan_store.load(task_plan_id)
-    if plan.user_id != user.user_id and user.role != "admin":
+    if plan.user_id != user.user_id and not user.has_global_role(
+        RoleCode.SYSTEM_ADMIN.value
+    ):
         raise ToolPermissionDeniedError("只能查看自己创建的 Agent task plan")
     return task_plan_store.load_markdown(task_plan_id)
 

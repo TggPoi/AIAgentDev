@@ -263,8 +263,7 @@ def build_user() -> CurrentUserContext:
         user_id="tool_admin",
         is_authenticated=True,
         auth_source="jwt",
-        role="admin",
-        permissions=["*"],
+        global_role_codes=["system_admin"],
         department_codes=["development"],
         primary_department_code="development",
     )

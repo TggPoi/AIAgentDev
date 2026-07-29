@@ -121,9 +121,13 @@ async def main() -> None:
             department="art",
             expected=AgentToolPermissionAction.CONFIRMATION_REQUIRED,
             label="admin_cross_department_confirmation_required",
-            role="admin",
             expected_requires_confirmation=True,
         )
+        await session.execute(
+            text("delete from users where id = any(:user_ids)"),
+            {"user_ids": list(TEST_USERS.values())},
+        )
+        await session.commit()
 
     await engine.dispose()
     print("agent_tool_permission_policy=passed")
@@ -131,14 +135,13 @@ async def main() -> None:
 
 async def seed_test_users(session) -> None:
     for key, user_id in TEST_USERS.items():
-        role = "admin" if key == "admin" else "user"
         await session.execute(
             text(
                 """
                 insert into users
-                    (id, username, email, display_name, password_hash, role, status)
+                    (id, username, email, display_name, password_hash, status)
                 values
-                    (:id, :username, :email, :display_name, 'test-hash', :role, 'active')
+                    (:id, :username, :email, :display_name, 'test-hash', 'active')
                 on conflict (id) do nothing
                 """
             ),
@@ -147,7 +150,6 @@ async def seed_test_users(session) -> None:
                 "username": user_id,
                 "email": f"{user_id}@example.com",
                 "display_name": user_id,
-                "role": role,
             },
         )
 
@@ -238,7 +240,6 @@ async def assert_decision(
     department: str,
     expected: AgentToolPermissionAction,
     label: str,
-    role: str = "user",
     confirmation_text: str | None = None,
     expected_requires_confirmation: bool | None = None,
 ) -> None:
@@ -248,7 +249,6 @@ async def assert_decision(
             user_id=user_id,
             is_authenticated=True,
             auth_source="jwt",
-            role=role,
             department_codes=[department],
         ),
         context=AgentToolCallContext(

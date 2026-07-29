@@ -949,7 +949,6 @@ def test_api_contract(root: Path) -> None:
         user_id="user_test",
         is_authenticated=True,
         auth_source="jwt",
-        role="user",
     )
     repository = FakeRepository()
     settings = Settings(

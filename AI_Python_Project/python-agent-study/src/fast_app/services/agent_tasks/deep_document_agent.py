@@ -56,7 +56,7 @@ from fast_app.agents.tools.web_search_tools import search_web_with_bocha
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.domain.agent_task_plan import AgentTaskPlan, AgentTaskPlanStatus
-from fast_app.domain.agent_tool_permissions import PermissionCode
+from fast_app.domain.agent_tool_permissions import PermissionCode, RoleCode
 from fast_app.domain.document_workflow import (
     DocumentDeliverable,
     DocumentDeliverableFailure,
@@ -2004,9 +2004,11 @@ def _validate_public_topic(
 def _has_permission(user: CurrentUserContext, permission: PermissionCode) -> bool:
     """判断当前用户是否可以把某类可选工具注入 Researcher。"""
 
-    # 管理员角色拥有工具权限；普通用户必须在当前重新加载的 permissions
+    # 管理员角色拥有工具权限；普通用户必须在当前 RBAC 全局权限快照
     # 中显式包含对应 PermissionCode。该判断不从模型输出或会话历史读取权限。
-    return user.role in {"admin", "system_admin"} or permission.value in user.permissions
+    return user.has_global_role(
+        RoleCode.SYSTEM_ADMIN.value
+    ) or user.has_global_permission(permission.value)
 
 
 __all__ = ["DeepDocumentAgent", "DeepDocumentAgentRunResult", "DocumentReadSnapshot"]

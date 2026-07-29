@@ -35,6 +35,7 @@ from fast_app.domain.agent_task_plan import (
 )
 from fast_app.domain.rag_models import RetrievalFilters
 from fast_app.domain.user_context import CurrentUserContext
+from fast_app.domain.agent_tool_permissions import PermissionCode, RoleCode
 from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
 from fast_app.services.agent_tasks.agent_tool_audit_service import AgentToolAuditService
 from fast_app.services.agent_tasks.agent_tool_permission_service import AgentToolPermissionService
@@ -207,7 +208,9 @@ class AgentTaskExecutor:
 
         plan = self._task_plan_store.load(task_plan_id)
         # TaskPlan 归属是服务端数据；会话文本或模型输出不能作为取消授权。
-        if plan.user_id != user.user_id and user.role != "admin":
+        if plan.user_id != user.user_id and not user.has_global_role(
+            RoleCode.SYSTEM_ADMIN.value
+        ):
             raise ToolPermissionDeniedError("只能取消自己创建的 Agent task plan")
         if plan.status in {
             AgentTaskPlanStatus.COMPLETED,
@@ -472,7 +475,9 @@ class AgentTaskExecutor:
         """
 
         plan = self._task_plan_store.load(task_plan_id)
-        if plan.user_id != user.user_id and user.role != "admin":
+        if plan.user_id != user.user_id and not user.has_global_role(
+            RoleCode.SYSTEM_ADMIN.value
+        ):
             raise ToolPermissionDeniedError("只能操作自己创建的 Agent task plan")
         return plan
 
@@ -536,8 +541,7 @@ class AgentTaskExecutor:
         ``CurrentUserContext`` 重新计算，不使用 TaskPlan 创建时的旧 ACL。
         """
 
-        permissions = set(user.permissions)
-        # admin、通配权限或显式 knowledge:read:all 可跨部门读取；否则
+        # system_admin 或显式 knowledge:read:all 可跨部门读取；否则
         # Retriever 必须使用 user_id/department_codes/allow_public 实施数据层过滤。
         return RetrievalFilters(
             source_path=source_path,
@@ -545,9 +549,8 @@ class AgentTaskExecutor:
             user_id=user.user_id,
             department_codes=list(user.department_codes),
             can_read_all=(
-                user.role == "admin"
-                or "*" in permissions
-                or "knowledge:read:all" in permissions
+                user.has_global_role(RoleCode.SYSTEM_ADMIN.value)
+                or user.has_global_permission(PermissionCode.KNOWLEDGE_READ_ALL.value)
             ),
             allow_public=True,
         )

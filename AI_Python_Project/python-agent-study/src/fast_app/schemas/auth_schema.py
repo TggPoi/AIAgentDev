@@ -45,9 +45,15 @@ class CurrentUserResponse(BaseModel):
 
     user_id: str = Field(description="当前用户 ID。")
     is_authenticated: bool = Field(description="当前请求是否已通过认证。")
-    auth_source: str = Field(description="认证来源，例如 jwt / api_key / bearer_token。")
-    role: str | None = Field(default=None, description="当前用户角色 code。")
-    permissions: list[str] = Field(default_factory=list, description="当前用户权限 code 列表。")
+    auth_source: str = Field(description="认证来源，例如数据库 jwt / api_key。")
+    global_role_codes: list[str] = Field(
+        default_factory=list,
+        description="当前用户由 user_roles 提供的全局 RBAC 角色 code 列表。",
+    )
+    global_permission_codes: list[str] = Field(
+        default_factory=list,
+        description="当前用户由全局 RBAC 角色实时展开的权限 code 列表。",
+    )
     department_codes: list[str] = Field(default_factory=list, description="当前用户可访问的部门 code 列表。")
     primary_department_code: str | None = Field(default=None, description="当前用户主归属部门 code。")
     email: str | None = Field(default=None, description="当前用户邮箱。")

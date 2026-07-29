@@ -102,8 +102,6 @@ class Settings(BaseSettings):
     # 基础认证配置。默认关闭，保留本地学习和 mock 验证体验。
     # 开启后，RAG Chat 主接口需要 X-API-Key 或 Authorization: Bearer token。
     auth_enabled: bool = Field(default=False, alias="AUTH_ENABLED")
-    auth_api_keys: str = Field(default="", alias="AUTH_API_KEYS")
-    auth_bearer_tokens: str = Field(default="", alias="AUTH_BEARER_TOKENS")
     auth_allow_demo_user_header: bool = Field(
         default=False,
         alias="AUTH_ALLOW_DEMO_USER_HEADER",
@@ -944,31 +942,12 @@ class Settings(BaseSettings):
         ]
 
     @property
-    def auth_api_key_list(self) -> list[str]:
-        return _split_csv_secret_values(self.auth_api_keys)
-
-    @property
-    def auth_bearer_token_list(self) -> list[str]:
-        return _split_csv_secret_values(self.auth_bearer_tokens)
-
-    @property
     def agent_document_tools_allowed_extension_list(self) -> list[str]:
         return [
             item.strip().lower()
             for item in self.agent_document_tools_allowed_extensions.split(",")
             if item.strip()
         ]
-    
-
-
-def _split_csv_secret_values(raw_value: str) -> list[str]:
-    return [
-        item.strip()
-        for item in raw_value.split(",")
-        if item.strip()
-    ]
-
-
 # @lru_cache 第一次调用 get_settings() 时创建 Settings。后续再次调用，直接返回第一次创建好的对象。
 # Settings 在应用运行期间通常是稳定的。没有必要每个请求都重新读取 .env。
 def get_secret_env_value(name: str, env_file: str = ".env") -> str:

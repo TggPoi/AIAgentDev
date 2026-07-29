@@ -23,8 +23,6 @@ def main() -> None:
         user_id="user_dev_001",
         is_authenticated=True,
         auth_source="jwt",
-        role="user",
-        permissions=["rag:chat"],
         department_codes=["development"],
         primary_department_code="development",
     )
@@ -66,8 +64,7 @@ def main() -> None:
         user_id="admin_001",
         is_authenticated=True,
         auth_source="jwt",
-        role="admin",
-        permissions=["*"],
+        global_role_codes=["system_admin"],
     )
     admin_scope = policy.build_scope(admin)
     admin_filters = RetrievalFilters(can_read_all=admin_scope.can_read_all)

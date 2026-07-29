@@ -544,7 +544,7 @@ async def _require_permission(
     """要求用户在目标部门拥有指定文档权限。"""
 
     effective = await permission_service.get_effective_permissions(user.user_id)
-    if user.role == "admin" or effective.has_global_role(RoleCode.SYSTEM_ADMIN):
+    if effective.has_global_role(RoleCode.SYSTEM_ADMIN):
         return
     scope = effective.scope_for_department(department_code)
     if scope is None or permission not in scope.permission_codes:
@@ -556,8 +556,6 @@ async def _is_admin(
 ) -> bool:
     """同时兼容用户上下文角色和权限系统中的全局管理员角色。"""
 
-    if user.role == "admin":
-        return True
     effective = await permission_service.get_effective_permissions(user.user_id)
     return effective.has_global_role(RoleCode.SYSTEM_ADMIN)
 

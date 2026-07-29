@@ -235,8 +235,8 @@ def build_document_acl_fingerprint(
 
     payload = {
         "user_id": user.user_id,
-        "role": user.role,
-        "permissions": sorted(set(user.permissions)),
+        "global_role_codes": sorted(set(user.global_role_codes)),
+        "global_permission_codes": sorted(set(user.global_permission_codes)),
         "department_codes": sorted(set(user.department_codes)),
         "is_authenticated": user.is_authenticated,
         "can_read_all": filters.can_read_all,

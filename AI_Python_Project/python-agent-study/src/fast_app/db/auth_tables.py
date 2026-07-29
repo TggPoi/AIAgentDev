@@ -20,21 +20,10 @@ class UserTable(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     display_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[str] = mapped_column(
-        String(32),
-        nullable=False,
-        server_default=text("'user'"),
-    )
     status: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
         server_default=text("'active'"),
-    )
-    permissions_json: Mapped[list[str]] = mapped_column(
-        JSONB,
-        nullable=False,
-        default=list,
-        server_default=text("'[]'::jsonb"),
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

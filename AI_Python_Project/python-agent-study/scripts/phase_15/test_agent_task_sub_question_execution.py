@@ -191,7 +191,6 @@ async def main() -> None:
             user_id="tool_manager",
             is_authenticated=True,
             auth_source="jwt",
-            role="tool_manager",
         )
 
         plan = await executor.execute_question_decomposition_plan(

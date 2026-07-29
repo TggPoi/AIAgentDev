@@ -316,7 +316,6 @@ def build_user() -> CurrentUserContext:
         user_id="tool_manager",
         is_authenticated=True,
         auth_source="jwt",
-        role="tool_manager",
     )
 
 

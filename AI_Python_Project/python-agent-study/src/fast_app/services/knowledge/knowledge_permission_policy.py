@@ -3,10 +3,11 @@ from typing import Any
 
 from fast_app.domain.knowledge_permissions import RetrievalPermissionScope
 from fast_app.domain.rag_models import RetrievalFilters
+from fast_app.domain.agent_tool_permissions import PermissionCode, RoleCode
 from fast_app.domain.user_context import CurrentUserContext
 
 
-KNOWLEDGE_READ_ALL_PERMISSION = "knowledge:read:all"
+KNOWLEDGE_READ_ALL_PERMISSION = PermissionCode.KNOWLEDGE_READ_ALL.value
 
 
 class KnowledgePermissionPolicy:
@@ -19,11 +20,9 @@ class KnowledgePermissionPolicy:
     def build_scope(self, user: CurrentUserContext) -> RetrievalPermissionScope:
         """根据当前用户身份生成服务端检索权限范围。"""
 
-        permissions = set(user.permissions)
         can_read_all = (
-            user.role == "admin"
-            or "*" in permissions
-            or KNOWLEDGE_READ_ALL_PERMISSION in permissions
+            user.has_global_role(RoleCode.SYSTEM_ADMIN.value)
+            or user.has_global_permission(KNOWLEDGE_READ_ALL_PERMISSION)
         )
 
         if can_read_all:

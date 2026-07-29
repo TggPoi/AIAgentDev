@@ -63,7 +63,7 @@ CurrentUserContext
 判断规则：
 
 ```text
-admin / "*" / knowledge:read:all
+system_admin / knowledge_global_reader（knowledge:read:all）
     -> can_read_all=True
 
 普通认证用户
@@ -589,20 +589,17 @@ $env:PYTHONPATH="src"
 .\.venv\Scripts\python.exe scripts\create_auth_user.py `
   --username dev_user `
   --password "Dev123456!" `
-  --department development `
-  --permission rag:chat
+  --department-role development=department_reader
 
 .\.venv\Scripts\python.exe scripts\create_auth_user.py `
   --username art_user `
   --password "Art123456!" `
-  --department art `
-  --permission rag:chat
+  --department-role art=department_reader
 
 .\.venv\Scripts\python.exe scripts\create_auth_user.py `
   --username product_user `
   --password "Product123456!" `
-  --department product_planning `
-  --permission rag:chat
+  --department-role product_planning=department_reader
 ```
 
 如果重复创建用户名会失败，可以换用户名，或先清理数据库中的测试用户。
@@ -685,13 +682,13 @@ embedding 配置不可用
 ```text
 创建用户时没有传 --department
 用户是旧用户，没有写 user_departments
-使用的是静态 AUTH_API_KEYS / AUTH_BEARER_TOKENS，而不是数据库 JWT 用户
+使用的是已失效或不属于数据库用户的旧 token
 ```
 
 处理方式：
 
 ```text
-使用 scripts\create_auth_user.py 重新创建带 --department 的用户。
+使用 scripts\create_auth_user.py 创建带部门角色的用户，再通过 /auth/login 获取 JWT。
 ```
 
 ### 5.3 dry-run 里没有 visibility 字段
@@ -738,7 +735,7 @@ $env:PYTHONPATH="src"
 2. ES / Milvus 已通过 ingest recreate 写入新 ACL metadata。
 3. /auth/me 能返回 department_codes。
 4. department 用户只能看到 public 或本部门文档。
-5. admin / knowledge:read:all 用户可以跳过权限 filter。
+5. system_admin / knowledge_global_reader 用户可以跳过权限 filter。
 6. /rag/chat/stream 仍保持 token-only，不改变 stream 协议。
 7. /rag/chat/stream/events 的 sources 只包含授权文档。
 ```
@@ -890,14 +887,12 @@ $env:PYTHONPATH="src"
 .\.venv\Scripts\python.exe scripts\create_auth_user.py `
   --username dev_user `
   --password "Dev123456!" `
-  --department development `
-  --permission rag:chat
+  --department-role development=department_reader
 
 .\.venv\Scripts\python.exe scripts\create_auth_user.py `
   --username art_user `
   --password "Art123456!" `
-  --department art `
-  --permission rag:chat
+  --department-role art=department_reader
 ```
 
 如果用户已存在，换用户名即可，例如 `dev_user_2`。
@@ -967,8 +962,8 @@ Invoke-RestMethod `
   "user_id": "...",
   "is_authenticated": true,
   "auth_source": "jwt",
-  "role": "user",
-  "permissions": ["rag:chat"],
+  "global_role_codes": [],
+  "global_permission_codes": [],
   "department_codes": ["development"],
   "primary_department_code": "development"
 }

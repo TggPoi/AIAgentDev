@@ -225,15 +225,6 @@ def get_user_repository(
     return UserRepository(session=session)
 
 
-def get_auth_service(
-    settings: Settings = Depends(get_settings),
-    repository: UserRepository = Depends(get_user_repository),
-) -> AuthService:
-    """提供认证业务服务。"""
-
-    return AuthService(settings=settings, repository=repository)
-
-
 def get_permission_repository(
     session: AsyncSession = Depends(get_db_session),
 ) -> PermissionRepository:
@@ -248,6 +239,20 @@ def get_permission_service(
     """提供用户有效权限计算服务。"""
 
     return PermissionService(repository=repository)
+
+
+def get_auth_service(
+    settings: Settings = Depends(get_settings),
+    repository: UserRepository = Depends(get_user_repository),
+    permission_service: PermissionService = Depends(get_permission_service),
+) -> AuthService:
+    """提供认证业务服务。"""
+
+    return AuthService(
+        settings=settings,
+        repository=repository,
+        permission_service=permission_service,
+    )
 
 
 def get_agent_task_planner(

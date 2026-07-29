@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import jwt
 
 from fast_app.core.config import Settings
-from fast_app.domain.auth_models import AuthUser, TokenSubject, UserRole
+from fast_app.domain.auth_models import AuthUser, TokenSubject
 from fast_app.services.auth.auth_crypto import generate_token_id
 from fast_app.services.exceptions import AuthenticationError
 
@@ -31,8 +31,6 @@ class JwtService:
         token_id = generate_token_id()
         claims = {
             "sub": user.id,
-            "role": user.role.value,
-            "permissions": list(user.permissions),
             "iss": self._settings.jwt_issuer,
             "aud": self._settings.jwt_audience,
             "iat": int(issued_at.timestamp()),
@@ -67,25 +65,15 @@ class JwtService:
 
         user_id = payload.get("sub")
         token_id = payload.get("jti")
-        role = payload.get("role")
         exp = payload.get("exp")
         if not isinstance(user_id, str) or not isinstance(token_id, str):
             raise AuthenticationError("JWT 缺少必要身份声明")
 
-        if not isinstance(role, str):
-            raise AuthenticationError("JWT 缺少角色声明")
-
         if not isinstance(exp, int):
             raise AuthenticationError("JWT 缺少过期时间")
 
-        permissions = payload.get("permissions", [])
-        if not isinstance(permissions, list):
-            permissions = []
-
         return TokenSubject(
             user_id=user_id,
-            role=UserRole(role),
-            permissions=[item for item in permissions if isinstance(item, str)],
             token_id=token_id,
             expires_at=datetime.fromtimestamp(exp, UTC),
         )

@@ -14,7 +14,6 @@ from fast_app.domain.agent_tool_permissions import (
     PermissionCode,
     RoleCode,
 )
-from fast_app.domain.auth_models import UserRole
 from fast_app.domain.knowledge_document_actions import (
     KnowledgeDocumentOperation,
     KnowledgeDocumentRiskLevel,
@@ -98,7 +97,7 @@ class AgentToolPermissionService:
             required_permissions.append(PermissionCode.KNOWLEDGE_DOCUMENT_APPROVE)
 
         # 系统管理员走快速通道，但仍然保留 plan / confirmation 状态语义。
-        if self._is_system_admin(user, effective):
+        if self._is_system_admin(effective):
             return self._admin_decision(context, required_permissions)
 
         # 部门权限必须来自服务端解析到的文档 metadata。
@@ -215,16 +214,9 @@ class AgentToolPermissionService:
 
     def _is_system_admin(
         self,
-        user: CurrentUserContext,
         effective: EffectivePermissionSet,
     ) -> bool:
-        # 兼容两种管理员来源：
-        # - 当前用户上下文中的基础 role；
-        # - 数据库有效权限集合中的 system_admin 全局角色。
-        return (
-            user.role == UserRole.ADMIN.value
-            or effective.has_global_role(RoleCode.SYSTEM_ADMIN)
-        )
+        return effective.has_global_role(RoleCode.SYSTEM_ADMIN)
 
 
 def tool_name_for_document_operation(

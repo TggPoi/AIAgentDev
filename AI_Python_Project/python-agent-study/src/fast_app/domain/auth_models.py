@@ -6,20 +6,6 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 
-class UserRole(StrEnum):
-    """系统内置角色。
-
-    当前阶段先用轻量 role 字段承载权限层级，避免过早引入完整 RBAC 表结构。
-    """
-
-    # 系统管理员，拥有管理和调试类高权限。
-    ADMIN = "admin"
-    # 普通登录用户，拥有默认业务访问权限。
-    USER = "user"
-    # 只读访问用户，用于限制性查看场景。
-    VIEWER = "viewer"
-
-
 class UserStatus(StrEnum):
     """用户账号状态。"""
 
@@ -81,9 +67,7 @@ class AuthUser(BaseModel):
     email: str | None = Field(default=None, description="用户邮箱，认证时也可作为账号标识。")
     display_name: str | None = Field(default=None, description="用户展示名称。")
     password_hash: str = Field(description="用户密码 hash，不能保存明文密码。")
-    role: UserRole = Field(default=UserRole.USER, description="用户基础角色，用于粗粒度权限层级。")
     status: UserStatus = Field(default=UserStatus.ACTIVE, description="用户账号状态。")
-    permissions: list[str] = Field(default_factory=list, description="用户直接拥有或聚合出的权限 code 列表。")
     department_codes: list[DepartmentCode] = Field(
         default_factory=list,
         description="用户可访问的部门 code 列表，用于知识库权限范围。",
@@ -131,8 +115,6 @@ class TokenSubject(BaseModel):
     """从 JWT access token 中解析出的核心身份声明。"""
 
     user_id: str = Field(description="JWT 代表的用户 ID。")
-    role: UserRole = Field(description="JWT 中携带的用户基础角色。")
-    permissions: list[str] = Field(default_factory=list, description="JWT 中携带的权限 code 列表。")
     token_id: str = Field(description="JWT 唯一 token ID，用于审计和撤销扩展。")
     expires_at: datetime = Field(description="JWT access token 过期时间。")
 
@@ -171,6 +153,5 @@ __all__ = [
     "RefreshTokenRecord",
     "TokenSubject",
     "UserDepartment",
-    "UserRole",
     "UserStatus",
 ]

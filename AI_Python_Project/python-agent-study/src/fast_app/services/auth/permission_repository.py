@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -80,7 +82,7 @@ class PermissionRepository:
     async def add_user_role(self, user_id: str, role_code: str) -> None:
         role = await self._get_role_by_code(role_code)
         row = UserRoleTable(
-            id=f"user_role_{user_id}_{role.code}",
+            id=f"user_role_{uuid4().hex}",
             user_id=user_id,
             role_id=role.id,
         )
@@ -95,7 +97,7 @@ class PermissionRepository:
     ) -> None:
         role = await self._get_role_by_code(role_code)
         row = UserDepartmentRoleTable(
-            id=f"user_dept_role_{user_id}_{department_code}_{role.code}",
+            id=f"user_dept_role_{uuid4().hex}",
             user_id=user_id,
             department_code=department_code,
             role_id=role.id,

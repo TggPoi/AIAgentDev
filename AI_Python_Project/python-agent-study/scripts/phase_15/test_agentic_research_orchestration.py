@@ -296,7 +296,6 @@ async def main() -> None:
             user_id="u1",
             is_authenticated=True,
             auth_source="jwt",
-            role="user",
             department_codes=["game"],
         )
 

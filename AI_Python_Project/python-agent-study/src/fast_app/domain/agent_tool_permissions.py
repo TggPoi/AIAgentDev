@@ -24,6 +24,12 @@ class PermissionCode(StrEnum):
     KNOWLEDGE_DOCUMENT_DELETE = "knowledge:document:delete"
     # 允许审批或确认高风险文档动作。
     KNOWLEDGE_DOCUMENT_APPROVE = "knowledge:document:approve"
+    # 允许跨用户、跨部门读取全部知识库内容。
+    KNOWLEDGE_READ_ALL = "knowledge:read:all"
+    # 允许管理 GitLab 文档源和同步任务。
+    GITLAB_SOURCE_MANAGE = "gitlab:source:manage"
+    # 允许读取所有部门的 GitLab 知识变更事件。
+    GITLAB_CHANGE_READ_ALL = "gitlab:change:read_all"
     # 允许调用计算器类低风险 Agent 工具。
     AGENT_TOOL_CALCULATOR = "agent:tool:calculator"
     # 允许调用 Web Search 类外部检索工具。
@@ -37,6 +43,12 @@ class RoleCode(StrEnum):
 
     # 系统管理员角色，通常拥有全局管理权限。
     SYSTEM_ADMIN = "system_admin"
+    # 全局知识库读者，可以跨用户、跨部门读取知识内容。
+    KNOWLEDGE_GLOBAL_READER = "knowledge_global_reader"
+    # Agent 工具操作员，可以调用计算、Web Search 和白名单 MCP 工具。
+    AGENT_TOOL_OPERATOR = "agent_tool_operator"
+    # GitLab 文档源管理员，可以管理同步任务并读取全部知识变更。
+    GITLAB_MANAGER = "gitlab_manager"
     # 部门只读角色，只能读取本部门文档。
     DEPARTMENT_READER = "department_reader"
     # 部门编辑角色，可以更新本部门文档。

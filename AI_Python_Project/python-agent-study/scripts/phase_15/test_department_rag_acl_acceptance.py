@@ -50,8 +50,6 @@ def run_policy_and_filter_contract_checks() -> None:
         user_id="user_dev_001",
         is_authenticated=True,
         auth_source="jwt",
-        role="user",
-        permissions=["rag:chat"],
         department_codes=["development"],
         primary_department_code="development",
     )
@@ -87,8 +85,7 @@ def run_policy_and_filter_contract_checks() -> None:
             user_id="admin_001",
             is_authenticated=True,
             auth_source="jwt",
-            role="admin",
-            permissions=["*"],
+            global_role_codes=["system_admin"],
         )
     )
     assert_true(admin_scope.can_read_all, "admin 应拥有全量读取权限")
@@ -117,7 +114,7 @@ async def run_database_checks() -> None:
                 )
             ).all()
 
-        assert_equal(version, "20260628_0004", "Alembic 版本不正确")
+        assert_equal(version, "20260729_0010", "Alembic 版本不正确")
         assert_equal(
             [code for code, _name in departments],
             ["art", "development", "product_planning"],

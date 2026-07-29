@@ -126,8 +126,6 @@ async def main() -> None:
         user = CurrentUserContext(
             user_id="task-user",
             is_authenticated=True,
-            role="user",
-            permissions=[PermissionCode.KNOWLEDGE_DOCUMENT_CREATE.value],
             department_codes=["development"],
         )
         planner = AgentTaskPlanner(settings=settings)

@@ -20,7 +20,6 @@ from fast_app.domain.auth_models import (
     DepartmentCode,
     RefreshTokenRecord,
     UserDepartment,
-    UserRole,
     UserStatus,
 )
 
@@ -275,9 +274,7 @@ def _user_to_table(user: AuthUser) -> UserTable:
         email=user.email,
         display_name=user.display_name,
         password_hash=user.password_hash,
-        role=user.role.value,
         status=user.status.value,
-        permissions_json=list(user.permissions),
         created_at=user.created_at,
         updated_at=user.updated_at,
         last_login_at=user.last_login_at,
@@ -291,9 +288,7 @@ def _table_to_user(row: UserTable) -> AuthUser:
         email=row.email,
         display_name=row.display_name,
         password_hash=row.password_hash,
-        role=UserRole(row.role),
         status=UserStatus(row.status),
-        permissions=list(row.permissions_json or []),
         created_at=row.created_at,
         updated_at=row.updated_at,
         last_login_at=row.last_login_at,

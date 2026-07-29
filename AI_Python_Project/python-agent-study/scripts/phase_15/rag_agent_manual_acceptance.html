@@ -113,6 +113,10 @@
       font-family: Consolas, monospace;
       font-size: 12px;
     }
+    #permissionBox {
+      min-height: 0;
+      max-height: 240px;
+    }
     .answer {
       min-height: 180px;
       max-height: 520px;
@@ -164,8 +168,18 @@
         <input id="baseUrl" value="http://127.0.0.1:8000" />
       </div>
       <div>
+        <label for="accountPreset">RBAC 测试账号</label>
+        <select id="accountPreset">
+          <option value="rbac_reader" selected>开发部只读员工</option>
+          <option value="rbac_editor">开发部编辑员工</option>
+          <option value="rbac_manager">开发部文档管理员工</option>
+          <option value="rbac_operator">全局工具员工</option>
+          <option value="rbac_admin">系统管理员</option>
+        </select>
+      </div>
+      <div>
         <label for="username">用户名或邮箱</label>
-        <input id="username" value="tool_manager" autocomplete="username" />
+        <input id="username" value="rbac_reader" autocomplete="username" />
       </div>
       <div>
         <label for="password">密码</label>
@@ -175,8 +189,11 @@
     <div class="row">
       <button id="loginBtn">登录</button>
       <button id="meBtn" class="secondary">查看 /auth/me</button>
+      <button id="logoutBtn" class="danger">退出</button>
       <span class="status" id="authStatus">未登录</span>
     </div>
+    <label>当前 RBAC 身份与权限范围</label>
+    <pre id="permissionBox">登录后自动读取 /auth/me</pre>
   </section>
 
   <section>
@@ -242,7 +259,9 @@
 <script>
   const $ = (id) => document.getElementById(id);
 
-  let accessToken = localStorage.getItem("rag_agent_access_token") || "";
+  localStorage.removeItem("rag_agent_access_token");
+  let accessToken = sessionStorage.getItem("rag_agent_access_token") || "";
+  let currentUser = null;
   let currentTaskPlanId = "";
   let currentConfirmEndpoint = "";
   let streamController = null;
@@ -250,7 +269,7 @@
   let lastStatusEventSignature = "";
 
   if (accessToken) {
-    $("authStatus").textContent = "已加载本地 token";
+    $("authStatus").textContent = "正在校验会话 token";
   }
 
   function baseUrl() {
@@ -263,6 +282,30 @@
       result.Authorization = `Bearer ${accessToken}`;
     }
     return result;
+  }
+
+  function clearAuth(status = "未登录") {
+    accessToken = "";
+    currentUser = null;
+    sessionStorage.removeItem("rag_agent_access_token");
+    $("password").value = "";
+    $("authStatus").textContent = status;
+    $("permissionBox").textContent = "登录后自动读取 /auth/me";
+  }
+
+  function renderCurrentUser(user) {
+    currentUser = user;
+    $("authStatus").textContent = user.is_authenticated
+      ? `已登录：${user.display_name || user.user_id}`
+      : "当前为匿名用户";
+    $("permissionBox").textContent = JSON.stringify({
+      user_id: user.user_id,
+      auth_source: user.auth_source,
+      global_role_codes: user.global_role_codes || [],
+      global_permission_codes: user.global_permission_codes || [],
+      department_codes: user.department_codes || [],
+      primary_department_code: user.primary_department_code || null
+    }, null, 2);
   }
 
   function chatBody() {
@@ -370,6 +413,29 @@
     return data;
   }
 
+  async function loadCurrentUser() {
+    const response = await fetch(`${baseUrl()}/auth/me`, {headers: headers()});
+    try {
+      const user = await readJsonResponse(response);
+      renderCurrentUser(user);
+      return user;
+    } catch (error) {
+      if (response.status === 401) {
+        clearAuth("登录已失效");
+      }
+      throw error;
+    }
+  }
+
+  if (accessToken) {
+    loadCurrentUser().catch((error) => log(String(error), false));
+  }
+
+  $("accountPreset").addEventListener("change", () => {
+    $("username").value = $("accountPreset").value;
+    $("password").value = "";
+  });
+
   $("loginBtn").addEventListener("click", async () => {
     log("", false);
     setAnswer("");
@@ -384,22 +450,30 @@
       });
       const data = await readJsonResponse(response);
       accessToken = data.access_token || "";
-      localStorage.setItem("rag_agent_access_token", accessToken);
-      $("authStatus").textContent = accessToken ? "登录成功" : "登录响应无 access_token";
-      log(data, false);
+      if (!accessToken) {
+        throw new Error("登录响应无 access_token");
+      }
+      sessionStorage.setItem("rag_agent_access_token", accessToken);
+      const user = await loadCurrentUser();
+      $("password").value = "";
+      log({login: "passed", current_user: user}, false);
     } catch (error) {
-      $("authStatus").textContent = "登录失败";
+      clearAuth("登录失败");
       log(String(error), false);
     }
   });
 
   $("meBtn").addEventListener("click", async () => {
     try {
-      const response = await fetch(`${baseUrl()}/auth/me`, {headers: headers()});
-      log(await readJsonResponse(response), false);
+      log(await loadCurrentUser(), false);
     } catch (error) {
       log(String(error), false);
     }
+  });
+
+  $("logoutBtn").addEventListener("click", () => {
+    clearAuth();
+    log("已清除当前页面的会话 token。", false);
   });
 
   $("nonStreamBtn").addEventListener("click", async () => {
