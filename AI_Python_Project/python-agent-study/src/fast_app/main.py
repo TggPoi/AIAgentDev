@@ -15,6 +15,7 @@ from fast_app.api.stream_routes import router as stream_router
 from fast_app.api.error_demo_routes import router as error_demo_router
 from fast_app.api.debug_trace_routes import router as debug_trace_router
 from fast_app.api.gitlab_routes import router as gitlab_router
+from fast_app.api.nl2sql_routes import router as nl2sql_router
 from fast_app.core.config import get_settings
 from fast_app.core.langsmith import configure_langsmith
 from fast_app.core.logging import get_logger, setup_logging
@@ -31,6 +32,7 @@ from redis.asyncio import Redis
 from fast_app.components.retrievers.milvus_vector_retriever import build_milvus_uri
 from fast_app.db.session import create_database_engine, create_session_factory
 from fast_app.services.agent_tasks.deep_document_runtime import DeepDocumentRuntime
+from fast_app.services.nl2sql.registry import DatasetRegistry
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -75,6 +77,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.db_engine = create_database_engine(settings)
     app.state.db_session_factory = create_session_factory(app.state.db_engine)
     logger.info("PostgreSQL async engine 已创建")
+    app.state.nl2sql_dataset_registry = DatasetRegistry(settings)
 
     if settings.agent_document_tools_enabled:
         # Deep Agent 的 StateBackend.files 随加密 checkpoint 持久化；同一 runtime
@@ -114,6 +117,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if db_engine is not None:
             await db_engine.dispose()
             logger.info("PostgreSQL async engine 已关闭")
+
+        nl2sql_registry = getattr(app.state, "nl2sql_dataset_registry", None)
+        if isinstance(nl2sql_registry, DatasetRegistry):
+            await nl2sql_registry.close()
+            logger.info("NL2SQL 只读连接池已关闭")
 
         logger.info("应用关闭")
 
@@ -155,3 +163,4 @@ app.include_router(stream_router)
 app.include_router(error_demo_router)
 app.include_router(debug_trace_router)
 app.include_router(gitlab_router)
+app.include_router(nl2sql_router)

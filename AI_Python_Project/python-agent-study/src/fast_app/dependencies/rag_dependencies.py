@@ -47,6 +47,8 @@ from fast_app.services.agent_tasks.agent_tool_audit_service import AgentToolAudi
 from fast_app.services.agent_tasks.agent_tool_permission_service import AgentToolPermissionService
 from fast_app.integrations.gitlab.agent_change_service import GitLabAgentChangeService
 from fast_app.integrations.gitlab.repository import GitLabRepository
+from fast_app.services.nl2sql.registry import DatasetRegistry
+from fast_app.services.nl2sql.service import Nl2SqlService
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingClient
@@ -354,6 +356,7 @@ def get_agent_task_executor(
     parent_expander: MarkdownParentContextExpander = Depends(
         get_markdown_parent_context_expander
     ),
+    session: AsyncSession = Depends(get_db_session),
 ) -> AgentTaskExecutor:
     """提供 Agent TaskPlan 执行器。"""
 
@@ -367,6 +370,16 @@ def get_agent_task_executor(
         DeepDocumentRuntime,
     ):
         raise AppServiceError("Deep Agent PostgreSQL checkpoint/store 未初始化")
+    nl2sql_registry = getattr(request.app.state, "nl2sql_dataset_registry", None)
+    nl2sql_service = (
+        Nl2SqlService(
+            settings=settings,
+            registry=nl2sql_registry,
+            session=session,
+        )
+        if isinstance(nl2sql_registry, DatasetRegistry)
+        else None
+    )
 
     # 两条多 Agent 链路在依赖层显式装配，Facade 只负责按 task_kind 分派：
     # Research 使用父图 + Worker 子图；文档任务使用 Supervisor + Deep Agents。
@@ -409,6 +422,7 @@ def get_agent_task_executor(
             task_plan_store=task_plan_store,
             prompt_guard=prompt_guard,
             runtime=deep_document_runtime,
+            nl2sql_service=nl2sql_service,
         ),
     )
     return AgentTaskExecutor(

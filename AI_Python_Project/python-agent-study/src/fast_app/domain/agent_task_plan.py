@@ -130,6 +130,14 @@ class AgentResearchPolicy(BaseModel):
         default="disabled",
         description="联网策略：禁止、仅证据不足时兜底，或必须联网。",
     )
+    dataset_id: str | None = Field(
+        default=None,
+        description="服务端请求绑定的 NL2SQL Dataset ID；为空表示普通文档或研究任务。",
+    )
+    nl2sql_action: Literal["report"] | None = Field(
+        default=None,
+        description="Dataset 报告任务固定为 report；执行和恢复时必须重新鉴权。",
+    )
 
 
 class ResearchEvidenceEvaluation(BaseModel):

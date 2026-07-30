@@ -99,3 +99,39 @@ class ExternalServiceTimeoutError(ExternalServiceError):
     """外部服务调用超时。"""
 
     error_code = "EXTERNAL_SERVICE_TIMEOUT"
+
+
+class Nl2SqlDisabledError(AppServiceError):
+    error_code = "NL2SQL_DISABLED"
+    status_code = 503
+
+
+class Nl2SqlPermissionDeniedError(AppServiceError):
+    error_code = "NL2SQL_PERMISSION_DENIED"
+    status_code = 403
+
+
+class Nl2SqlSensitiveReportForbiddenError(AppServiceError):
+    error_code = "NL2SQL_SENSITIVE_REPORT_FORBIDDEN"
+    status_code = 403
+
+
+class Nl2SqlUnsafeSqlError(AppServiceError):
+    error_code = "NL2SQL_UNSAFE_SQL"
+    status_code = 400
+
+
+class Nl2SqlRepairableSqlError(Nl2SqlUnsafeSqlError):
+    """仅表示模型 SQL 语法解析失败；允许外部模型修复一次。"""
+
+    error_code = "NL2SQL_SQL_SYNTAX_INVALID"
+
+
+class Nl2SqlExecutionError(AppServiceError):
+    error_code = "NL2SQL_EXECUTION_FAILED"
+    status_code = 400
+
+
+class Nl2SqlLegacyStreamUnsupportedError(AppServiceError):
+    error_code = "NL2SQL_LEGACY_STREAM_UNSUPPORTED"
+    status_code = 400

@@ -1,9 +1,10 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 from fast_app.domain.knowledge_permissions import RetrievalPermissionScope
 from fast_app.domain.user_context import CurrentUserContext
+from fast_app.services.nl2sql.models import DatasetAuthorization, Nl2SqlAction, Nl2SqlQueryResult
 
 
 RetrievalMode = Literal["vector", "keyword", "hybrid"]
@@ -27,6 +28,8 @@ class RagChatRequest(BaseModel):
         default=None
     )
     _knowledge_version: int | None = PrivateAttr(default=None)
+    # Dataset scope 由 RBAC/Grant 在 API 入口绑定；客户端和模型不能构造。
+    _nl2sql_authorization: DatasetAuthorization | None = PrivateAttr(default=None)
 
     session_id: str | None = Field(
         default=None,
@@ -85,6 +88,16 @@ class RagChatRequest(BaseModel):
         ge=0,
         description="可选的最低正式知识版本；服务端版本更低时返回 409，而不是检索旧数据。",
     )
+    dataset_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="可选的 NL2SQL Dataset ID；存在时必须显式提供 nl2sql_action。",
+    )
+    nl2sql_action: Nl2SqlAction | None = Field(
+        default=None,
+        description="Dataset 请求动作：query 直接查询，report 进入受控文档报告链路。",
+    )
 
     @field_validator("query")
     @classmethod
@@ -107,6 +120,14 @@ class RagChatRequest(BaseModel):
             raise ValueError("session_id 不能只包含空白字符")
 
         return normalized
+
+    @model_validator(mode="after")
+    def validate_nl2sql_binding(self) -> "RagChatRequest":
+        if self.dataset_id is None and self.nl2sql_action is not None:
+            raise ValueError("没有 dataset_id 时 nl2sql_action 必须为空")
+        if self.dataset_id is not None and self.nl2sql_action is None:
+            raise ValueError("提供 dataset_id 时必须显式提供 nl2sql_action")
+        return self
 
 # 不同检索阶段分数拆解
 class RagScoreBreakdown(BaseModel):
@@ -229,6 +250,10 @@ class RagChatResponse(BaseModel):
     task_confirm_endpoint: str | None = Field(
         default=None,
         description="TaskPlan 确认执行接口；无需确认时为空。",
+    )
+    nl2sql_result: Nl2SqlQueryResult | None = Field(
+        default=None,
+        description="结构化数据 query 的完整结果；普通 RAG 或报告任务为空。",
     )
 
 

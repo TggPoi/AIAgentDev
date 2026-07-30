@@ -12,7 +12,7 @@ from fast_app.dependencies.rag_dependencies import get_rag_pipeline
 from fast_app.dependencies.user_context import get_current_user_context
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
-from fast_app.services.exceptions import AppServiceError
+from fast_app.services.exceptions import AppServiceError, Nl2SqlLegacyStreamUnsupportedError
 from fast_app.services.exceptions import KnowledgeVersionNotReadyError
 from fast_app.dependencies.rag_dependencies import get_db_session
 from fast_app.integrations.gitlab.repository import GitLabRepository
@@ -23,6 +23,9 @@ from fast_app.services.conversation.conversation_scope import (
 )
 from fast_app.services.knowledge.knowledge_permission_policy import KnowledgePermissionPolicy
 from fast_app.services.rag.rag_pipeline_service import RagPipeline
+from fast_app.dependencies.nl2sql_dependencies import get_nl2sql_service
+from fast_app.services.nl2sql.models import Nl2SqlQueryResult
+from fast_app.services.nl2sql.service import Nl2SqlService
 
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.core.request_context import get_request_id, get_trace_id
@@ -47,8 +50,37 @@ async def rag_chat_endpoint(
     user: CurrentUserContext = Depends(get_current_user_context),
     pipeline: RagPipeline = Depends(get_rag_pipeline),
     session: AsyncSession = Depends(get_db_session),
+    nl2sql_service: Nl2SqlService = Depends(get_nl2sql_service),
 ) -> RagChatResponse:
     start_time = perf_counter()
+    # Dataset/action 是客户端显式选择、服务端校验的控制字段。query 在任何外部
+    # Router Prompt 之前直接进入 NL2SQL，避免 Router 改写 Dataset 或让敏感问题
+    # 先经过普通 RAG 模型；返回值仍包装成前端熟悉的 RagChatResponse。
+    if req.dataset_id is not None and req.nl2sql_action == "query":
+        result = await nl2sql_service.query(
+            user=user,
+            dataset_id=req.dataset_id,
+            question=req.query,
+        )
+        return RagChatResponse(
+            request_id=result.request_id,
+            trace_id=result.trace_id,
+            query=req.query,
+            answer=result.summary,
+            sources=[],
+            route_intent="structured_data_query",
+            route_confidence=1.0,
+            nl2sql_result=result,
+        )
+    # 剩下的 Dataset 请求只能是 report。这里先鉴权并把可信授权快照附到内部
+    # request，随后才进入现有文档 TaskPlan/Deep Document Agent 链路。房地产
+    # report_supported=False，会在 authorize_action() 中提前拒绝。
+    if req.dataset_id is not None:
+        _, req._nl2sql_authorization = await nl2sql_service.authorize_action(
+            user=user,
+            dataset_id=req.dataset_id,
+            action=req.nl2sql_action or "",
+        )
     # 生成 scoped conversation id
     repository = GitLabRepository(session)
     scoped_req = await prepare_authorized_rag_request(
@@ -158,6 +190,10 @@ async def rag_chat_stream_endpoint(
     pipeline: RagPipeline = Depends(get_rag_pipeline),
     session: AsyncSession = Depends(get_db_session),
 ) -> StreamingResponse:
+    if req.dataset_id is not None:
+        raise Nl2SqlLegacyStreamUnsupportedError(
+            "NL2SQL 只支持 /rag/chat 或 /rag/chat/stream/events"
+        )
     scoped_req = await prepare_authorized_rag_request(
         req=req,
         user=user,
@@ -244,7 +280,26 @@ async def rag_chat_stream_events_endpoint(
     user: CurrentUserContext = Depends(get_current_user_context),
     pipeline: RagPipeline = Depends(get_rag_pipeline),
     session: AsyncSession = Depends(get_db_session),
+    nl2sql_service: Nl2SqlService = Depends(get_nl2sql_service),
 ) -> StreamingResponse:
+    # 结构化 SSE 与非流式入口采用同一确定性分流。legacy /rag/chat/stream
+    # 不经过这里，因此不会被悄悄扩展出 NL2SQL 行为。
+    if req.dataset_id is not None and req.nl2sql_action == "query":
+        result = await nl2sql_service.query(
+            user=user,
+            dataset_id=req.dataset_id,
+            question=req.query,
+        )
+        return StreamingResponse(
+            nl2sql_sse_event_generator(result),
+            media_type="text/event-stream",
+        )
+    if req.dataset_id is not None:
+        _, req._nl2sql_authorization = await nl2sql_service.authorize_action(
+            user=user,
+            dataset_id=req.dataset_id,
+            action=req.nl2sql_action or "",
+        )
     repository = GitLabRepository(session)
     scoped_req = await prepare_authorized_rag_request(
         req=req, user=user, repository=repository
@@ -252,6 +307,28 @@ async def rag_chat_stream_events_endpoint(
     return StreamingResponse(
         rag_chat_structured_sse_event_generator(scoped_req, pipeline, repository),
         media_type="text/event-stream",
+    )
+
+
+async def nl2sql_sse_event_generator(
+    result: Nl2SqlQueryResult,
+) -> AsyncGenerator[str, None]:
+    yield format_sse_event(
+        event="nl2sql_sql_generated",
+        data={
+            "query_id": result.query_id,
+            "dataset_id": result.dataset_id,
+            "parameterized_sql": result.parameterized_sql,
+            "attempt_count": result.attempt_count,
+        },
+    )
+    yield format_sse_event(
+        event="nl2sql_result",
+        data=result,
+    )
+    yield format_sse_event(
+        event="done",
+        data={"status": "done", "query_id": result.query_id},
     )
 
 
@@ -264,6 +341,7 @@ async def prepare_authorized_rag_request(
 
     scoped_req = scope_rag_chat_request(req=req, user=user)
     scoped_req._current_user_context = user
+    scoped_req._nl2sql_authorization = req._nl2sql_authorization
     scoped_req._retrieval_permission_scope = knowledge_permission_policy.build_scope(
         user
     )

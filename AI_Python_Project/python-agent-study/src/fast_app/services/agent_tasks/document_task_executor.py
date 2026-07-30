@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import Callable
 from difflib import unified_diff
 from hashlib import sha256
@@ -184,6 +185,45 @@ class DocumentTaskExecutor:
                 query=plan.original_query,
                 web_policy=web_policy,
                 langchain_config_factory=langchain_config_factory,
+            )
+        if (
+            plan.research_policy is not None
+            and plan.research_policy.dataset_id is not None
+            and decision.execution_mode != "agentic"
+        ):
+            target_match = re.search(
+                r"[A-Za-z0-9_./\\\-\u4e00-\u9fff]+\.(?:md|txt)",
+                plan.original_query,
+                flags=re.IGNORECASE,
+            )
+            decision = DocumentWorkflowDecision(
+                execution_mode="agentic",
+                objective=plan.objective,
+                deliverables=[
+                    DocumentDeliverable(
+                        deliverable_id="dataset_report",
+                        title="游戏资产数据分析报告",
+                        operation="create",
+                        target_hint=(
+                            target_match.group(0)
+                            if target_match
+                            else "game-asset-analysis-report.md"
+                        ),
+                        objective=plan.objective,
+                        source_requirements=[
+                            "知识库设计文档",
+                            "NL2SQL 游戏资产结果及 query_id",
+                            "Calculator 派生统计",
+                        ],
+                        required_capabilities=[
+                            "knowledge_retrieval",
+                            "nl2sql_query",
+                            "calculator",
+                        ],
+                    )
+                ],
+                web_policy=web_policy,
+                reason="Dataset 报告由服务端强制使用 agentic Researcher/Writer/Reviewer 链路。",
             )
         plan.final_output["document_workflow"] = {
             "execution_mode": decision.execution_mode,

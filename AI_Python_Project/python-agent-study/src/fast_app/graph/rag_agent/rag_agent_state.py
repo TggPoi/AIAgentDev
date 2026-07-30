@@ -62,6 +62,9 @@ class RagAgentState(TypedDict):
     filters: dict[str, object]
     # 只表达本次请求是否允许公开网络兜底；不代表 Web 服务一定可用。
     allow_web_fallback: bool
+    # 客户端显式请求、API 已鉴权的 Dataset 绑定；只用于确定性报告分流。
+    dataset_id: NotRequired[str | None]
+    nl2sql_action: NotRequired[str | None]
 
     # Agent 执行上下文：用于区分 run / stream / stream_events。
     # 同一套 Agent 节点会被三种入口复用，但 trace step index 和流式行为会不同。
@@ -156,6 +159,8 @@ def build_rag_agent_initial_state(
             knowledge_version=req._knowledge_version,
         ),
         "allow_web_fallback": req.allow_web_fallback,
+        "dataset_id": req.dataset_id,
+        "nl2sql_action": req.nl2sql_action,
         "operation": operation,
         "route": None,
         "route_reason": None,

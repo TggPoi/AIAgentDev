@@ -1,0 +1,345 @@
+{
+  "task_plan_id": "task_plan_20260729120333_0a194ffc5a82",
+  "task_kind": "knowledge_document_management",
+  "user_id": "user__wTknhtRouPO9CK8nNjpKWAF",
+  "original_query": "结合知识库中的《星港远征资产使用设计说明》和游戏资产数据库，使用 Calculator 计算已授权3D模型的费用差额和平均费用，创建 product_planning/星港远征资产选型报告.md；允许联网补充公开资料。",
+  "objective": "结合知识库中的《星港远征资产使用设计说明》和游戏资产数据库，使用 Calculator 计算已授权3D模型的费用差额和平均费用，创建 product_planning/星港远征资产选型报告.md；允许联网补充公开资料。",
+  "task_type": "analysis",
+  "goal": "结合知识库中的《星港远征资产使用设计说明》和游戏资产数据库，使用 Calculator 计算已授权3D模型的费用差额和平均费用，创建 product_planning/星港远征资产选型报告.md；允许联网补充公开资料。",
+  "sub_questions": [],
+  "research_policy": {
+    "mode": "hybrid",
+    "top_k": 5,
+    "candidate_k": null,
+    "min_score": 0.0,
+    "source_path": null,
+    "section_path": [],
+    "web_policy": "fallback",
+    "dataset_id": "game_test",
+    "nl2sql_action": "report"
+  },
+  "final_synthesis_instruction": "解析目标、生成变更预览并等待人工确认。",
+  "source_query": "结合知识库中的《星港远征资产使用设计说明》和游戏资产数据库，使用 Calculator 计算已授权3D模型的费用差额和平均费用，创建 product_planning/星港远征资产选型报告.md；允许联网补充公开资料。",
+  "target_path": null,
+  "report_title": "知识库文档管理计划",
+  "status": "completed_with_warnings",
+  "steps": [
+    {
+      "step_id": "step_1_create_document",
+      "tool_name": "knowledge_document_create",
+      "status": "completed",
+      "input": {
+        "deliverable_id": "asset_selection_report",
+        "candidate_doc_id": null,
+        "target_path": "product_planning/星港远征资产选型报告.md"
+      },
+      "output": {
+        "tool_call_id": "deep_agent_asset_selection_report",
+        "action_request": {
+          "operation": "create",
+          "target_path": "product_planning/星港远征资产选型报告.md",
+          "content": "# 星港远征资产选型报告\n\n## 执行摘要\n\n本报告基于知识库检索与数据库查询结果，对《星港远征》项目已授权3D模型资产的费用情况进行分析。研究覆盖5条已授权角色资产样本数据，计算得出平均费用为6025.0元，最高与最低费用差额为11000.0元。报告旨在为产品规划阶段的资产选型决策提供数据支持。\n\n需要说明的是，当前分析基于有限的样本数据（5条记录），且未获取到《星港远征资产使用设计说明》的完整原文内容。部分详细信息（如各资产的完整设计说明、技术规格、许可证条款等）有待后续补充。\n\n## 数据来源说明\n\n本研究采用以下数据源：\n\n1. **知识库文档**：游戏开发资产列表Excel文档（`development/游戏开发资产列表_RAG测试.xlsx`），包含资产清单、分类说明、许可证与供应商等多个工作表 [evidence: a9ea8da230cc2f5483959b55fddf1dda6621f95c4d7f0b159c7dac36c69f89c4]\n\n2. **数据库查询**：从 `analytics.asset_catalog` 表中查询已授权3D模型的费用数据，查询ID为 `36b32d98-a286-4988-bb34-9271774382fe` [evidence: 36b32d98-a286-4988-bb34-9271774382fe]\n\n3. **Calculator工具**：用于费用统计计算，包括平均值和差额计算\n\n## 已授权3D模型费用分析\n\n根据数据库查询结果，已获取5条已授权3D角色资产的费用数据如下：\n\n| 资产ID | 资产名称 | 费用（元） |\n|--------|----------|------------|\n| asset_001 | 角色资产01 | 1,075.00 |\n| asset_006 | 角色资产06 | 2,450.00 |\n| asset_021 | 角色资产21 | 6,575.00 |\n| asset_026 | 角色资产26 | 7,950.00 |\n| asset_041 | 角色资产41 | 12,075.00 |\n\n### 数据结构说明\n\n知识库中的资产清单工作表包含以下关键字段：\n- 基础信息：资产ID、资产名称（中文/英文）、一级分类、二级分类\n- 技术信息：UE5资源路径、文件格式、三角面数、纹理分辨率\n- 管理信息：许可证、负责人、审核人、制作状态、优先级、版本\n- 其他：文件大小、关键标签、用途与设计说明、技术备注/风险、创建日期、最后更新、是否核心资产\n\n## 费用差额与平均值计算结果\n\n基于上述5条样本数据，计算结果如下：\n\n- **平均费用**：(1075 + 2450 + 6575 + 7950 + 12075) / 5 = **6,025.0 元**\n- **费用差额（最高 - 最低）**：12075 - 1075 = **11,000.0 元**\n\n费用分布显示，已授权3D模型的价格区间较大，从1,075元到12,075元不等，差额达到11,000元。这表明不同资产在复杂度、精度或授权范围上可能存在显著差异。\n\n## 资产选型建议\n\n基于当前数据分析，提出以下选型建议：\n\n### 1. 预算规划参考\n- 以平均费用6,025元作为单件3D角色资产的预算参考基准\n- 考虑到费用差额较大（11,000元），建议根据资产的重要程度和使用场景进行分级预算分配\n\n### 2. 资产优先级考量\n- 核心资产应优先选择高质量、高成本的模型（如asset_041级别）\n- 次要场景或背景角色可考虑成本较低的模型（如asset_001级别）\n\n### 3. 待补充信息\n以下信息对于完善选型决策至关重要，建议后续补充：\n- 《星港远征资产使用设计说明》的完整内容\n- 各资产的详细技术规格（三角面数、纹理分辨率等）\n- 许可证条款的具体限制和使用范围\n- 资产分类说明的详细内容\n- 更多样本数据以增强统计分析的代表性\n\n### 4. 风险提示\n- 当前分析仅基于5条样本数据，统计结果可能不具有完全代表性\n- 数据库查询的具体过滤条件（参数化SQL中的:p1, :p2）未明确，可能影响数据完整性\n- 未获取到完整的许可证条款，需注意合规风险\n\n## 附录\n\n### 数据来源引用\n\n1. **知识库文档**\n   - 文档ID: `a9ea8da230cc2f5483959b55fddf1dda6621f95c4d7f0b159c7dac36c69f89c4`\n   - 来源路径: `development/游戏开发资产列表_RAG测试.xlsx`\n   - 来源URI: `gitlab://localhost-8929/36/development/游戏开发资产列表_RAG测试.xlsx`\n\n2. **数据库查询**\n   - 查询ID: `36b32d98-a286-4988-bb34-9271774382fe`\n   - 数据集: `game_test`\n   - SQL语句: `SELECT asset_id, asset_name, cost_yuan FROM analytics.asset_catalog WHERE license_status = :p1 AND category_name = :p2 LIMIT 51`\n\n3. **计算工具**\n   - 平均费用计算: `(1075 + 2450 + 6575 + 7950 + 12075) / 5 = 6025.0`\n   - 费用差额计算: `12075 - 1075 = 11000.0`\n\n### 缺失内容说明\n\n本报告中以下内容因数据不可用而未能完整呈现，标注为待补充：\n- 《星港远征资产使用设计说明》的完整原文内容\n- 数据库中可能存在的其他已授权3D模型记录（当前仅返回5条）\n- 各资产的详细设计说明、技术规格、许可证条款等完整信息\n- 资产分类说明的详细内容\n\n---\n\n*报告生成日期：基于Researcher提供的研究证据*\n*报告版本：v1.0*",
+          "reason": "Writer 草稿已通过独立 Reviewer 审查，等待服务端验证和人工确认。",
+          "dry_run": true,
+          "expected_department_codes": [
+            "product_planning"
+          ]
+        },
+        "preview": {
+          "operation": "create",
+          "target_path": "product_planning/星港远征资产选型报告.md",
+          "normalized_path": "product_planning/星港远征资产选型报告.md",
+          "exists_before": false,
+          "risk_level": "medium",
+          "affected_doc_id": "d7531fc88968ce8f715424063b97499204a409ba01d0ede25d4a1d6b8b5d36b3",
+          "affected_chunk_count": 14,
+          "affected_parent_count": 14,
+          "affected_child_count": 14,
+          "before_hash": null,
+          "after_hash": "555ee9c0d2011fafeff42eb047a67686356f52b2c36dd0c1e805f7607ce654c8",
+          "permission_metadata": {
+            "visibility": "department",
+            "allowed_departments": [
+              "product_planning"
+            ],
+            "allowed_users": [],
+            "permission_source": "gitlab_source"
+          },
+          "warnings": [],
+          "requires_confirmation": true
+        },
+        "permission_decision": {
+          "action": "confirmation_required",
+          "allowed": true,
+          "reason": "系统管理员通过工具权限检查",
+          "risk_level": "medium",
+          "required_permissions": [
+            "knowledge:document:create"
+          ],
+          "missing_permissions": [],
+          "permission_level": "read_update_create_delete",
+          "target_department_codes": [
+            "product_planning"
+          ],
+          "requires_confirmation": true
+        },
+        "candidate": null,
+        "selection_reason": "目标身份继承自 Researcher 候选和 Writer 最终草稿。",
+        "replacements": [],
+        "diff": "",
+        "execution_result": {
+          "operation": "create",
+          "target_path": "product_planning/星港远征资产选型报告.md",
+          "dry_run": false,
+          "executed": true,
+          "preview": {
+            "operation": "create",
+            "target_path": "product_planning/星港远征资产选型报告.md",
+            "normalized_path": "product_planning/星港远征资产选型报告.md",
+            "exists_before": false,
+            "risk_level": "medium",
+            "affected_doc_id": "d7531fc88968ce8f715424063b97499204a409ba01d0ede25d4a1d6b8b5d36b3",
+            "affected_chunk_count": 14,
+            "affected_parent_count": 14,
+            "affected_child_count": 14,
+            "before_hash": null,
+            "after_hash": "555ee9c0d2011fafeff42eb047a67686356f52b2c36dd0c1e805f7607ce654c8",
+            "permission_metadata": {
+              "visibility": "department",
+              "allowed_departments": [
+                "product_planning"
+              ],
+              "allowed_users": [],
+              "permission_source": "gitlab_source"
+            },
+            "warnings": [],
+            "requires_confirmation": true
+          },
+          "message": "已提交 GitLab Merge Request；main 合并前不会修改 Elasticsearch 或 Milvus。",
+          "audit_id": null,
+          "gitlab_source_id": "gitlab-product-planning",
+          "gitlab_branch": "agent/task_plan_20260729120333_0a194ffc5a82-d12c8509",
+          "gitlab_commit_sha": "36fa9ea144c70781aaab3b7d9295e092f1ffca33",
+          "merge_request_iid": 1,
+          "merge_request_url": "http://localhost:8929/rag-kb-dev/rag-product-planning-docs/-/merge_requests/1",
+          "merge_request_status": "opened"
+        }
+      },
+      "risk_level": "medium",
+      "requires_confirmation": false,
+      "error": null
+    }
+  ],
+  "final_output": {
+    "document_workflow": {
+      "execution_mode": "agentic",
+      "supervisor": {
+        "execution_mode": "agentic",
+        "objective": "结合知识库中的《星港远征资产使用设计说明》和游戏资产数据库，计算已授权3D模型的费用差额和平均费用，并创建产品规划文档《星港远征资产选型报告.md》。",
+        "deliverables": [
+          {
+            "deliverable_id": "asset_selection_report",
+            "title": "星港远征资产选型报告",
+            "operation": "create",
+            "target_hint": "product_planning/星港远征资产选型报告.md",
+            "objective": "基于《星港远征资产使用设计说明》和游戏资产数据库数据，使用 Calculator 计算已授权3D模型的费用差额和平均费用，综合分析后撰写资产选型建议报告。",
+            "depends_on": [],
+            "source_requirements": [
+              "知识库文档：《星港远征资产使用设计说明》",
+              "游戏资产数据库中的已授权3D模型数据"
+            ],
+            "required_capabilities": [
+              "calculator",
+              "knowledge_base_retrieval",
+              "web_search_fallback"
+            ]
+          }
+        ],
+        "web_policy": "fallback",
+        "reason": "任务涉及跨来源数据整合（知识库文档与资产数据库）、数值计算（费用差额和平均值）以及综合报告撰写，属于多步骤内容综合任务，适合 agentic 模式。虽然最终只生成一个文档，但需要 Researcher 阶段检索数据和计算，Writer 阶段撰写报告，因此拆分为一个包含完整能力的 deliverable。"
+      }
+    },
+    "status": "completed_with_warnings",
+    "document_progress": {
+      "stage": "actions_prepared",
+      "events": [
+        {
+          "event": "agent_task_document_supervised",
+          "execution_mode": "agentic",
+          "deliverable_count": 1
+        },
+        {
+          "event": "agent_task_document_subagent_started",
+          "deliverable_id": "asset_selection_report",
+          "subagent_type": "document-researcher"
+        },
+        {
+          "event": "agent_task_document_nl2sql_query_completed",
+          "query_id": "36b32d98-a286-4988-bb34-9271774382fe",
+          "row_count": 5,
+          "status": "completed"
+        },
+        {
+          "event": "agent_task_document_subagent_completed",
+          "deliverable_id": "asset_selection_report",
+          "subagent_type": "document-researcher",
+          "status": "completed"
+        },
+        {
+          "event": "agent_task_document_draft_created",
+          "deliverable_id": "asset_selection_report",
+          "operation": "create"
+        },
+        {
+          "event": "agent_task_document_review_completed",
+          "deliverable_id": "asset_selection_report",
+          "verdict": "approved",
+          "confidence": 0.95
+        },
+        {
+          "event": "agent_task_document_action_prepared",
+          "deliverable_id": "asset_selection_report",
+          "operation": "create",
+          "step_id": "step_1_create_document"
+        }
+      ],
+      "prepared": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    "deep_agent_checkpoint": {
+      "status": "released",
+      "durability": "sync",
+      "resume_count": 0,
+      "resumed_from_checkpoint": false,
+      "record_version": 6
+    },
+    "nl2sql_query_ids": [
+      "36b32d98-a286-4988-bb34-9271774382fe"
+    ],
+    "research_results": [
+      {
+        "deliverable_id": "asset_selection_report",
+        "status": "completed",
+        "findings": [
+          "知识库中存在游戏开发资产列表Excel文档（doc_id: a9ea8da230cc2f5483959b55fddf1dda6621f95c4d7f0b159c7dac36c69f89c4），包含资产清单、分类说明、许可证与供应商等工作表，字段涵盖资产ID、名称、分类、许可证、费用等",
+          "从游戏资产数据库查询到5条已授权3D模型费用数据：角色资产01(1075元)、角色资产06(2450元)、角色资产21(6575元)、角色资产26(7950元)、角色资产41(12075元)",
+          "Calculator计算结果：平均费用为6025.0元，最高与最低费用差额为11000.0元"
+        ],
+        "evidence": [
+          {
+            "id": "a9ea8da230cc2f5483959b55fddf1dda6621f95c4d7f0b159c7dac36c69f89c4",
+            "source": "knowledge_base",
+            "title": "游戏开发资产列表_RAG测试.xlsx",
+            "metadata": {
+              "doc_id": "a9ea8da230cc2f5483959b55fddf1dda6621f95c4d7f0b159c7dac36c69f89c4",
+              "source_path": "development/游戏开发资产列表_RAG测试.xlsx"
+            }
+          },
+          {
+            "id": "36b32d98-a286-4988-bb34-9271774382fe",
+            "source": "database_query",
+            "title": "已授权3D模型费用数据查询",
+            "metadata": {
+              "query_id": "36b32d98-a286-4988-bb34-9271774382fe",
+              "dataset_id": "game_test",
+              "parameterized_sql": "SELECT asset_id, asset_name, cost_yuan FROM analytics.asset_catalog WHERE license_status = :p1 AND category_name = :p2 LIMIT 51"
+            }
+          }
+        ],
+        "conflicts": [],
+        "missing_points": [
+          "《星港远征资产使用设计说明》的完整原文内容未获取，当前仅检索到Excel资产清单的结构信息",
+          "数据库中仅返回5条样本记录，可能还有其他已授权模型未包含",
+          "缺少各资产的详细设计说明、技术规格、许可证条款等完整信息"
+        ],
+        "warnings": [
+          "知识库检索返回的是Excel文件片段预览，非完整设计说明文档原文",
+          "数据库查询使用了参数化SQL，实际过滤参数值未在结果中显示",
+          "研究基于有限样本数据，统计结果可能不具有完全代表性"
+        ]
+      }
+    ],
+    "draft_results": [
+      {
+        "deliverable_id": "asset_selection_report",
+        "operation": "create",
+        "candidate_doc_id": null,
+        "candidate_source_path": null,
+        "filename": "星港远征资产选型报告.md",
+        "base_sha256": null,
+        "title": "星港远征资产选型报告",
+        "content": "# 星港远征资产选型报告\n\n## 执行摘要\n\n本报告基于知识库检索与数据库查询结果，对《星港远征》项目已授权3D模型资产的费用情况进行分析。研究覆盖5条已授权角色资产样本数据，计算得出平均费用为6025.0元，最高与最低费用差额为11000.0元。报告旨在为产品规划阶段的资产选型决策提供数据支持。\n\n需要说明的是，当前分析基于有限的样本数据（5条记录），且未获取到《星港远征资产使用设计说明》的完整原文内容。部分详细信息（如各资产的完整设计说明、技术规格、许可证条款等）有待后续补充。\n\n## 数据来源说明\n\n本研究采用以下数据源：\n\n1. **知识库文档**：游戏开发资产列表Excel文档（`development/游戏开发资产列表_RAG测试.xlsx`），包含资产清单、分类说明、许可证与供应商等多个工作表 [evidence: a9ea8da230cc2f5483959b55fddf1dda6621f95c4d7f0b159c7dac36c69f89c4]\n\n2. **数据库查询**：从 `analytics.asset_catalog` 表中查询已授权3D模型的费用数据，查询ID为 `36b32d98-a286-4988-bb34-9271774382fe` [evidence: 36b32d98-a286-4988-bb34-9271774382fe]\n\n3. **Calculator工具**：用于费用统计计算，包括平均值和差额计算\n\n## 已授权3D模型费用分析\n\n根据数据库查询结果，已获取5条已授权3D角色资产的费用数据如下：\n\n| 资产ID | 资产名称 | 费用（元） |\n|--------|----------|------------|\n| asset_001 | 角色资产01 | 1,075.00 |\n| asset_006 | 角色资产06 | 2,450.00 |\n| asset_021 | 角色资产21 | 6,575.00 |\n| asset_026 | 角色资产26 | 7,950.00 |\n| asset_041 | 角色资产41 | 12,075.00 |\n\n### 数据结构说明\n\n知识库中的资产清单工作表包含以下关键字段：\n- 基础信息：资产ID、资产名称（中文/英文）、一级分类、二级分类\n- 技术信息：UE5资源路径、文件格式、三角面数、纹理分辨率\n- 管理信息：许可证、负责人、审核人、制作状态、优先级、版本\n- 其他：文件大小、关键标签、用途与设计说明、技术备注/风险、创建日期、最后更新、是否核心资产\n\n## 费用差额与平均值计算结果\n\n基于上述5条样本数据，计算结果如下：\n\n- **平均费用**：(1075 + 2450 + 6575 + 7950 + 12075) / 5 = **6,025.0 元**\n- **费用差额（最高 - 最低）**：12075 - 1075 = **11,000.0 元**\n\n费用分布显示，已授权3D模型的价格区间较大，从1,075元到12,075元不等，差额达到11,000元。这表明不同资产在复杂度、精度或授权范围上可能存在显著差异。\n\n## 资产选型建议\n\n基于当前数据分析，提出以下选型建议：\n\n### 1. 预算规划参考\n- 以平均费用6,025元作为单件3D角色资产的预算参考基准\n- 考虑到费用差额较大（11,000元），建议根据资产的重要程度和使用场景进行分级预算分配\n\n### 2. 资产优先级考量\n- 核心资产应优先选择高质量、高成本的模型（如asset_041级别）\n- 次要场景或背景角色可考虑成本较低的模型（如asset_001级别）\n\n### 3. 待补充信息\n以下信息对于完善选型决策至关重要，建议后续补充：\n- 《星港远征资产使用设计说明》的完整内容\n- 各资产的详细技术规格（三角面数、纹理分辨率等）\n- 许可证条款的具体限制和使用范围\n- 资产分类说明的详细内容\n- 更多样本数据以增强统计分析的代表性\n\n### 4. 风险提示\n- 当前分析仅基于5条样本数据，统计结果可能不具有完全代表性\n- 数据库查询的具体过滤条件（参数化SQL中的:p1, :p2）未明确，可能影响数据完整性\n- 未获取到完整的许可证条款，需注意合规风险\n\n## 附录\n\n### 数据来源引用\n\n1. **知识库文档**\n   - 文档ID: `a9ea8da230cc2f5483959b55fddf1dda6621f95c4d7f0b159c7dac36c69f89c4`\n   - 来源路径: `development/游戏开发资产列表_RAG测试.xlsx`\n   - 来源URI: `gitlab://localhost-8929/36/development/游戏开发资产列表_RAG测试.xlsx`\n\n2. **数据库查询**\n   - 查询ID: `36b32d98-a286-4988-bb34-9271774382fe`\n   - 数据集: `game_test`\n   - SQL语句: `SELECT asset_id, asset_name, cost_yuan FROM analytics.asset_catalog WHERE license_status = :p1 AND category_name = :p2 LIMIT 51`\n\n3. **计算工具**\n   - 平均费用计算: `(1075 + 2450 + 6575 + 7950 + 12075) / 5 = 6025.0`\n   - 费用差额计算: `12075 - 1075 = 11000.0`\n\n### 缺失内容说明\n\n本报告中以下内容因数据不可用而未能完整呈现，标注为待补充：\n- 《星港远征资产使用设计说明》的完整原文内容\n- 数据库中可能存在的其他已授权3D模型记录（当前仅返回5条）\n- 各资产的详细设计说明、技术规格、许可证条款等完整信息\n- 资产分类说明的详细内容\n\n---\n\n*报告生成日期：基于Researcher提供的研究证据*\n*报告版本：v1.0*",
+        "evidence_refs": [
+          "a9ea8da230cc2f5483959b55fddf1dda6621f95c4d7f0b159c7dac36c69f89c4",
+          "36b32d98-a286-4988-bb34-9271774382fe"
+        ],
+        "assumptions": [
+          "当前5条样本数据足以代表已授权3D模型的整体费用分布情况",
+          "数据库查询返回的数据是准确且完整的（在给定过滤条件下）"
+        ],
+        "unresolved_points": [
+          "《星港远征资产使用设计说明》的完整原文内容未获取",
+          "数据库中可能还有其他已授权3D模型记录未被包含在当前5条样本中",
+          "各资产的详细技术规格、许可证条款等完整信息缺失",
+          "资产分类说明的详细内容未获取",
+          "数据库查询的具体过滤条件参数值未明确"
+        ]
+      }
+    ],
+    "review_results": [
+      {
+        "deliverable_id": "asset_selection_report",
+        "verdict": "approved",
+        "confidence": 0.95,
+        "factual_issues": [],
+        "unsupported_claims": [],
+        "missing_sections": [],
+        "conflicts": [],
+        "revision_instructions": []
+      }
+    ],
+    "failed_deliverables": [],
+    "skipped_deliverables": [],
+    "warnings": [
+      "知识库检索返回的是Excel文件片段预览，非完整设计说明文档原文",
+      "数据库查询使用了参数化SQL，实际过滤参数值未在结果中显示",
+      "研究基于有限样本数据，统计结果可能不具有完全代表性"
+    ],
+    "used_tools": [
+      "calculator",
+      "knowledge_retrieval",
+      "nl2sql_query"
+    ],
+    "evidence": [
+      {
+        "id": "a9ea8da230cc2f5483959b55fddf1dda6621f95c4d7f0b159c7dac36c69f89c4",
+        "source": "knowledge_base",
+        "title": "游戏开发资产列表_RAG测试.xlsx",
+        "metadata": {
+          "doc_id": "a9ea8da230cc2f5483959b55fddf1dda6621f95c4d7f0b159c7dac36c69f89c4",
+          "source_path": "development/游戏开发资产列表_RAG测试.xlsx"
+        }
+      },
+      {
+        "id": "36b32d98-a286-4988-bb34-9271774382fe",
+        "source": "database_query",
+        "title": "已授权3D模型费用数据查询",
+        "metadata": {
+          "query_id": "36b32d98-a286-4988-bb34-9271774382fe",
+          "dataset_id": "game_test",
+          "parameterized_sql": "SELECT asset_id, asset_name, cost_yuan FROM analytics.asset_catalog WHERE license_status = :p1 AND category_name = :p2 LIMIT 51"
+        }
+      }
+    ],
+    "confirm_endpoint": "/agent/task-plans/task_plan_20260729120333_0a194ffc5a82/confirm",
+    "document_action_count": 1,
+    "executed": true,
+    "affected_doc_ids": [
+      "d7531fc88968ce8f715424063b97499204a409ba01d0ede25d4a1d6b8b5d36b3"
+    ]
+  },
+  "created_at": "2026-07-29T12:03:33.911608Z",
+  "updated_at": "2026-07-29T12:07:08.966887Z",
+  "error": null
+}

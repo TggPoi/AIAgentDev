@@ -12,6 +12,112 @@
 
 ---
 
+# 账号：
+
+## 可登录的 GitLab 测试账号
+
+我已在当前 GitLab 容器中验证以下账号均为 `active`，且密码校验全部通过。
+
+登录地址：http://localhost:8929/users/sign_in
+
+| 用户名                | 密码                   | 当前权限    | 可访问范围                  |
+| --------------------- | ---------------------- | ----------- | --------------------------- |
+| `tgg`                 | `Learn!459da49680af`   | Group Owner | `rag-kb-dev` 下全部 Project |
+| `rag-editor`          | `Learn!5534ca001437`   | Developer   | `rag-development-docs`      |
+| `rag-reader`          | `Learn!9992fbe86737`   | Reporter    | `rag-public-docs`           |
+| `tech-developer-e2e`  | `Aa1!5WBJ8ldUI1uSase6` | Developer   | `rag-development-docs`      |
+| `tech-maintainer-e2e` | `Aa1!hskQrCzErlqgvEbc` | Maintainer  | `rag-development-docs`      |
+
+### 端到端验收主要使用的账号
+
+场景 1～4 的 GitLab Web 验收主要使用：
+
+- `tech-developer-e2e`
+  - 模拟技术部员工。
+  - 修改或新增文档。
+  - Push 普通分支并创建 MR。
+  - 不能直接 Push `main`。
+- `tech-maintainer-e2e`
+  - 模拟技术部主管。
+  - 审查 MR。
+  - 点击 Approve 和 Merge。
+  - 验证合并后 Webhook、Worker 和 RAG 发布链路。
+
+详细记录位于 [GitLab文档变更端到端测试报告.md (line 44)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\scripts\\docs\\GitLab文档变更端到端测试报告.md:44)。
+
+### 其他账号说明
+
+- `tgg`、`rag-editor`、`rag-reader` 是最初用于熟悉 GitLab 权限差异的学习账号。
+
+- `root` 账号当前存在且是管理员，但当前明文密码没有可靠记录；GitLab 只能校验密码哈希，不能反查明文，所以我没有猜测或重置。
+
+- ```
+  rag-sync
+  ```
+
+  、
+
+  ```
+  rag-agent
+  ```
+
+   是 Project Access Token 创建的机器人账号，不使用用户名密码登录 Web：
+
+  - `rag-sync` 用于后端只读同步。
+  - `rag-agent` 用于创建临时分支、Commit 和 MR。
+  - 它们的 Token 不应作为人工登录密码使用。
+
+
+
+# Merge 审核 合并：
+
+ ![image-20260730142015145](./assets/image-20260730142015145.png)
+
+### Annotation 1
+
+“Ready to merge!” 下的三个选项是：
+
+1. **Delete source branch**
+   - 合并后删除临时分支 `agent/task_plan_...`。
+   - 不会删除合并到 `main` 的报告。
+   - 本次是 Agent 临时分支，建议勾选。
+2. **Squash commits**
+   - 将源分支的多个 Commit 压缩成一个。
+   - 当前 MR 只有 1 个 Commit，没有必要，建议不勾选。
+3. **Edit commit message**
+   - 在合并前修改最终 Merge Commit 的提交说明。
+   - 不需要自定义审计说明时，建议不勾选。
+
+本次推荐：只勾选 **Delete source branch**，然后点击 **Merge**。我没有替你修改选项或执行合并。
+
+### Annotation 1
+
+“删除临时分支”是指：MR 合并到 `main` 后，删除提交 MR 使用的源分支，例如：
+
+```
+feature/add-report
+employee/asset-update
+agent/task_plan_...
+```
+
+它不会删除：
+
+- 已合并到 `main` 的代码或文档
+- Commit 历史
+- MR 审核记录
+- 员工 GitLab 账号
+
+员工账号提交的 MR 也可以勾选，通常建议勾选，前提是该分支只是本次任务的短期分支。
+
+以下情况不要勾选：
+
+- `develop`、`release` 等长期公共分支
+- 其他员工或其他 MR 仍依赖该分支
+- 分支中还有尚未合并的后续修改
+- 团队规定需要保留该分支
+
+当前 `agent/task_plan_...` 是一次性 Agent 工作分支，合并后删除是合适的。即使删除，必要时仍可根据 Commit SHA 重新创建分支。
+
 # 第一部分：先跟着一个真实业务故事建立整体认知
 
 ## 1. 学完这份教程后，你应该能讲清楚什么

@@ -36,6 +36,8 @@ class PermissionCode(StrEnum):
     AGENT_TOOL_WEB_SEARCH = "agent:tool:web_search"
     # 允许调用 MCP 工具。
     AGENT_TOOL_MCP = "agent:tool:mcp"
+    # 允许通过受控 NL2SQL 服务查询已授权 Dataset。
+    DATA_QUERY_EXECUTE = "data:query:execute"
 
 
 class RoleCode(StrEnum):
@@ -55,6 +57,8 @@ class RoleCode(StrEnum):
     DEPARTMENT_EDITOR = "department_editor"
     # 部门文档管理员角色，可以创建、更新、删除本部门文档。
     DEPARTMENT_DOCUMENT_MANAGER = "department_document_manager"
+    # 数据分析员；具体可查 Dataset 和项目范围仍由 Dataset Grant 决定。
+    DATA_ANALYST = "data_analyst"
 
 
 class DocumentPermissionLevel(StrEnum):

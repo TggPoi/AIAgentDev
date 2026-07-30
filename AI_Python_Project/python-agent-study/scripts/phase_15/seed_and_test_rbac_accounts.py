@@ -80,6 +80,8 @@ ACCOUNTS = (
     AccountSpec(
         "rbac_admin",
         "RBAC 系统管理员",
+        DepartmentCode.PRODUCT_PLANNING,
+        RoleCode.DEPARTMENT_DOCUMENT_MANAGER,
         global_roles=(RoleCode.SYSTEM_ADMIN,),
     ),
 )

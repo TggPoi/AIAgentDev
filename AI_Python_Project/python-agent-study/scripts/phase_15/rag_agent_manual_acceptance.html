@@ -215,6 +215,21 @@
         <label for="topK">top_k</label>
         <input id="topK" type="number" min="1" max="20" value="5" />
       </div>
+      <div>
+        <label for="datasetId">NL2SQL Dataset</label>
+        <select id="datasetId">
+          <option value="" selected>普通 RAG（不使用 Dataset）</option>
+          <option value="game_test">游戏资产 game_test</option>
+          <option value="real_estate_test">房地产 real_estate_test</option>
+        </select>
+      </div>
+      <div>
+        <label for="nl2sqlAction">NL2SQL action</label>
+        <select id="nl2sqlAction">
+          <option value="query" selected>query</option>
+          <option value="report">report</option>
+        </select>
+      </div>
     </div>
     <label>
       <input id="allowWebFallback" type="checkbox" style="width:auto" />
@@ -309,7 +324,7 @@
   }
 
   function chatBody() {
-    return {
+    const body = {
       session_id: $("sessionId").value.trim() || null,
       query: $("query").value,
       mode: $("mode").value,
@@ -318,6 +333,12 @@
       allow_web_fallback: $("allowWebFallback").checked,
       filters: {source_path: null, section_path: []}
     };
+    const datasetId = $("datasetId").value;
+    if (datasetId) {
+      body.dataset_id = datasetId;
+      body.nl2sql_action = $("nl2sqlAction").value;
+    }
+    return body;
   }
 
   function log(value, append = true) {

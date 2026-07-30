@@ -1,114 +1,276 @@
-# 【方案】自由 NL2SQL 模块设计方案
+﻿# 自由 NL2SQL 模块设计方案（修订版）
 
-## Summary
+## 1. 目标（Goal）
 
-- 新增独立 `NL2SQL` 业务模块，首期仅支持 PostgreSQL，但允许自由生成只读 `SELECT`、CTE、JOIN、子查询、集合操作和聚合。
-- 房地产与游戏数据部署为“单个 PostgreSQL 实例、多个 database”；每次请求必须由前端显式携带 `dataset_id`，禁止跨 dataset 查询。
-- 外部模型只接收逻辑 Schema、字段说明和标记化问题，不接收真实业务结果；模型同时生成 SQL 和结论模板，后端执行后回填真实值。
-- 提供独立 API 和 Agent Chat 两个入口，共用同一 NL2SQL Service；不接入 deprecated `/rag/chat/stream`。
-- 真实业务表尚未建立，因此首期实现数据集接入契约和房地产/游戏合成测试视图，不虚构生产表结构。
+实现 PostgreSQL 自由 NL2SQL，并覆盖两个业务 Dataset：
 
-## Architecture and Data Flow
+- 房地产：敏感数据，只允许“标记化/伪名化问题 → 外部模型生成 SQL 和结论模板 → 本地执行和回填”；真实实体、参数、结果行不得发送给外部模型，禁止生成外部模型报告。
+- 游戏开发：非敏感数据，允许外部模型通过受控 `nl2sql_query` Tool 查询真实游戏资产数据，并结合现有知识库检索、Calculator、Writer/Reviewer 和文档确认链路生成完整 Markdown 报告。
+- 复用最新 RBAC 主线，增加 Dataset/项目级授权和 PostgreSQL RLS。
+- 使用真实 PostgreSQL、真实 RAG 检索和真实文档链路验收；业务数据可以是确定性测试数据，但禁止用 Mock 数据库、Mock Retriever 或内存仓储代替最终验收。
+- 将实施过程、测试步骤、结果和 Bug 单独记录到 `scripts/docs/NL2SQL测试过程与问题记录.md`。
 
-1. 新增 `services/nl2sql/`，内部只保留四个职责：
-   - `DatasetRegistry`：加载数据集配置、独立连接池、白名单视图和逻辑/物理名称映射。
-   - `SchemaCatalog`：从 `information_schema`、`pg_catalog` 和 PostgreSQL COMMENT 读取白名单视图字段，缓存300秒；不读取样例数据。
-   - `SqlPolicy`：使用固定版本 `sqlglot==30.13.0` 的 PostgreSQL AST解析能力校验和改写SQL。[SQLGlot PyPI](https://pypi.org/project/sqlglot/)
-   - `Nl2SqlService`：标记化、模型生成、策略校验、执行、一次修复、模板回填和审计编排。
-2. 数据集通过配置注册：
-   - `NL2SQL_DATASETS_JSON`：`dataset_id`、名称、领域、database key、逻辑视图、物理视图、实体脱敏规则。
-   - `NL2SQL_DATABASE_URLS_JSON`：`database key → PostgreSQL URL`，作为敏感配置且禁止日志输出。
-   - 每个 dataset 可使用独立database、账号和连接池；开发环境仍只需一个PostgreSQL容器。
-3. 请求处理顺序固定为：
-   - 校验用户权限和 `dataset_id` 授权；
-   - 从当前 dataset 的实体目录识别楼盘名、游戏项目名、玩家ID等敏感值；
-   - 替换为请求级占位符并保存在内存 vault，禁止持久化和日志输出；
-   - 向外部模型发送标记化问题和逻辑 Schema；
-   - 模型通过严格 Pydantic structured output 返回 `sql`、`summary_template` 和模板字段引用；
-   - 将逻辑视图映射为白名单物理视图，将实体占位符改写成数据库 bind parameters；
-   - AST校验、只读执行、结果序列化；
-   - 后端使用安全占位符语法回填结论模板；不使用 `eval` 或 Jinja 表达式执行；
-   - 返回SQL、表格和中文结论，真实结果不再发送给外部模型。
-4. 模型失败修复最多一次：
-   - 只允许针对语法、未知列、类型不匹配等数据库错误修复；
-   - 权限拒绝、非白名单对象、DML/DDL、多语句和安全策略拒绝不得重试；
-   - 修复后的SQL必须重新经过完整策略链。
+## 2. 上下文（Context）
 
-## Public APIs and Agent Integration
+- 当前 `HEAD=8bec74e` 已移除 `users.role` 和 `permissions_json`；认证阶段通过 `PermissionService` 实时装载 `global_role_codes/global_permission_codes`，NL2SQL 必须沿用这条 RBAC 主线。
+- 当前应用主库为 `python_agent_study`，PostgreSQL 版本为 16.14；主库保存认证、权限、会话、TaskPlan、Checkpoint、GitLab 和审计数据，不能暴露给自由 SQL。
+- 当前 `AgentTaskRouter` 没有 `structured_data_query`；`RagChatRequest` 没有 `dataset_id` 或结构化数据操作类型。
+- Calculator 已在 `agents/tools/calculator_tools.py` 实现安全四则运算和表达式 AST，但尚未绑定到普通 RAG Agent、直接文档 Tool Loop 或 Deep Document Researcher。
+- 现有复杂报告链路已经包含 Document Supervisor、Researcher、Writer、Reviewer、TaskPlan 确认和 GitLab MR；NL2SQL 不新增报告引擎，只给 Researcher 增加受控数据工具。
+- 现有方案文档为 `scripts/docs/NL2SQL实现方案：.md`；实施时用本修订版替换顶部旧 Plan，并移除文末临时“方案修改”需求块，保留后续技术讲解。
+
+## 3. 实现方案
+
+### 3.1 数据库与测试 Dataset
+
+使用同一个 PostgreSQL 实例，但新增两个独立 Database：
+
+```text
+python_agent_study
+├── 平台 RBAC、Dataset Grant、TaskPlan、审计
+nl2sql_real_estate_test
+├── 房地产测试业务表、分析视图、RLS
+nl2sql_game_test
+└── 游戏资产测试业务表、分析视图、RLS
+```
+
+每个 Dataset 使用独立 owner 和只读执行账号；NL2SQL 只读账号不是 owner、没有 `BYPASSRLS`，只能访问 `analytics` 白名单视图。通过 `NL2SQL_DATABASE_URLS_JSON` 保存 database key 到连接 URL 的映射，连接信息不得进入模型、日志或 API。
+
+提供可重复执行的 PowerShell/SQL 初始化脚本：
+
+- 房地产库填充 3 个楼盘、6 栋楼、6 类户型和至少 60 套房源，字段保持易懂：楼盘、楼栋、户型、面积、房间数、朝向、价格、库存状态。
+- 游戏库填充 3 个项目和至少 40 个资产，包含：资产名称、费用、类别、使用场景、所属项目、授权状态、模型面数；数据库约束保证只有模型资产的 `polygon_count` 非空。
+- 测试数据写入真实 PostgreSQL 表，通过真实只读连接查询，不使用 Mock Repository 或 SQLite。
+- 每个业务库至少提供两个可 JOIN 的 `analytics` 视图，覆盖过滤、JOIN、聚合、排序和 CTE 测试。
+
+### 3.2 Dataset 元数据与 SchemaCatalog
+
+Dataset 配置固定包含：
+
+```text
+dataset_id
+domain
+database_key
+privacy_classification = sensitive | non_sensitive
+scope_column
+allowed_views
+logical/physical view mapping
+entity tokenization rules
+relationship metadata
+enabled
+```
+
+`SchemaCatalog` 从 `information_schema`、`pg_catalog` 和 COMMENT 读取元数据，并合并配置中的视图关系和业务同义词。所有白名单视图和字段必须提供完整 COMMENT：
+
+- 视图：业务用途、每行粒度、作用域字段、可用 JOIN。
+- 字段：业务含义、单位、空值语义、枚举含义。
+- 数值字段：是否可求和、可平均或只能作为维度。
+- 时间字段：时区、统计周期和边界语义。
+- 敏感字段：敏感等级和是否必须标记化。
+
+首期不实现 MetricCatalog。当前资产选择、户型库存和简单成本统计没有复杂指标口径；SQL 聚合以视图和 COMMENT 为准。出现留存率、ARPU、付费率等多口径派生指标后，再独立增加 MetricCatalog。
+
+### 3.3 权限、Dataset Grant 与 RLS
+
+在现有 RBAC 中增加：
+
+```text
+PermissionCode.DATA_QUERY_EXECUTE = data:query:execute
+RoleCode.DATA_ANALYST = data_analyst
+```
+
+`data_analyst` 和 `system_admin` 获得 `data:query:execute`；不修改现有文档角色。
+
+平台主库新增：
+
+- `nl2sql_dataset_grants`：`dataset_id、subject_type(user/role/department)、subject_key、scope_id、enabled、expires_at、created_by、created_at`；同一组合唯一，`scope_id="*"` 表示整个 Dataset。
+- `nl2sql_query_audits`：保存用户、Dataset、标记化问题、参数化 SQL、SQL hash、状态、耗时、行数、错误码、request/trace ID；不保存真实参数和结果行。
+
+授权固定顺序：
+
+1. 当前用户已认证。
+2. `CurrentUserContext.has_global_permission(data:query:execute)`。
+3. 合并用户、全局角色、部门的 Dataset Grant。
+4. 得到可信 `scope_ids`；客户端和模型不能提供或修改。
+5. 在只读事务中通过 `set_config(..., true)` 设置事务级 Scope。
+6. PostgreSQL RLS 再限制楼盘或游戏项目。
+
+基础业务表启用并强制 RLS；分析视图使用 `security_invoker=true`。缺少 Scope 时默认零行并在调用模型前拒绝。`system_admin` 可以获得全 Dataset Scope，但仍受白名单视图、AST 和只读事务限制。
+
+### 3.4 NL2SQL 核心模块
+
+新增进程内 `services/nl2sql/`，只保留必要职责：
+
+- `DatasetRegistry`：配置、隐私等级、连接池、白名单视图。
+- `SchemaCatalog`：Schema、COMMENT、关系和同义词。
+- `Nl2SqlAuthorizationService`：复用 RBAC 并解析 Dataset/Scope Grant。
+- `SqlPolicy`：使用新增固定依赖 `sqlglot==30.13.0` 解析 PostgreSQL AST。
+- `Nl2SqlService`：模型调用、标记化、一次修复、只读执行、序列化、结论生成和审计。
+
+SQL 安全规则：
+
+- 允许单条 `SELECT`、CTE、JOIN、子查询、窗口函数、集合操作和聚合。
+- 拒绝多语句、DML、DDL、COPY、CALL、DO、SET、事务命令、系统 Catalog、非白名单对象和 `SELECT *`。
+- 禁止模型调用 `set_config/current_setting` 和非白名单函数。
+- 缺少 LIMIT 时注入 `max_rows+1`；默认 200，硬上限 500。
+- 事务使用只读模式、8 秒 `statement_timeout`、1 秒 `lock_timeout` 和受限 `search_path`。
+- 只对语法、未知列和类型错误调用外部模型修复一次；权限、安全、超时和越权错误不修复。
+- Decimal 返回字符串，日期时间返回 ISO 8601，长文本截断并产生 warning。
+
+### 3.5 房地产查询链路
+
+房地产 Dataset 使用硬编码的敏感策略：
+
+1. 根据本地实体目录识别楼盘名、楼栋编号、地址和业务编号，替换为请求级占位符并保存到内存 Vault。
+2. 外部模型只接收逻辑 Schema、完整 COMMENT 和标记化问题。
+3. 模型通过 Pydantic structured output 返回参数化 SQL、参数引用和 `summary_template`。
+4. 后端完成逻辑/物理视图映射、占位符绑定、AST 校验和 RLS 执行。
+5. 真实结果只在后端序列化；使用受限模板字段本地回填中文结论，不使用 Jinja 或 `eval`。
+6. 原始问题、真实参数、数据库错误明文和结果行不得进入外部模型、LangSmith、日志或审计。
+7. `nl2sql_action=report` 时，在 Router、Document Supervisor 和任何外部模型调用前返回 `NL2SQL_SENSITIVE_REPORT_FORBIDDEN`；首期不提供房地产报告生成。
+
+### 3.6 游戏查询与报告链路
+
+游戏 Dataset 为非敏感：
+
+- 普通查询：外部模型可接收真实项目名、完整 Schema，并生成参数化 SQL；后端执行后可以把受行数限制的真实结果发送给外部模型生成中文结论。
+- 报告：复用现有 `knowledge_document_management` TaskPlan 和 Deep Document Agent，不新增报告 Agent。
+
+`RagChatRequest` 增加：
+
+```text
+dataset_id: str | None
+nl2sql_action: query | report | null
+```
+
+约束：
+
+- 没有 `dataset_id` 时，`nl2sql_action` 必须为空，现有 RAG 行为不变。
+- 有 `dataset_id` 时，必须显式提供 action。
+- `query` 确定性进入 `structured_data_query`。
+- `report`：游戏 Dataset 确定性进入文档管理；房地产 Dataset 硬拒绝。
+- `dataset_id` 和 action 由请求绑定并写入 TaskPlan；模型不能生成或改写，恢复/确认时重新鉴权。
+
+所有带 Dataset 的请求在外部 Router 前完成确定性分流，防止敏感房地产问题进入 Router Prompt。`AgentRouteIntent` 仍增加 `structured_data_query`，供结构化响应、trace 和测试统一表达。
+
+游戏 Dataset 报告强制使用 `agentic` 模式。Deep Document Researcher 注入：
+
+- `knowledge_retrieval`：真实 Milvus/Elasticsearch 检索游戏设计文档。
+- `nl2sql_query`：Dataset 由服务端闭包绑定，模型参数中没有 `dataset_id`。
+- `calculator`：复用现有 `build_calculator_tool()`。
+- `web_search`：仅在现有联网策略和权限允许时注入。
+
+Researcher 得到真实游戏资产结果、参数化 SQL、`query_id` 和后端生成的 Markdown 表格，再交给现有 Writer/Reviewer。Writer/Reviewer没有数据库或真实业务 Tool，只能读取研究文件和草稿。
+
+报告确定性要求：
+
+- Dataset 报告必须实际使用 `knowledge_retrieval`、`nl2sql_query` 和 `calculator`；缺任一工具时交付物失败，不进入 Writer。
+- 明确要求公开网络证据时还必须实际使用 `web_search`。
+- 报告必须包含 NL2SQL 后端生成的 Markdown 表格和 `query_id` 证据引用。
+- Calculator 负责查询结果之间的成本差额、预算占比、平均成本等派生四则运算；`SUM/AVG/COUNT/MIN/MAX` 由 SQL 完成。
+- 当前 Calculator 的安全表达式已满足首期需要，不增加统计 DSL 或第二个计算器工具，只补充绑定、取消检查、`used_tools` 记录和验收。
+- Reviewer 通过后继续走现有 dry-run、人工确认、GitLab 分支/Commit/MR；合并后通过 Webhook、Worker、ES/Milvus 发布并验证报告可检索。
+
+### 3.7 API、SSE 与 React
 
 - `GET /nl2sql/datasets`
-  - 只返回当前用户拥有显式授权且已启用的数据集。
-  - 返回 `dataset_id`、名称、领域和说明，不返回连接信息或物理表名。
+  - 只返回当前用户可访问的数据集。
+  - 返回 `dataset_id、name、domain、privacy_classification、report_supported`。
 - `POST /nl2sql/query`
-  - 请求：`dataset_id`、`question`、`max_rows`；`max_rows`默认200，服务端硬上限500。
-  - 自动执行通过安全策略的只读查询，不要求人工确认。
-  - 响应：`query_id`、`request_id`、`trace_id`、`dataset_id`、参数化SQL、参数展示信息、列定义、行数据、`row_count`、`truncated`、`execution_ms`、`attempt_count`、中文结论和warnings。
-  - Decimal按字符串返回以保持精度，日期时间使用ISO 8601，超长文本单元格截断并标记warning。
-- Agent：
-  - `RagChatRequest`增加可选 `dataset_id`；结构化数据查询时必须存在。
-  - `AgentRouteIntent`新增 `structured_data_query`，并同步扩展Router prompt和测试。
-  - 新增只读 `nl2sql_query` Tool；`dataset_id`由服务端请求上下文绑定，LLM不能选择或修改。
-  - `/rag/chat`在 `RagChatResponse` 中增加可选的结构化 `nl2sql_result`，`answer`使用模板回填后的中文结论，`sources=[]`。
-  - `/rag/chat/stream/events`增加 `nl2sql_sql_generated` 和 `nl2sql_result` 事件，最终仍发送 `done`。
-  - `/rag/chat/stream`携带 `dataset_id` 时返回明确的不支持错误，不增加NL2SQL事件。
-  - 首期不支持一次问题同时综合RAG文档和真实NL2SQL结果；混合意图返回澄清提示，避免真实结果进入现有外部LLM综合链路。
+  - 请求：`dataset_id、question、max_rows`。
+  - 响应：`query_id、request_id、trace_id、dataset_id、parameterized_sql、columns、rows、row_count、truncated、execution_ms、attempt_count、summary、warnings`。
+- `POST /rag/chat`
+  - query 返回可选 `nl2sql_result`。
+  - report 返回现有 TaskPlan、确认状态和确认接口。
+- `POST /rag/chat/stream/events`
+  - 普通查询新增 `nl2sql_sql_generated`、`nl2sql_result`。
+  - 报告继续使用现有 Agent Tool/文档进度事件；Tool 事件只发送 `query_id、row_count、status`，不推送完整结果行。
+- deprecated `/rag/chat/stream`
+  - 携带 `dataset_id` 时明确拒绝，不新增任何 NL2SQL 功能。
+- 所有新增 FastAPI、Tool 和 structured-output Pydantic 字段必须有 `Field(description=...)`。
 
-## Security, Permissions, and Audit
+## 4. 外部模型与硬编码边界（Constraints）
 
-- 新增权限码 `data:query:execute`；普通用户同时满足该权限和显式 dataset grant 才能查询，`system_admin`可查看全部已启用数据集。
-- 主业务库新增：
-  - `nl2sql_dataset_grants`：将用户、角色或部门授权到 `dataset_id`。
-  - `nl2sql_query_audits`：保存用户、dataset、标记化问题、占位符SQL、状态、耗时、行数、错误码、request/trace ID；不保存真实参数和结果行。
-- `dataset_id`是最小授权边界；若同一物理库中需要按楼盘或游戏项目继续隔离，应提供已经限定范围的分析视图或数据库RLS，不能让LLM自行补充权限条件。PostgreSQL RLS作为数据库侧第二道防线。[PostgreSQL Row Security](https://www.postgresql.org/docs/17/ddl-rowsecurity.html)
-- 每个dataset使用非owner只读账号，只授予白名单视图的 `SELECT`；撤销临时表、DDL、底层表和用户自定义函数权限。
-- 每次执行设置只读事务、8秒 `statement_timeout`、1秒 `lock_timeout`和受限 `search_path`；只读事务是防写第二道防线，不能替代账号权限。[PostgreSQL SET TRANSACTION](https://www.postgresql.org/docs/15/sql-set-transaction.html)
-- AST策略：
-  - 只接受一条查询语句；
-  - 允许SELECT、CTE、JOIN、UNION/INTERSECT/EXCEPT、窗口函数和聚合；
-  - 拒绝DML、DDL、COPY、CALL、DO、SET、事务命令、系统Catalog和非白名单视图；
-  - 拒绝 `SELECT *`，所有列必须显式；
-  - 缺少LIMIT时注入 `max_rows + 1`，超过上限时收紧，用额外一行判断是否截断；
-  - 所有表引用必须能解析到当前dataset的白名单逻辑视图。
-- LangSmith和结构化日志只记录问题长度、dataset、SQL hash、状态和统计字段；扩展敏感字段策略覆盖SQL、parameters和rows。外部模型调用记录中只能出现逻辑Schema和标记化内容。
-- SQL默认向已授权策划成员展示，但显示为参数化SQL和授权后的参数展示信息；真实参数不进入审计或远程trace。
+| 环节                | 外部模型        | 硬编码/数据库规则                                           |
+| ------------------- | --------------- | ----------------------------------------------------------- |
+| Dataset/action 分流 | 不使用          | 根据 `dataset_id + nl2sql_action` 决定 query/report/拒绝    |
+| RBAC、Grant、RLS    | 不使用          | `PermissionService`、Grant 查询、事务 Scope、PostgreSQL RLS |
+| 房地产标记化        | 不使用          | 本地实体目录、请求级 Vault、占位符和 bind parameters        |
+| Schema 构造         | 不使用          | 白名单视图、COMMENT、关系配置、缓存                         |
+| SQL 生成            | 使用            | Pydantic structured output；模型无数据库连接和凭证          |
+| SQL 校验和改写      | 不使用          | SQLGlot AST、函数/视图白名单、LIMIT、参数绑定               |
+| SQL 修复            | 最多一次        | 只有后端分类为可修复错误时才允许调用                        |
+| 数据库执行          | 不使用          | 独立只读账号、只读事务、超时、RLS                           |
+| 房地产结论          | 仅预生成模板    | 后端使用真实结果安全回填，结果不回传模型                    |
+| 游戏查询结论        | 使用            | 真实结果可在限制范围内发送给模型                            |
+| 游戏报告研究        | 使用 Researcher | Tool 权限、Dataset 绑定、真实调用记录由后端控制             |
+| Calculator          | 模型选择表达式  | Python AST 白名单执行，禁止 `eval`                          |
+| Writer/Reviewer     | 使用            | 只能访问研究文件和草稿，不能访问数据库                      |
+| 房地产报告          | 不使用          | 外部模型调用前硬拒绝                                        |
+| 文档写入            | 不使用          | dry-run、权限、确认、路径、GitLab 和版本校验                |
 
-## Test Plan and Acceptance
+其他硬约束：
 
-- 单元测试：
-  - 接受复杂SELECT、CTE、JOIN、聚合、窗口函数和集合操作。
-  - 拒绝多语句、DML/DDL、系统表、跨dataset对象、通配列和越权视图。
-  - 验证LIMIT收紧、超时、结果截断、类型序列化和一次修复上限。
-  - 验证实体标记化、SQL参数回填和结论模板回填；模板引用不存在字段时降级为安全通用结论。
-  - 扩展Schema字段描述回归，所有新Pydantic公开字段必须有 `Field(description=...)`。
-- 权限测试：
-  - 无 `data:query:execute`、无dataset grant、禁用dataset和伪造dataset均拒绝。
-  - 同一用户不能从一个dataset读取另一个database。
-  - 即使绕过应用AST，数据库只读角色也无法执行写操作。
-- 集成测试：
-  - 在同一PostgreSQL实例创建两个测试database，分别提供房地产户型分析视图和游戏指标分析视图。
-  - 验证连接池隔离、Schema缓存、中文问题、真实执行、审计记录和无跨库JOIN。
-  - 使用fake外部模型捕获完整请求，放入敏感哨兵值，断言Schema prompt、LangSmith和日志中均不存在真实值。
-- Agent测试：
-  - Router识别 `structured_data_query`；
-  - 缺失dataset时返回澄清；
-  - `/rag/chat`返回 `nl2sql_result`；
-  - `stream_events`事件顺序稳定；
-  - legacy stream拒绝NL2SQL；
-  - RAG、Classic和现有Agent测试保持通过。
-- 真实模型验收：
-  - 房地产和游戏合成数据各至少20个问题；
-  - SQL可执行率不低于90%，结果集正确率不低于85%；
-  - 非法写入、越权和跨dataset攻击阻断率必须100%；
-  - 捕获的外部模型输入中真实实体值和结果行泄露数必须为0。
+- 首期只支持 PostgreSQL，不拆微服务，不实现多方言或跨 Database JOIN。
+- `python_agent_study` 永远不是 NL2SQL Dataset。
+- 不修改 `src/app`、不替换显式 LangGraph RAG 主线。
+- 不向 legacy token stream 增加功能。
+- 不实现 MetricCatalog、动态图表、Dataset 管理后台或房地产本地报告引擎。
+- `NL2SQL_ENABLED=false` 默认关闭，两个测试 Dataset 分别启用。
+- 单元测试可以使用受控 Stub 验证异常分支，但真实业务验收不能以 Mock LLM、Mock Retriever、Mock DB 或 Mock 文档写入结果代替。
+- 敏感策略优先于功能可用性；任何无法确认是否泄露的路径均拒绝执行。
 
-## Assumptions and Defaults
+## 5. 完成标准（Done when）
 
-- 首期只支持PostgreSQL，不提供多SQL方言抽象，也不拆微服务。
-- 一个PostgreSQL实例可承载多个database；一次查询只连接一个dataset/database。
-- 生产数据团队负责提供带完整COMMENT的白名单分析视图和实体解析规则；NL2SQL模块不直接访问原始业务表。
-- 外部模型可查看逻辑Schema和标记化问题，但永远不能查看真实查询结果。
-- 中文结论来自模型预生成模板和后端回填；复杂多行趋势以结构化表格为准，首期不生成图表配置。
-- 功能由 `NL2SQL_ENABLED=false` 默认关闭，并可按dataset单独启用；不增加动态数据集管理后台或跨域综合查询。
+### 自动化测试
+
+- SQL Policy 覆盖允许/拒绝语法、函数白名单、LIMIT、一次修复、超时和序列化。
+- 权限矩阵覆盖：
+  - 有功能权限但无 Dataset Grant。
+  - 有 Grant 但无功能权限。
+  - 用户/角色/部门授权并集。
+  - 跨 Dataset、跨项目和伪造 Scope。
+  - RLS 缺失上下文默认零行。
+  - 连接池连续服务两个用户时 Scope 不串线。
+- 所有新增 Schema 通过 `scripts/phase_15/test_schema_field_descriptions.py`。
+- LangSmith 改动通过 `scripts/test_langsmith_tracing.py`，SQL、parameters、rows 和房地产原始问题不进入远程 trace。
+- 现有 RAG、Agent Task、Deep Document、权限、GitLab 和 structured SSE 回归测试全部通过。
+
+### 真实数据库和模型验收
+
+1. 两个测试 Database 已真实创建，专用只读账号可连接，业务表、分析视图、COMMENT、RLS 和种子数据可重复构建。
+2. 游戏离线业务模式：
+   - `allow_web_fallback=false`。
+   - 真实外部 SQL 模型、真实 PostgreSQL。
+   - 正确查询游戏资产名称、费用、模型面数、类别和使用场景。
+   - 不调用 WebSearch。
+3. 游戏联网报告：
+   - 使用真实游戏设计文档完成 Milvus/Elasticsearch 检索。
+   - 使用 `nl2sql_query` 查询真实游戏资产测试库。
+   - `used_tools` 至少包含 `knowledge_retrieval、nl2sql_query、calculator`；用户明确要求公开资料时还包含 `web_search`。
+   - Calculator 结果与人工基准一致。
+   - 报告包含至少一个来自 NL2SQL 结果的 Markdown 表格、成本/预算统计和证据引用。
+   - 完成人工确认、GitLab MR、合并、Webhook、Worker、ES/Milvus 发布，最终报告可重新检索。
+4. 房地产查询：
+   - 使用包含唯一哨兵楼盘名、地址和价格的真实 PostgreSQL 测试记录。
+   - SQL和最终返回结果准确。
+   - 捕获全部模型请求、日志、审计和 LangSmith 数据，哨兵真实值及结果行泄露数为 0。
+5. 房地产报告：
+   - `nl2sql_action=report` 返回 `NL2SQL_SENSITIVE_REPORT_FORBIDDEN`。
+   - 不创建 TaskPlan，不调用 Router、Supervisor、Researcher、Writer、Reviewer，不执行 SQL。
+6. 每个 Dataset 至少 20 个真实问题：
+   - SQL 可执行率 ≥90%。
+   - 结果正确率 ≥85%。
+   - 写操作、系统表、跨 Dataset 和跨 Scope 攻击阻断率 100%。
+   - 房地产敏感数据外泄数 0。
+7. `scripts/docs/NL2SQL测试过程与问题记录.md` 持续记录：
+   - 环境和版本。
+   - 数据库初始化与种子版本。
+   - PowerShell 测试步骤和输入。
+   - request/trace/query/task_plan ID。
+   - 预期结果、实际结果和结论。
+   - Bug、根因、修复提交和回归结果。
+8. 最终交付包括：代码、主库 Alembic 迁移、两个业务库初始化/填充脚本、Dataset 配置、API/SSE 文档、更新后的 NL2SQL 方案文档和独立测试记录。
 
 # 【方案】Codex方案讲解：GPT
 
@@ -5177,18 +5339,45 @@ MetricCatalog 负责固定核心指标口径
 
 其中 COMMENT 是基础设施，MetricCatalog 是在复杂业务指标上的准确率增强层。
 
-# 方案修改：
 
-我现在对你生成的这个Plan提出修改需求：
 
-Plan中提到“如果需要按楼盘或游戏项目继续隔离，应提供已经限定范围的分析视图或数据库 RLS”，权限模块的改造方案就按照刚才你给出的方案实现
+# 文档提问Prompt
 
-1.目前的方案中没有描述Agent生成报告的场景。NL2SQL功能模块需要覆盖两个使用场景，分别是房地产业务和游戏开发业务。房地产业务相关的数据是敏感的，需要使用“标记化/伪名化 + 回填”方案处理，不能用于外部模型生成报告。但是游戏开发业务的数据不是敏感的，可以不需要脱敏发送给外部模型，查询数据库中的真实数据后，结合目前工程中已经实现的检索和文档创建功能，生成完整报告。例如用户可能问"结合xx项目设计文档和游戏资产数据，分析资产库中哪些资产适合使用"，这种场景就可以让外部模型直接访问数据库中的真实数据生成SQL。需要集成到目前工程中的文档检索链路，文档操作链路，我认为直接作为一个tool接入很合适。
+目前后端系统已经实现了NL2SQL模块，实现自然语言转SQL，请你生成一份教学文档。文档中的章节划分结构要清楚，不能把所有章节都放在一个一级标题目录下，这样会非常混乱，使用多个一级标题划分拆分内容。
 
-2.目前工程中Postgre数据库还没有真实的游戏开发业务数据，也没有房地产业务数据，你需要分别为这两个业务创建测试用的PostgreSQL链接，模拟真实使用场景，用于开发过程中测试。不能使用mock数据之类的方式，基于这种虚拟数据的方式开发测试的结果不准确。
+**这份文档的教学对象：**没有学习过NL2SQL技术原理，没有学习过NL2SQL相关的的函数库，没有学习过如何使用Python实现NL2SQL能力的开发者。
 
-3.方案中需要具体描述哪个环节需要使用外部大模型，哪个环节使用硬编码规则。
+**文档内容要求，必须严格遵守：**这份文档的内容编写不能使用ponytail skill，不需要遵循ponytail skill中定义的规范，不能写成用于查询的技术系统文档，需要写成教程文档。首要目标是让开发者阅读后能够理解目前后端系统和NL2SQL的交互方式，技术原理。
 
-4.
+**文档讲解的方式：**你的讲解需要使用真实的执行流程（使用web测试脚本时验证的检索场景，生成报告场景）作为案例，讲解代码的执行流程，代码的执行流程你不能只是简单的给出每个步骤的代码锚点，关键的代码逻辑需要在工程中补充用于辅助理解的注释。你在代码中补充注释后不能简化文档的讲解，文档中还需要给出更加完整，更容易理解的讲解内容，还需要附加mermaid的时序图辅助开发者理解，时序图中不能只有文字内容，需要标注调用的函数名称和具体行数。关键部分的讲解内容可以使用emoji符号或者其他方式标注，让读者知道这里是重点。 
 
-5.数据库字段只有简短的字段 COMMENT 可能不足以表达，所以Comment需要尽可能完整，如果有必要可以引入MetricCatalog（本工程目前应用的业务，没有MetricCatalog的使用需求）。
+**单独的代码讲解章节（一级标题）：**
+
+关键的函数需要单独一个章节，给出更加完整，容易理解的讲解内容，但是这并不表示执行流程案例中的讲解可以简略。
+如果存在复杂，可能让读者阅读困难的代码段落，也需要单独一个章节讲解，给出更加完整，容易理解的讲解内容。
+
+**我再重复3遍最重要的要求：**
+
+这份文档不能写成用于查询的技术系统文档，需要写成教程文档，需要让读者看完能理解，不允许你使用简略的讲解！
+
+这份文档不能写成用于查询的技术系统文档，需要写成教程文档，需要让读者看完能理解，不允许你使用简略的讲解！
+
+这份文档不能写成用于查询的技术系统文档，需要写成教程文档，需要让读者看完能理解，不允许你使用简略的讲解！
+
+
+
+除了上面的“文档内容要求”，文档中还需要单独一个章节讲解重点讲解下面几个问题（一级标题，下面的每个子问题二级标题），不允许你使用简略的方式讲解：
+
+1.目前PostgreSQL中新增了哪些database和表数据？
+
+2.实现NL2SQL模块使用了哪些新的技术栈，这些技术栈如何使用（给出最小实现案例让读者理解如何使用）？在工程中哪些位置起到作用？
+
+3.NL2SQL模块使用了哪些方案避免用户或AI的危险操作？
+
+4.NL2SQL模块使用哪些方案限制用户权限，阻止用户看到超出权限范围的数据？
+
+5.NL2SQL模块使用哪些方案让Agent能够生成高质量的SQL语句？
+
+6.NL2SQL模块如何处理房地产业务的敏感数据？如何处理游戏业务的非敏感数据？
+
+7.NL2SQL模块和工程中已有的权限模块，Agent检索模块，Gitlab模块，Worker模块如何配合工作？

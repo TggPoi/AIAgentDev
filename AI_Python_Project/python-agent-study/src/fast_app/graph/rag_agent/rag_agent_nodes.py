@@ -40,7 +40,11 @@ from fast_app.graph.rag.rag_graph_nodes import (
 from fast_app.services.exceptions import ExternalServiceError
 from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor
 from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
-from fast_app.services.agent_tasks.agent_task_router import AgentTaskRouter
+from fast_app.services.agent_tasks.agent_task_router import (
+    AgentRouteDecision,
+    AgentTaskRouteResult,
+    AgentTaskRouter,
+)
 from fast_app.services.knowledge.knowledge_permission_policy import (
     build_retrieval_filters_from_mapping,
 )
@@ -295,11 +299,22 @@ def create_next_action_decision_node(
             if task_router is None:
                 raise RuntimeError("AgentTaskRouter 未配置")
 
-            route_result = await task_router.route(
-                query=state["query"],
-                history=history,
-                langchain_config_factory=build_child_config,
-            )
+            if state.get("dataset_id") and state.get("nl2sql_action") == "report":
+                route_result = AgentTaskRouteResult(
+                    decision=AgentRouteDecision(
+                        intent="knowledge_document_management",
+                        confidence=1.0,
+                        reason="server_bound_nl2sql_report",
+                    ),
+                    source="rule",
+                    latency_ms=0.0,
+                )
+            else:
+                route_result = await task_router.route(
+                    query=state["query"],
+                    history=history,
+                    langchain_config_factory=build_child_config,
+                )
             decision = route_result.decision
             route_fields: dict[str, object] = {
                 "route_intent": decision.intent,
@@ -345,6 +360,15 @@ def create_next_action_decision_node(
                 ],
                 web_policy=(
                     "fallback" if state.get("allow_web_fallback", False) else "disabled"
+                ),
+                dataset_id=(
+                    str(state["dataset_id"]) if state.get("dataset_id") else None
+                ),
+                nl2sql_action=(
+                    "report"
+                    if state.get("dataset_id")
+                    and state.get("nl2sql_action") == "report"
+                    else None
                 ),
             )
 

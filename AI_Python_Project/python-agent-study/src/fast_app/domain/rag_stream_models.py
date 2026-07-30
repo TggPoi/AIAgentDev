@@ -29,6 +29,8 @@ RagStreamEventName = Literal[
     "agent_task_sub_question_retrying",
     "agent_task_final_synthesis_completed",
     "agent_route_clarification_required",
+    "nl2sql_sql_generated",
+    "nl2sql_result",
 ]
 
 # 在 Pipeline 层和 API 层之间传递结构化事件。

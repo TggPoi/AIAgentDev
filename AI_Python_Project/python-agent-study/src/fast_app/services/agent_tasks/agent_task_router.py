@@ -30,6 +30,8 @@ AgentRouteIntent = Literal[
     "knowledge_document_management",
     # 创建联网研究 TaskPlan
     "web_research",
+    # 服务端已绑定 Dataset 的结构化数据 query；真实分流不依赖 Router 模型。
+    "structured_data_query",
     # 不调用 Planner 或工具，直接向用户追问
     "clarification_required",
 ]
@@ -54,6 +56,7 @@ AGENT_TASK_ROUTER_SYSTEM_PROMPT = """你是 RAG Agent 的任务路由器，只�
 - question_decomposition：需要拆成多个相互关联的子问题后综合回答。
 - knowledge_document_management：创建、修改、删除或保存知识库文档。
 - web_research：用户明确要求联网搜索、公开网页资料、最新外部信息或读取公开 URL。
+- structured_data_query：服务端已显式绑定 Dataset 的结构化数据查询。
 - clarification_required：无法安全判断用户要执行哪类任务，需要追问。
 
 判定边界：
@@ -64,6 +67,7 @@ AGENT_TASK_ROUTER_SYSTEM_PROMPT = """你是 RAG Agent 的任务路由器，只�
   “删除 Redis 缓存”“移除 Docker 容器”“删除数据库记录”不是文档管理。
 - web_research 必须有联网、网络搜索、web_search、公开 URL、最新外部信息等明确依据。
   不能因为任务不属于现有本地工具，就擅自改判为 web_research。
+- structured_data_query 是服务端确定性分流的保留值；本 Router 不得主动选择。
 - 用户要求执行不属于上述能力的系统操作，或只说“处理一下”“继续”且上下文不足时，
   选择 clarification_required 并提出具体澄清问题。
 

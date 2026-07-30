@@ -22,6 +22,11 @@ _SENSITIVE_TRACE_FIELDS = frozenset(
         "effective_query",
         "filters",
         "user_id",
+        "sql",
+        "parameterized_sql",
+        "parameters",
+        "rows",
+        "raw_question",
     }
 )
 

@@ -36,8 +36,16 @@ from fast_app.services.agent_tasks.agent_task_planner import (
 )
 from fast_app.services.agent_tasks.agent_task_router import AgentRouteDecision
 from fast_app.services.agent_tasks.deep_document_agent import (
+    DocumentNl2SqlInput,
     DocumentReadInput,
     DocumentWebResearchInput,
+)
+from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
+from fast_app.services.nl2sql.models import (
+    Nl2SqlDatasetItem,
+    Nl2SqlQueryRequest,
+    Nl2SqlQueryResult,
+    SqlGenerationResult,
 )
 from fast_app.services.conversation.query_rewrite import QueryRewriteResult
 from fast_app.services.research.research_tool_loop import (
@@ -60,6 +68,7 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     DocumentDeliverable,
     DocumentDeliverableFailure,
     DocumentDraftResult,
+    DocumentNl2SqlInput,
     DocumentReadInput,
     DocumentResearchResult,
     DocumentReviewResult,
@@ -74,7 +83,13 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     KnowledgeImportJobListResponse,
     KnowledgeImportJobResponse,
     QueryRewriteResult,
+    RagChatRequest,
+    RagChatResponse,
     ResearchEvidenceEvaluation,
+    Nl2SqlDatasetItem,
+    Nl2SqlQueryRequest,
+    Nl2SqlQueryResult,
+    SqlGenerationResult,
 )
 
 

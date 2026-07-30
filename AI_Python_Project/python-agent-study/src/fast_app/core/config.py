@@ -486,6 +486,45 @@ class Settings(BaseSettings):
         alias="DATABASE_MAX_OVERFLOW",
     )
 
+    # 自由 NL2SQL 默认关闭；业务库连接只允许通过独立 database key 查找。
+    nl2sql_enabled: bool = Field(default=False, alias="NL2SQL_ENABLED")
+    nl2sql_real_estate_test_enabled: bool = Field(
+        default=False,
+        alias="NL2SQL_REAL_ESTATE_TEST_ENABLED",
+    )
+    nl2sql_game_test_enabled: bool = Field(
+        default=False,
+        alias="NL2SQL_GAME_TEST_ENABLED",
+    )
+    nl2sql_database_urls_json: str = Field(
+        default="{}",
+        alias="NL2SQL_DATABASE_URLS_JSON",
+        repr=False,
+        description="NL2SQL database_key 到 PostgreSQL 只读连接 URL 的 JSON 映射；不得传给模型或 API。",
+    )
+    nl2sql_model_name: str = Field(
+        default="",
+        alias="NL2SQL_MODEL_NAME",
+        description="NL2SQL SQL 生成模型；为空时使用 LLM_MODEL_NAME。",
+    )
+    nl2sql_model_temperature: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=2.0,
+        alias="NL2SQL_MODEL_TEMPERATURE",
+    )
+    nl2sql_model_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0.0,
+        alias="NL2SQL_MODEL_TIMEOUT_SECONDS",
+    )
+    nl2sql_default_max_rows: int = Field(
+        default=200,
+        ge=1,
+        le=500,
+        alias="NL2SQL_DEFAULT_MAX_ROWS",
+    )
+
     # 博查 网络搜索api
     bocha_api_key: str = Field(default="", alias="BOCHA_API_KEY")
     bocha_web_search_url: str = Field(

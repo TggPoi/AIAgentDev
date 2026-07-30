@@ -37,6 +37,7 @@ from fast_app.db.gitlab_tables import (
     KnowledgePublicationTable,
 )
 from fast_app.db.session import create_database_engine, create_session_factory
+from fast_app.db.nl2sql_tables import Nl2SqlDatasetGrantTable, Nl2SqlQueryAuditTable
 
 __all__ = [
     "ApiKeyTable",
@@ -57,6 +58,8 @@ __all__ = [
     "KnowledgePublicationStateTable",
     "KnowledgePublicationTable",
     "PermissionTable",
+    "Nl2SqlDatasetGrantTable",
+    "Nl2SqlQueryAuditTable",
     "RefreshTokenTable",
     "RolePermissionTable",
     "RoleTable",
