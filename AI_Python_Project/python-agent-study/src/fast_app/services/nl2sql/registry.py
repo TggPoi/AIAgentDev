@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from urllib.parse import urlsplit
 
 import asyncpg
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from fast_app.core.config import Settings
+from fast_app.db.nl2sql_tables import Nl2SqlDatasetTable
 from fast_app.services.exceptions import AppServiceError
 from fast_app.services.nl2sql.models import DatasetDefinition
 
@@ -18,13 +22,17 @@ def _asyncpg_url(url: str) -> str:
 
 
 class DatasetRegistry:
-    """固定 Dataset 目录和对应只读连接池。
+    """平台数据库驱动的 Dataset 目录和对应只读连接池。
 
     DatasetDefinition 是服务端可信配置：数据库连接、隐私等级、白名单视图和
     Scope 字段不会交给模型选择。连接 URL 只从部署环境读取，对外只暴露 dataset_id。
     """
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        datasets: Iterable[DatasetDefinition] = (),
+    ) -> None:
         self._settings = settings
         try:
             urls = json.loads(settings.nl2sql_database_urls_json)
@@ -45,70 +53,35 @@ class DatasetRegistry:
             raise AppServiceError("平台主库禁止注册为 NL2SQL Dataset")
         self._urls: dict[str, str] = urls
         self._pools: dict[str, asyncpg.Pool] = {}
-        self._datasets = {
-            item.dataset_id: item
-            for item in (
-                DatasetDefinition(
-                    dataset_id="real_estate_test",
-                    name="房地产数字孪生测试数据",
-                    domain="real_estate",
-                    database_key="real_estate_test",
-                    privacy_classification="sensitive",
-                    scope_column="project_id",
-                    allowed_views=(
-                        "analytics.unit_inventory",
-                        "analytics.project_inventory_summary",
-                    ),
-                    logical_view_mapping={
-                        "unit_inventory": "analytics.unit_inventory",
-                        "project_inventory_summary": "analytics.project_inventory_summary",
-                    },
-                    entity_tokenization_rules=(
-                        "project_name",
-                        "building_name",
-                        "address",
-                        "business_code",
-                    ),
-                    relationships=(
-                        "unit_inventory.project_id = project_inventory_summary.project_id",
-                    ),
-                    synonyms={
-                        "project_name": ("楼盘", "项目"),
-                        "total_price_yuan": ("总价", "价格"),
-                        "inventory_status": ("库存状态", "销售状态"),
-                    },
-                    report_supported=False,
-                    enabled=settings.nl2sql_enabled
-                    and settings.nl2sql_real_estate_test_enabled,
-                ),
-                DatasetDefinition(
-                    dataset_id="game_test",
-                    name="游戏开发资产测试数据",
-                    domain="game",
-                    database_key="game_test",
-                    privacy_classification="non_sensitive",
-                    scope_column="project_id",
-                    allowed_views=(
-                        "analytics.asset_catalog",
-                        "analytics.project_asset_summary",
-                    ),
-                    logical_view_mapping={
-                        "asset_catalog": "analytics.asset_catalog",
-                        "project_asset_summary": "analytics.project_asset_summary",
-                    },
-                    relationships=(
-                        "asset_catalog.project_id = project_asset_summary.project_id",
-                    ),
-                    synonyms={
-                        "asset_name": ("资产", "素材"),
-                        "cost_yuan": ("费用", "成本"),
-                        "polygon_count": ("模型面数", "面数"),
-                    },
-                    report_supported=True,
-                    enabled=settings.nl2sql_enabled
-                    and settings.nl2sql_game_test_enabled,
-                ),
+        self._datasets = {item.dataset_id: item for item in datasets}
+
+    async def refresh(self, session: AsyncSession) -> None:
+        """从平台主库加载可信 Dataset 配置；连接凭证不存入该表。"""
+
+        rows = (
+            await session.scalars(
+                select(Nl2SqlDatasetTable).order_by(Nl2SqlDatasetTable.dataset_id)
             )
+        ).all()
+        self._datasets = {
+            row.dataset_id: DatasetDefinition(
+                dataset_id=row.dataset_id,
+                name=row.name,
+                domain=row.domain,
+                database_key=row.database_key,
+                privacy_classification=row.privacy_classification,
+                scope_column=row.scope_column,
+                allowed_views=tuple(row.allowed_views),
+                logical_view_mapping=dict(row.logical_view_mapping),
+                entity_tokenization_rules=tuple(row.entity_tokenization_rules),
+                relationships=tuple(row.relationships),
+                synonyms={
+                    key: tuple(values) for key, values in row.synonyms.items()
+                },
+                report_supported=row.report_supported,
+                enabled=self._settings.nl2sql_enabled and row.enabled,
+            )
+            for row in rows
         }
 
     def get(self, dataset_id: str) -> DatasetDefinition:

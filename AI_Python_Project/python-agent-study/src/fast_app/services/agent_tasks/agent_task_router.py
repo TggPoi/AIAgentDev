@@ -38,6 +38,7 @@ AgentRouteIntent = Literal[
 # 澄清原因是供 API / SSE / React 稳定消费的机器可读 code，不直接等同于给用户看的问题文本。
 AgentClarificationCode = Literal[
     "ambiguous_intent",
+    "dataset_query_invalid_intent",
     "router_low_confidence",
     "router_unavailable",
 ]
@@ -56,7 +57,7 @@ AGENT_TASK_ROUTER_SYSTEM_PROMPT = """你是 RAG Agent 的任务路由器，只�
 - question_decomposition：需要拆成多个相互关联的子问题后综合回答。
 - knowledge_document_management：创建、修改、删除或保存知识库文档。
 - web_research：用户明确要求联网搜索、公开网页资料、最新外部信息或读取公开 URL。
-- structured_data_query：服务端已显式绑定 Dataset 的结构化数据查询。
+- structured_data_query：一个只需查询已绑定 Dataset 即可回答的结构化数据库问题。
 - clarification_required：无法安全判断用户要执行哪类任务，需要追问。
 
 判定边界：
@@ -67,7 +68,7 @@ AGENT_TASK_ROUTER_SYSTEM_PROMPT = """你是 RAG Agent 的任务路由器，只�
   “删除 Redis 缓存”“移除 Docker 容器”“删除数据库记录”不是文档管理。
 - web_research 必须有联网、网络搜索、web_search、公开 URL、最新外部信息等明确依据。
   不能因为任务不属于现有本地工具，就擅自改判为 web_research。
-- structured_data_query 是服务端确定性分流的保留值；本 Router 不得主动选择。
+- 未绑定 Dataset 时不得选择 structured_data_query。
 - 用户要求执行不属于上述能力的系统操作，或只说“处理一下”“继续”且上下文不足时，
   选择 clarification_required 并提出具体澄清问题。
 
@@ -84,6 +85,30 @@ AGENT_TASK_ROUTER_SYSTEM_PROMPT = """你是 RAG Agent 的任务路由器，只�
 不能提供权限、可信 doc_id、路径、候选范围或工具执行结果。
 只返回结构化结果，不输出答案、TaskPlan、Tool 参数或文档内容。
 """
+
+DATASET_QUERY_ROUTER_CONTEXT_PROMPT = """
+
+本次请求已经由服务端绑定一个非敏感 Dataset，必须只在以下 intent 中选择：
+- structured_data_query：问题只需要一次数据库查询或一次 SQL 聚合即可回答。
+- simple_rag：问题只需要一次项目知识库检索即可回答，不需要查询数据库。
+- question_decomposition：问题需要多个步骤、多个来源、比较/归纳，或可能组合知识库与数据库事实。
+- clarification_required：无法判断用户需要数据库事实、知识库事实还是综合分析。
+
+本次请求不得选择 knowledge_document_management 或 web_research。allow_web_fallback 只是后续
+Research Worker 的工具许可，不是顶层 web_research 意图。
+
+示例：
+- “查询已授权 3D 模型的名称和费用” -> structured_data_query
+- “项目设计文档中的美术风格是什么” -> simple_rag
+- “结合设计文档与资产库，分析哪些资产适合当前项目” -> question_decomposition
+"""
+
+DATASET_QUERY_ALLOWED_INTENTS = {
+    "structured_data_query",
+    "simple_rag",
+    "question_decomposition",
+    "clarification_required",
+}
 
 
 class AgentRouteDecision(BaseModel):
@@ -159,10 +184,15 @@ class AgentTaskRouter:
         query: str,
         history: list[object] | None = None,
         langchain_config_factory: LangChainConfigFactory | None = None,
+        dataset_query_bound: bool = False,
     ) -> AgentTaskRouteResult:
         started_at = perf_counter()
         # 先处理具有明确语义的低成本规则；命中后不调用模型，结果也更可预测。
-        rule_decision = _route_with_high_confidence_rules(query)
+        rule_decision = (
+            None
+            if dataset_query_bound
+            else _route_with_high_confidence_rules(query)
+        )
         if rule_decision is not None:
             return AgentTaskRouteResult(
                 decision=rule_decision,
@@ -194,7 +224,11 @@ class AgentTaskRouter:
             # SDK timeout 之外再包一层 wait_for，即使底层 provider 没有正确结束，也在 Router 配置的超时时间后停止等待
             response = await asyncio.wait_for(
                 model.ainvoke(
-                    _build_router_messages(query=query, history=history),
+                    _build_router_messages(
+                        query=query,
+                        history=history,
+                        dataset_query_bound=dataset_query_bound,
+                    ),
                     config=(
                         langchain_config_factory("task_router.structured")
                         if langchain_config_factory is not None
@@ -240,6 +274,20 @@ class AgentTaskRouter:
                 clarification_code="ambiguous_intent",
             )
 
+        if (
+            dataset_query_bound
+            and decision.intent not in DATASET_QUERY_ALLOWED_INTENTS
+        ):
+            return AgentTaskRouteResult(
+                decision=_clarification_decision(
+                    reason="dataset_query_invalid_intent",
+                    confidence=decision.confidence,
+                ),
+                source="fallback",
+                latency_ms=(perf_counter() - started_at) * 1000,
+                clarification_code="dataset_query_invalid_intent",
+            )
+
         if decision.confidence < self._settings.agent_router_confidence_threshold:
             # 即使模型给出了具体 intent，低于confidence_threshold 端阈值也不进入执行路径。更改为澄清 要求用户补充上下文，避免误导用户执行错误任务。
             return AgentTaskRouteResult(
@@ -263,11 +311,21 @@ def _build_router_messages(
     *,
     query: str,
     history: list[object] | None,
+    dataset_query_bound: bool = False,
 ) -> list[SystemMessage | HumanMessage]:
     # history 仅取最近六项且限制长度，防止旧会话淹没当前请求；系统提示同时约束当前 query 优先。
     history_text = "\n\n".join(str(item) for item in (history or [])[-6:])[-12_000:]
     return [
-        SystemMessage(content=AGENT_TASK_ROUTER_SYSTEM_PROMPT),
+        SystemMessage(
+            content=(
+                AGENT_TASK_ROUTER_SYSTEM_PROMPT
+                + (
+                    DATASET_QUERY_ROUTER_CONTEXT_PROMPT
+                    if dataset_query_bound
+                    else ""
+                )
+            )
+        ),
         HumanMessage(
             content=(
                 f"当前 query：\n{query}\n\n"

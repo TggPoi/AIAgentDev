@@ -53,6 +53,7 @@ from fast_app.services.rag.markdown_parent_context import MarkdownParentContextE
 from fast_app.services.rag.rag_context_assembler import assemble_rag_context
 from fast_app.services.rag.rag_context_assembler import build_context_observation
 from fast_app.services.rag.prompt_guard_service import PromptGuardService
+from fast_app.services.nl2sql.service import Nl2SqlService
 
 
 logger = get_logger(__name__)
@@ -105,6 +106,7 @@ def get_rag_agent_step_index(operation: str, step_name: str) -> int:
             "decide_next_action": 1,
             "check_loop_limits": 2,
             "direct_answer": 3,
+            "call_nl2sql_query": 3,
             "clarification_required": 3,
             "execute_task_plan": 3,
             "call_knowledge_retrieval": 3,
@@ -123,6 +125,7 @@ def get_rag_agent_step_index(operation: str, step_name: str) -> int:
         "decide_next_action": 1,
         "check_loop_limits": 2,
         "direct_answer": 3,
+        "call_nl2sql_query": 3,
         "clarification_required": 3,
         "execute_task_plan": 3,
         "call_knowledge_retrieval": 3,
@@ -223,6 +226,7 @@ def route_after_loop_check(state: RagAgentState) -> RagAgentRoute:
     if route in (
         "direct_answer",
         "knowledge_retrieval",
+        "structured_data_query",
         "execute_task_plan",
         "clarification_required",
     ):
@@ -314,6 +318,10 @@ def create_next_action_decision_node(
                     query=state["query"],
                     history=history,
                     langchain_config_factory=build_child_config,
+                    dataset_query_bound=bool(
+                        state.get("dataset_id")
+                        and state.get("nl2sql_action") == "query"
+                    ),
                 )
             decision = route_result.decision
             route_fields: dict[str, object] = {
@@ -365,12 +373,23 @@ def create_next_action_decision_node(
                     str(state["dataset_id"]) if state.get("dataset_id") else None
                 ),
                 nl2sql_action=(
-                    "report"
+                    str(state["nl2sql_action"])
                     if state.get("dataset_id")
-                    and state.get("nl2sql_action") == "report"
+                    and state.get("nl2sql_action") in {"query", "report"}
                     else None
                 ),
             )
+
+            if decision.intent == "structured_data_query":
+                result = {
+                    "route": "structured_data_query",
+                    "route_reason": "router_selected_structured_data_query",
+                    "step_count": state["step_count"] + 1,
+                    **route_fields,
+                }
+                if trace_run is not None:
+                    trace_run.add_outputs(result)
+                return result
 
             # 进入需要 Planner 拆解的复杂任务
             if decision.intent == "question_decomposition":
@@ -473,6 +492,58 @@ def create_next_action_decision_node(
             return result
 
     return decide_next_action_node
+
+
+def create_call_nl2sql_query_node(
+    settings: Settings,
+    nl2sql_service: Nl2SqlService | None,
+) -> Callable[[RagAgentState], dict[str, object]]:
+    """构造结构化数据查询节点；Dataset 和用户身份都来自服务端状态。"""
+
+    async def call_nl2sql_query_node(
+        state: RagAgentState,
+    ) -> dict[str, object]:
+        if nl2sql_service is None:
+            raise RuntimeError("NL2SQL 服务未配置")
+        user = state.get("current_user")
+        dataset_id = state.get("dataset_id")
+        if user is None or not dataset_id:
+            raise RuntimeError("NL2SQL 查询缺少服务端用户或 Dataset 绑定")
+        async with rag_agent_langsmith_step_trace(
+            settings=settings,
+            state=state,
+            step_name="call_nl2sql_query",
+            run_type="tool",
+            inputs=build_rag_agent_step_inputs(
+                state,
+                tool_name="nl2sql_query",
+                dataset_id=dataset_id,
+            ),
+        ) as trace_run:
+            result = await nl2sql_service.query(
+                user=user,
+                dataset_id=dataset_id,
+                question=state["query"],
+            )
+            update = {
+                "answer": result.summary,
+                "nl2sql_result": result,
+                "tool_name": "nl2sql_query",
+                "tool_call_count": state["tool_call_count"] + 1,
+                "final_reason": "structured_data_query_completed",
+            }
+            if trace_run is not None:
+                trace_run.add_outputs(
+                    {
+                        "query_id": result.query_id,
+                        "dataset_id": result.dataset_id,
+                        "row_count": result.row_count,
+                        "status": "completed",
+                    }
+                )
+            return update
+
+    return call_nl2sql_query_node
 
 
 def create_agent_clarification_node(

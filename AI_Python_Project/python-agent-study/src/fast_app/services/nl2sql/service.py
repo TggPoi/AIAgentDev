@@ -88,7 +88,7 @@ class Nl2SqlService:
         dataset = self._registry.get(dataset_id)
         if action == "report" and not dataset.report_supported:
             raise Nl2SqlSensitiveReportForbiddenError(
-                "敏感房地产 Dataset 禁止进入外部模型报告链路"
+                "当前 Dataset 禁止进入外部模型报告链路"
             )
         return dataset, await self._authorization.authorize(user, dataset)
 

@@ -239,6 +239,7 @@ class AgenticResearchExecutor:
                             wave=wave,
                             on_progress=append_progress_event,
                             should_stop=should_stop,
+                            user=user,
                             langchain_config_factory=langchain_config_factory,
                         )
                     ),

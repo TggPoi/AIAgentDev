@@ -78,6 +78,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.db_session_factory = create_session_factory(app.state.db_engine)
     logger.info("PostgreSQL async engine 已创建")
     app.state.nl2sql_dataset_registry = DatasetRegistry(settings)
+    async with app.state.db_session_factory() as session:
+        await app.state.nl2sql_dataset_registry.refresh(session)
+    logger.info("NL2SQL Dataset 配置已从平台数据库加载")
 
     if settings.agent_document_tools_enabled:
         # Deep Agent 的 StateBackend.files 随加密 checkpoint 持久化；同一 runtime

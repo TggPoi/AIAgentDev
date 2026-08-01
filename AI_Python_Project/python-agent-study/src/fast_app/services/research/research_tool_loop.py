@@ -25,6 +25,7 @@ from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.domain.agent_task_plan import AgentTaskPlan, AgentTaskSubQuestion, AgentTaskSubQuestionResult, AgentTaskToolCallTrace
 from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievedDoc
+from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.agent_tasks.agent_task_tool_support import (
     build_mcp_task_tools, coerce_int, doc_to_evidence, extract_first_url,
     find_registered_tool, normalize_tool_input, parallel_batch_error,
@@ -38,9 +39,15 @@ from fast_app.services.rag.rag_pipeline_service import build_content_preview, bu
 from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
 from fast_app.services.rag.prompt_guard_service import PromptGuardService
 from fast_app.services.rag.rag_context_assembler import assemble_rag_context
+from fast_app.services.nl2sql.service import Nl2SqlService
 
 LangChainConfigFactory = Callable[[str], RunnableConfig]
-PARALLEL_SAFE_TASK_TOOL_NAMES = {KNOWLEDGE_RETRIEVAL_TOOL_NAME, WEB_SEARCH_TOOL_NAME}
+NL2SQL_QUERY_TOOL_NAME = "nl2sql_query"
+PARALLEL_SAFE_TASK_TOOL_NAMES = {
+    KNOWLEDGE_RETRIEVAL_TOOL_NAME,
+    WEB_SEARCH_TOOL_NAME,
+    NL2SQL_QUERY_TOOL_NAME,
+}
 
 
 class AgentTaskToolSelectionPayload(BaseModel):
@@ -68,6 +75,23 @@ class AgentTaskKnowledgeRetrievalToolInput(BaseModel):
         ge=1,
         le=20,
         description="本轮知识库检索最终保留的文档数量。",
+    )
+
+
+class AgentTaskNl2SqlToolInput(BaseModel):
+    """服务端已绑定 Dataset 的结构化数据查询参数。"""
+
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(
+        min_length=1,
+        max_length=1000,
+        description="需要从已绑定业务 Dataset 查询的自然语言问题；不能提供 dataset_id 或 scope。",
+    )
+    max_rows: int = Field(
+        default=100,
+        ge=1,
+        le=200,
+        description="本轮最多返回的数据库结果行数。",
     )
 
 
@@ -99,6 +123,8 @@ TASK_TOOL_SELECTION_PROMPT = """你是 Agent TaskPlan 的工具选择器。
 
 选择原则：
 - 项目知识库、已有工程实现、内部文档相关问题，优先 knowledge_retrieval。
+- 资产、费用、库存、数量等业务数据库事实，选择 nl2sql_query。
+- 同时需要知识库规则和数据库事实时，可以在同一轮并行选择 knowledge_retrieval 与 nl2sql_query。
 - 当前知识库可能没有、需要公开互联网或最新资料时，选择 web_search。
 - 查询官方资料且已知官方域名时，把不含协议和路径的域名传入 web_search.site。
 - 子问题中已经给出明确 URL，且存在 mcp__fetch 工具时，优先 mcp__fetch 读取网页正文。
@@ -118,6 +144,7 @@ class ResearchToolLoop:
         reranker: BaseReranker | None = None,
         prompt_guard: PromptGuardService | None = None,
         parent_expander: MarkdownParentContextExpander | None = None,
+        nl2sql_service: Nl2SqlService | None = None,
     ) -> None:
         self._settings = settings
         self._vector_retriever = vector_retriever
@@ -126,6 +153,7 @@ class ResearchToolLoop:
         self._reranker = reranker
         self._prompt_guard = prompt_guard
         self._parent_expander = parent_expander
+        self._nl2sql_service = nl2sql_service
 
     async def _generate_with_trace(
         self,
@@ -168,6 +196,7 @@ class ResearchToolLoop:
         prior_evidence: list[dict[str, Any]] | None = None,
         prior_context_doc_groups: list[list[RetrievedDoc]] | None = None,
         retry_missing_points: list[str] | None = None,
+        user: CurrentUserContext | None = None,
     ) -> ResearchAttemptOutcome:
         """执行一个子问题：让 LLM 进行有限多轮工具选择，再生成子问题答案。
 
@@ -180,7 +209,8 @@ class ResearchToolLoop:
         prior_context_doc_groups = list(prior_context_doc_groups or [])
         retry_missing_points = list(retry_missing_points or [])
         available_tools = await self._build_available_task_tools(
-            allow_web_search=allow_web_search
+            allow_web_search=allow_web_search,
+            plan=plan,
         )
         # override 由 Research Worker 的剩余预算提供，确保纠正轮不会突破单 Worker 总上限。
         max_tool_calls = max(
@@ -304,6 +334,8 @@ class ResearchToolLoop:
                             filters=filters,
                             tool_call_round=round_index,
                             langchain_config_factory=langchain_config_factory,
+                            plan=plan,
+                            user=user,
                         )
                         tagged_evidence = [
                             {**item, "tool_call_id": call_id}
@@ -579,6 +611,7 @@ class ResearchToolLoop:
     async def _build_available_task_tools(
         self,
         allow_web_search: bool = True,
+        plan: AgentTaskPlan | None = None,
     ) -> list[BaseTool]:
         """构造本阶段允许 LLM 选择的工具白名单。"""
 
@@ -594,6 +627,25 @@ class ResearchToolLoop:
                 args_schema=AgentTaskKnowledgeRetrievalToolInput,
             )
         ]
+        if (
+            self._nl2sql_service is not None
+            and plan is not None
+            and plan.research_policy is not None
+            and plan.research_policy.dataset_id
+            and plan.research_policy.nl2sql_action == "query"
+        ):
+            async def nl2sql_query(question: str, max_rows: int = 100) -> str:
+                # Dataset、用户和 Scope 由服务端闭包外的执行分支绑定，不允许模型传入。
+                return ""
+
+            tools.append(
+                StructuredTool.from_function(
+                    coroutine=nl2sql_query,
+                    name=NL2SQL_QUERY_TOOL_NAME,
+                    description="查询服务端已绑定的非敏感业务 Dataset，适合资产、费用、库存和数量等数据库事实。",
+                    args_schema=AgentTaskNl2SqlToolInput,
+                )
+            )
 
         if allow_web_search and self._settings.bocha_api_key:
             # Bocha 未配置时不把 web_search 暴露给 LLM，避免模型选择不可执行工具。
@@ -748,6 +800,8 @@ class ResearchToolLoop:
         filters: RetrievalFilters,
         tool_call_round: int = 1,
         langchain_config_factory: LangChainConfigFactory | None = None,
+        plan: AgentTaskPlan | None = None,
+        user: CurrentUserContext | None = None,
     ) -> ToolExecutionResult:
         """执行本地工具或 MCP 工具，不在单个工具边界生成答案。"""
 
@@ -767,6 +821,51 @@ class ResearchToolLoop:
             return await self._run_web_search_for_sub_question(
                 sub_question=sub_question,
                 tool_input=tool_input,
+            )
+        if selected_tool == NL2SQL_QUERY_TOOL_NAME:
+            if (
+                self._nl2sql_service is None
+                or plan is None
+                or plan.research_policy is None
+                or not plan.research_policy.dataset_id
+                or user is None
+            ):
+                raise AppServiceError("nl2sql_query 缺少服务端 Dataset 或用户绑定")
+            result = await self._nl2sql_service.query(
+                user=user,
+                dataset_id=plan.research_policy.dataset_id,
+                question=str(
+                    tool_input.get("question") or sub_question.question
+                ).strip(),
+                max_rows=coerce_int(
+                    tool_input.get("max_rows"),
+                    default=100,
+                    minimum=1,
+                    maximum=200,
+                ),
+            )
+            text = result.model_dump_json()
+            doc = RetrievedDoc(
+                id=result.query_id,
+                content=text,
+                score=1.0,
+                source=NL2SQL_QUERY_TOOL_NAME,
+                title=f"NL2SQL 查询 {result.query_id}",
+                metadata={
+                    "tool_name": NL2SQL_QUERY_TOOL_NAME,
+                    "query_id": result.query_id,
+                    "dataset_id": result.dataset_id,
+                    "row_count": result.row_count,
+                },
+            )
+            return ToolExecutionResult(
+                tool_output={
+                    "query_id": result.query_id,
+                    "row_count": result.row_count,
+                    "status": "completed",
+                },
+                evidence=[doc_to_evidence(doc)],
+                context_docs=[doc],
             )
 
         # 走到这里的是 MCP 等外部工具：先按白名单取工具，再由 LangChain tool 执行。

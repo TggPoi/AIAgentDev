@@ -6,13 +6,16 @@ NL2SQL 默认关闭。服务器环境至少配置：
 
 ```text
 NL2SQL_ENABLED=true
-NL2SQL_GAME_TEST_ENABLED=true
-NL2SQL_REAL_ESTATE_TEST_ENABLED=true
 NL2SQL_DATABASE_URLS_JSON={"game_test":"postgresql://...","real_estate_test":"postgresql://..."}
 NL2SQL_MODEL_NAME=<SQL 生成模型>
 ```
 
 `python_agent_study` 只保存 RBAC、Dataset Grant、审计、TaskPlan 和平台状态，禁止注册为 NL2SQL Dataset。两个业务 Dataset 使用独立 Database、owner 和非 owner 只读账号。连接 URL 不得进入 API、模型 Prompt、日志、LangSmith 或审计。
+
+Dataset 是否启用、隐私等级、白名单视图、关系和同义词由平台表
+`nl2sql_datasets` 管理；应用启动时读取。`NL2SQL_ENABLED` 是全局总开关，不再为每个
+Dataset 设置 Python/环境变量开关。连接凭据仍只保存在
+`NL2SQL_DATABASE_URLS_JSON`，平台表只保存 `database_key`。
 
 部署顺序：
 

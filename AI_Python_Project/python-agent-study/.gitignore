@@ -5,3 +5,8 @@ __pycache__/
 .DS_Store
 .vscode/
 learning-docs/
+
+# Local OpenAI tunnel-client runtime
+.tmp/tunnel-client-v*/
+.tmp/tunnel-client-v*-windows-amd64.zip
+.tmp/chatgpt-action-bridge/

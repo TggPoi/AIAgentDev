@@ -3,9 +3,41 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Index, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from fast_app.db.base import Base
+
+
+class Nl2SqlDatasetTable(Base):
+    """控制平面中的 Dataset 配置；业务库连接 URL 仍只来自部署环境。"""
+
+    __tablename__ = "nl2sql_datasets"
+
+    dataset_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    domain: Mapped[str] = mapped_column(String(128), nullable=False)
+    database_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    privacy_classification: Mapped[str] = mapped_column(String(32), nullable=False)
+    scope_column: Mapped[str] = mapped_column(String(128), nullable=False)
+    allowed_views: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    logical_view_mapping: Mapped[dict[str, str]] = mapped_column(JSONB, nullable=False)
+    entity_tokenization_rules: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    relationships: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    synonyms: Mapped[dict[str, list[str]]] = mapped_column(JSONB, nullable=False)
+    report_supported: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
 
 class Nl2SqlDatasetGrantTable(Base):
@@ -68,4 +100,8 @@ class Nl2SqlQueryAuditTable(Base):
     )
 
 
-__all__ = ["Nl2SqlDatasetGrantTable", "Nl2SqlQueryAuditTable"]
+__all__ = [
+    "Nl2SqlDatasetGrantTable",
+    "Nl2SqlDatasetTable",
+    "Nl2SqlQueryAuditTable",
+]

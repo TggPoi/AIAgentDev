@@ -150,33 +150,39 @@ PostgreSQL：执行只读事务和 RLS
 sequenceDiagram
     participant U as "用户 / React"
     participant API as "rag_chat_endpoint()<br/>rag_chat_routes.py:48"
+    participant AU as "Nl2SqlService.authorize_action()<br/>service.py:79"
+    participant R as "AgentTaskRouter.route()<br/>agent_task_router.py:181"
+    participant G as "decide_next_action_node()<br/>rag_agent_nodes.py:258"
+    participant N as "call_nl2sql_query_node()<br/>rag_agent_nodes.py:503"
+    participant W as "ResearchToolLoop.run_attempt()<br/>research_tool_loop.py:180"
     participant S as "Nl2SqlService._query_impl()<br/>service.py:138"
-    participant A as "authorize()<br/>authorization.py:21"
-    participant C as "SchemaCatalog.load()<br/>catalog.py:11"
-    participant M as "_generate_sql()<br/>service.py:362"
-    participant P as "SqlPolicy.validate()<br/>sql_policy.py:55"
-    participant D as "_execute_generation()<br/>service.py:426"
-    participant PG as "PostgreSQL RLS"
 
-    U->>API: dataset_id + action + 自然语言问题
-    API->>S: query(user, dataset_id, question)
-    S->>A: 检查功能权限和 Dataset Grant
-    A-->>S: 服务端可信 scope_ids
-    S->>C: 读取允许视图、字段类型和 COMMENT
-    C-->>S: 模型可读 SchemaCatalog
-    S->>M: SchemaCatalog + 问题
-    M-->>S: 参数化 SQL + 参数 + 总结模板
-    S->>P: 解析并校验 SQL AST
-    P-->>S: ValidatedSql + 参数顺序
-    S->>D: SQL + 参数 + scope_ids
-    D->>PG: 只读事务、超时、RLS
-    PG-->>D: 授权范围内的结果行
-    D-->>S: 记录、耗时
-    S-->>API: query_id、SQL、表格、结论
-    API-->>U: 结构化响应
+    U->>API: dataset_id + action=query + 自然语言问题
+    API->>AU: authorize_action(user, dataset_id, "query")
+    AU-->>API: DatasetDefinition + scope_ids
+    alt privacy_classification = sensitive
+        API->>S: query()，不进入普通 Router
+        S-->>API: 标记化 NL2SQL 结果
+    else privacy_classification = non_sensitive
+        API->>G: RagAgentPipeline
+        G->>R: route(dataset_query_bound=true)
+        alt structured_data_query
+            G->>N: Graph 路由
+            N->>S: query()，Dataset 来自 State
+            S-->>U: nl2sql_result
+        else simple_rag
+            G-->>U: 原知识库检索答案
+        else question_decomposition
+            G->>W: TaskPlan / Research Worker
+            W->>S: 需要数据库事实时调用 nl2sql_query
+            W-->>U: 多来源综合答案
+        end
+    end
 ```
 
-后面的每一章都在展开这张图。遇到新概念时，可以回来确认它位于哪两个参与者之间。
+后面的章节会先展开 `Nl2SqlService` 内部怎样生成和执行安全 SQL，再分别解释三种 Router
+意图。遇到新概念时，可以回来确认：它是在决定“走哪条路”，还是在执行“已经选中的
+数据库查询”。这两类职责不能混在一起。
 
 # 第二部分：数据库不是背景知识，而是 NL2SQL 的语言教材
 
@@ -188,6 +194,7 @@ sequenceDiagram
 
 ```text
 用户、角色、权限、部门
+Dataset 定义（nl2sql_datasets）
 Dataset Grant
 NL2SQL 审计
 Conversation、TaskPlan
@@ -195,7 +202,21 @@ GitLab Source、同步任务、知识版本
 ```
 
 如果自由 SQL 能访问这个库，用户一句“列出所有用户的权限”就可能绕过正常管理接口。
-因此 `DatasetRegistry` 不只是保存配置，它在启动阶段比较连接 URL 中的 Database 名。
+`nl2sql_datasets` 保存 Dataset 的业务领域、隐私等级、白名单视图、关系、同义词和是否
+支持报告。FastAPI 启动时由 `DatasetRegistry.refresh()` 读取这些记录，因此新增业务
+Dataset 不需要再到 `registry.py` 里增加一个 Python `if` 或字典项。
+
+数据库连接 URL 是例外。它包含只读账号和密码，仍然只从
+`NL2SQL_DATABASE_URLS_JSON` 读取，平台表只保存不含凭据的 `database_key`。Registry
+把两者在后端内存中关联：
+
+```text
+nl2sql_datasets.database_key
+→ NL2SQL_DATABASE_URLS_JSON[database_key]
+→ 对应业务 Database 的只读连接
+```
+
+因此 `DatasetRegistry` 不只是加载配置，它还在启动阶段比较连接 URL 中的 Database 名。
 任何 Dataset URL 指向平台主库，初始化直接失败。这里不是依靠开发者“记得不要配错”，
 而是把错误配置变成程序不能启动的确定性失败。
 
@@ -3744,39 +3765,569 @@ flowchart TD
     R -->|"是"| O["返回授权范围内的行"]
 ```
 
-### 2.6.7 为什么每一层都不能省略
+### 2.6.7 从零理解只读账号、数据库连接、事务和 `app.scope_ids`
 
-这些机制保护的是不同问题：
+前面的流程图出现了：
 
-| 层次 | 信任边界 | 防止的问题 |
+```python
+async with pool.acquire() as connection:
+    async with connection.transaction(readonly=True):
+        await _set_scope(connection, authorization.scope_ids)
+        records = await connection.fetch(...)
+```
+
+如果没有学过数据库账号和事务，这几行很容易被误读成：
+
+```text
+给当前员工创建一个只读账号；
+把员工权限永久写进这个账号；
+然后执行 SQL。
+```
+
+当前工程并不是这样做的。先给出这一节最重要的结论：
+
+> 平台员工账号负责回答“当前请求是谁发起的”；统一的 PostgreSQL 只读账号负责建立数据库
+> 连接；事务级 `app.scope_ids` 负责告诉 RLS“这一次请求允许看哪些项目”。
+
+这三个对象处于不同层次，不能混为一个“用户账号”。
+
+#### 2.6.7.1 先区分两种完全不同的账号
+
+真实员工验收使用的平台账号是：
+
+```text
+nl2sql_game_employee
+```
+
+它保存在平台主库 `python_agent_study.users` 中。员工使用自己的用户名和密码登录 FastAPI，
+后端从 RBAC 和 Dataset Grant 得到：
+
+```python
+user_id = "该员工的 users.id"
+global_permission_codes = ["data:query:execute"]
+scope_ids = ("game_p1",)
+```
+
+这些信息表示：
+
+```text
+这个人可以使用 NL2SQL；
+这个人只能查看 game_test 中的 game_p1。
+```
+
+但 FastAPI 不会拿员工的用户名和密码直接登录业务数据库。连接
+`nl2sql_game_test` 时，所有经过授权的员工查询统一使用：
+
+```text
+nl2sql_game_reader
+```
+
+这是 PostgreSQL 内部的技术账号，也叫 Database Role。它不是公司员工，不出现在
+`python_agent_study.users` 中，也不能登录 React 页面。
+
+两种账号的职责可以对照为：
+
+| 对象 | 保存在哪里 | 谁使用 | 回答的问题 |
+| --- | --- | --- | --- |
+| `nl2sql_game_employee` | 平台主库 `users` | 员工登录 FastAPI | 当前请求是谁、拥有哪些 RBAC 和 Dataset Grant |
+| `nl2sql_game_reader` | PostgreSQL 自己的 Role 目录 | FastAPI 后端连接业务库 | 这条数据库连接最多可以执行什么操作 |
+
+为什么不为每个员工都创建一个 PostgreSQL 账号？
+
+假设公司有 500 名策划。如果每人都需要一个数据库账号，就要在 PostgreSQL 中维护 500 份
+密码、禁用状态、连接数和授权关系。员工换部门时，还要同时修改平台权限和数据库权限。
+
+当前方案只维护少量技术账号：
+
+```text
+平台负责管理“人”；
+PostgreSQL 技术账号负责限制“应用最多能做什么”；
+每次请求的 scope_ids 负责限制“这个人本次能看什么”。
+```
+
+🔐 数据库连接 URL 和 `nl2sql_game_reader` 的密码只存在于后端配置
+`NL2SQL_DATABASE_URLS_JSON`。浏览器、员工、外部 SQL 模型和 SQL Prompt 都看不到它。
+
+#### 2.6.7.2 什么叫“只读数据库账号”
+
+PostgreSQL 中的账号不是只有“能登录”和“不能登录”两种状态。管理员可以分别决定它是否
+能够：
+
+```text
+连接某个 Database；
+进入某个 Schema；
+读取某张 Table 或 View；
+插入、更新或删除数据；
+创建 Database、Role、Schema 或 Table；
+绕过 RLS。
+```
+
+测试数据库初始化时，`bootstrap_test_databases.py` 创建
+`nl2sql_game_reader`，核心属性是：
+
+```sql
+CREATE ROLE nl2sql_game_reader
+LOGIN
+PASSWORD '由环境变量提供'
+NOSUPERUSER
+NOCREATEDB
+NOCREATEROLE
+NOINHERIT
+NOBYPASSRLS;
+```
+
+逐项理解：
+
+| 属性 | 含义 | 为什么需要 |
 | --- | --- | --- |
-| SchemaCatalog | 模型输入 | 模型知道不该暴露的表和字段 |
-| SQL Policy | 模型输出 | 模型生成非白名单对象、写操作或危险函数 |
-| Schema/Table GRANT | 数据库账号 | 应用校验遗漏后直接访问底表 |
-| `security_invoker` | View 到底表 | 借用 View owner 权限绕过调用者限制 |
-| RLS | 数据行 | 合法查询读取其他项目的数据 |
-| 事务级 `app.scope_ids` | 连接池中的用户边界 | Scope 被客户端伪造或在用户之间串线 |
-| 只读账号与事务 | 数据库状态 | SQL 修改或创建数据库对象 |
+| `LOGIN` | 允许后端使用该 Role 建立连接 | 没有它就不能作为数据库登录账号 |
+| `NOSUPERUSER` | 不是超级用户 | 超级用户几乎可以绕过所有普通权限 |
+| `NOCREATEDB` | 不能创建 Database | NL2SQL 查询不需要创建新库 |
+| `NOCREATEROLE` | 不能创建或修改其他 Role | 防止查询账号给自己扩权 |
+| `NOINHERIT` | 不自动继承其他 Role 权限 | 避免意外继承高权限角色 |
+| `NOBYPASSRLS` | 不能绕过行级安全策略 | 保证 RLS 对查询账号生效 |
 
-如果只有 Prompt 白名单，没有 SQL Policy，模型仍可能输出未提供的表名。
+创建账号只说明“它是谁”，还没有说明“它能访问什么”。`game.sql` 又执行：
 
-如果只有 SQL Policy，没有数据库权限，应用代码中的一个遗漏就可能直接暴露底表。
+```sql
+GRANT CONNECT ON DATABASE nl2sql_game_test TO nl2sql_game_reader;
+REVOKE USAGE ON SCHEMA business FROM nl2sql_game_reader;
+GRANT USAGE ON SCHEMA analytics TO nl2sql_game_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA business TO nl2sql_game_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO nl2sql_game_reader;
+```
 
-如果只有 View，没有 `security_invoker` 和 RLS，用户可能通过合法 View 看到所有项目。
+这里有一个看起来矛盾的地方：
 
-如果只有 RLS，没有事务级可信 Scope，数据库不知道当前用户究竟被授权了哪些项目。
+```text
+为什么撤销 business Schema 的 USAGE，
+却又授予 business Table 的 SELECT？
+```
+
+因为当前 `analytics` View 使用 `security_invoker=true`。当只读账号查询
+`analytics.asset_catalog` 时，PostgreSQL 会继续以调用者
+`nl2sql_game_reader` 的权限读取底层 `business` Table，所以它必须拥有底表 `SELECT`。
+
+但是账号没有 `business` Schema 的 `USAGE`，不能自己直接解析：
+
+```sql
+SELECT * FROM business.assets;
+```
+
+可以把它理解成：
+
+```text
+账号拥有“通过批准窗口读取底层记录”的能力，
+但没有“进入底表目录自由寻找对象”的通行证。
+```
+
+这不是只靠一个 `SELECT` 权限完成的，而是：
+
+```text
+analytics Schema USAGE
++ analytics View SELECT
++ business Table SELECT
++ business Schema 无 USAGE
++ security_invoker View
++ Table RLS
+```
+
+共同形成受控读取路线。
+
+#### 2.6.7.3 “只读”不等于数据库里有一个 readonly 字段
+
+当前工程用了两层只读保护：
+
+```text
+第一层：只读账号的长期权限
+第二层：每次查询的只读事务
+```
+
+只读账号是长期设置。无论它建立多少次连接，都没有 `INSERT`、`UPDATE`、`DELETE`、DDL 或
+管理权限。
+
+只读事务是一次请求内的临时执行规则：
+
+```python
+connection.transaction(readonly=True)
+```
+
+它告诉 PostgreSQL：
+
+> 从事务开始到结束，这一组操作只能读取数据库，不能修改普通业务数据和数据库结构。
+
+为什么已经有只读账号，还需要只读事务？
+
+因为权限配置可能被管理员误改。例如以后有人错误地给
+`nl2sql_game_reader` 增加了 `UPDATE`。只靠账号权限时，应用代码中的遗漏可能真的执行写操作；
+只读事务仍会让 PostgreSQL 拒绝修改。
+
+反过来，只靠只读事务也不够。假如应用某个分支忘记写 `readonly=True`，数据库账号本身仍然
+没有写权限。
+
+**这叫纵深防御：**
+
+```text
+一个防线配置错误时，另一个防线仍然存在。
+```
+
+#### 2.6.7.4 什么是数据库连接
+
+FastAPI 要向 PostgreSQL 发送 SQL，必须先建立一条通信通道，这条通道就是
+`connection`。
+
+连接中会保留一些会话状态，例如：
+
+```text
+当前登录的数据库账号；
+当前 Database；
+当前 search_path；
+当前事务；
+当前会话或事务设置。
+```
+
+建立数据库连接需要网络握手和认证，成本比调用一个普通 Python 函数高。如果每次 HTTP
+请求都重新创建和销毁连接，会增加延迟。asyncpg 因此使用连接池 `pool`：
+
+```text
+提前创建少量连接
+→ 请求到来时借出一条
+→ 查询完成后归还
+→ 下一次请求继续复用
+```
+
+代码：
+
+```python
+async with pool.acquire() as connection:
+```
+
+可以读成：
+
+```text
+从这个 Dataset 的连接池借一条连接；
+代码块结束时自动归还。
+```
+
+⚠️ 复用连接也带来风险。假设用户 A 把 `game_p1` 写成连接级设置，连接归还后用户 B
+恰好借到同一条连接，B 就可能继承 A 的 Scope。
+
+这就是为什么 `app.scope_ids` 不能设置成永久连接状态，而必须限制在当前事务中。
+
+#### 2.6.7.6 `async with transaction(...)` 怎样决定提交还是回滚
+
+真实函数 `_execute_generation()` 位于 `service.py:426`：
+
+```python
+async with pool.acquire() as connection:
+    async with connection.transaction(readonly=True):
+        await connection.execute("SET LOCAL statement_timeout = '8s'")
+        await connection.execute("SET LOCAL lock_timeout = '1s'")
+        await connection.execute(
+            "SET LOCAL search_path = analytics, pg_catalog"
+        )
+        await _set_scope(connection, authorization.scope_ids)
+        records = await connection.fetch(
+            validated.asyncpg_sql,
+            *ordered_values,
+        )
+```
+
+第二个 `async with` 进入时，asyncpg 向 PostgreSQL 开始一个只读事务。代码块有两种离开
+方式。
+
+正常完成：
+
+```text
+SELECT 执行成功
+→ 得到 records
+→ 离开 transaction 代码块
+→ asyncpg COMMIT
+→ 事务级设置消失
+```
+
+中途异常：
+
+```text
+SQL 超时、类型错误或数据库连接异常
+→ Python 抛出异常
+→ 离开 transaction 代码块
+→ asyncpg ROLLBACK
+→ 本次事务状态和事务级设置一起清理
+```
+
+即使这里没有业务数据修改，`ROLLBACK` 仍然有意义：它保证失败请求留下的事务状态不会继续
+污染这条连接。
+
+#### 2.6.7.7 三条 `SET LOCAL` 分别限制什么
+
+进入事务后，后端先执行：
+
+```sql
+SET LOCAL statement_timeout = '8s';
+SET LOCAL lock_timeout = '1s';
+SET LOCAL search_path = analytics, pg_catalog;
+```
+
+`LOCAL` 表示设置只在当前事务内生效。
+
+`statement_timeout='8s'`：
+
+```text
+单条 SQL 最多执行 8 秒。
+```
+
+它防止模型生成代价过高的 JOIN、聚合或窗口查询长期占用连接。
+
+`lock_timeout='1s'`：
+
+```text
+等待数据库锁最多 1 秒。
+```
+
+虽然正常 NL2SQL 是只读查询，但数据库维护或其他事务可能持有对象锁。与其让用户请求长时间
+卡住，不如快速失败并返回明确错误。
+
+`search_path=analytics, pg_catalog`：
+
+```text
+没有写 Schema 前缀的对象，优先只在 analytics 和必要系统目录中解析。
+```
+
+模型通常应该生成完整的 `analytics.asset_catalog`。这里再限制 `search_path`，是为了防止
+名称解析意外落到 `business` 或 `public`。
+
+事务提交或回滚后，这三项设置都不会留给下一次请求。
+
+#### 2.6.7.8 `app.scope_ids` 到底是什么
+
+`app.scope_ids` 不是 PostgreSQL 固定内置字段，也不是数据库表中的一列。它是当前应用约定的
+自定义配置名称。
+
+可以把它想象成贴在当前事务上的一张临时便签：
+
+```text
+本事务代表的员工只能访问 game_p1。
+```
+
+授权服务先得到可信 Python 值：
+
+```python
+authorization.scope_ids == ("game_p1",)
+```
+
+`_set_scope()` 位于 `service.py:511`：
+
+```python
+await connection.fetchval(
+    "SELECT set_config('app.scope_ids', $1, true)",
+    ",".join(scope_ids),
+)
+```
+
+数据变化过程是：
+
+```text
+Python tuple
+("game_p1",)
+
+→ ",".join(scope_ids)
+
+字符串
+"game_p1"
+
+→ 作为 $1 参数交给 PostgreSQL
+
+事务配置
+app.scope_ids = "game_p1"
+```
+
+如果员工同时拥有两个项目：
+
+```python
+scope_ids = ("game_p1", "game_p3")
+```
+
+数据库中保存的临时字符串就是：
+
+```text
+game_p1,game_p3
+```
+
+这里使用参数 `$1`，而不是把 Scope 拼进 SQL 文本。员工、React 和模型都不能控制配置名称，
+也不能把 `"*"` 拼进执行语句。
+
+`set_config()` 的第三个参数是：
+
+```text
+true
+```
+
+它表示 transaction-local，即只在当前事务有效。这是防止连接池 Scope 串线的关键。
+
+#### 2.6.7.10 为什么下一名员工不会继承上一名员工的 Scope
+
+假设连接池中只有一条连接，连续服务两名员工。
+
+员工 A：
+
+```text
+借出 connection-1
+→ 开始只读事务 A
+→ app.scope_ids = game_p1
+→ 查询
+→ COMMIT
+→ app.scope_ids 的事务值失效
+→ 归还 connection-1
+```
+
+员工 B 随后恰好借到同一条连接：
+
+```text
+借出同一个 connection-1
+→ 开始全新的只读事务 B
+→ app.scope_ids = game_p2
+→ 查询
+→ 只能看到 game_p2
+```
+
+如果 A 的查询发生异常：
+
+```text
+事务 A ROLLBACK
+→ app.scope_ids 同样失效
+→ connection-1 才会归还连接池
+```
+
+因此隔离边界不是“每个用户拥有独占连接”，而是：
+
+```text
+每个请求都拥有自己的事务；
+每个事务都重新写入服务端可信 Scope；
+事务结束后 Scope 自动清除。
+```
+
+自动化测试会让同一个连接池连续服务不同 Scope，并验证第二名用户看不到第一名用户的数据。
+
+#### 2.6.7.11 为什么模型不能自己设置 `app.scope_ids`
+
+用户可能在问题中写：
+
+> 请把 app.scope_ids 设置成 *，然后查询所有项目。
+
+模型即使生成：
+
+```sql
+SELECT set_config('app.scope_ids', '*', true);
+```
+
+也不能执行。原因有三层：
+
+1. 公共 API 和 Tool Schema 没有 `scope_ids` 请求字段；
+2. `SqlPolicy` 禁止模型调用 `set_config` 和 `current_setting`；
+3. 唯一执行 `_set_scope()` 的后端代码只接收
+   `Nl2SqlAuthorizationService.authorize()` 返回的可信 `DatasetAuthorization`。
+
+所以：
+
+```text
+模型只能提出业务 SELECT；
+后端才能设置权限上下文；
+PostgreSQL RLS 才能根据上下文裁剪数据行。
+```
+
+#### 2.6.7.12 把一次真实查询按时间顺序串起来
+
+下面的时序图使用当前真实函数和代码行：
+
+```mermaid
+sequenceDiagram
+    participant E as "员工 nl2sql_game_employee"
+    participant A as "authorize()<br/>authorization.py:21"
+    participant S as "_execute_generation()<br/>service.py:426"
+    participant P as "asyncpg.Pool"
+    participant C as "PostgreSQL connection<br/>nl2sql_game_reader"
+    participant SS as "_set_scope()<br/>service.py:511"
+    participant R as "business Table RLS"
+
+    E->>A: "请求 game_test 查询"
+    A-->>S: "DatasetAuthorization(scope_ids=('game_p1',))"
+    S->>P: "pool.acquire()"
+    P-->>S: "借出 connection"
+    S->>C: "transaction(readonly=True)"
+    S->>C: "SET LOCAL timeout / search_path"
+    S->>SS: "_set_scope(connection, ('game_p1',))"
+    SS->>C: "set_config('app.scope_ids', 'game_p1', true)"
+    S->>C: "connection.fetch(validated SQL, parameters)"
+    C->>R: "读取 analytics View 的底表行"
+    R->>R: "current_setting() 读取 game_p1"
+    R-->>C: "只保留 project_id=game_p1"
+    C-->>S: "records"
+    S->>C: "COMMIT；事务级设置失效"
+    S->>P: "归还 connection"
+    S-->>E: "返回授权范围内的结果"
+```
+
+如果执行阶段失败，图中的 `COMMIT` 会变成 `ROLLBACK`，事务级设置同样失效。
+
+#### 2.6.7.13 最后重新理解“每一层都不能省略”
+
+现在再看这些防线，它们保护的是不同对象：
+
+| 层次 | 它限制谁 | 防止的问题 |
+| --- | --- | --- |
+| SchemaCatalog | 外部模型的输入 | 模型看到不应该公开的表和字段 |
+| SQL Policy | 模型生成的 SQL | 写操作、危险函数、系统表和非白名单对象 |
+| PostgreSQL 只读账号 | 后端数据库连接 | 应用校验遗漏后拥有写库或管理能力 |
+| 只读事务 | 当前一次执行 | 账号权限误配或代码遗漏导致本次请求写数据 |
+| `SET LOCAL` | 当前事务 | 超时、名称解析和 Scope 状态泄漏到下一次请求 |
+| `security_invoker` View | View 到底表的权限身份 | 借用 View owner 的高权限绕过调用者限制 |
+| RLS | 每一行业务数据 | 合法 SELECT 读取其他游戏项目或楼盘 |
+| 事务级 `app.scope_ids` | 当前员工请求的数据范围 | 连接池复用时 Scope 串线或被客户端伪造 |
+
+如果只有只读账号，没有 RLS：
+
+```text
+账号确实不能修改数据，
+但可能读取所有项目。
+```
+
+如果只有 RLS，没有事务 Scope：
+
+```text
+数据库有过滤规则，
+但不知道当前请求允许哪些项目。
+```
+
+如果把 Scope 设置成连接级而不是事务级：
+
+```text
+用户 A 的连接被复用时，
+用户 B 可能继承用户 A 的项目范围。
+```
+
+如果只有只读事务，没有只读账号：
+
+```text
+某个忘记开启 readonly=True 的代码分支，
+可能使用高权限账号修改数据库。
+```
 
 ⭐ 最终应该形成的认识是：
 
 ```text
-analytics View 决定“允许沿哪条查询路线读取哪些业务字段”；
-security_invoker 决定“这条路线使用谁的数据库权限”；
-business Table 上的 RLS 决定“路线经过的每一行是否属于当前 Scope”。
+平台员工账号决定“这次请求是谁”；
+Dataset Grant 决定“这个人能看哪些项目”；
+PostgreSQL 只读账号决定“应用最多能做什么”；
+只读事务决定“这一次执行绝不能写”；
+事务级 app.scope_ids 把员工范围安全交给 RLS；
+RLS 决定“每一行最终是否可见”。
 ```
 
-三者组合后，模型可以自由生成查询条件，但不能自由扩大数据边界。
+它们组合后，模型可以自由生成查询条件，但不能获得数据库写权限，也不能自由扩大员工的
+数据范围。
 
-# 第三部分：自己动手做一个最小 NL2SQL，再理解工程为什么更复杂
+# 第三部分：自己动手做一个最小 NL2SQL，再理解 SQLGlot
 
 ## 3.1 第一步：用 Pydantic 定义模型必须交回什么
 
@@ -3935,6 +4486,91 @@ Select
 
 顺序很重要。例如必须先知道 CTE 名，才能避免把 CTE 当作数据库白名单视图误拒绝。
 
+
+
+### exp对象的使用：
+
+这里的 `exp` **不是 PostgreSQL 的语法**，而是 SQLGlot 中 `expressions` 模块的简称：
+
+```python
+from sqlglot import exp
+```
+
+它里面定义了各种 **SQL AST 节点类型**，例如：
+
+```python
+exp.Table   # 表引用节点
+exp.CTE     # CTE节点
+exp.Column  # 字段节点
+exp.Select  # SELECT节点
+exp.Where   # WHERE节点
+```
+
+SQLGlot 把 SQL 解析成 AST 后，你可以用这些类型查找特定结构。官方文档也使用 `exp.Table` 配合 `find_all()` 遍历 SQL 中的表节点。([SqlGlot](https://sqlglot.com/?utm_source=chatgpt.com))
+
+例如：
+
+```python
+tree.find_all(exp.Table)
+```
+
+含义是：
+
+> 遍历整棵 SQL AST，找出所有类型为 `Table` 的节点。
+
+在你的代码中：
+
+```python
+[table.sql() for table in tree.find_all(exp.Table)]
+```
+
+会查找 SQL 中的表引用，包括：
+
+```text
+analytics.asset_catalog
+cheap_assets
+```
+
+其中 `cheap_assets` 虽然是 CTE 名称，但在外层：
+
+```sql
+FROM cheap_assets
+```
+
+中仍然表现为一个表引用节点。
+
+而：
+
+```python
+tree.find_all(exp.CTE)
+```
+
+专门查找 CTE 定义节点：
+
+```sql
+cheap_assets AS (...)
+```
+
+最后：
+
+```python
+cte.alias_or_name
+```
+
+取得 CTE 的名称：
+
+```text
+cheap_assets
+```
+
+所以可以把 `exp` 简单理解为：
+
+> **SQLGlot 提供的 AST 节点类型集合，用来识别和操作 SQL 中的表、字段、CTE、SELECT 等结构。**
+
+
+
+
+
 ## 3.4 第四步：理解 :p1 为什么要变成 $1
 
 模型输出：
@@ -3953,7 +4589,7 @@ parameters 是：
 }
 ```
 
-asyncpg 不使用 `:project`，而使用 PostgreSQL 位置参数：
+asyncpg 不使用 `:project`，而使用 **PostgreSQL 位置参数**：
 
 ```sql
 WHERE project_name = $1
@@ -4029,6 +4665,462 @@ async def query_assets() -> list[asyncpg.Record]:
 到这里，你已经做出了一个最小 NL2SQL 执行链。当前工程比它复杂，是因为还要处理两个
 Dataset、敏感数据、RBAC、审计、SSE、Agent 报告和错误分类。
 
+## 3.6、数据库连接池 Pool 的使用：
+
+### `pool` 数据库连接池是什么
+
+`pool` 是一组可重复使用的 PostgreSQL 连接，而不是某一个连接。
+
+```text
+连接池 pool
+├── connection 1
+├── connection 2
+├── connection 3
+└── ...
+```
+
+应用查询数据库时：
+
+```text
+从连接池借一个连接
+→ 执行查询
+→ 把连接归还连接池
+```
+
+这样就不需要每次请求都重新建立数据库连接。`asyncpg` 官方也建议服务器应用使用连接池处理频繁、短时间的数据库访问。当前 `create_pool()` 默认的 `min_size` 和 `max_size` 都是 10。([MagicStack](https://magicstack.github.io/asyncpg/current/usage.html?utm_source=chatgpt.com))
+
+------
+
+### 整段代码的执行流程
+
+```mermaid
+flowchart TD
+    A[创建连接池] --> B[从连接池借出一个连接]
+    B --> C[开启只读事务]
+    C --> D[设置查询和锁超时]
+    D --> E[设置当前请求的RLS范围]
+    E --> F[执行参数化SELECT]
+    F --> G[事务结束]
+    G --> H[连接归还连接池]
+    H --> I[关闭整个连接池]
+```
+
+------
+
+### 1. 创建连接池
+
+```python
+pool = await asyncpg.create_pool(
+    os.environ["GAME_DATABASE_URL"]
+)
+```
+
+`GAME_DATABASE_URL` 保存 PostgreSQL 连接地址，例如：
+
+```text
+postgresql://user:password@localhost:5432/game_db
+```
+
+`create_pool()` 会创建一个 `Pool` 对象，由它管理若干数据库连接。
+
+注意区分：
+
+```text
+pool        = 管理多个连接的连接池
+connection  = 从池中借出来的一个具体连接
+```
+
+------
+
+### 2. 从连接池借一个连接
+
+```python
+async with pool.acquire() as connection:
+```
+
+`pool.acquire()` 表示：
+
+> 从连接池中获取一个当前空闲的数据库连接。
+
+执行完 `async with` 后，这个连接会自动**归还连接池**，而不是立即关闭。发生异常时也会自动归还。官方示例同样使用 `async with pool.acquire()` 管理连接。([MagicStack](https://magicstack.github.io/asyncpg/current/usage.html?utm_source=chatgpt.com))
+
+如果池里的连接都在使用，新的协程会等待其他请求归还连接。
+
+------
+
+### 3. 开启只读事务
+
+```python
+async with connection.transaction(readonly=True):
+```
+
+这会在当前连接上开启一个只读事务。
+
+正常结束时：
+
+```text
+提交事务
+```
+
+发生异常时：
+
+```text
+回滚事务
+```
+
+`readonly=True` 表示该事务只允许执行只读操作，用于防止意外写入。`Connection.transaction()` 是 asyncpg 官方提供的事务管理方式。([MagicStack](https://magicstack.github.io/asyncpg/current/usage.html?utm_source=chatgpt.com))
+
+------
+
+### 4. 设置查询超时
+
+```python
+await connection.execute(
+    "SET LOCAL statement_timeout = '8s'"
+)
+```
+
+含义是：
+
+> 当前事务中的单条 SQL 最多运行 8 秒。
+
+查询超过 8 秒，PostgreSQL 会终止它。
+
+```python
+await connection.execute(
+    "SET LOCAL lock_timeout = '1s'"
+)
+```
+
+含义是：
+
+> 当前事务等待数据库锁最多等待 1 秒。
+
+使用 `SET LOCAL` 后，设置只在当前事务中生效；事务提交或回滚后会自动恢复，不会污染连接池中这个连接的下一次使用。([PostgreSQL](https://www.postgresql.org/docs/current/sql-set.html?utm_source=chatgpt.com))
+
+这对连接池很重要，因为同一个物理连接之后可能会借给另一个请求。
+
+------
+
+### 5. 设置当前请求的 RLS 范围
+
+```python
+await connection.fetchval(
+    "SELECT set_config('app.scope_ids', $1, true)",
+    "game_p1",
+)
+```
+
+它相当于在当前事务中设置：
+
+```text
+app.scope_ids = game_p1
+```
+
+你的 RLS 策略可以通过：
+
+```sql
+current_setting('app.scope_ids', true)
+```
+
+读取这个值，从而只返回 `game_p1` 范围内的数据。
+
+这里的第三个参数：
+
+```python
+True
+```
+
+表示设置只在当前事务中有效，作用与 `SET LOCAL` 类似。PostgreSQL 文档说明，`set_config` 提供了与 `SET` 对应的功能。([PostgreSQL](https://www.postgresql.org/docs/current/sql-set.html?utm_source=chatgpt.com))
+
+`fetchval()` 会取查询结果第一行的第一个值。这里 `set_config()` 会返回设置后的值，但代码没有使用这个返回值；调用它的主要目的是完成配置。
+
+------
+
+### 6. 执行参数化查询
+
+```python
+return await connection.fetch(
+    """
+    SELECT asset_name, cost_yuan
+    FROM analytics.asset_catalog
+    WHERE project_name = $1
+    LIMIT 11
+    """,
+    "星港远征",
+)
+```
+
+`$1` 是 PostgreSQL 参数占位符：
+
+```text
+$1 → "星港远征"
+```
+
+最终查询逻辑相当于：
+
+```sql
+WHERE project_name = '星港远征'
+```
+
+但不会通过字符串拼接生成 SQL，因此更加安全。asyncpg 使用 PostgreSQL 原生的 `$n` 参数语法。([MagicStack](https://magicstack.github.io/asyncpg/current/usage.html?utm_source=chatgpt.com))
+
+`connection.fetch()` 返回：
+
+```python
+list[asyncpg.Record]
+```
+
+每个 `Record` 代表一行：
+
+```python
+record["asset_name"]
+record["cost_yuan"]
+```
+
+------
+
+### 7. `return` 后为什么仍然会关闭连接池
+
+虽然代码在这里执行了：
+
+```python
+return await connection.fetch(...)
+```
+
+Python 仍会先执行：
+
+```python
+finally:
+    await pool.close()
+```
+
+完整顺序是：
+
+```text
+获取查询结果
+→ 结束只读事务
+→ 把connection归还pool
+→ 执行finally
+→ 关闭整个pool
+→ 返回查询结果
+```
+
+------
+
+### `fetch()` 是什么
+
+```python
+rows = await connection.fetch(
+    """
+    SELECT asset_name, cost_yuan
+    FROM analytics.asset_catalog
+    WHERE project_name = $1
+    LIMIT 11
+    """,
+    "星港远征",
+)
+```
+
+`fetch()` 用于执行查询，并返回**全部结果行**。
+
+返回类型大致是：
+
+```python
+list[asyncpg.Record]
+```
+
+例如数据库返回：
+
+| asset_name | cost_yuan |
+| ---------- | --------- |
+| 魔法剑模型 | 1200      |
+| 城堡场景   | 2800      |
+
+Python 中得到：
+
+```python
+[
+    <Record asset_name='魔法剑模型' cost_yuan=1200>,
+    <Record asset_name='城堡场景' cost_yuan=2800>,
+]
+```
+
+可以这样读取：
+
+```python
+for row in rows:
+    print(row["asset_name"])
+    print(row["cost_yuan"])
+```
+
+所以可以简单理解为：
+
+```text
+fetch()
+→ 获取查询返回的所有行、所有列
+```
+
+如果没有查询到数据，则返回空列表：
+
+```python
+[]
+```
+
+asyncpg 官方将 `fetch()` 的返回值定义为由 `asyncpg.Record` 组成的列表。([MagicStack](https://magicstack.github.io/asyncpg/current/_modules/asyncpg/connection.html?utm_source=chatgpt.com))
+
+------
+
+### `fetchval()` 是什么
+
+```python
+value = await connection.fetchval(
+    "SELECT set_config('app.scope_ids', $1, true)",
+    "game_p1",
+)
+```
+
+`fetchval()` 用于执行查询，并只返回：
+
+> **第一行中的某一个字段，默认是第一列。**
+
+例如：
+
+```python
+count = await connection.fetchval(
+    "SELECT COUNT(*) FROM analytics.asset_catalog"
+)
+```
+
+如果数据库结果是：
+
+| count |
+| ----- |
+| 25    |
+
+那么 `count` 直接是：
+
+```python
+25
+```
+
+而不是：
+
+```python
+<Record count=25>
+```
+
+也不是：
+
+```python
+[<Record count=25>]
+```
+
+所以可以简单理解为：
+
+```text
+fetchval()
+→ 获取第一行、第一列的单个值
+```
+
+如果查询没有返回任何行，通常返回：
+
+```python
+None
+```
+
+`fetchval()` 也可以通过 `column` 参数选择其他列，但默认使用第 `0` 列，也就是第一列。([MagicStack](https://magicstack.github.io/asyncpg/current/_modules/asyncpg/connection.html?utm_source=chatgpt.com))
+
+------
+
+### 当前代码中的 `fetchval()`
+
+这段 SQL：
+
+```sql
+SELECT set_config('app.scope_ids', $1, true)
+```
+
+`set_config()` 设置完成后，会返回设置进去的值。
+
+因此：
+
+```python
+value = await connection.fetchval(
+    "SELECT set_config('app.scope_ids', $1, true)",
+    "game_p1",
+)
+```
+
+得到的 `value` 大致是：
+
+```python
+"game_p1"
+```
+
+不过原代码没有保存这个返回值：
+
+```python
+await connection.fetchval(...)
+```
+
+说明这里的主要目的不是读取结果，而是完成：
+
+```text
+app.scope_ids = game_p1
+```
+
+这个数据库会话配置。
+
+------
+
+### 两者的区别
+
+| 方法         | 返回内容         | 典型用途                     |
+| ------------ | ---------------- | ---------------------------- |
+| `fetch()`    | 所有结果行       | 查询列表、表格数据           |
+| `fetchval()` | 第一行的一个字段 | 查询数量、总金额、单个配置值 |
+
+对应当前代码：
+
+```python
+await connection.fetchval(...)
+```
+
+负责设置并取得单个配置值。
+
+```python
+await connection.fetch(...)
+```
+
+负责取得资产列表中的多行数据。
+
+### 最简单的理解
+
+这段代码中的关系是：
+
+```text
+pool
+= 整个数据库连接仓库
+
+pool.acquire()
+= 借一个连接
+
+connection
+= 当前请求实际使用的连接
+
+connection.transaction()
+= 在这个连接上开启一次事务
+
+退出 acquire()
+= 连接归还池中
+
+pool.close()
+= 关闭整个连接池及其所有连接
+```
+
+这段示例的事务、超时和 RLS 上下文设计是合理的；主要需要调整的是：**连接池不应该在每次查询中创建和关闭，而应该在应用生命周期内复用。**
+
 # 第四部分：跟踪真实游戏查询，看每个变量怎样变化
 
 ## 4.1 浏览器提交的不是一句孤立文本
@@ -4080,32 +5172,236 @@ Dataset Grant             = game_test / game_p1
 
 这样后端不会猜测用户到底想查询还是生成文档。
 
-## 4.2 API 为什么在 Router 前直接分流
+## 4.2 同样是 `action=query`，为什么房地产与游戏会走不同路线
 
-`rag_chat_endpoint()` 位于 `rag_chat_routes.py:48`。关键分支可以读成：
+旧实现看到 `dataset_id + action=query` 就在 API 中直接执行 NL2SQL。这样做能够保护敏感
+房地产问题，却产生了一个新的问题：游戏 Dataset 是非敏感的，用户的问题也不一定只需要
+数据库。
+
+例如下面三个问题都选择了 `game_test/query`，但它们需要的能力完全不同：
+
+```text
+问题 A：查询《星港远征》中已授权 3D 模型的名称和费用。
+问题 B：知识库中的《星港远征资产选型报告》推荐了哪些资产？
+问题 C：结合设计文档与资产费用，分析哪些资产适合当前项目。
+```
+
+- A 只需要数据库，应该进入 `structured_data_query`；
+- B 只需要一次知识库检索，应该进入 `simple_rag`；
+- C 同时需要文档事实与数据库事实，应该进入 `question_decomposition`，再由 Research
+  Worker 判断是否调用 `knowledge_retrieval` 和 `nl2sql_query`。
+
+所以现在的 API 不再用 Python 代码写死“游戏一定直接执行 NL2SQL”。它先从平台数据库
+表 `nl2sql_datasets` 取得 Dataset 定义，再读取：
+
+```text
+privacy_classification = sensitive | non_sensitive
+```
+
+这个字段决定的是**能否让普通 Router 看到问题**，不是 Router 的最终意图。
+
+### 4.2.1 敏感 Dataset：仍然在 Router 前直达 NL2SQL
+
+房地产 Dataset 的配置是：
+
+```text
+dataset_id                 = real_estate_test
+privacy_classification     = sensitive
+```
+
+`rag_chat_endpoint()` 先执行 `authorize_action()`。确认当前员工有功能权限和
+`real_estate_test` Grant 后，如果隐私等级是 `sensitive`，立即调用
+`Nl2SqlService.query()`：
 
 ```python
-if req.dataset_id is not None and req.nl2sql_action == "query":
-    result = await nl2sql_service.query(
-        user=user,
-        dataset_id=req.dataset_id,
-        question=req.query,
-    )
+if (
+    req.nl2sql_action == "query"
+    and dataset.privacy_classification == "sensitive"
+):
+    result = await nl2sql_service.query(...)
     return RagChatResponse(
-        answer=result.summary,
         route_intent="structured_data_query",
         route_confidence=1.0,
+        route_source="rule",
         nl2sql_result=result,
         ...
     )
 ```
 
-这里没有调用通用 Router。原因不是为了少一次模型调用，而是 Router 不能成为安全事实
-来源。假如 Router 把 `game_test` 改成另一个 Dataset，或者把房地产 query 判断成普通
-RAG，隐私边界就被模型决定了。
+这条分支的关键效果不是“更快”，而是：
 
-`route_confidence=1.0` 也不是说模型“非常确信”，而是说明这次路由由请求字段和后端规则
-确定，不存在概率判断。
+```text
+房地产原始问题
+× 不进入 query rewrite 模型
+× 不进入 AgentTaskRouter 模型
+× 不进入普通 RAG 回答模型
+→ 直接进入本地标记化 + 受控 NL2SQL
+```
+
+`route_source="rule"` 表示路由来自后端确定规则；`route_confidence=1.0` 不是模型信心，
+而是“没有概率分类参与这次选择”。
+
+### 4.2.2 非敏感 Dataset：先鉴权，再让现有 Router 判断任务类型
+
+游戏 Dataset 的配置是：
+
+```text
+dataset_id                 = game_test
+privacy_classification     = non_sensitive
+```
+
+API 仍然先执行 `authorize_action()`，并把可信的授权结果放进请求内部字段
+`_nl2sql_authorization`。但是它不会在 API 中立即执行 SQL，而是继续调用原有
+`RagAgentPipeline`。
+
+进入 `AgentTaskRouter.route()` 时，后端额外传入：
+
+```python
+dataset_query_bound=True
+```
+
+Router 仍然使用原来的完整 Prompt。代码只修改了 `structured_data_query` 的说明，并在
+Prompt 末尾追加一个 Dataset 场景上下文，要求模型只能从下面四项选择：
+
+```text
+structured_data_query
+simple_rag
+question_decomposition
+clarification_required
+```
+
+为什么不让它选择 `web_research` 或 `knowledge_document_management`？
+
+- 当前 action 明确是 `query`，不是创建文档；
+- `allow_web_fallback=true` 只是允许复杂研究中的 Worker 在证据不足时使用 Web，
+  不能把整个请求强行改判成顶层联网任务；
+- 如果模型越界返回不允许的意图，后端会把结果收口成
+  `clarification_required`，而不是照单执行。
+
+⭐ 这里要抓住信任边界：
+
+> Router 可以判断“本次应该使用数据库、知识库还是多步骤研究”，但它不能选择
+> Dataset、不能提供 Scope、不能跳过权限，也不能把敏感 Dataset 改成非敏感。
+
+### 4.2.3 Router 选择 `structured_data_query` 后发生什么
+
+当 Router 返回：
+
+```json
+{
+  "intent": "structured_data_query",
+  "confidence": 1.0,
+  "reason": "问题只需要一次结构化数据库查询"
+}
+```
+
+`decide_next_action_node()` 把 Graph 内部路由写成：
+
+```text
+route = structured_data_query
+```
+
+LangGraph 随后进入 `call_nl2sql_query` 节点。这个节点从服务端 State 读取：
+
+```text
+current_user = 已认证员工
+dataset_id   = API 已绑定的 game_test
+query        = 当前有效问题
+```
+
+再调用 `Nl2SqlService.query()`。模型没有机会传入 `dataset_id` 或 `scope_ids`。
+
+2026-07-31 的 Web 验收页面实际观察到：
+
+```json
+{
+  "event": "agent_route_selected",
+  "data": {
+    "intent": "structured_data_query",
+    "source": "model",
+    "confidence": 1,
+    "reason": "router_selected_structured_data_query"
+  }
+}
+```
+
+随后才出现 `nl2sql_sql_generated` 和 `nl2sql_result`。这证明非敏感游戏 query 并非在
+API 中被写死为 NL2SQL，而是由现有 Router 选择后进入结构化查询节点。
+
+### 4.2.4 `simple_rag` 能不能顺便调用 `nl2sql_query`
+
+不能。`simple_rag` 的含义就是“这个问题不需要多步骤 Tool Loop”。它继续复用原来的：
+
+```text
+should_retrieve_for_query()
+→ direct_answer 或 knowledge_retrieval
+→ rerank
+→ 生成答案
+```
+
+这条路径没有一个让模型反复选择多个工具的 Research Worker，所以不会看到
+`nl2sql_query`。
+
+这不是功能缺失，而是 Router 已经先做了任务复杂度判断：
+
+- 只需要数据库：`structured_data_query`，由专用 Graph 节点执行一次 NL2SQL；
+- 只需要知识库：`simple_rag`，沿用原简单检索链路；
+- 需要文档与数据库组合：`question_decomposition`，创建 TaskPlan 并进入 Research
+  Worker Tool Loop。
+
+进入 `question_decomposition` 后，`ResearchToolLoop._build_available_task_tools()` 会
+检查 TaskPlan 是否保存了服务端绑定的 Dataset。如果存在，才给 Worker 增加：
+
+```text
+knowledge_retrieval
+nl2sql_query
+web_search（仅策略允许且服务已配置时）
+MCP tools（仅现有配置允许时）
+```
+
+`nl2sql_query` 的参数 Schema 只有：
+
+```json
+{
+  "question": "要从业务数据库核实的事实",
+  "max_rows": 100
+}
+```
+
+里面没有 `dataset_id`、`scope_ids`、数据库 URL 或账号。Dataset 来自 TaskPlan 中由服务端
+冻结的 `research_policy.dataset_id`，用户身份来自当前 Worker Request。Agent 可以决定
+是否调用该工具，却不能通过 Tool 参数换库或扩权。
+
+### 4.2.5 用四次真实 Web 验收把分流规则串起来
+
+前面讲的是代码为什么这样分流。现在把 2026-07-31 至 2026-08-01 在
+`rag_agent_manual_acceptance.html` 中真实观察到的四个结果放在一起。四次请求都显式绑定
+Dataset，但后端没有因此把它们全部当成同一种数据库查询：
+
+| 用户问题需要什么 | Dataset 隐私等级 | 页面观察到的路由 | 这条结果证明什么 |
+|---|---|---|---|
+| 只查询游戏资产库 | 非敏感 | `structured_data_query`，`source=model` | Router 判断一次数据库查询足够回答 |
+| 只读取《星港远征资产选型报告》 | 非敏感 | `simple_rag`，`source=model` | 绑定 Dataset 不会强迫知识库问题执行 SQL |
+| 联网资料 + 知识库 + 待核实数据库事实 | 非敏感 | `question_decomposition`，`source=model` | 多来源复杂问题进入现有多 Agent 研究链路 |
+| 查询云栖雅苑可售房源 | 敏感 | 没有 Router 事件，直接出现 `nl2sql_sql_generated` | 隐私规则在普通 Router 模型之前生效 |
+
+这里的 `source=model` 表示“路由意图由 Router 模型判断”，不表示模型获得了数据库权限。
+模型判断完以后，Dataset、用户、Scope 和 Tool 仍由服务端绑定。房地产请求没有
+`source=model`，是因为它根本没有进入 Router：API 读取平台表中的
+`privacy_classification=sensitive` 后直接选择受保护链路。
+
+房地产员工第一次查询得到 0 行，进一步证明 RLS 不是文档里的装饰。原因是 Grant 中的
+Scope 被错写成 `real_p1`，而业务库真实项目 ID 是 `re_p1`。PostgreSQL 不会猜测两个值
+“看起来相近”，因此返回零行。修正 Grant 后，同一个页面问题返回 12 行，成功请求为：
+
+```text
+request_id / trace_id = f09ee65f891f40d28b2b179f266a4f13
+query_id              = 9258c606-4c71-437c-bdaa-00406362ae2a
+```
+
+⭐ 这个失败案例帮助我们区分两类问题：Router 决定“使用哪条能力链路”，Grant 与 RLS
+决定“这名员工最终能看到哪些行”。路由正确并不自动保证 Scope 配置正确，两层都需要从
+真实 Web 请求中验证。
 
 ## 4.3 _query_impl() 进入时手里有什么
 
@@ -4121,7 +5417,7 @@ max_rows   = None 或 API 给定上限
 函数第一步不是调用模型，而是：
 
 ```python
-dataset, authorization = await self.authorize_action(...)
+dataset, authorization = await self.authorize_action(...) # 检查当前用户权限
 ```
 
 返回两个服务端对象：
@@ -4137,7 +5433,7 @@ DatasetAuthorization
 └── scope_ids=("game_p1", ...)
 ```
 
-注意 `scope_ids` 从来不来自请求 JSON。它只能由当前用户、角色和部门 Grant 计算出来。
+注意 `scope_ids` 从来不来自请求 JSON。它只能由当前用户、角色和部门 + Grant 表中的权限数据 计算出来。
 
 ## 4.4 SchemaCatalog 实际解决的不是“把 DDL 发给模型”
 
@@ -4169,7 +5465,7 @@ COMMENT: 游戏资产目录明细；每行一个资产……
 - cost_yuan: 费用, 成本
 ```
 
-模型因此知道“费用”对应 `cost_yuan`，也知道 `polygon_count` 对非模型可能为空。
+模型因此知道“费用”对应 `cost_yuan`，也知道 `polygon_count` 对 游戏业务的非模型资产数据 可能为空。
 
 ## 4.5 _generate_sql() 的两条消息各负责什么
 
@@ -4368,6 +5664,10 @@ summary             = 未查询到《山海旅人》的游戏资产。
 
 ## 5.2 _tokenize_sensitive_question() 怎样建立实体字典
 
+~~~py
+# 目前工程中 建立替换的实体字典 包含了楼盘项目名称，但是实际敏感的数据只有面积之类的，所以这个规则是可以更改的
+~~~
+
 函数位于 `service.py:286`。它先在本地只读事务中查询：
 
 ```sql
@@ -4403,6 +5703,211 @@ FROM analytics.unit_inventory
 
 普通数字使用专门正则识别。代码没有使用 `\w` 作为边界，因为 Python 的 `\w` 也包含
 中文，“低于2500000元”中的数字可能因此识别失败。
+
+
+
+~~~py
+# 使用硬编码正则规则规则怎么实现每次都能从用户query中提取出楼盘名称之类的信息？
+~~~
+
+它不能保证每次都从用户 Query 中正确提取楼盘名称。
+
+当前代码识别楼盘名称时，主要使用的不是正则表达式，而是：
+
+> 从数据库读取全部已知楼盘名称，然后在用户问题中做精确的字符串包含匹配。
+
+正则表达式目前主要用于识别数字和“二居、三居”这类固定格式。
+
+### 楼盘名称是怎么识别的？
+
+假设数据库中存在这些楼盘：
+
+```
+云栖雅苑
+滨江壹号
+星河花园
+```
+
+程序先从数据库读取这些值，建立本地字典：
+
+```
+aliases = {
+    "云栖雅苑": ("PROJECT_NAME", "云栖雅苑"),
+    "滨江壹号": ("PROJECT_NAME", "滨江壹号"),
+    "星河花园": ("PROJECT_NAME", "星河花园"),
+}
+```
+
+然后逐个判断楼盘名是否原样出现在用户问题中：
+
+```
+for alias in aliases:
+    if alias in question:
+        # 找到该楼盘
+```
+
+例如用户输入：
+
+```
+查询云栖雅苑中总价低于250万的房源
+```
+
+因为：
+
+```
+"云栖雅苑" in "查询云栖雅苑中总价低于250万的房源"
+```
+
+结果为 `True`，程序才能把它替换成：
+
+```
+查询__PROJECT_NAME_1__中总价低于__NUMBER_1__万的房源
+```
+
+实现位置：[service.py (line 321)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/nl2sql/service.py:321)
+
+### 哪些信息使用正则表达式？
+
+#### 数字
+
+正则表达式负责发现：
+
+```
+250
+120.5
+3
+```
+
+然后替换为：
+
+```
+__NUMBER_1__
+__NUMBER_2__
+```
+
+它只知道这是一个数字，不知道这个数字究竟代表价格、面积还是房间数量。
+
+#### “二居、三居”
+
+代码使用固定规则：
+
+```
+r"[二两三四](?=居)"
+```
+
+它可以从下面的问题中识别“三”：
+
+```
+查询三居房源
+```
+
+但目前只能识别代码列出的“二、两、三、四”。
+
+### 为什么看起来每次都能识别？
+
+在目前的测试问题中，用户使用的楼盘名称与数据库值完全一致：
+
+```
+数据库：云栖雅苑
+用户问题：查询云栖雅苑的房源
+```
+
+所以精确字符串匹配可以成功。
+
+但下面这些表达就不一定能够识别。
+
+#### 使用简称
+
+```
+数据库：云栖雅苑
+用户问题：查询云栖的房源
+```
+
+除非数据库实体目录也收录了“云栖”这个别名，否则识别失败。
+
+#### 出现错别字
+
+```
+查询云栖雅园的房源
+```
+
+数据库保存的是“云栖雅苑”，字符串不一致，识别失败。
+
+#### 使用代词
+
+```
+这个楼盘还有哪些三居室？
+```
+
+当前函数只处理本次问题，不利用对话上下文判断“这个楼盘”指什么，因此无法提取楼盘名。
+
+#### 名称中加入空格
+
+```
+查询云栖 雅苑的房源
+```
+
+如果数据库中保存的是连续的“云栖雅苑”，也无法精确匹配。
+
+#### 使用拼音或英文别名
+
+```
+查询 Yunqi Yayuan 的库存
+```
+
+数据库中如果没有对应别名，同样无法识别。
+
+### 识别失败会发生什么？
+
+这是最需要注意的地方。
+
+假设用户输入：
+
+```
+查询云栖雅园的房源
+```
+
+因为“云栖雅园”没有匹配到数据库中的“云栖雅苑”，标记化结果可能仍然是：
+
+```
+查询云栖雅园的房源
+```
+
+这段未被识别的文字随后可能进入外部 SQL 模型。
+
+因此，当前方案并不是：
+
+```
+任意用户表达
+→ 一定识别敏感实体
+```
+
+而是：
+
+```
+用户表达
+→ 与数据库实体目录进行精确匹配
+→ 匹配成功才标记化
+```
+
+### 当前实现的准确能力边界
+
+| 用户输入       | 当前能否识别 | 原因                   |
+| -------------- | ------------ | ---------------------- |
+| `云栖雅苑`     | 能           | 与数据库值完全一致     |
+| `云栖`         | 不一定       | 需要单独维护别名       |
+| `云栖雅园`     | 不能         | 存在错别字             |
+| `云栖 雅苑`    | 不能         | 字符串格式不同         |
+| `这个楼盘`     | 不能         | 需要对话实体解析       |
+| `Yunqi Yayuan` | 不一定       | 需要维护英文或拼音别名 |
+| `250万`        | 能提取数字   | 正则表达式识别 `250`   |
+| `三居`         | 能           | 存在固定中文房间数规则 |
+
+所以，不能将当前实现描述成“硬编码正则每次都能提取楼盘名称”。准确描述应该是：
+
+> 当前使用数据库实体目录加精确字符串匹配识别楼盘、楼栋、地址等实体；使用正则识别数字和部分房间数表达。它能覆盖确定性的测试场景，但不能保证识别任意自然语言表达。
+
+
 
 ## 5.3 跟踪 tokenized 和 vault 两个变量
 
@@ -4448,6 +5953,270 @@ vault = {
 
 Vault 只是 `_query_impl()` 局部变量。它不写 PostgreSQL、不写 TaskPlan、不写日志，也
 不作为参数传给 `_generate_sql()`。
+
+> 识别出敏感信息以后，系统为什么要同时保存 `tokenized` 和 `vault` 两份数据，以及这两份数据分别交给谁。
+
+可以把它理解成“替身”和“密码本”。
+
+| 变量        | 保存什么                   | 谁能看到           |
+| ----------- | -------------------------- | ------------------ |
+| `tokenized` | 使用占位符替换真实值的问题 | 外部模型可以看到   |
+| `vault`     | 占位符和真实值的对应关系   | 只有本地后端能看到 |
+
+### 从原始问题开始
+
+用户输入：
+
+```
+查询云栖雅苑价格低于2500000元的可售房源
+```
+
+后端最初有两个变量：
+
+```
+tokenized = question
+vault = {}
+```
+
+此时：
+
+```
+tokenized
+# "查询云栖雅苑价格低于2500000元的可售房源"
+
+vault
+# {}
+```
+
+`tokenized`暂时还是原问题，`vault`还是空字典。
+
+### 发现楼盘名称后
+
+后端在数据库实体目录中匹配到：
+
+```
+云栖雅苑
+```
+
+于是生成占位符：
+
+```
+__PROJECT_NAME_1__
+```
+
+两份数据分别发生变化：
+
+```
+tokenized = "查询__PROJECT_NAME_1__价格低于2500000元的可售房源"
+
+vault = {
+    "__PROJECT_NAME_1__": "云栖雅苑",
+}
+```
+
+这一步不是单纯删除“云栖雅苑”。
+
+它同时完成两件事：
+
+1. 从模型可见的问题中移除真实楼盘名。
+2. 在本地保存“占位符对应哪个真实值”。
+
+### 发现价格后
+
+数字 `2500000`被替换成：
+
+```
+__NUMBER_1__
+```
+
+结果变成：
+
+```
+tokenized = (
+    "查询__PROJECT_NAME_1__价格低于"
+    "__NUMBER_1__元的可售房源"
+)
+
+vault = {
+    "__PROJECT_NAME_1__": "云栖雅苑",
+    "__NUMBER_1__": 2500000,
+}
+```
+
+这里出现了一个重要规律：
+
+- `tokenized`中的真实信息越来越少。
+- `vault`中保存的真实对应关系越来越多。
+
+### 最终得到两份用途不同的数据
+
+标记化完成后，大致得到：
+
+```
+tokenized = (
+    "查询__PROJECT_NAME_1__价格低于__NUMBER_1__元的"
+    "__INVENTORY_STATUS_1__房源"
+)
+```
+
+以及：
+
+```
+vault = {
+    "__PROJECT_NAME_1__": "云栖雅苑",
+    "__NUMBER_1__": 2500000,
+    "__INVENTORY_STATUS_1__": "可售",
+}
+```
+
+接下来，这两份数据会走向不同的地方：
+
+```
+tokenized
+   └──发送给外部 SQL 模型
+
+vault
+   └──留在本地后端内存
+```
+
+外部模型看到的是：
+
+```
+查询__PROJECT_NAME_1__价格低于__NUMBER_1__元的
+__INVENTORY_STATUS_1__房源
+```
+
+它看不到：
+
+```
+云栖雅苑
+2500000
+可售
+```
+
+### 模型怎样生成SQL？
+
+模型根据占位符的类型生成参数化SQL：
+
+```sql
+SELECT
+    building_name,
+    unit_type_name,
+    area_sqm,
+    total_price
+FROM logical_unit_inventory
+WHERE project_name = :p1
+  AND total_price < :p2
+  AND inventory_status = :p3
+```
+
+同时返回参数引用：
+
+```
+{
+  "p1": "__PROJECT_NAME_1__",
+  "p2": "__NUMBER_1__",
+  "p3": "__INVENTORY_STATUS_1__"
+}
+```
+
+模型只是说：
+
+```
+:p1 使用楼盘占位符
+:p2 使用数字占位符
+:p3 使用库存状态占位符
+```
+
+它仍然不知道这些参数的真实值。
+
+### 后端如何恢复真实参数？
+
+SQL执行前，后端使用 Vault 查找：
+
+```
+vault["__PROJECT_NAME_1__"]
+# "云栖雅苑"
+
+vault["__NUMBER_1__"]
+# 2500000
+
+vault["__INVENTORY_STATUS_1__"]
+# "可售"
+```
+
+于是模型返回的参数引用：
+
+```
+{
+    "p1": "__PROJECT_NAME_1__",
+    "p2": "__NUMBER_1__",
+    "p3": "__INVENTORY_STATUS_1__",
+}
+```
+
+在本地变成：
+
+```
+{
+    "p1": "云栖雅苑",
+    "p2": 2500000,
+    "p3": "可售",
+}
+```
+
+然后后端通过数据库参数绑定执行查询。
+
+### 为什么不能只保留 `tokenized`？
+
+如果只保留：
+
+```
+__PROJECT_NAME_1__
+```
+
+却没有 Vault，后端最后就不知道它代表“云栖雅苑”，SQL也无法使用真实值查询数据库。
+
+### 为什么不能把 Vault 一起发送给模型？
+
+如果发送：
+
+```
+{
+    "__PROJECT_NAME_1__": "云栖雅苑"
+}
+```
+
+模型就能够恢复真实楼盘名，标记化失去意义。
+
+因此必须将两者分开：
+
+```
+tokenized：让模型理解查询意图
+vault：让本地后端恢复真实查询参数
+```
+
+### 这一节容易误解的地方
+
+5.3 原文逐次展示变量变化，容易让人误以为它主要在讲“提取顺序”。其实它想表达的重点不是先识别数字还是先识别库存状态，而是：
+
+> 同一个敏感值会产生两种表示：模型只能看到占位符，后端保留真实值。
+
+而且原文展示的顺序并不完全对应真实代码顺序。真实代码会先处理从数据库读取的实体别名，包括楼盘名称和库存状态，然后再处理房间数和数字。
+
+所以可以把5.3压缩成下面这条核心链路：
+
+```
+用户原问题
+    ↓ 本地识别敏感值
+标记化问题 tokenized ─────────→ 外部模型生成SQL
+    +
+请求内存 Vault ──────────────→ 本地恢复SQL参数
+                                  ↓
+                              PostgreSQL查询
+```
+
+这就是5.3真正要说明的内容：不是如何识别敏感数据，而是识别以后，如何在“不让模型看到真实值”的同时，又让数据库能够使用真实值完成查询。
 
 ## 5.4 为什么占位符必须携带类型
 
@@ -4575,25 +6344,253 @@ asyncpg 分开接收 SQL 和：
 ["云栖雅苑", "可售", 2500000]
 ```
 
-所以“Vault 回填”不是把真实楼盘名替换进 SQL 字符串，而是把占位符引用恢复成数据库
-驱动的 bind value。
+所以“Vault 回填”不是把真实楼盘名替换进 SQL 字符串，而是把占位符引用恢复成**数据库**
+**驱动的 bind value**。
 
-## 5.8 为什么实体目录读全量，最终查询却不会越权
+## 5.8 [临时解决方案] 实体替换阶段，读取全部数据但是不越权的方案
 
-一个只授权 `re_p1` 的用户可能恶意输入另一个楼盘名。如果实体目录也只查 `re_p1`，
-本地识别器看不到那个未授权名称，它就会原样进入外部模型。
+> 为了删除用户问题中可能出现的敏感名称，后端标记化程序必须认识所有楼盘名称；但是，认识这些名称不等于允许用户查询这些楼盘的数据。
 
-因此实体识别阶段临时使用 `Scope=("*",)` 读取全量别名。它只做字符串识别，不把房源
-结果返回用户。
+这一节讨论的是两个不同的权限范围：
 
-真正 `_execute_generation()` 会重新设置：
+1. 标记化阶段：后端需要知道哪些文字属于敏感实体。
+2. 业务查询阶段：用户只能查询自己被授权的楼盘数据。
 
-```text
-authorization.scope_ids
+最容易误解的地方是：`Scope=("*",)`不是把全部楼盘权限授予用户，而是后端内部在标记化阶段临时读取完整实体目录。
+
+### 用一个具体例子理解
+
+假设数据库中有两个楼盘：
+
+| Scope ID | 楼盘名称 |
+| -------- | -------- |
+| `re_p1`  | 云栖雅苑 |
+| `re_p2`  | 滨江壹号 |
+
+员工小王只拥有：
+
+```
+scope_ids = ["re_p1"]
 ```
 
-底表 RLS 根据当前用户范围执行。全量实体目录解决“不要泄露问题中的跨 Scope 名称”，
-RLS 解决“不要返回跨 Scope 数据”，两者目标不同。
+所以小王只能查询“云栖雅苑”，不能查询“滨江壹号”。
+
+但是小王可能在其他地方知道“滨江壹号”这个名称，然后故意输入：
+
+```
+查询滨江壹号有哪些可售房源
+```
+
+### 如果实体目录也按照小王的权限查询
+
+假设标记化阶段只查询：
+
+```
+scope_ids = ["re_p1"]
+```
+
+那么后端实体目录只能读到：
+
+```
+云栖雅苑
+```
+
+读不到：
+
+```
+滨江壹号
+```
+
+本地匹配器拿着下面这份目录进行匹配：
+
+```
+aliases = {
+    "云栖雅苑": ("PROJECT_NAME", "云栖雅苑")
+}
+```
+
+面对用户问题：
+
+```
+查询滨江壹号有哪些可售房源
+```
+
+它无法识别“滨江壹号”是敏感楼盘名，于是标记化结果可能是：
+
+```
+查询滨江壹号有哪些__INVENTORY_STATUS_1__房源
+```
+
+接着这个问题被发送给外部模型，“滨江壹号”就泄露了。
+
+注意：即使数据库最终通过RLS拒绝了查询，数据泄露也已经发生在模型调用阶段。
+
+因此，只有最终查询不越权还不够。发送给模型之前，也必须把未授权楼盘名称替换掉。
+
+### 当前代码怎么解决？
+
+标记化阶段临时设置：
+
+```
+await _set_scope(connection, ("*",))
+```
+
+代码位置：[service.py (line 301)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/nl2sql/service.py:301)
+
+`"*"`表示：
+
+```
+标记化程序读取全部实体目录
+```
+
+于是程序能读取：
+
+```
+aliases = {
+    "云栖雅苑": ("PROJECT_NAME", "云栖雅苑"),
+    "滨江壹号": ("PROJECT_NAME", "滨江壹号"),
+}
+```
+
+现在面对小王的问题：
+
+```
+查询滨江壹号有哪些可售房源
+```
+
+程序可以识别并替换：
+
+```
+查询__PROJECT_NAME_1__有哪些__INVENTORY_STATUS_1__房源
+```
+
+Vault在本地保存：
+
+```
+{
+    "__PROJECT_NAME_1__": "滨江壹号",
+    "__INVENTORY_STATUS_1__": "可售",
+}
+```
+
+外部模型看不到“滨江壹号”。
+
+### 读取全量目录后，为什么不会让小王查到数据？
+
+因为标记化和执行SQL是两个不同阶段，并且使用两个不同的 Scope。
+
+#### 标记化阶段
+
+```
+Scope = ["*"]
+```
+
+用途只有：
+
+```
+读取所有敏感实体名称
+→ 判断用户问题里有没有这些名称
+→ 替换成占位符
+```
+
+这个阶段不把房源查询结果返回给用户。
+
+#### SQL执行阶段
+
+真正执行模型生成的 SQL 时，代码重新设置：
+
+```
+await _set_scope(connection, authorization.scope_ids)
+```
+
+代码位置：[service.py (line 458)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/nl2sql/service.py:458)
+
+小王的真实授权仍然是：
+
+```
+authorization.scope_ids == ("re_p1",)
+```
+
+所以 PostgreSQL 实际执行查询时使用：
+
+```
+Scope = ["re_p1"]
+```
+
+底表 RLS只允许读取“云栖雅苑”的数据。
+
+即使模型生成了查询“滨江壹号”的 SQL，数据库也看不到 `re_p2` 的记录，最终不会把“滨江壹号”的房源返回给小王。
+
+### 两个阶段解决的是不同问题
+
+| 阶段         | 使用的 Scope                     | 解决的问题                             |
+| ------------ | -------------------------------- | -------------------------------------- |
+| 敏感实体识别 | `("*",)`                         | 防止问题中的任何已知敏感名称发送给模型 |
+| 最终业务查询 | 用户的 `authorization.scope_ids` | 防止用户查询未授权楼盘的数据           |
+
+可以画成：
+
+```
+用户输入“查询滨江壹号”
+          │
+          ▼
+后端标记化程序临时读取全量实体目录
+Scope = ["*"]
+          │
+          ├──发现“滨江壹号”是敏感名称
+          └──替换为 __PROJECT_NAME_1__
+          │
+          ▼
+外部模型只看到占位符
+          │
+          ▼
+后端恢复真实查询参数
+          │
+          ▼
+使用小王的真实授权执行SQL
+Scope = ["re_p1"]
+          │
+          ▼
+PostgreSQL RLS拒绝返回 re_p2 数据
+```
+
+### 为什么两个 Scope 不会串在一起？
+
+标记化读取全量目录时使用的是只读事务：
+
+```
+async with connection.transaction(readonly=True):
+    await _set_scope(connection, ("*",))
+```
+
+`set_config(..., true)`设置的是事务级配置。事务结束以后，`"*"`不会继续留在连接上。
+
+真正执行SQL时会开启另一个只读事务，并重新设置：
+
+```
+await _set_scope(connection, authorization.scope_ids)
+```
+
+所以执行阶段不会继承标记化阶段的 `"*"`。
+
+### 5.8 最核心的一句话
+
+这一节不是说：
+
+> 用户获得了查询全部楼盘的权限。
+
+而是说：
+
+> 受信任的后端标记化程序需要认识全部敏感楼盘名称，才能把用户输入中的跨权限名称也删除；真正查询数据库时，仍然严格使用当前用户的 `scope_ids`。
+
+换一种更直观的说法：
+
+```
+标记化程序可以“认识”滨江壹号，
+但小王没有权限“查看”滨江壹号的房源。
+```
+
+“认识一个敏感名称”和“获得该楼盘数据访问权限”是两件不同的事情。
 
 ## 5.9 为什么房地产结论只能在本地生成
 
@@ -4753,7 +6750,7 @@ Writer 才负责把三类信息组织成读得懂的报告。Reviewer 检查报�
 }
 ```
 
-它不会进入 query 分支，而会先调用：
+它不会进入 query 分支，而会在 API 入口无条件调用：
 
 ```python
 _, req._nl2sql_authorization = await nl2sql_service.authorize_action(
@@ -4763,14 +6760,119 @@ _, req._nl2sql_authorization = await nl2sql_service.authorize_action(
 )
 ```
 
+这里的“无条件”有一个明确前提：请求已经携带 `dataset_id`，并且
+`nl2sql_action="report"`。是否无条件调用，与 Researcher 以后有没有调用
+`nl2sql_query` 没有关系。
+
+`POST /rag/chat` 当前的判断顺序是：
+
+```py
+dataset_id + action=query
+→ 先执行 Nl2SqlService.authorize_action(action="query")
+→ sensitive：在 Router 前直接执行 Nl2SqlService.query()
+→ non_sensitive：进入 RagAgentPipeline 和 AgentTaskRouter
+
+dataset_id + action=report
+→ 先执行 Nl2SqlService.authorize_action(action="report")
+→ 通过后由服务端规则固定为文档任务，不调用外部 Router 模型
+```
+
+结构化 SSE 入口 `POST /rag/chat/stream/events` 执行相同检查。它不是只有非流式接口
+才有的保护。
+
+### 6.2.1 第一次鉴权发生在报告入口，而不是 Tool 内
+
+入口调用 `authorize_action(action="report")` 会依次确认：
+
+```text
+NL2SQL 是否启用
+→ dataset_id 是否注册且启用
+→ 该 Dataset 是否支持 report
+→ 当前账户是否拥有 data:query:execute
+→ 当前账户是否能通过 user/role/department Grant 得到至少一个 Scope
+```
+
 这一步有两个结果：
 
 1. 用户没有 NL2SQL 权限或 Dataset Grant，报告在调用外部 Router 前失败；
 2. 用户有权限，可信 `DatasetAuthorization` 被放进内部请求对象。
 
-内部字段以下划线开头，表示它不是浏览器可以提交的公共 Schema。后续 TaskPlan 会固定
-Dataset，恢复、重试和确认时再根据当前用户重新鉴权，而不是永久相信创建任务时的旧
-权限。
+房地产 Dataset 的 `report_supported=False`，所以会在这里直接返回
+`NL2SQL_SENSITIVE_REPORT_FORBIDDEN`。此时还没有创建报告 TaskPlan，也没有执行 SQL。
+
+### 6.2.2 这里“进入 Router”的准确含义
+
+入口鉴权通过后，请求会继续进入 LangGraph 的路由节点，但 Dataset 报告不会调用外部
+Router 模型。`rag_agent_nodes.py:302-311` 直接构造一个服务端规则结果：
+
+```python
+AgentRouteDecision(
+    intent="knowledge_document_management",
+    confidence=1.0,
+    reason="server_bound_nl2sql_report",
+)
+```
+
+因此准确链路是：
+
+```py
+API 入口 authorize_action(action="report") #已经确认目前需要生成报告内容，直接确定任务类型，而不是由Router节点 判断任务类型
+→ LangGraph 路由节点
+→ 服务端规则固定为 knowledge_document_management
+→ 不调用 task_router.route() 外部模型
+→ 创建带 Dataset research_policy 的 TaskPlan
+```
+
+这样做是为了防止外部 Router 把已经明确的 Dataset 报告改成普通问答或其他业务意图。
+
+### 6.2.3 如果 Researcher 没有调用 nl2sql_query，还会鉴权吗？
+
+会。第一次入口鉴权已经在 Researcher 启动之前完成，因此不取决于后续 ToolCall。
+
+但是，要区分两次不同时间的鉴权：
+
+| 鉴权时间 | 是否一定发生 | 调用链 | 目的 |
+|---|---:|---|---|
+| 报告进入 API 时 | 是 | `rag_chat_endpoint()` → `authorize_action(action="report")` | 无权限用户不能创建 Dataset 报告任务 |
+| Researcher 调用 `nl2sql_query` 时 | 只有实际调用 Tool 才发生 | `nl2sql_query()` → `Nl2SqlService.query()` → `_query_impl()` → `authorize_action(action="query")` | 使用执行当时的权限和 Scope 查询数据库 |
+
+所以有两种情况：
+
+```text
+Researcher 调用了 nl2sql_query
+→ 入口报告鉴权一次
+→ Tool 真正执行 SQL 前再次鉴权
+
+Researcher 没有调用 nl2sql_query
+→ 入口报告鉴权仍然发生
+→ 因为没有执行 Tool，不发生第二次查询鉴权
+→ 工作流最终因缺少必需工具调用而失败
+```
+
+第二次鉴权不是重复浪费。报告运行可能持续较长时间，创建 TaskPlan 后用户的角色、Grant
+或者 Dataset 状态都可能发生变化。真正访问数据库时必须重新读取当前权限，不能永久
+相信任务创建时的授权结果。
+
+### 6.2.4 `_nl2sql_authorization` 当前起什么作用
+
+`_nl2sql_authorization` 是 `RagChatRequest` 的 Pydantic `PrivateAttr`。浏览器请求体不能
+构造它，API 入口只能在服务端鉴权成功后写入。`prepare_authorized_rag_request()` 会把它
+复制到内部请求对象。
+
+需要注意当前实现边界：`build_initial_rag_agent_state()` 只把 `dataset_id` 和
+`nl2sql_action` 放进 Graph State，并没有把这个授权快照作为最终 SQL 执行凭据传给
+Researcher。TaskPlan 保存的是 Dataset 研究策略；`nl2sql_query` 真正执行时仍然调用
+`Nl2SqlService.query()` 重新鉴权。
+
+因此当前真正保证安全的是：
+
+```text
+入口 authorize_action() 阻止无权限报告进入工作流
++
+Tool 执行时 authorize_action() 使用当前账户重新计算 Scope
+```
+
+而不是让模型或 TaskPlan 长期持有第一次计算出的 `scope_ids`。
 
 ## 6.3 Researcher 得到哪些工具，为什么只给它
 
@@ -4837,6 +6939,21 @@ Researcher 可能发出：
 
 闭包调用的仍然是同一个 `Nl2SqlService.query()`。所以 API 直接查询和 Agent Tool 查询
 不会出现两套安全标准。
+
+这里还会触发一次查询时鉴权：
+
+```text
+nl2sql_query()
+→ Nl2SqlService.query()
+→ Nl2SqlService._query_impl()
+→ authorize_action(action="query")
+→ Nl2SqlAuthorizationService.authorize()
+→ 根据当前账户重新计算 Dataset Scope
+```
+
+它不会直接使用报告入口曾经计算出的 `_nl2sql_authorization`。如果用户在报告执行期间
+失去了 `data:query:execute`、Dataset Grant 已过期或 Dataset 被关闭，Tool 会在 SQL
+生成和数据库执行之前失败。
 
 成功后 Tool 返回：
 
@@ -4913,6 +7030,11 @@ missing = required - used_tools
 - query ID 是否来自服务端保存的列表。
 
 这些检查把“Prompt 要求”升级为“可执行完成条件”。
+
+因此“Researcher 没有调用 `nl2sql_query`”不会绕过数据库权限检查并生成一份缺少数据
+依据的报告。它只意味着没有发生第二次查询鉴权和 SQL 执行；第一次报告入口鉴权已经
+发生，而最终必需工具检查会把这次交付判定为失败，不允许它作为合格 Dataset 报告继续
+交付。
 
 ## 6.7 Writer、Reviewer 和 Coordinator 分别做什么
 
@@ -5381,9 +7503,9 @@ pipeline: RagPipeline
 nl2sql_service: Nl2SqlService
 ```
 
-普通请求会调用 `pipeline.run()`，Dataset query 则在它之前直接调用
-`nl2sql_service.query()`。这意味着 query 不进入 Classic、LangGraph 或 RAG Agent
-Pipeline。
+普通请求会调用 `pipeline.run()`。Dataset query 则先调用
+`nl2sql_service.authorize_action()`，取得服务端 Dataset 定义和用户 Scope。随后根据
+Dataset 配置中的 `privacy_classification` 分成两条路线：
 
 Dataset report 不直接调用 NL2SQL query，而是先执行 `authorize_action()`，再把
 authorization 放入 scoped request，后续由文档 Agent 使用。
@@ -5394,23 +7516,37 @@ authorization 放入 scoped request，后续由文档 Agent 使用。
 没有 dataset_id
 └── 原 RAG Pipeline
 
-dataset_id + query
+dataset_id + query + sensitive
 └── Nl2SqlService.query()
+    └── 标记化后才调用 SQL 模型
+
+dataset_id + query + non_sensitive
+└── 原 RagAgentPipeline
+    └── AgentTaskRouter
+        ├── structured_data_query → call_nl2sql_query
+        ├── simple_rag → 原知识库检索
+        └── question_decomposition → Research Worker
 
 dataset_id + report
 └── authorize_action()
     └── 文档 TaskPlan / Deep Document Agent
 ```
 
-为什么不把三者都交给 AgentTaskRouter？Router 输出是模型判断，适合决定“这是普通回答
-还是复杂文档任务”，不适合决定敏感问题能否进入模型。确定性分支位于所有外部 Router
-调用前，房地产 report 也因此能在零模型调用、零 SQL、零 TaskPlan 的情况下拒绝。
+为什么不是所有 Dataset 都交给 AgentTaskRouter？
 
-返回 query 时，函数把 `Nl2SqlQueryResult` 放进 `RagChatResponse.nl2sql_result`，同时
-把 `answer` 设置为 summary。这让旧聊天 UI 仍能显示一段答案，新 React 页面又能使用
-结构化 SQL 和 rows。
+Router 输出是模型判断，适合在**非敏感**问题中决定“数据库、知识库还是复杂研究”，但
+不适合决定敏感问题能否进入模型。因此“是否允许进入 Router”由平台 Dataset 配置和后端
+规则决定；进入 Router 后的任务类型才由模型判断。房地产 report 也因此能在零 Router
+调用、零 SQL、零 TaskPlan 的情况下拒绝。
 
-结构化 SSE 入口采用相同分流，防止非流式安全、流式却走另一条路径。
+如果最终路由是 `structured_data_query`，`call_nl2sql_query` 节点把
+`Nl2SqlQueryResult` 放进 Graph State，Pipeline 再把它复制到
+`RagChatResponse.nl2sql_result`。如果最终路由是 `simple_rag`，响应中没有
+`nl2sql_result`；如果是 `question_decomposition`，则由 TaskPlan 的 Research Worker
+按子问题决定是否调用 `nl2sql_query`。
+
+结构化 SSE 入口采用相同分流，并先发出 `agent_route_selected`。因此 React 和 Web
+验收页可以直接看到本次是 `rule` 还是 `model` 路由，而不需要根据回答文本猜测。
 
 ## 7.9 _tokenize_sensitive_question()：为什么不是普通正则替换函数
 
@@ -6275,9 +8411,12 @@ ARPU 的多种口径
 ```text
 React 选择 game_test/query
 → Pydantic 校验 Dataset/action
-→ API 在 Router 前确定性分流
 → RBAC 检查 data:query:execute
 → Dataset Grant 生成 game project Scope
+→ 平台 Dataset 配置确认 privacy_classification=non_sensitive
+→ AgentTaskRouter 判断任务类型
+→ 单一数据库问题返回 structured_data_query
+→ call_nl2sql_query 节点使用 State 中的用户和 Dataset
 → SchemaCatalog 读取两张分析视图和 COMMENT
 → 外部模型生成参数化 SELECT
 → SQLGlot 解析 AST、检查白名单并注入 LIMIT
@@ -6289,6 +8428,10 @@ React 选择 game_test/query
 → 审计保存 query ID、SQL、耗时和行数
 → React 展示结构化结果
 ```
+
+如果问题只问知识库，Router 返回 `simple_rag`，不会执行 NL2SQL。如果问题要求结合设计
+文档和资产库，Router 返回 `question_decomposition`，Research Worker 才会同时得到
+`knowledge_retrieval` 与服务端绑定的 `nl2sql_query`，由 Agent 根据子问题选择工具。
 
 如果用户改成报告：
 
@@ -6307,7 +8450,9 @@ React 选择 game_test/query
 如果用户改成房地产问题：
 
 ```text
-模型前增加标记化与 Vault
+平台 Dataset 配置确认 privacy_classification=sensitive
+→ API 不调用普通 Router，直接进入 Nl2SqlService
+→ 模型前增加标记化与 Vault
 → 模型只见 token
 → 执行前本地恢复 bind value
 → 结果后只做本地模板总结

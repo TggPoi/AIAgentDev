@@ -29,6 +29,7 @@ RagStreamEventName = Literal[
     "agent_task_sub_question_retrying",
     "agent_task_final_synthesis_completed",
     "agent_route_clarification_required",
+    "agent_route_selected",
     "nl2sql_sql_generated",
     "nl2sql_result",
 ]

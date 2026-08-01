@@ -53,34 +53,34 @@ async def rag_chat_endpoint(
     nl2sql_service: Nl2SqlService = Depends(get_nl2sql_service),
 ) -> RagChatResponse:
     start_time = perf_counter()
-    # Dataset/action 是客户端显式选择、服务端校验的控制字段。query 在任何外部
-    # Router Prompt 之前直接进入 NL2SQL，避免 Router 改写 Dataset 或让敏感问题
-    # 先经过普通 RAG 模型；返回值仍包装成前端熟悉的 RagChatResponse。
-    if req.dataset_id is not None and req.nl2sql_action == "query":
-        result = await nl2sql_service.query(
-            user=user,
-            dataset_id=req.dataset_id,
-            question=req.query,
-        )
-        return RagChatResponse(
-            request_id=result.request_id,
-            trace_id=result.trace_id,
-            query=req.query,
-            answer=result.summary,
-            sources=[],
-            route_intent="structured_data_query",
-            route_confidence=1.0,
-            nl2sql_result=result,
-        )
-    # 剩下的 Dataset 请求只能是 report。这里先鉴权并把可信授权快照附到内部
-    # request，随后才进入现有文档 TaskPlan/Deep Document Agent 链路。房地产
-    # report_supported=False，会在 authorize_action() 中提前拒绝。
     if req.dataset_id is not None:
-        _, req._nl2sql_authorization = await nl2sql_service.authorize_action(
+        dataset, req._nl2sql_authorization = await nl2sql_service.authorize_action(
             user=user,
             dataset_id=req.dataset_id,
             action=req.nl2sql_action or "",
         )
+        # 敏感 Dataset 继续在任何 Router/普通 RAG 模型调用前执行本地标记化链路。
+        # 非敏感 query 则进入现有 Agent Router，由 Router 判断数据库、知识库或复杂任务。
+        if (
+            req.nl2sql_action == "query"
+            and dataset.privacy_classification == "sensitive"
+        ):
+            result = await nl2sql_service.query(
+                user=user,
+                dataset_id=req.dataset_id,
+                question=req.query,
+            )
+            return RagChatResponse(
+                request_id=result.request_id,
+                trace_id=result.trace_id,
+                query=req.query,
+                answer=result.summary,
+                sources=[],
+                route_intent="structured_data_query",
+                route_confidence=1.0,
+                route_source="rule",
+                nl2sql_result=result,
+            )
     # 生成 scoped conversation id
     repository = GitLabRepository(session)
     scoped_req = await prepare_authorized_rag_request(
@@ -282,24 +282,25 @@ async def rag_chat_stream_events_endpoint(
     session: AsyncSession = Depends(get_db_session),
     nl2sql_service: Nl2SqlService = Depends(get_nl2sql_service),
 ) -> StreamingResponse:
-    # 结构化 SSE 与非流式入口采用同一确定性分流。legacy /rag/chat/stream
-    # 不经过这里，因此不会被悄悄扩展出 NL2SQL 行为。
-    if req.dataset_id is not None and req.nl2sql_action == "query":
-        result = await nl2sql_service.query(
-            user=user,
-            dataset_id=req.dataset_id,
-            question=req.query,
-        )
-        return StreamingResponse(
-            nl2sql_sse_event_generator(result),
-            media_type="text/event-stream",
-        )
     if req.dataset_id is not None:
-        _, req._nl2sql_authorization = await nl2sql_service.authorize_action(
+        dataset, req._nl2sql_authorization = await nl2sql_service.authorize_action(
             user=user,
             dataset_id=req.dataset_id,
             action=req.nl2sql_action or "",
         )
+        if (
+            req.nl2sql_action == "query"
+            and dataset.privacy_classification == "sensitive"
+        ):
+            result = await nl2sql_service.query(
+                user=user,
+                dataset_id=req.dataset_id,
+                question=req.query,
+            )
+            return StreamingResponse(
+                nl2sql_sse_event_generator(result),
+                media_type="text/event-stream",
+            )
     repository = GitLabRepository(session)
     scoped_req = await prepare_authorized_rag_request(
         req=req, user=user, repository=repository

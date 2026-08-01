@@ -152,8 +152,6 @@ async def main() -> None:
     settings = get_settings().model_copy(
         update={
             "nl2sql_enabled": True,
-            "nl2sql_game_test_enabled": True,
-            "nl2sql_real_estate_test_enabled": True,
             "nl2sql_database_urls_json": os.environ["NL2SQL_DATABASE_URLS_JSON"],
         }
     )
@@ -171,6 +169,7 @@ async def main() -> None:
     )
     try:
         async with sessions() as session:
+            await registry.refresh(session)
             service = Nl2SqlService(settings, registry, session)
             game = (
                 await run_domain(

@@ -53,7 +53,7 @@ class AgentTaskPlannerSubQuestionPayload(BaseModel):
     )
     information_source_hint: str = Field(
         default="knowledge_retrieval",
-        description="建议来源：knowledge_retrieval、web_search 或 none。",
+        description="建议来源：knowledge_retrieval、nl2sql_query、web_search 或 none。",
     )
     reason: str = Field(default="", description="该子问题如何支撑用户最终目标。")
     expected_evidence: str | None = Field(
@@ -146,7 +146,7 @@ JSON schema:
       "question": "需要被回答的问题",
       "purpose": "为什么拆出这个问题",
       "depends_on": [],
-      "information_source_hint": "knowledge_retrieval|web_search|none",
+      "information_source_hint": "knowledge_retrieval|nl2sql_query|web_search|none",
       "reason": "该问题如何支撑最终目标",
       "expected_evidence": "理想证据"
     }
@@ -557,7 +557,12 @@ def _parse_sub_questions(
             sub_question_id = f"sq_{index}"
         known_ids.add(sub_question_id)
         hint = str(item.get("information_source_hint") or "knowledge_retrieval").strip()
-        if hint not in {"knowledge_retrieval", "web_search", "none"}:
+        if hint not in {
+            "knowledge_retrieval",
+            "nl2sql_query",
+            "web_search",
+            "none",
+        }:
             hint = "knowledge_retrieval"
         raw_depends_on = item.get("depends_on", [])
         if not isinstance(raw_depends_on, list):

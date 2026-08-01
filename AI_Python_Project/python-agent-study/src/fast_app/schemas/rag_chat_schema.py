@@ -231,6 +231,10 @@ class RagChatResponse(BaseModel):
         le=1.0,
         description="结构化 Router 的置信度。",
     )
+    route_source: str | None = Field(
+        default=None,
+        description="路由结论来源：rule、model 或 fallback。",
+    )
     agent_task_plan_id: str | None = Field(
         default=None,
         description="当 Agent 生成多步骤任务计划时返回的 task_plan_id",

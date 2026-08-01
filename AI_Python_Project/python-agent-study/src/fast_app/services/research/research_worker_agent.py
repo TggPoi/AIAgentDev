@@ -18,6 +18,7 @@ from fast_app.domain.agent_task_plan import (
     ResearchEvidenceEvaluation,
 )
 from fast_app.domain.rag_models import RetrievalFilters
+from fast_app.domain.user_context import CurrentUserContext
 from fast_app.graph.research.agentic_research_graph import ResearchExecutionCancelled
 from fast_app.graph.research.research_worker_graph import (
     ResearchWorkerGraphState,
@@ -48,6 +49,7 @@ class ResearchWorkerRequest:
     on_progress: ProgressCallback
     should_stop: Callable[[], bool]
     langchain_config_factory: LangChainConfigFactory | None = None
+    user: CurrentUserContext | None = None
 
 
 class ResearchWorkerAgent:
@@ -176,6 +178,7 @@ class ResearchWorkerAgent:
                 request.sub_question.question,
                 state["retry_missing_points"],
             ),
+            user=request.user,
         )
         last_result = attempt_outcome.result
         return {

@@ -14,6 +14,12 @@ from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 from fast_app.services.exceptions import Nl2SqlSensitiveReportForbiddenError
 from fast_app.services.nl2sql.registry import DatasetRegistry
 from fast_app.services.nl2sql.service import Nl2SqlService
+from fast_app.services.nl2sql.models import DatasetDefinition
+from fast_app.domain.agent_task_plan import AgentResearchPolicy
+from fast_app.services.research.research_tool_loop import (
+    NL2SQL_QUERY_TOOL_NAME,
+    ResearchToolLoop,
+)
 
 
 class RouterMustNotRun:
@@ -23,10 +29,10 @@ class RouterMustNotRun:
 
 async def main() -> None:
     settings = Settings(
+        _env_file=None,
+        OPENAI_API_KEY="",
         LANGSMITH_TRACING=False,
         NL2SQL_ENABLED=True,
-        NL2SQL_REAL_ESTATE_TEST_ENABLED=True,
-        NL2SQL_GAME_TEST_ENABLED=True,
         NL2SQL_DATABASE_URLS_JSON=(
             '{"real_estate_test":"postgresql://unused/real",'
             '"game_test":"postgresql://unused/game"}'
@@ -56,9 +62,36 @@ async def main() -> None:
     assert plan.research_policy.dataset_id == "game_test"
     assert plan.research_policy.nl2sql_action == "report"
 
+    registry = DatasetRegistry(
+        settings,
+        datasets=[
+            DatasetDefinition(
+                dataset_id="real_estate_test",
+                name="房地产测试",
+                domain="real_estate",
+                database_key="real_estate_test",
+                privacy_classification="sensitive",
+                scope_column="project_id",
+                allowed_views=("analytics.unit_inventory",),
+                report_supported=False,
+                enabled=True,
+            ),
+            DatasetDefinition(
+                dataset_id="game_test",
+                name="游戏测试",
+                domain="game",
+                database_key="game_test",
+                privacy_classification="non_sensitive",
+                scope_column="project_id",
+                allowed_views=("analytics.asset_catalog",),
+                report_supported=True,
+                enabled=True,
+            ),
+        ],
+    )
     service = Nl2SqlService(
         settings=settings,
-        registry=DatasetRegistry(settings),
+        registry=registry,
         session=AsyncSession(),
     )
     try:
@@ -71,6 +104,24 @@ async def main() -> None:
         pass
     else:
         raise AssertionError("sensitive report was not rejected")
+
+    research_plan = await AgentTaskPlanner(settings).plan_question_decomposition(
+        query="结合知识库与资产费用分析适用资产",
+        research_policy=AgentResearchPolicy(
+            dataset_id="game_test",
+            nl2sql_action="query",
+        ),
+    )
+    loop = ResearchToolLoop(
+        settings=settings,
+        vector_retriever=object(),  # type: ignore[arg-type]
+        keyword_retriever=object(),  # type: ignore[arg-type]
+        llm_client=object(),  # type: ignore[arg-type]
+        nl2sql_service=service,
+    )
+    tools = await loop._build_available_task_tools(plan=research_plan)
+    nl2sql_tool = next(tool for tool in tools if tool.name == NL2SQL_QUERY_TOOL_NAME)
+    assert "dataset_id" not in nl2sql_tool.args_schema.model_json_schema()["properties"]
     print("NL2SQL RAG deterministic routing checks passed")
 
 

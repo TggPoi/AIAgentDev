@@ -12,7 +12,12 @@ AgentTaskKind = Literal[
     "question_decomposition",
 ]
 AgentTaskType = Literal["qa", "comparison", "report_generation", "analysis", "unknown"]
-AgentTaskInformationSourceHint = Literal["knowledge_retrieval", "web_search", "none"]
+AgentTaskInformationSourceHint = Literal[
+    "knowledge_retrieval",
+    "nl2sql_query",
+    "web_search",
+    "none",
+]
 AgentTaskSubQuestionResultStatus = Literal["completed", "partial", "failed", "skipped"]
 AgentTaskToolCallStatus = Literal["completed", "failed"]
 AgentResearchWebPolicy = Literal["disabled", "fallback", "required"]
@@ -82,7 +87,7 @@ class AgentTaskSubQuestion(BaseModel):
         description="该子问题依赖的前置 sub_question_id 列表。",
     )
     information_source_hint: AgentTaskInformationSourceHint = Field(
-        description="建议的信息来源；本字段不代表本阶段会真实调用工具。",
+        description="建议的信息来源：知识库、已绑定 Dataset、公开网络或无需工具；不代表已执行工具。",
     )
     reason: str = Field(description="为什么该子问题有助于回答原始复杂问题。")
     expected_evidence: str | None = Field(
@@ -134,9 +139,9 @@ class AgentResearchPolicy(BaseModel):
         default=None,
         description="服务端请求绑定的 NL2SQL Dataset ID；为空表示普通文档或研究任务。",
     )
-    nl2sql_action: Literal["report"] | None = Field(
+    nl2sql_action: Literal["query", "report"] | None = Field(
         default=None,
-        description="Dataset 报告任务固定为 report；执行和恢复时必须重新鉴权。",
+        description="服务端绑定的 Dataset 查询或报告动作；执行和恢复时必须重新鉴权。",
     )
 
 

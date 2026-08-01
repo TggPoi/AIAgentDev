@@ -488,14 +488,6 @@ class Settings(BaseSettings):
 
     # 自由 NL2SQL 默认关闭；业务库连接只允许通过独立 database key 查找。
     nl2sql_enabled: bool = Field(default=False, alias="NL2SQL_ENABLED")
-    nl2sql_real_estate_test_enabled: bool = Field(
-        default=False,
-        alias="NL2SQL_REAL_ESTATE_TEST_ENABLED",
-    )
-    nl2sql_game_test_enabled: bool = Field(
-        default=False,
-        alias="NL2SQL_GAME_TEST_ENABLED",
-    )
     nl2sql_database_urls_json: str = Field(
         default="{}",
         alias="NL2SQL_DATABASE_URLS_JSON",

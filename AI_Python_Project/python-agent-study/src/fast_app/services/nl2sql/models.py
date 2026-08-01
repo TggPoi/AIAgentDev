@@ -16,7 +16,11 @@ class DatasetDefinition(BaseModel):
 
     dataset_id: str = Field(description="对外稳定 Dataset ID。")
     name: str = Field(description="Dataset 中文展示名称。")
-    domain: Literal["real_estate", "game"] = Field(description="业务领域。")
+    domain: str = Field(
+        min_length=1,
+        max_length=128,
+        description="业务领域标识；由平台 Dataset 配置提供，不在 Python 中限定业务类型。",
+    )
     database_key: str = Field(description="连接 URL 映射键；不会进入模型或 API。")
     privacy_classification: PrivacyClassification = Field(description="数据隐私等级。")
     scope_column: str = Field(description="RLS 使用的项目范围列。")

@@ -275,3 +275,135 @@ $env:PYTHONPATH = "src"
 | NL2SQL LangSmith 事件使用默认名称 | structured output 外层和底层模型没有业务 `run_name/name` | SQL 生成按 Domain 命名 chain/model，游戏结果总结单独命名 | 真实游戏和房地产查询均只出现 `nl2sql.*` 业务名称 |
 
 后续需要观察：游戏模型偶发把中文名称用于 `*_id`。当前正确率已达到 85% 门槛；若线上评测持续出现，应优先补强 Schema COMMENT/生成提示或做类型一致性校验，不应添加问题关键词路由。
+
+## 10. 2026-07-31 至 2026-08-01 Dataset Router 改造与 Web 复测
+
+### 10.1 环境与权限
+
+- 平台主库 Alembic 已从 `20260729_0011` 升级到 `20260731_0012`。
+- 新增 `nl2sql_datasets`，当前有 `game_test/non_sensitive` 与
+  `real_estate_test/sensitive` 两条启用记录。
+- `DatasetRegistry.refresh()` 在 FastAPI 启动时从平台表加载定义；业务库 URL 仍只从
+  部署环境读取。
+- 游戏验收使用普通员工 `nl2sql_game_router_employee`：
+  `data_analyst + product_planning + game_test/game_p1`，没有 `system_admin`。
+- 房地产验收使用普通员工 `nl2sql_real_estate_employee`：
+  `data_analyst + product_planning + real_estate_test/re_p1`，没有 `system_admin`。
+- PostgreSQL、Redis、Elasticsearch、Milvus 均使用本地真实服务；GitLab 容器未启动，
+  本轮不测试文档创建、MR、Webhook 或 Worker。
+- Web 页面仍为
+  `scripts/phase_15/rag_agent_manual_acceptance.html`，没有用 API 脚本替代页面验收。
+
+### 10.2 计划中的四个场景
+
+| 场景 | 预期 route intent | 当前状态 |
+|---|---|---|
+| 敏感房地产 Dataset 查询 | API 规则直达 `structured_data_query` | 已通过，首个业务事件为 `nl2sql_sql_generated` |
+| 非敏感游戏单一数据库问题 | `structured_data_query`，`source=model` | 已通过 |
+| 非敏感游戏离线简单知识库问题 | `simple_rag` | 已通过，真实 ES/Milvus 有检索结果 |
+| 非敏感游戏联网复杂知识库问题 | `question_decomposition` | 已通过，生成分析型 TaskPlan 后停止 |
+
+### 10.3 已通过：游戏单一数据库问题
+
+- 页面输入：查询《星港远征》中已授权的 3D 模型资产名称、费用、模型面数、类别和使用
+  场景，按费用从高到低排序。
+- 控件：`dataset_id=game_test`、`nl2sql_action=query`、
+  `allow_web_fallback=false`。
+- `/auth/me`：`global_role_codes=["data_analyst"]`、
+  `global_permission_codes=["data:query:execute"]`、
+  `department_codes=["product_planning"]`。
+- 第一次请求 `request_id=e1474382fade4dfe89bae83398ff7295` 失败。根因是
+  `AgentResearchPolicy.nl2sql_action` 仍只接受 `report`，非敏感 query 进入 Router 时
+  无法把 `query` 保存到研究策略。修复为 `Literal["query", "report"]` 后重启服务重跑。
+- 成功请求 `request_id/trace_id=ec5b88ca9df942308470ffb49be2c626`。
+- `query_id=178a56e0-b724-4063-b379-25a3e3f3b888`。
+- 页面先收到：
+
+```json
+{
+  "event": "agent_route_selected",
+  "data": {
+    "intent": "structured_data_query",
+    "source": "model",
+    "confidence": 1,
+    "reason": "router_selected_structured_data_query"
+  }
+}
+```
+
+- 随后收到 `nl2sql_sql_generated` 与 `nl2sql_result`；SQL 首次执行成功，返回 2 行：
+  `角色资产06 / 2450 / 15200`、`角色资产01 / 1075 / 9200`。
+- 结论：非敏感 Dataset query 已进入现有 Router，由模型返回
+  `structured_data_query`，不是 API 硬编码直达。
+
+### 10.4 已通过：游戏离线简单知识库问题
+
+- 2026-08-01 用户解除内置浏览器的本地端口限制后，继续使用同一 Web 验收页复测。
+- 页面输入：知识库中的《星港远征资产选型报告》推荐了哪些资产？
+- 控件：`dataset_id=game_test`、`nl2sql_action=query`、
+  `allow_web_fallback=false`。
+- 第一次请求因 FastAPI 进程处于禁止外部模型联网的沙箱中，页面返回
+  `clarification_required/router_unavailable`。该结果不记为业务通过；将本地 FastAPI
+  验收进程重启到允许访问真实外部模型的环境后，使用新 session 重新提交。
+- 成功请求 `request_id/trace_id=ec4941e52b41487e8d012854081c051b`。
+- 页面事件：`intent=simple_rag`、`source=model`、`confidence=0.95`、
+  `reason=default_retrieve`。
+- `sources` 包含真实 Elasticsearch 和 Milvus 结果，命中文档
+  `星港远征资产选型报告.md`，知识版本为 6。
+- 页面没有出现 `nl2sql_sql_generated`、`nl2sql_result` 或 WebSearch 事件。
+
+结论：绑定非敏感 Dataset 不等于强制查询数据库。只需要知识库事实时，Router 会让请求
+继续进入原有 `simple_rag` 链路。
+
+### 10.5 已通过：游戏联网复杂知识库问题
+
+- 页面输入：联网查询公开的移动端 3D 资产性能优化建议，并结合知识库中的
+  《星港远征资产选型报告》，分步骤分析移动端适配性以及仍需核实的费用和模型面数。
+- 控件：`dataset_id=game_test`、`nl2sql_action=query`、
+  `allow_web_fallback=true`。
+- 成功请求 `request_id/trace_id=453f40b6cbda460cadfddce3742cafea`。
+- 页面事件：`intent=question_decomposition`、`source=model`、`confidence=1`、
+  `reason=agent_task_plan_detected`。
+- 创建分析型 TaskPlan：`task_plan_id=task_plan_20260801075732_b268f35a6b18`。
+- TaskPlan 的服务端研究策略保存了
+  `dataset_id=game_test、nl2sql_action=query、web_policy=fallback`；Planner 生成 5 个
+  子问题，分别覆盖公开资料、知识库、综合判断、费用核实和模型面数核实。
+- 页面最终进入 `waiting_confirmation`。本轮只验收检索路由，因此没有点击确认，没有执行
+  子问题，也没有访问 GitLab。
+
+结论：`allow_web_fallback=true` 只是后续 Research Worker 的工具许可，不会把顶层路由
+硬改为 `web_research`。需要多个来源和多个步骤时，Router 正确选择
+`question_decomposition`。
+
+### 10.6 已通过：房地产敏感 Dataset 查询
+
+- 页面使用普通员工 `nl2sql_real_estate_employee`，`/auth/me` 显示
+  `data_analyst`、`data:query:execute` 和 `product_planning`，没有 `system_admin`。
+- 页面输入：查询“云栖雅苑”总价低于 250 万元且可售的房源，返回楼栋、户型、面积和
+  价格。
+- 控件：`dataset_id=real_estate_test`、`nl2sql_action=query`、
+  `allow_web_fallback=false`。
+- 第一次真实请求 `query_id=848ee6a4-d6b8-4f96-8815-91bfbd87d4de` 返回 0 行。排查发现
+  员工 Dataset Grant 错写为 `real_p1`，而业务库真实项目 ID 是 `re_p1`。RLS 因 Scope
+  不匹配而正确过滤为零行。
+- 修正唯一一条员工 Grant 后，从同一 Web 页面使用新 session 重跑。
+- 成功请求 `request_id/trace_id=f09ee65f891f40d28b2b179f266a4f13`，
+  `query_id=9258c606-4c71-437c-bdaa-00406362ae2a`。
+- 页面首个业务事件就是 `nl2sql_sql_generated`，没有 `agent_route_selected`；这说明敏感
+  问题没有进入普通 Router。
+- 参数化 SQL 首次执行成功，返回 `1号楼/2号楼` 共 12 套可售房源，价格全部低于
+  250 万元，结果与测试数据基准一致。
+
+结论：敏感 Dataset 仍由 API 的隐私规则在 Router 前直达标记化 NL2SQL；功能权限、
+Dataset Grant 和 PostgreSQL RLS 都实际参与了查询。
+
+### 10.7 本轮 Bug 与修复
+
+| Bug | 根因 | 修复 | Web 回归结果 |
+|---|---|---|---|
+| 简单知识库请求返回 `router_unavailable` | FastAPI 验收进程无法连接真实 Router 模型 | 在明确授权后只重启本地 FastAPI 到可联网环境 | 同一页面重跑返回 `simple_rag` |
+| 房地产查询返回 0 行 | 员工 Grant 使用不存在的 `real_p1`，真实业务 Scope 是 `re_p1` | 修正该员工唯一一条 Dataset Grant | 同一页面重跑返回 12 行 |
+
+四个场景最终都由 `scripts/phase_15/rag_agent_manual_acceptance.html` 发起并读取结构化
+SSE；模块脚本和服务日志仅用于失败诊断，没有替代 Web 验收。GitLab 容器没有启动，
+本轮没有测试文档创建、MR、Webhook 或 Worker。

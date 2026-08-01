@@ -391,6 +391,7 @@ def get_agent_task_executor(
         reranker=reranker,
         prompt_guard=prompt_guard,
         parent_expander=parent_expander,
+        nl2sql_service=nl2sql_service,
     )
     research_worker = ResearchWorkerAgent(
         settings=settings,
@@ -458,6 +459,7 @@ def get_rag_pipeline(
     conversation_persistence: ConversationPersistenceService = Depends(
         get_conversation_persistence_service
     ),
+    session: AsyncSession = Depends(get_db_session),
 ):
     provider = settings.rag_pipeline_provider.lower().strip()
 
@@ -486,6 +488,12 @@ def get_rag_pipeline(
     # 13-11 新增的第三条执行路线。
     # 它复用同一组 retriever / reranker / llm 依赖，但进入独立的 RAG Agent graph。
     if provider == "rag_agent":
+        registry = getattr(request.app.state, "nl2sql_dataset_registry", None)
+        nl2sql_service = (
+            Nl2SqlService(settings=settings, registry=registry, session=session)
+            if isinstance(registry, DatasetRegistry)
+            else None
+        )
         conversation_memory_store = get_conversation_memory_store(
             request=request,
             settings=settings,
@@ -509,6 +517,7 @@ def get_rag_pipeline(
             task_planner=task_planner,
             task_executor=task_executor,
             parent_expander=parent_expander,
+            nl2sql_service=nl2sql_service,
         )
 
     raise AppServiceError(

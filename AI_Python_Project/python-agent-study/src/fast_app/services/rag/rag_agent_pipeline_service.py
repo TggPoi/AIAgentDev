@@ -24,6 +24,7 @@ from fast_app.graph.rag_agent.rag_agent_nodes import (
     create_agent_error_answer_node,
     create_agent_fail_request_node,
     create_call_knowledge_retrieval_node,
+    create_call_nl2sql_query_node,
     create_check_loop_limits_node,
     create_execute_task_plan_node,
     create_next_action_decision_node,
@@ -64,6 +65,7 @@ from fast_app.services.rag.markdown_parent_context import MarkdownParentContextE
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.conversation.query_rewrite import ConversationQueryRewriter
 from fast_app.services.rag.rag_pipeline_service import docs_to_sources
+from fast_app.services.nl2sql.service import Nl2SqlService
 
 
 logger = get_logger(__name__)
@@ -89,6 +91,7 @@ class RagAgentPipeline:
         task_planner: AgentTaskPlanner | None = None,
         task_executor: AgentTaskExecutor | None = None,
         parent_expander: MarkdownParentContextExpander | None = None,
+        nl2sql_service: Nl2SqlService | None = None,
     ):
         """保存依赖并构建非流式图与流式路径共用的 Agent 节点。"""
         # 保存底层组件引用，方便非流式 graph 和流式手写路径复用同一批依赖。
@@ -107,6 +110,7 @@ class RagAgentPipeline:
         self.task_planner = task_planner
         self.task_executor = task_executor
         self.parent_expander = parent_expander
+        self.nl2sql_service = nl2sql_service
         # run() 使用 compiled graph，完整展示 LangGraph Agent 状态机。
         self.graph = build_rag_agent_graph(
             settings=settings,
@@ -120,6 +124,7 @@ class RagAgentPipeline:
             task_planner=task_planner,
             task_executor=task_executor,
             parent_expander=parent_expander,
+            nl2sql_service=nl2sql_service,
         )
 
         # stream / stream_events 需要在生成阶段逐 token yield。
@@ -139,6 +144,10 @@ class RagAgentPipeline:
             settings=settings,
             vector_retriever=vector_retriever,
             keyword_retriever=keyword_retriever,
+        )
+        self.call_nl2sql_query_node = create_call_nl2sql_query_node(
+            settings=settings,
+            nl2sql_service=nl2sql_service,
         )
         self.execute_task_plan_node = (
             create_execute_task_plan_node(
@@ -648,6 +657,7 @@ class RagAgentPipeline:
             clarification_question=final_state.get("clarification_question"),
             route_intent=final_state.get("route_intent"),
             route_confidence=final_state.get("route_confidence"),
+            route_source=final_state.get("route_source"),
             agent_task_plan_id=final_state.get("agent_task_plan_id"),
             agent_task_status=(
                 final_state["agent_task_plan"].status.value
@@ -666,6 +676,7 @@ class RagAgentPipeline:
                 and final_state.get("agent_task_plan_id") is not None
                 else None
             ),
+            nl2sql_result=final_state.get("nl2sql_result"),
         )
 
     async def _prepare_stream_state(
@@ -709,6 +720,11 @@ class RagAgentPipeline:
                 raise ExternalServiceError("RAG Agent 多步骤任务执行节点尚未初始化")
             task_update = await self.execute_task_plan_node(state)
             state.update(task_update)
+            return state
+
+        if next_route == "structured_data_query":
+            nl2sql_update = await self.call_nl2sql_query_node(state)
+            state.update(nl2sql_update)
             return state
 
         tool_update = await self.call_knowledge_retrieval_node(state)
@@ -901,7 +917,32 @@ class RagAgentPipeline:
         start_time = perf_counter()
         state = await self._prepare_stream_state(req, operation="stream_events")
 
+        yield RagStreamEvent(
+            event="agent_route_selected",
+            data={
+                "intent": state.get("route_intent"),
+                "source": state.get("route_source"),
+                "confidence": state.get("route_confidence"),
+                "reason": state.get("route_reason"),
+            },
+        )
+
         if state.get("answer") is not None:
+            nl2sql_result = state.get("nl2sql_result")
+            if nl2sql_result is not None:
+                yield RagStreamEvent(
+                    event="nl2sql_sql_generated",
+                    data={
+                        "query_id": nl2sql_result.query_id,
+                        "dataset_id": nl2sql_result.dataset_id,
+                        "parameterized_sql": nl2sql_result.parameterized_sql,
+                        "attempt_count": nl2sql_result.attempt_count,
+                    },
+                )
+                yield RagStreamEvent(
+                    event="nl2sql_result",
+                    data=nl2sql_result.model_dump(mode="json"),
+                )
             # 澄清是正常业务结果，先发送专用状态，再走空 sources 和安全正文通道。
             if state.get("clarification_required", False):
                 yield RagStreamEvent(

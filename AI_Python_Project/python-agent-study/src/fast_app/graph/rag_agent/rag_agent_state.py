@@ -6,6 +6,7 @@ from fast_app.domain.agent_task_plan import AgentTaskPlan
 from fast_app.domain.rag_models import RagContext, RetrievedDoc
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.schemas.rag_chat_schema import RagChatRequest
+from fast_app.services.nl2sql.models import Nl2SqlQueryResult
 from fast_app.services.knowledge.knowledge_permission_policy import (
     merge_permission_scope_into_filter_dict,
 )
@@ -18,6 +19,7 @@ RagAgentOperation = Literal["run", "stream", "stream_events"]
 RagAgentRoute = Literal[
     "direct_answer",
     "knowledge_retrieval",
+    "structured_data_query",
     "execute_task_plan",
     "clarification_required",
     "final_error_answer",
@@ -116,6 +118,8 @@ class RagAgentState(TypedDict):
     docs: list[RetrievedDoc]
     # 由 query 与 docs 组装的提示词上下文，供最终 LLM 生成答案。
     context: RagContext | None
+    # structured_data_query 节点返回的完整受控查询结果；其他路由为空。
+    nl2sql_result: NotRequired[Nl2SqlQueryResult | None]
     # 当前图路径产生的最终用户可读答案；尚未生成时为 None。
     answer: str | None
 
@@ -182,6 +186,7 @@ def build_rag_agent_initial_state(
         "tool_error": None,
         "docs": [],
         "context": None,
+        "nl2sql_result": None,
         "answer": None,
         "current_user": current_user,
         "agent_task_plan": None,

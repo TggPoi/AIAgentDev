@@ -162,6 +162,35 @@ async def main() -> None:
         assert result.source == "model"
         assert "extra_body" not in FakeChatOpenAI.init_kwargs
 
+        FakeChatOpenAI.response = AgentRouteDecision(
+            intent="structured_data_query",
+            confidence=0.99,
+            reason="single database query",
+        )
+        result = await AgentTaskRouter(settings).route(
+            query="查询已授权模型资产的费用",
+            dataset_query_bound=True,
+        )
+        assert result.decision.intent == "structured_data_query"
+        assert result.source == "model"
+
+        FakeChatOpenAI.response = AgentRouteDecision(
+            intent="knowledge_document_management",
+            confidence=0.99,
+            reason="invalid dataset route",
+        )
+        result = await AgentTaskRouter(settings).route(
+            query="创建资产报告",
+            dataset_query_bound=True,
+        )
+        assert result.decision.intent == "clarification_required"
+        assert result.clarification_code == "dataset_query_invalid_intent"
+
+        FakeChatOpenAI.response = AgentRouteDecision(
+            intent="simple_rag",
+            confidence=0.96,
+            reason="single fact",
+        )
         result = await AgentTaskRouter(
             build_settings(AGENT_ROUTER_MODEL_NAME="qwen3.6-flash")
         ).route(query="FastAPI 是什么？")
