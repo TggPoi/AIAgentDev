@@ -905,3 +905,118 @@ if not allow_direct_web:
 6. **Direct Web 执行与 Prompt 不匹配：没有官方来源约束，回答仍使用“知识库不足”语义。**场景 2 受影响。
 7. **测试隔离与模型误判：固定 session 保存旧历史，Rewriter 把独立问题判成 unresolved。**场景 4 首次请求受影响。
 8. **尚不能继续细分：Knowledge Worker 的 120 秒超时。**当前快照只能定位外层 timeout，缺少足以判定内部阻塞点的日志。
+
+## 12. qwen3.7-max Reviewer 与 11.2 专项流式复测（2026-08-03）
+
+### 12.1 测试边界
+
+本节只复测 11.2 涉及的场景 1、5、6、7，所有请求均由
+`scripts/phase_15/rag_agent_manual_acceptance.html` 发往结构化流式接口
+`POST /rag/chat/stream/events`，没有使用非流式 `/rag/chat`，也没有确认执行
+TaskPlan 或测试 GitLab。
+
+- 测试账号：普通员工 `rbac_operator`，不是管理员。
+- Reviewer 模型：`qwen3.7-max`。
+- Planner 仍使用当前主模型配置。
+- NL2SQL 使用真实 `game_test` PostgreSQL 测试库。
+- 每次无历史场景使用独立 session；场景 7 先通过同一 session 写入冻结的前置消息。
+- 通过标准不是“生成了 TaskPlan”，而是逐项检查 Requirement 原子性、来源、
+  CompletionPolicy、SubQuestion 覆盖、依赖、范围守恒和 Reviewer finding。
+
+### 12.2 只更换 Reviewer 模型后的结果
+
+| 场景 | TaskPlan | Reviewer 结果 | 质量结论 |
+|---|---|---|---|
+| 1 | `task_plan_20260803133616_1759ec28c988` | `accepted`，无 finding | 不通过。先后关系、协作边界仍被错误建模为新的知识库事实检索。 |
+| 5 | `task_plan_20260803134006_20b1dcac62ad` | `accepted`，无 finding | 不通过。费用、模型面数、设计用途仍合并为一个 SQL Requirement。 |
+| 6 | `task_plan_20260803134201_f8c5a45c64e8` | `accepted`，无 finding | 不通过。费用和模型面数仍合并为一个 SQL Requirement。 |
+| 7 | `task_plan_20260803134621_684bb114184c` | `revised` | 不通过。Reviewer 修复了原子性，但 Planner 无故增加项目资产数量、总费用、平均费用和平均面数。 |
+
+这组结果证明：`qwen3.7-max` 能正常完成 structured output，也确实比原 Reviewer
+更容易发现原子性问题，但仅更换模型不能修复 11.2。视觉能力与本问题无关；真正缺少的是
+Planner/Reviewer 对“Requirement 原子性、Tool 合批、范围守恒、事实与综合分类”的明确契约。
+
+### 12.3 Prompt 根因修复
+
+本轮没有增加业务关键词路由、固定主题白名单或规则 TaskPlan 兜底，只补充通用规划契约。
+
+Planner 修改位置：
+
+- `src/fast_app/services/agent_tasks/agent_task_planner.py:45-48`
+- `src/fast_app/services/agent_tasks/agent_task_planner.py:59`
+
+新增约束的含义是：
+
+1. 先从 `resolved_query` 建立完整用户要求清单，每个 Requirement 只对应一个可独立验收的事实或输出。
+2. Requirement 原子性与 Tool 调用次数分离；一个 SQL SubQuestion 可以合批查询多个字段，但字段事实仍分别验收。
+3. 禁止为了参考背景自行增加均值、总量、比较对象或其他未被用户要求的指标。
+4. 需要组合前置事实的比较、适用性、流程关系、协作边界和待核实项必须使用
+   `none + derived_synthesis`。
+
+Reviewer 修改位置：
+
+- `src/fast_app/services/agent_tasks/agent_task_plan_reviewer.py:24-37`
+
+Reviewer 现在必须依次检查范围守恒、Requirement 原子性、事实/综合分类、来源和依赖；
+`revised` 的 `checks` 必须评价修订后的完整计划，不能一边返回修订结果一边保留 `fail`。
+
+场景 7 还暴露了 Query Rewriter 会只补实体名称、丢失历史比较维度的问题。修改位置：
+
+- `src/fast_app/services/conversation/query_rewrite.py:31-32`
+
+Rewriter 现在被明确要求：解析“这些、继续、上述”等指代时，必须同时保留与对象绑定的
+最新用户目标、比较维度和约束；历史已经给出完整信息时不能要求用户重复。
+
+### 12.4 Prompt 修复后的 TaskPlan 质量结果
+
+| 场景 | Request / Trace ID | TaskPlan | 质量评估 |
+|---|---|---|---|
+| 1 | `e1e1539b3b2749f8848398eee9ffed38` | `task_plan_20260803134950_652c3fb046a3` | 通过。3 个组件职责是独立知识库事实；先后关系和协作边界是两个独立 `none` Requirement，依赖前置事实。 |
+| 5 | `7c09e3a14abb455a97d435a063cd5722` | `task_plan_20260803135228_1c91c4671cde` | 通过。知识库费用/面数/用途和数据库资产名/费用/面数/用途均拆成独立 Requirement；两个 Tool SubQuestion 合理合批；最终比较独立综合。 |
+| 6 | `5f6e0abd07f444aebf8f81225642fec5` | `task_plan_20260803135635_a917bd6780cb` | 通过。资产名、费用、模型面数分别验收，同一 NL2SQL SubQuestion 合批；适配判断、依据和待核实项均是独立综合 Requirement。Reviewer 第一次返回非法 Evidence Schema，被 Pydantic 拒绝，唯一一次技术重试后生成合法修订。 |
+| 7 | 见 12.5 | 无有效 TaskPlan | 未通过。低质量计划已能被门禁阻止，但尚未稳定生成合格计划。 |
+
+场景 1、5、6 的修复结果不是因为后端硬编码了这三个 query；它们来自同一组通用 Prompt
+约束，并仍由真实 Planner 和 `qwen3.7-max` Reviewer 生成、审查。
+
+### 12.5 场景 7 的失败记录与当前结论
+
+场景 7 使用的冻结前置消息为：
+
+```text
+本轮分析对象是《星港远征》中已授权的 3D 模型资产，重点关注费用、模型面数和移动端适配。
+```
+
+当前问题为：
+
+```text
+结合知识库继续比较这些资产，并说明哪些内容还需要公开资料验证。
+```
+
+观察到三类结果：
+
+1. `request_id=3604c52d9991454fb25e63e0f6765723`：Rewriter 错误返回
+   `AGENT_TASK_PLANNING_CONTEXT_UNRESOLVED`。这是一次真实模型语义失败，没有进入 Planner。
+2. `request_id=802da9b73fd5406a8b7eef85bc1d54ab` 和
+   `85d7f3bb4c934572814bbdf5b282c41d`：Rewriter 补全了资产名称但丢失费用、面数和移动端维度，
+   Reviewer 返回 `AGENT_TASK_PLAN_QUALITY_REJECTED`，没有保存低质量 TaskPlan。
+3. `request_id=5065214f3a9d4816b9fb73afa36caad4`：Rewriter 修复后正确保留资产名称、费用、
+   模型面数和移动端适配，但 Reviewer 仍返回 `AGENT_TASK_PLAN_QUALITY_REJECTED`。
+
+因此场景 7 当前不能标记为通过。与旧结果相比，安全结果已经改善：系统不再把包含项目均值等
+额外范围的计划保存到 `waiting_confirmation`，而是 fail-closed。但“稳定生成一份范围准确的
+会话型 TaskPlan”仍未完成，后续需要单独分析 Reviewer 对该 Candidate 的具体 fail check；不能通过
+放宽 `checks` 门禁或接受未解决 finding 来制造假通过。
+
+### 12.6 本轮代码与测试检查
+
+已通过：
+
+```text
+python -m py_compile agent_task_planner.py agent_task_plan_reviewer.py query_rewrite.py
+scripts/phase_15/test_agent_task_plan_decomposition.py
+scripts/phase_15/test_agent_conversation_context.py
+git diff --check
+```
+
+最终专项结论：**场景 1、5、6 通过，场景 7 未通过；不能宣称 11.2 四个场景全部通过。**

@@ -1,0 +1,16 @@
+INFO:     Started server process [23516]
+INFO:     Waiting for application startup.
+2026-08-03 21:37:16,748 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.enabled" project="python-agent-study-phase-final-2" endpoint="https://api.smith.langchain.com"
+2026-08-03 21:37:16,749 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+2026-08-03 21:37:16,764 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-03 21:37:16,765 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-03 21:37:17,190 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-03 21:37:17,191 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-03 21:37:17,192 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-03 21:37:17,287 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-03 21:37:17,352 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint/store 已创建
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-08-03 21:37:36,352 | WARNING | fast_app.core.exception_handlers | request_id=d6f415a2d14e4c9099619ebbbbdbfa56 | trace_id=d6f415a2d14e4c9099619ebbbbdbfa56 | http_error event="http.error" error_category="user_error" error_code="APP_SERVICE_ERROR" path="/rag/chat/stream/events" method="POST" status_code=400 error_type="AppServiceError" message="Dataset 的只读数据库连接尚未配置"
+2026-08-03 21:37:36,353 | INFO | fast_app.middlewares.request_id_middleware | request_id=d6f415a2d14e4c9099619ebbbbdbfa56 | trace_id=d6f415a2d14e4c9099619ebbbbdbfa56 | http_request event="http.request.finish" method="POST" path="/rag/chat/stream/events" status_code=400 latency_ms=3065.07
+2026-08-03 21:37:36,353 | WARNING | fast_app.middlewares.request_id_middleware | request_id=d6f415a2d14e4c9099619ebbbbdbfa56 | trace_id=d6f415a2d14e4c9099619ebbbbdbfa56 | slow_operation event="http.request.slow" latency_ms=3065.07 threshold_ms=3000.0 slow_component="http_request" method="POST" path="/rag/chat/stream/events" status_code=400 status="success"

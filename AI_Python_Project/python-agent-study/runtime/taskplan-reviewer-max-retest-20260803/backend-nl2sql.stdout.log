@@ -1,0 +1,1 @@
+INFO:     127.0.0.1:50110 - "POST /rag/chat/stream/events HTTP/1.1" 400 Bad Request

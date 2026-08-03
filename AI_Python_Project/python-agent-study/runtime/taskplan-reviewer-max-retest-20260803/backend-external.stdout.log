@@ -1,0 +1,8 @@
+INFO:     127.0.0.1:49475 - "POST /auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:49561 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49561 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49587 - "OPTIONS /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49587 - "POST /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49828 - "OPTIONS /agent/task-plans/task_plan_20260803133616_1759ec28c988/markdown HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49828 - "GET /agent/task-plans/task_plan_20260803133616_1759ec28c988/markdown HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49888 - "POST /rag/chat/stream/events HTTP/1.1" 503 Service Unavailable

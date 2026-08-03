@@ -1,0 +1,7 @@
+INFO:     127.0.0.1:54720 - "POST /rag/chat/stream/events HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:54808 - "OPTIONS /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54808 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54808 - "OPTIONS /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54808 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54825 - "OPTIONS /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54825 - "POST /rag/chat/stream/events HTTP/1.1" 200 OK

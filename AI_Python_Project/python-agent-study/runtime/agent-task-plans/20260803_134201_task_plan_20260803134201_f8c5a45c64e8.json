@@ -1,0 +1,354 @@
+{
+  "schema_version": 2,
+  "task_plan_id": "task_plan_20260803134201_f8c5a45c64e8",
+  "task_kind": "question_decomposition",
+  "task_type": "analysis",
+  "user_id": "user_MBeEmT7K2eGguofW4CZ1aGTp",
+  "original_query": "请联网查询公开的移动端 3D 资产优化建议，并结合《星港远征资产选型报告》和游戏资产数据库中的资产费用、模型面数，判断哪些已授权 3D 模型适合移动端，同时列出仍需进一步核实的问题。",
+  "source_query": "请联网查询公开的移动端 3D 资产优化建议，并结合《星港远征资产选型报告》和游戏资产数据库中的资产费用、模型面数，判断哪些已授权 3D 模型适合移动端，同时列出仍需进一步核实的问题。",
+  "objective": "请联网查询公开的移动端 3D 资产优化建议，并结合《星港远征资产选型报告》和游戏资产数据库中的资产费用、模型面数，判断哪些已授权 3D 模型适合移动端，同时列出仍需进一步核实的问题。",
+  "final_synthesis_instruction": "基于所有已满足 Requirements 和对应合法证据回答 resolved query；明确区分事实、推导和未解决项，不得使用未获得 Evidence ID 支撑的结论。",
+  "requirements": [
+    {
+      "requirement_id": "R1",
+      "description": "获取公开的移动端 3D 资产优化建议（如面数上限、Draw Call、纹理尺寸、LOD 策略等）",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "web_search"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "web_citation",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R2",
+      "description": "获取《星港远征资产选型报告》中关于移动端适配的选型标准或建议",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "knowledge_retrieval"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R3",
+      "description": "获取游戏资产数据库中所有已授权 3D 模型的资产名称、费用（cost_yuan）和模型面数（polygon_count）",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "nl2sql_query"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "sql_query_result",
+          "minimum_count": 1,
+          "requires_query_id": true,
+          "required_attributes": [
+            "asset_name",
+            "cost_yuan",
+            "polygon_count"
+          ]
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R4",
+      "description": "综合移动端优化建议、选型报告标准以及数据库中的费用与面数数据，判断哪些已授权 3D 模型适合移动端",
+      "source_policy": {
+        "mode": "none",
+        "source_types": []
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "derived_synthesis",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R5",
+      "description": "列出仍需进一步核实的问题（如未明确的面数阈值、费用预算限制、特定场景适配细节等）",
+      "source_policy": {
+        "mode": "none",
+        "source_types": []
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "derived_synthesis",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    }
+  ],
+  "sub_questions": [
+    {
+      "sub_question_id": "SQ1",
+      "order": 1,
+      "question": "请联网搜索公开的移动端 3D 资产优化建议，包括推荐的面数上限、Draw Call 控制、纹理尺寸规范、LOD 策略等关键指标。",
+      "purpose": "覆盖 R1：获取移动端 3D 资产优化的公开行业标准与建议。",
+      "depends_on": [],
+      "information_source_hint": "web_search",
+      "covers_requirement_ids": [
+        "R1"
+      ],
+      "reason": "用户明确要求联网查询公开的移动端 3D 资产优化建议，需通过 web_search 获取外部公开资料。",
+      "web_usage": "direct"
+    },
+    {
+      "sub_question_id": "SQ2",
+      "order": 2,
+      "question": "请从知识库中检索《星港远征资产选型报告》中关于移动端 3D 资产适配的选型标准、面数建议或费用约束等内容。",
+      "purpose": "覆盖 R2：获取项目内部选型报告中的移动端适配标准。",
+      "depends_on": [],
+      "information_source_hint": "knowledge_retrieval",
+      "covers_requirement_ids": [
+        "R2"
+      ],
+      "reason": "用户要求结合《星港远征资产选型报告》，需通过 knowledge_retrieval 检索该报告相关内容。",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "SQ3",
+      "order": 3,
+      "question": "请查询游戏资产数据库中所有已授权（license_status='已授权'）且类别为 3D 模型（category_name='3D模型'）的资产，返回资产名称（asset_name）、费用（cost_yuan）和模型面数（polygon_count）。",
+      "purpose": "覆盖 R3：获取已授权 3D 模型的费用和面数数据，用于后续适配判断。",
+      "depends_on": [],
+      "information_source_hint": "nl2sql_query",
+      "covers_requirement_ids": [
+        "R3"
+      ],
+      "reason": "用户要求结合数据库中的资产费用和模型面数进行判断，需通过 nl2sql_query 查询 asset_catalog 视图获取相关字段。",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "SQ4",
+      "order": 4,
+      "question": "综合移动端 3D 资产优化建议（SQ1）、《星港远征资产选型报告》标准（SQ2）以及数据库中已授权 3D 模型的费用与面数数据（SQ3），判断哪些已授权 3D 模型适合移动端，并说明判断依据。",
+      "purpose": "覆盖 R4：综合多源信息得出适合移动端的已授权 3D 模型列表。",
+      "depends_on": [
+        "SQ1",
+        "SQ2",
+        "SQ3"
+      ],
+      "information_source_hint": "none",
+      "covers_requirement_ids": [
+        "R4"
+      ],
+      "reason": "用户要求结合公开建议、选型报告和数据库数据进行综合判断，此子问题依赖前三个子问题的结果进行综合推理。",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "SQ5",
+      "order": 5,
+      "question": "基于上述分析过程和结果，列出仍需进一步核实的问题，例如：移动端具体面数阈值是否因设备档次而异、费用预算是否有上限约束、特定使用场景（如战斗关卡 vs 主城展示）是否有差异化标准等。",
+      "purpose": "覆盖 R5：列出仍需进一步核实的问题。",
+      "depends_on": [
+        "SQ4"
+      ],
+      "information_source_hint": "none",
+      "covers_requirement_ids": [
+        "R5"
+      ],
+      "reason": "用户明确要求列出仍需进一步核实的问题，此子问题依赖综合判断结果（SQ4）来识别信息缺口和待确认事项。",
+      "web_usage": "not_used"
+    }
+  ],
+  "quality_review": {
+    "verdict": "accepted",
+    "checks": {
+      "requirement_coverage": "pass",
+      "source_alignment": "pass",
+      "semantic_alignment": "pass",
+      "dependency_quality": "pass",
+      "executability": "pass",
+      "completion_policy_alignment": "pass"
+    },
+    "reviewer_findings": [],
+    "revision_summary": null,
+    "revision_count": 0,
+    "initial_validation_findings": []
+  },
+  "validation_issues": [],
+  "capability_snapshot": {
+    "available_source_types": [
+      "knowledge_retrieval",
+      "web_search",
+      "nl2sql_query"
+    ],
+    "web_direct_allowed": true,
+    "web_fallback_allowed": false,
+    "knowledge_retrieval_available": true,
+    "nl2sql_query_available": true,
+    "dataset_id": "game_test",
+    "dataset_name": "游戏开发资产测试数据",
+    "dataset_domain": "game",
+    "allowed_dataset_views": [
+      "analytics.asset_catalog",
+      "analytics.project_asset_summary"
+    ],
+    "allowed_dataset_fields": [
+      "asset_count",
+      "asset_id",
+      "asset_name",
+      "average_cost_yuan",
+      "average_polygon_count",
+      "category_name",
+      "cost_yuan",
+      "license_status",
+      "polygon_count",
+      "project_id",
+      "project_name",
+      "total_cost_yuan",
+      "usage_scenario"
+    ],
+    "dataset_schema_context": "<dataset_metadata trust=\"untrusted_business_data\">\n只能查询以下视图。字段 COMMENT 是业务事实；不得猜测未列出的表、列或指标。\n\nVIEW analytics.asset_catalog\nCOMMENT: 游戏资产目录明细；每行一个资产；project_id 是 RLS 作用域；可按 project_id 与 project_asset_summary 连接。\n- project_id text nullable=YES: 游戏项目范围 ID；维度字段；空值不允许。\n- project_name text nullable=YES: 游戏项目名称；非敏感维度；空值不允许。\n- asset_id text nullable=YES: 资产稳定 ID；维度字段；空值不允许。\n- asset_name text nullable=YES: 资产名称；非敏感维度；空值不允许。\n- cost_yuan numeric nullable=YES: 资产采购或制作费用，单位人民币元；可求和、平均、最小或最大；空值不允许。\n- category_name text nullable=YES: 资产类别；枚举为3D模型、贴图材质、音频、UI组件、特效；空值不允许。\n- usage_scenario text nullable=YES: 推荐应用场景，例如主城展示、战斗关卡、剧情演出、活动界面、环境氛围；空值不允许。\n- license_status text nullable=YES: 授权状态；枚举为已授权、待确认、仅内部使用；空值不允许。\n- polygon_count integer nullable=YES: 模型面数，单位面；只有3D模型有值，其他类别为空；可平均、最小或最大，不建议求和。\n\nVIEW analytics.project_asset_summary\nCOMMENT: 游戏项目资产汇总；每行是一个项目和资产类别；project_id 是 RLS 作用域；可与 asset_catalog 按 project_id 连接。\n- project_id text nullable=YES: 游戏项目范围 ID；维度字段。\n- project_name text nullable=YES: 游戏项目名称；非敏感维度。\n- category_name text nullable=YES: 资产类别维度。\n- asset_count bigint nullable=YES: 当前项目和类别的资产数量，单位个；可以求和。\n- total_cost_yuan numeric nullable=YES: 当前项目和类别的资产总费用，单位人民币元；可求和。\n- average_cost_yuan numeric nullable=YES: 当前项目和类别的平均资产费用，单位人民币元；已经是平均值，不应再次求和。\n- average_polygon_count numeric nullable=YES: 当前项目模型资产的平均面数，单位面；非模型类别为空；不可求和。\n\n可用关系：\n- asset_catalog.project_id = project_asset_summary.project_id\n\n业务同义词：\n- cost_yuan: 费用, 成本\n- asset_name: 资产, 素材\n- polygon_count: 模型面数, 面数\n</dataset_metadata>",
+    "max_requirements": 16,
+    "max_sub_questions": 8
+  },
+  "research_policy": {
+    "mode": "hybrid",
+    "top_k": 5,
+    "candidate_k": null,
+    "min_score": 0.0,
+    "source_path": null,
+    "section_path": [],
+    "dataset_id": "game_test",
+    "nl2sql_action": "query",
+    "allow_direct_web": true,
+    "allow_web_fallback": false
+  },
+  "progress": {
+    "current_wave": 0,
+    "workers": {
+      "SQ1": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "SQ2": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "SQ3": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "SQ4": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "SQ5": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      }
+    },
+    "events": []
+  },
+  "sub_question_results": [],
+  "evidence_registry": {
+    "evidence_by_id": {}
+  },
+  "requirement_evidence_statuses": [
+    {
+      "requirement_id": "R1",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "web_search"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ1"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R2",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ2"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R3",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "nl2sql_query"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ3"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R4",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ4"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R5",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ5"
+      ],
+      "reason_codes": []
+    }
+  ],
+  "status": "waiting_confirmation",
+  "final_output": null,
+  "created_at": "2026-08-03T13:42:01.173630Z",
+  "updated_at": "2026-08-03T13:42:01.175199Z",
+  "error_code": null,
+  "error_message": null
+}

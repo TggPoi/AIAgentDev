@@ -1,0 +1,22 @@
+INFO:     Started server process [2364]
+INFO:     Waiting for application startup.
+2026-08-03 22:03:29,839 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.enabled" project="python-agent-study-phase-final-2" endpoint="https://api.smith.langchain.com"
+2026-08-03 22:03:29,840 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+2026-08-03 22:03:29,857 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-03 22:03:29,858 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-03 22:03:30,248 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-03 22:03:30,249 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-03 22:03:30,250 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-03 22:03:30,342 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-03 22:03:30,435 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint/store 已创建
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-08-03 22:03:47,140 | INFO | fast_app.middlewares.request_id_middleware | request_id=85d7f3bb4c934572814bbdf5b282c41d | trace_id=85d7f3bb4c934572814bbdf5b282c41d | http_request event="http.request.finish" method="POST" path="/rag/chat/stream/events" status_code=200 latency_ms=3393.21
+2026-08-03 22:03:47,140 | WARNING | fast_app.middlewares.request_id_middleware | request_id=85d7f3bb4c934572814bbdf5b282c41d | trace_id=85d7f3bb4c934572814bbdf5b282c41d | slow_operation event="http.request.slow" latency_ms=3393.21 threshold_ms=3000.0 slow_component="http_request" method="POST" path="/rag/chat/stream/events" status_code=200 status="success"
+2026-08-03 22:03:54,869 | INFO | httpx | request_id=85d7f3bb4c934572814bbdf5b282c41d | trace_id=85d7f3bb4c934572814bbdf5b282c41d | HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-03 22:04:10,523 | INFO | httpx | request_id=85d7f3bb4c934572814bbdf5b282c41d | trace_id=85d7f3bb4c934572814bbdf5b282c41d | HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-03 22:04:10,534 | INFO | fast_app.services.conversation.query_rewrite | request_id=85d7f3bb4c934572814bbdf5b282c41d | trace_id=85d7f3bb4c934572814bbdf5b282c41d | query_rewrite event="query_rewrite.finish" original_query="结合知识库继续比较这些资产，并说明哪些内容还需要公开资料验证。" rewritten_query="结合知识库继续比较《星港远征》中已授权的3D模型资产（角色资产01和角色资产06），并说明哪些内容还需要公开资料验证。" used_history=True used_summary=False summary_version=- history_message_count=2 reason="rewritten_with_history"
+2026-08-03 22:04:10,535 | INFO | fast_app.services.rag.rag_agent_pipeline_service | request_id=85d7f3bb4c934572814bbdf5b282c41d | trace_id=85d7f3bb4c934572814bbdf5b282c41d | rag_agent_query_rewrite event="rag_agent.query_rewrite.applied" session_id="user:user_MBeEmT7K2eGguofW4CZ:session:taskplan-v2-e2e-7-promptfix-20260803:c457dc9b66e1607b" original_query="结合知识库继续比较这些资产，并说明哪些内容还需要公开资料验证。" rewritten_query="结合知识库继续比较《星港远征》中已授权的3D模型资产（角色资产01和角色资产06），并说明哪些内容还需要公开资料验证。" used_history=True used_summary=False summary_version=- reason="当前问题中的“这些资产”指代历史中提到的《星港远征》已授权的3D模型资产（角色资产01和角色资产06），结合上下文可以明确补全，改写为独立可检索的问题。" history_message_count=2
+2026-08-03 22:04:12,305 | INFO | httpx | request_id=85d7f3bb4c934572814bbdf5b282c41d | trace_id=85d7f3bb4c934572814bbdf5b282c41d | HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-03 22:05:05,523 | INFO | httpx | request_id=85d7f3bb4c934572814bbdf5b282c41d | trace_id=85d7f3bb4c934572814bbdf5b282c41d | HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-03 22:06:25,383 | INFO | httpx | request_id=85d7f3bb4c934572814bbdf5b282c41d | trace_id=85d7f3bb4c934572814bbdf5b282c41d | HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"

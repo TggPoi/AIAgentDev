@@ -1,0 +1,14 @@
+INFO:     127.0.0.1:51685 - "OPTIONS /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51685 - "POST /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51974 - "OPTIONS /agent/task-plans/task_plan_20260803134950_652c3fb046a3/markdown HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51974 - "GET /agent/task-plans/task_plan_20260803134950_652c3fb046a3/markdown HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52066 - "POST /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52295 - "OPTIONS /agent/task-plans/task_plan_20260803135228_1c91c4671cde/markdown HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52295 - "GET /agent/task-plans/task_plan_20260803135228_1c91c4671cde/markdown HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52398 - "POST /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52837 - "OPTIONS /agent/task-plans/task_plan_20260803135635_a917bd6780cb/markdown HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52837 - "GET /agent/task-plans/task_plan_20260803135635_a917bd6780cb/markdown HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52899 - "POST /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53414 - "POST /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53631 - "OPTIONS /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53631 - "POST /rag/chat/stream/events HTTP/1.1" 200 OK
