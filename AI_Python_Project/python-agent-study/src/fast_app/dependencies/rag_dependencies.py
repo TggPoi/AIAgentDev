@@ -43,12 +43,16 @@ from fast_app.services.research.research_tool_loop import ResearchToolLoop
 from fast_app.services.research.research_worker_agent import ResearchWorkerAgent
 from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 from fast_app.services.agent_tasks.agent_task_router import AgentTaskRouter
+from fast_app.services.agent_tasks.agent_task_capability_service import (
+    AgentTaskCapabilityService,
+)
 from fast_app.services.agent_tasks.agent_tool_audit_service import AgentToolAuditService
 from fast_app.services.agent_tasks.agent_tool_permission_service import AgentToolPermissionService
 from fast_app.integrations.gitlab.agent_change_service import GitLabAgentChangeService
 from fast_app.integrations.gitlab.repository import GitLabRepository
 from fast_app.services.nl2sql.registry import DatasetRegistry
 from fast_app.services.nl2sql.service import Nl2SqlService
+from fast_app.services.nl2sql.authorization import Nl2SqlAuthorizationService
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingClient
@@ -380,6 +384,13 @@ def get_agent_task_executor(
         if isinstance(nl2sql_registry, DatasetRegistry)
         else None
     )
+    capability_service = AgentTaskCapabilityService(
+        settings=settings,
+        dataset_registry=(
+            nl2sql_registry if isinstance(nl2sql_registry, DatasetRegistry) else None
+        ),
+        nl2sql_authorization=Nl2SqlAuthorizationService(session),
+    )
 
     # 两条多 Agent 链路在依赖层显式装配，Facade 只负责按 task_kind 分派：
     # Research 使用父图 + Worker 子图；文档任务使用 Supervisor + Deep Agents。
@@ -403,6 +414,7 @@ def get_agent_task_executor(
         llm_client=llm_client,
         task_plan_store=task_plan_store,
         worker_agent=research_worker,
+        prompt_guard=prompt_guard,
     )
     # 真实写入 Service 同时注入 Executor 和 DeepDocumentAgent：前者负责确认执行，
     # 后者只通过受控 read 工具读取原文，不拥有 execute_confirmed_actions 入口。
@@ -437,6 +449,8 @@ def get_agent_task_executor(
         task_plan_store=task_plan_store,
         research_executor=research_executor,
         document_executor=document_executor,
+        capability_service=capability_service,
+        prompt_guard=prompt_guard,
     )
 
 
@@ -494,6 +508,11 @@ def get_rag_pipeline(
             if isinstance(registry, DatasetRegistry)
             else None
         )
+        capability_service = AgentTaskCapabilityService(
+            settings=settings,
+            dataset_registry=(registry if isinstance(registry, DatasetRegistry) else None),
+            nl2sql_authorization=Nl2SqlAuthorizationService(session),
+        )
         conversation_memory_store = get_conversation_memory_store(
             request=request,
             settings=settings,
@@ -518,6 +537,7 @@ def get_rag_pipeline(
             task_executor=task_executor,
             parent_expander=parent_expander,
             nl2sql_service=nl2sql_service,
+            capability_service=capability_service,
         )
 
     raise AppServiceError(

@@ -58,22 +58,48 @@ class SchemaCatalog:
         for physical, columns in grouped.items():
             name = physical_to_logical.get(physical, physical) if logical_names else physical
             lines.append(f"\nVIEW {name}")
-            lines.append(f"COMMENT: {columns[0]['view_comment'] or '无'}")
+            lines.append(f"COMMENT: {_metadata_text(columns[0]['view_comment'])}")
             for column in columns:
                 lines.append(
                     f"- {column['column_name']} {column['data_type']} "
                     f"nullable={column['is_nullable']}: "
-                    f"{column['column_comment'] or '无'}"
+                    f"{_metadata_text(column['column_comment'])}"
                 )
         lines.append("\n可用关系：")
-        lines.extend(f"- {item}" for item in dataset.relationships)
+        lines.extend(f"- {_metadata_text(item)}" for item in dataset.relationships)
         if dataset.synonyms:
             lines.append("\n业务同义词：")
             lines.extend(
-                f"- {key}: {', '.join(values)}"
+                f"- {_metadata_text(key, 200)}: "
+                f"{', '.join(_metadata_text(value, 200) for value in values[:20])}"
                 for key, values in dataset.synonyms.items()
             )
         return "\n".join(lines)
+
+    async def load_logical_fields(
+        self,
+        connection: asyncpg.Connection,
+        dataset: DatasetDefinition,
+    ) -> set[str]:
+        """读取白名单视图的逻辑字段，供 TaskPlan 保存前校验。"""
+
+        rows = await connection.fetch(
+            """
+            SELECT lower(c.column_name) AS column_name
+            FROM information_schema.columns c
+            WHERE (c.table_schema || '.' || c.table_name) = ANY($1::text[])
+            ORDER BY c.table_name, c.ordinal_position
+            """,
+            list(dataset.allowed_views),
+        )
+        return {str(row["column_name"]) for row in rows}
+
+
+def _metadata_text(value: object, max_chars: int = 1_000) -> str:
+    """限制不可信 Dataset metadata 的单项长度并移除控制字符。"""
+
+    text = " ".join(str(value or "无").split())
+    return text[:max_chars]
 
 
 __all__ = ["SchemaCatalog"]

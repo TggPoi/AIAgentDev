@@ -24,6 +24,10 @@ from fast_app.dependencies.rag_dependencies import (
 from fast_app.dependencies.user_context import get_current_user_context
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.domain.agent_tool_permissions import RoleCode
+from fast_app.domain.research_task_plan import (
+    ResearchTaskPlan,
+    build_research_task_plan_public_view,
+)
 from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
 from fast_app.services.exceptions import AppServiceError, ToolPermissionDeniedError
 from fast_app.services.rag.guarded_streaming import (
@@ -35,6 +39,14 @@ from fast_app.services.rag.prompt_guard_service import PromptGuardService
 
 
 router = APIRouter(prefix="/agent/task-plans", tags=["agent-task-plans"])
+
+
+def _public_plan_payload(plan) -> dict[str, Any]:
+    """Research 使用安全 Public View；Document 保持现有 API 契约。"""
+
+    if isinstance(plan, ResearchTaskPlan):
+        return build_research_task_plan_public_view(plan).model_dump(mode="json")
+    return plan.model_dump(mode="json")
 
 
 class AgentTaskPlanConfirmRequest(BaseModel):
@@ -109,7 +121,7 @@ async def get_agent_task_plan_endpoint(
         RoleCode.SYSTEM_ADMIN.value
     ):
         raise ToolPermissionDeniedError("只能查看自己创建的 Agent task plan")
-    return plan.model_dump(mode="json")
+    return _public_plan_payload(plan)
 
 
 @router.get("/{task_plan_id}/markdown", response_class=PlainTextResponse)
@@ -237,7 +249,7 @@ async def confirm_agent_task_plan_endpoint(
         status=plan.status.value,
         executed=True,
         message="Agent task plan 已确认并执行",
-        task_plan=plan.model_dump(mode="json"),
+        task_plan=_public_plan_payload(plan),
         request_id=get_request_id(),
         trace_id=get_trace_id(),
     )
@@ -351,11 +363,20 @@ async def _confirm_task_plan_sse_generator(
                 yield event
 
             # prompt_guard 开始校验 最终回答
-            final_answer = plan.final_output.get("final_answer")
+            if isinstance(plan, ResearchTaskPlan):
+                final_answer = plan.final_output.answer if plan.final_output is not None else None
+            else:
+                final_answer = plan.final_output.get("final_answer")
             if isinstance(final_answer, str) and final_answer.strip():
                 yield _format_sse_event(
                     "sources",
-                    {"sources": plan.final_output.get("sources", [])},
+                    {
+                        "sources": (
+                            _public_plan_payload(plan).get("evidence", [])
+                            if isinstance(plan, ResearchTaskPlan)
+                            else plan.final_output.get("sources", [])
+                        )
+                    },
                 )
                 stream_state = GuardedStreamState()
 
@@ -375,13 +396,15 @@ async def _confirm_task_plan_sse_generator(
                     {
                         "task_plan_id": plan.task_plan_id,
                         "status": plan.status.value,
-                        "used_tools": plan.final_output.get("used_tools", []),
-                        "warnings": plan.final_output.get("warnings", []),
-                        "failed_sub_questions": plan.final_output.get(
-                            "failed_sub_questions", []
+                        "used_tools": (
+                            plan.final_output.used_tools
+                            if isinstance(plan, ResearchTaskPlan)
+                            else plan.final_output.get("used_tools", [])
                         ),
-                        "skipped_sub_questions": plan.final_output.get(
-                            "skipped_sub_questions", []
+                        "warnings": (
+                            plan.final_output.warnings
+                            if isinstance(plan, ResearchTaskPlan)
+                            else plan.final_output.get("warnings", [])
                         ),
                     },
                 )
@@ -432,8 +455,29 @@ def _task_plan_progress_events(
     seen_research_events = (
         seen_research_events if seen_research_events is not None else set()
     )
-    progress = plan.final_output.get("research_progress", {})
-    research_events = progress.get("events", []) if isinstance(progress, dict) else []
+    if isinstance(plan, ResearchTaskPlan):
+        research_events = [item.model_dump(mode="json") for item in plan.progress.events]
+        for sub_question_id, worker in plan.progress.workers.items():
+            if worker.status != "running":
+                continue
+            event_key = f"sub_question_started:{sub_question_id}:{worker.wave}"
+            if event_key in seen_research_events:
+                continue
+            seen_research_events.add(event_key)
+            events.append(
+                _format_sse_event(
+                    "sub_question_started",
+                    {
+                        "task_plan_id": plan.task_plan_id,
+                        "sub_question_id": sub_question_id,
+                        "wave": worker.wave,
+                        "attempt": worker.attempt,
+                    },
+                )
+            )
+    else:
+        progress = plan.final_output.get("research_progress", {})
+        research_events = progress.get("events", []) if isinstance(progress, dict) else []
     if isinstance(research_events, list):
         for index, research_event in enumerate(research_events):
             if not isinstance(research_event, dict):
@@ -460,7 +504,11 @@ def _task_plan_progress_events(
                     },
                 )
             )
-    document_progress = plan.final_output.get("document_progress", {})
+    document_progress = (
+        {}
+        if isinstance(plan, ResearchTaskPlan)
+        else plan.final_output.get("document_progress", {})
+    )
     document_events = (
         document_progress.get("events", [])
         if isinstance(document_progress, dict)
@@ -526,7 +574,11 @@ def _task_plan_progress_events(
             )
         )
     # question_decomposition 执行器将每个已完成子问题的字典追加到这里并保存快照。
-    results = plan.final_output.get("sub_question_results", [])
+    results = (
+        [item.model_dump(mode="json") for item in plan.sub_question_results]
+        if isinstance(plan, ResearchTaskPlan)
+        else plan.final_output.get("sub_question_results", [])
+    )
 
     # 检查当前子任务执行结果的json文件 格式是否正确
     if not isinstance(results, list):
@@ -544,21 +596,66 @@ def _task_plan_progress_events(
         seen_sub_questions.add(sub_question_id)
 
         # 将执行结果原样带给前端：页面可据此显示问题、所选工具、答案或单题错误。
-        events.append(
-            _format_sse_event(
-                "agent_task_sub_question_completed",
-                {
-                    "task_plan_id": plan.task_plan_id,
-                    "sub_question_id": sub_question_id,
-                    "question": result.get("question"),
-                    "status": result.get("status"),
-                    "selected_tool": result.get("selected_tool"),
-                    "answer": result.get("answer"),
-                    "error": result.get("error"),
-                    "tool_calls": result.get("tool_calls", []),
-                },
+        if isinstance(plan, ResearchTaskPlan):
+            validation = result.get("evidence_validation") or {}
+            safe_result = {
+                "task_plan_id": plan.task_plan_id,
+                "sub_question_id": sub_question_id,
+                "status": result.get("status"),
+                "answer": result.get("answer"),
+                "error_code": result.get("error_code"),
+                "evidence_ids": result.get("evidence_ids", []),
+            }
+            events.append(
+                _format_sse_event(
+                    "sub_question_evidence_updated",
+                    {
+                        "task_plan_id": plan.task_plan_id,
+                        "sub_question_id": sub_question_id,
+                        "valid_evidence_refs": validation.get("valid_evidence_refs", []),
+                        "invalid_evidence_refs": validation.get("invalid_evidence_refs", []),
+                        "reason_codes": validation.get("reason_codes", []),
+                    },
+                )
             )
-        )
+            events.append(_format_sse_event("sub_question_completed", safe_result))
+        else:
+            events.append(
+                _format_sse_event(
+                    "agent_task_sub_question_completed",
+                    {
+                        "task_plan_id": plan.task_plan_id,
+                        "sub_question_id": sub_question_id,
+                        "question": result.get("question"),
+                        "status": result.get("status"),
+                        "selected_tool": result.get("selected_tool"),
+                        "answer": result.get("answer"),
+                        "error": result.get("error"),
+                        "tool_calls": result.get("tool_calls", []),
+                    },
+                )
+            )
+    if isinstance(plan, ResearchTaskPlan):
+        for requirement in plan.requirement_evidence_statuses:
+            event_key = f"requirement:{requirement.requirement_id}:{requirement.status}"
+            if event_key in seen_research_events:
+                continue
+            seen_research_events.add(event_key)
+            event_name = {
+                "satisfied": "requirement_satisfied",
+                "partially_satisfied": "requirement_insufficient",
+                "failed": "requirement_insufficient",
+                "pending": "requirement_evidence_updated",
+            }[requirement.status]
+            events.append(
+                _format_sse_event(
+                    event_name,
+                    {
+                        "task_plan_id": plan.task_plan_id,
+                        **requirement.model_dump(mode="json"),
+                    },
+                )
+            )
     return events
 
 

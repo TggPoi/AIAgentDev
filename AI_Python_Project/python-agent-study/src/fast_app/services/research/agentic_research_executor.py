@@ -1,79 +1,88 @@
-"""Research TaskPlan 的波次调度、快照和最终综合。"""
+"""ResearchTaskPlan v2 的波次调度、Evidence 单写者和最终综合。"""
 
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 from collections.abc import Callable
-from typing import Any
+from datetime import UTC, datetime
 
 from langchain_core.runnables import RunnableConfig
 
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.core.config import Settings
-from fast_app.domain.agent_task_plan import AgentResearchPolicy, AgentTaskPlan, AgentTaskPlanStatus, AgentTaskSubQuestion, AgentTaskSubQuestionResult
+from fast_app.domain.agent_task_plan import (
+    AgentResearchPolicy,
+    AgentTaskPlanStatus,
+    AgentTaskSubQuestionResult,
+)
 from fast_app.domain.rag_models import RagContext, RetrievalFilters
+from fast_app.domain.research_task_plan import (
+    ResearchProgressEvent,
+    ResearchTaskFinalOutput,
+    ResearchTaskPlan,
+    ResearchTaskSubQuestion,
+    ResearchTaskSubQuestionResult,
+)
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.graph.research.agentic_research_graph import ResearchExecutionCancelled, build_agentic_research_graph
+from fast_app.graph.research.agentic_research_graph import (
+    ResearchExecutionCancelled,
+    build_agentic_research_graph,
+)
 from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
-from fast_app.services.exceptions import AppServiceError, ToolPermissionDeniedError
-from fast_app.services.research.research_tool_loop import merge_evidence
-from fast_app.services.research.research_worker_agent import ResearchWorkerAgent, ResearchWorkerRequest
+from fast_app.services.exceptions import (
+    AgentTaskEvidenceStateInvalidError,
+    AppServiceError,
+    ToolPermissionDeniedError,
+)
+from fast_app.services.rag.prompt_guard_service import PromptGuardService
+from fast_app.services.research.requirement_evidence_service import (
+    AgentTaskRequirementEvidenceService,
+)
+from fast_app.services.research.research_worker_agent import (
+    ResearchWorkerAgent,
+    ResearchWorkerRequest,
+)
+
 
 LangChainConfigFactory = Callable[[str], RunnableConfig]
 
 
 class _TaskPlanPersistenceError(AppServiceError):
-    """研究进度快照无法持久化。"""
+    """Research JSON 快照无法原子持久化。"""
 
 
 class AgenticResearchExecutor:
-    """执行整个只读 Research TaskPlan，不承担单 Worker 工具细节。"""
+    """执行只读 ResearchTaskPlan；Worker 从不直接修改 Evidence Registry。"""
 
-    def __init__(self, settings: Settings, llm_client: BaseLLMClient, task_plan_store: AgentTaskPlanStore, worker_agent: ResearchWorkerAgent) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        llm_client: BaseLLMClient,
+        task_plan_store: AgentTaskPlanStore,
+        worker_agent: ResearchWorkerAgent,
+        *,
+        prompt_guard: PromptGuardService | None = None,
+        evidence_service: AgentTaskRequirementEvidenceService | None = None,
+    ) -> None:
         self._settings = settings
         self._llm_client = llm_client
         self._task_plan_store = task_plan_store
         self._worker_agent = worker_agent
+        self._prompt_guard = prompt_guard
+        self._evidence_service = evidence_service or AgentTaskRequirementEvidenceService()
 
-    def _sync_cancelled_state(self, plan: AgentTaskPlan) -> bool:
-        """把控制 API 写入的 cancelled 快照同步到当前执行对象。"""
-
-        # 执行协程与 cancel API 不共享内存；以文件快照作为它们之间的取消信号。
+    def _sync_cancelled_state(self, plan: ResearchTaskPlan) -> bool:
         latest = self._task_plan_store.load(plan.task_plan_id)
-        if latest.status != AgentTaskPlanStatus.CANCELLED:
+        if not isinstance(latest, ResearchTaskPlan) or latest.status != AgentTaskPlanStatus.CANCELLED:
             return False
         plan.status = latest.status
-        plan.steps = latest.steps
-        plan.final_output = {**plan.final_output, **latest.final_output}
-        plan.error = None
+        plan.error_code = None
+        plan.error_message = None
         return True
-
-    async def _generate_with_trace(
-        self,
-        query: str,
-        context: RagContext,
-        langchain_config: RunnableConfig | None = None,
-    ) -> str:
-        """调用 LLM；兼容测试中仍使用旧签名的 fake client。"""
-
-        try:
-            # 真实 LangChain client 使用 langchain_config 透传 LangSmith 子 run 名称。
-            answer = await self._llm_client.generate(
-                query=query,
-                context=context,
-                langchain_config=langchain_config,
-            )
-            return _as_text(answer)
-        except TypeError as exc:
-            if "langchain_config" not in str(exc):
-                raise
-            answer = await self._llm_client.generate(query=query, context=context)
-            return _as_text(answer)
 
     async def execute_question_decomposition_plan(
         self,
-        plan: AgentTaskPlan,
+        plan: ResearchTaskPlan,
         user: CurrentUserContext,
         mode: str,
         top_k: int,
@@ -82,159 +91,164 @@ class AgenticResearchExecutor:
         filters: RetrievalFilters,
         langchain_config_factory: LangChainConfigFactory | None = None,
         resume: bool = False,
-    ) -> AgentTaskPlan:
-        """用 LangGraph 按依赖波次并行执行研究 Worker，再统一综合结果。"""
+    ) -> ResearchTaskPlan:
+        """按 DAG 波次执行 Worker，并在每个 Wave 后一次性提交 Evidence 和状态。"""
 
-        if plan.task_kind != "question_decomposition":
-            raise AppServiceError(f"不支持的问题拆解 task kind: {plan.task_kind}")
-        if len(plan.sub_questions) > self._settings.agent_research_max_sub_questions:
-            plan.status = AgentTaskPlanStatus.FAILED
-            plan.error = (
-                "研究子问题数量超过上限: "
-                f"{len(plan.sub_questions)}>{self._settings.agent_research_max_sub_questions}"
+        if plan.schema_version != 2 or plan.task_kind != "question_decomposition":
+            raise AppServiceError("Research Executor 只接受 ResearchTaskPlan v2")
+        registry_ids = set(plan.evidence_registry.evidence_by_id)
+        if any(
+            not set(item.evidence_ids).issubset(registry_ids)
+            for item in plan.sub_question_results
+        ):
+            raise AgentTaskEvidenceStateInvalidError(
+                "SubQuestion Result 引用了 Registry 中不存在的 Evidence"
             )
-            plan.final_output = {"status": plan.status.value}
-            self._task_plan_store.save(plan)
-            raise AppServiceError(plan.error)
-
-        plan.user_id = plan.user_id or user.user_id
         plan.status = AgentTaskPlanStatus.RUNNING
-        retained_results: list[AgentTaskSubQuestionResult] = []
-        if resume:
-            # 重试只复用已完成结果；failed/partial 会重新执行，避免把不足证据当成最终事实。
-            retained_results = [
-                AgentTaskSubQuestionResult.model_validate(item)
-                for item in plan.final_output.get("sub_question_results", [])
-                if isinstance(item, dict) and item.get("status") == "completed"
-            ]
-        plan.final_output = {
-            "research_progress": {"current_wave": 0, "workers": {}, "events": []},
-            "sub_question_results": [
-                item.model_dump(mode="json") for item in retained_results
-            ],
-            "failed_sub_questions": [],
-            "skipped_sub_questions": [],
-            "warnings": [],
-            "used_tools": sorted(
-                {tool for item in retained_results for tool in _result_used_tools(item)}
-            ),
-            "sources": _collect_result_sources(retained_results),
-        }
-        self._task_plan_store.save(plan)
-        # 多个 Worker 可同时上报事件；这把“更新内存快照 + 落盘”串行化，防止字段互相覆盖。
+        if not resume:
+            plan.sub_question_results = []
+            plan.evidence_registry.evidence_by_id.clear()
+        retained = [item for item in plan.sub_question_results if item.status == "completed"]
+        plan.sub_question_results = retained
+        plan.final_output = None
+        self._save(plan)
         snapshot_lock = asyncio.Lock()
+        formal_by_id = {item.sub_question_id: item for item in plan.sub_questions}
+        merged_results = {item.sub_question_id: item for item in retained}
 
-        def save_research_snapshot() -> None:
-            # 持久化失败会中断整个研究图，而非伪装成某个 Worker 的局部失败；否则 SSE
-            # 与后续 resume 会读取到不完整的事实快照。
-            try:
-                self._task_plan_store.save(plan)
-            except Exception as exc:
-                raise _TaskPlanPersistenceError(
-                    f"无法持久化 TaskPlan 快照: {type(exc).__name__}: {exc}"
-                ) from exc
-
-        async def append_progress_event(event: str, payload: dict[str, Any]) -> None:
-            # Worker 只提交事件负载；此回调负责把它转换成 API/SSE 可观察的统一进度结构。
+        async def append_progress_event(event: str, payload: dict[str, object]) -> None:
             async with snapshot_lock:
-                progress = plan.final_output["research_progress"]
-                progress["events"].append({"event": event, **payload})
-                worker_id = str(payload.get("sub_question_id") or "")
-                if worker_id:
-                    worker = progress["workers"].setdefault(worker_id, {})
-                    worker.update(
-                        {
-                            key: value
-                            for key, value in payload.items()
-                            if key in {"status", "wave", "attempt", "evaluation", "error"}
-                        }
+                sub_question_id = str(payload.get("sub_question_id") or "") or None
+                plan.progress.events.append(
+                    ResearchProgressEvent(
+                        event=event,
+                        sub_question_id=sub_question_id,
+                        wave=_as_int(payload.get("wave")),
+                        status=(str(payload.get("status")) if payload.get("status") else None),
+                        reason_code=(str(payload.get("error")) if payload.get("error") else None),
                     )
-                save_research_snapshot()
+                )
+                if sub_question_id and sub_question_id in plan.progress.workers:
+                    worker = plan.progress.workers[sub_question_id]
+                    if payload.get("status") in {"pending", "running", "completed", "partial", "failed", "skipped"}:
+                        worker.status = str(payload["status"])
+                    worker.wave = _as_int(payload.get("wave")) or worker.wave
+                    worker.attempt = _as_int(payload.get("attempt")) or worker.attempt
+                self._save(plan)
 
         async def on_wave_started(wave: int, sub_question_ids: list[str]) -> None:
-            # 先把本波次所有 Worker 标为 running，再启动实际协程，避免极快完成时页面漏掉开始态。
             async with snapshot_lock:
-                progress = plan.final_output["research_progress"]
-                progress["current_wave"] = wave
-                progress["events"].append(
-                    {
-                        "event": "agent_task_research_wave_started",
-                        "wave": wave,
-                        "sub_question_ids": sub_question_ids,
-                    }
+                plan.progress.current_wave = wave
+                plan.progress.events.append(
+                    ResearchProgressEvent(event="agent_task_research_wave_started", wave=wave)
                 )
                 for item_id in sub_question_ids:
-                    progress["workers"][item_id] = {
-                        "status": "running",
-                        "wave": wave,
-                        "attempt": 1,
-                        "evaluation": None,
-                        "error": None,
-                    }
-                save_research_snapshot()
-
-        merged_by_id = {item.sub_question_id: item for item in retained_results}
+                    worker = plan.progress.workers[item_id]
+                    worker.status = "running"
+                    worker.wave = wave
+                    worker.attempt = max(worker.attempt, 1)
+                self._save(plan)
 
         async def on_wave_merged(
             wave: int,
             wave_results: list[AgentTaskSubQuestionResult],
         ) -> None:
             async with snapshot_lock:
-                # LangGraph 并行节点的返回顺序不可预测；按 id 覆盖后统一排序，快照才稳定。
-                for item in wave_results:
-                    merged_by_id[item.sub_question_id] = item
-                    plan.final_output["research_progress"]["workers"].setdefault(
-                        item.sub_question_id, {}
-                    ).update(
-                        {
-                            "status": item.status,
-                            "wave": wave,
-                            "attempt": item.attempt_count,
-                            "evaluation": (
-                                item.evaluation.model_dump(mode="json")
-                                if item.evaluation is not None
-                                else None
-                            ),
-                            "error": item.error,
-                        }
+                completed_ids = {
+                    item.sub_question_id
+                    for item in merged_results.values()
+                    if item.status in {"completed", "partial"}
+                }
+                for legacy in wave_results:
+                    sub_question = formal_by_id[legacy.sub_question_id]
+                    successful_calls = {
+                        call.call_id: call.tool_name
+                        for call in legacy.tool_calls
+                        if call.status == "completed" and call.tool_name
+                    }
+                    candidates, invalid_refs, build_reason_codes = (
+                        self._evidence_service.build_candidates(
+                        task_plan_id=plan.task_plan_id,
+                        sub_question=sub_question,
+                        answer=legacy.answer,
+                        legacy_evidence=legacy.evidence,
+                        successful_tool_calls=successful_calls,
+                        )
                     )
-                ordered = _sort_results(plan, list(merged_by_id.values()))
-                plan.final_output["sub_question_results"] = [
-                    item.model_dump(mode="json") for item in ordered
-                ]
-                plan.final_output["used_tools"] = sorted(
-                    {tool for item in ordered for tool in _result_used_tools(item)}
+                    validation, valid = self._evidence_service.validate_sub_question_evidence(
+                        sub_question=sub_question,
+                        candidates=candidates,
+                        successful_tool_calls=successful_calls,
+                        completed_result_ids=completed_ids,
+                        invalid_evidence_refs=invalid_refs,
+                        initial_reason_codes=build_reason_codes,
+                    )
+                    plan.evidence_registry = self._evidence_service.merge_registry(
+                        plan.evidence_registry,
+                        valid,
+                    )
+                    converted = _to_research_result(legacy, validation)
+                    merged_results[converted.sub_question_id] = converted
+                    if converted.status in {"completed", "partial"}:
+                        completed_ids.add(converted.sub_question_id)
+                    worker = plan.progress.workers[converted.sub_question_id]
+                    worker.status = converted.status
+                    worker.wave = wave
+                    worker.attempt = converted.attempt_count
+                    worker.error_code = converted.error_code
+                plan.sub_question_results = _sort_results(plan, list(merged_results.values()))
+                plan.requirement_evidence_statuses = self._evidence_service.aggregate(
+                    requirements=plan.requirements,
+                    sub_questions=plan.sub_questions,
+                    results=plan.sub_question_results,
+                    registry=plan.evidence_registry,
                 )
-                plan.final_output["sources"] = _collect_result_sources(ordered)
-                save_research_snapshot()
+                self._save(plan)
 
         def should_stop() -> bool:
-            # Graph 和每个 Worker 复用同一取消探针，在派发新波次前以及长操作边界检查。
             return self._sync_cancelled_state(plan)
 
         async def worker_runner(
-            sub_question: AgentTaskSubQuestion,
+            sub_question: ResearchTaskSubQuestion,
             dependency_results: list[AgentTaskSubQuestionResult],
             wave: int,
         ) -> AgentTaskSubQuestionResult:
+            if sub_question.information_source_hint == "none":
+                try:
+                    return await asyncio.wait_for(
+                        self._run_derived_sub_question(
+                            sub_question,
+                            dependency_results,
+                            langchain_config_factory=langchain_config_factory,
+                        ),
+                        timeout=self._settings.agent_research_worker_timeout_seconds,
+                    )
+                except TimeoutError:
+                    return _failed_legacy_result(sub_question, "WORKER_TIMEOUT")
+            web_policy = {
+                "direct": "required",
+                "fallback_on_insufficient_evidence": "fallback",
+                "not_used": "disabled",
+            }[sub_question.web_usage]
+            policy = AgentResearchPolicy(
+                mode=mode,
+                top_k=top_k,
+                candidate_k=candidate_k,
+                min_score=min_score,
+                source_path=filters.source_path,
+                section_path=filters.section_path,
+                web_policy=web_policy,
+                dataset_id=plan.research_policy.dataset_id,
+                nl2sql_action=plan.research_policy.nl2sql_action,
+            )
             try:
-                # Worker 超时限制在单子问题；一个慢工具不应阻塞同波次的其他研究结果。
                 return await asyncio.wait_for(
                     self._worker_agent.run(
                         ResearchWorkerRequest(
                             plan=plan,
                             sub_question=sub_question,
                             dependency_results=dependency_results,
-                            policy=plan.research_policy
-                            or AgentResearchPolicy(
-                                mode=mode,
-                                top_k=top_k,
-                                candidate_k=candidate_k,
-                                min_score=min_score,
-                                source_path=filters.source_path,
-                                section_path=filters.section_path,
-                                web_policy="disabled",
-                            ),
+                            policy=policy,
                             filters=filters,
                             wave=wave,
                             on_progress=append_progress_event,
@@ -245,22 +259,12 @@ class AgenticResearchExecutor:
                     ),
                     timeout=self._settings.agent_research_worker_timeout_seconds,
                 )
-            except ResearchExecutionCancelled:
-                raise
-            except ToolPermissionDeniedError:
-                raise
-            except _TaskPlanPersistenceError:
+            except (ResearchExecutionCancelled, ToolPermissionDeniedError, _TaskPlanPersistenceError):
                 raise
             except TimeoutError:
-                return _failed_research_result(
-                    sub_question, "WORKER_TIMEOUT", "Worker 执行超时。"
-                )
+                return _failed_legacy_result(sub_question, "WORKER_TIMEOUT")
             except Exception as exc:
-                return _failed_research_result(
-                    sub_question,
-                    f"{type(exc).__name__}: {exc}",
-                    "Worker 局部异常已隔离。",
-                )
+                return _failed_legacy_result(sub_question, type(exc).__name__)
 
         try:
             graph = build_agentic_research_graph(
@@ -269,120 +273,144 @@ class AgenticResearchExecutor:
                 on_wave_merged=on_wave_merged,
                 should_stop=should_stop,
             )
+            retained_legacy = [_to_legacy_result(item, formal_by_id[item.sub_question_id]) for item in retained]
             graph_result = await graph.ainvoke(
                 {
                     "sub_questions": plan.sub_questions,
-                    "results": retained_results,
+                    "results": retained_legacy,
                     "current_wave": 0,
                     "batch_ids": [],
                     "max_parallel_workers": self._settings.agent_research_max_parallel_workers,
                 }
             )
-            # 图已经把依赖失败转换成 skipped；Executor 在图外只负责汇总、综合与最终状态。
-            results = _sort_results(plan, graph_result.get("results", []))
+            uncommitted = [
+                item
+                for item in graph_result.get("results", [])
+                if item.sub_question_id not in merged_results
+            ]
+            if uncommitted:
+                await on_wave_merged(plan.progress.current_wave, uncommitted)
             if self._sync_cancelled_state(plan):
-                self._task_plan_store.save(plan)
+                self._save(plan)
                 return plan
-            usable = [item for item in results if item.status in {"completed", "partial"}]
-            failed = [item.sub_question_id for item in results if item.status == "failed"]
-            skipped = [item.sub_question_id for item in results if item.status == "skipped"]
-            warnings = [warning for item in results for warning in item.warnings]
-            warnings.extend(
-                f"{item.sub_question_id}: {item.status} - {item.error or '证据不足'}"
-                for item in results
-                if item.status in {"failed", "skipped"} and not item.warnings
+            plan.requirement_evidence_statuses = self._evidence_service.aggregate(
+                requirements=plan.requirements,
+                sub_questions=plan.sub_questions,
+                results=plan.sub_question_results,
+                registry=plan.evidence_registry,
             )
-            workers = plan.final_output["research_progress"]["workers"]
-            for item in results:
-                workers.setdefault(item.sub_question_id, {}).update(
-                    {
-                        "status": item.status,
-                        "attempt": item.attempt_count,
-                        "evaluation": (
-                            item.evaluation.model_dump(mode="json")
-                            if item.evaluation is not None
-                            else None
-                        ),
-                        "error": item.error,
-                    }
-                )
-            plan.final_output.update(
-                {
-                    "sub_question_results": [
-                        item.model_dump(mode="json") for item in results
-                    ],
-                    "failed_sub_questions": failed,
-                    "skipped_sub_questions": skipped,
-                    "warnings": warnings,
-                    "sources": _collect_result_sources(usable),
-                    "used_tools": sorted(
-                        {tool for item in results for tool in _result_used_tools(item)}
-                    ),
-                }
+            requirement_failed = any(
+                item.status == "failed" for item in plan.requirement_evidence_statuses
             )
-            if not usable:
-                # 没有任何可用证据时不能请求综合模型，避免生成看似完整但无依据的答案。
+            if requirement_failed or any(
+                item.status == "pending" for item in plan.requirement_evidence_statuses
+            ):
                 plan.status = AgentTaskPlanStatus.FAILED
-                plan.error = "所有子问题均 failed/skipped，没有可综合的证据。"
-                plan.final_output["status"] = plan.status.value
-                self._task_plan_store.save(plan)
+                plan.error_code = "AGENT_TASK_REQUIREMENT_FAILED"
+                plan.error_message = "至少一个 Requirement 未满足证据契约。"
+                self._save(plan)
                 return plan
-            final_answer = await self._synthesize_final_answer(
+            partial = any(item.status == "partially_satisfied" for item in plan.requirement_evidence_statuses)
+            answer, included_ids, evidence_ids = await self._synthesize_final_answer(
                 plan,
-                usable,
-                failed_sub_questions=failed,
-                skipped_sub_questions=skipped,
                 langchain_config_factory=langchain_config_factory,
             )
+            guard_action = "allow"
+            guard_reasons: list[str] = []
+            if self._prompt_guard is not None:
+                guard = await self._prompt_guard.classify_output(
+                    answer,
+                    source="research.final_synthesis.output",
+                )
+                self._prompt_guard.audit_guard_result(
+                    result=guard,
+                    source="research.final_synthesis.output",
+                )
+                guard_action = guard.action.value
+                guard_reasons = list(guard.categories)
+                if guard.should_sanitize and guard.sanitized_text is not None:
+                    answer = guard.sanitized_text
+                elif guard.should_block:
+                    answer = self._prompt_guard.build_safe_refusal_answer()
             plan.status = (
-                AgentTaskPlanStatus.COMPLETED
-                if all(item.status == "completed" for item in results)
-                else AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS
+                AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS
+                if partial
+                else AgentTaskPlanStatus.COMPLETED
             )
-            plan.final_output.update(
-                {
-                    "final_answer": final_answer,
-                    "status": plan.status.value,
-                    "completed_at": datetime.now(UTC).isoformat(),
-                }
+            plan.final_output = ResearchTaskFinalOutput(
+                answer=answer,
+                included_requirement_ids=included_ids,
+                evidence_ids=evidence_ids,
+                used_tools=sorted(
+                    {
+                        call.tool_name
+                        for item in plan.sub_question_results
+                        for call in item.tool_calls
+                        if call.status == "completed" and call.tool_name != "none"
+                    }
+                ),
+                warnings=[
+                    f"{item.requirement_id}: {', '.join(item.reason_codes)}"
+                    for item in plan.requirement_evidence_statuses
+                    if item.status == "partially_satisfied"
+                ],
+                guard_action=guard_action,
+                guard_reason_codes=guard_reasons,
+                completed_at=datetime.now(UTC),
             )
-            self._task_plan_store.save(plan)
+            self._save(plan)
             return plan
         except ResearchExecutionCancelled:
             self._sync_cancelled_state(plan)
-            self._task_plan_store.save(plan)
+            self._save(plan)
             return plan
         except Exception as exc:
             plan.status = AgentTaskPlanStatus.FAILED
-            plan.error = f"{type(exc).__name__}: {exc}"
-            plan.final_output["status"] = plan.status.value
-            self._task_plan_store.save(plan)
+            plan.error_code = type(exc).__name__
+            plan.error_message = str(exc)
+            self._save(plan)
             raise
+
     async def _synthesize_final_answer(
         self,
-        plan: AgentTaskPlan,
-        results: list[AgentTaskSubQuestionResult],
-        failed_sub_questions: list[str] | None = None,
-        skipped_sub_questions: list[str] | None = None,
-        langchain_config_factory: LangChainConfigFactory | None = None,
-    ) -> str:
-        """把所有子问题答案和证据整合成面向用户的最终回答。"""
-
+        plan: ResearchTaskPlan,
+        *,
+        langchain_config_factory: LangChainConfigFactory | None,
+    ) -> tuple[str, list[str], list[str]]:
+        allowed_statuses = {"satisfied", "partially_satisfied"}
+        allowed_requirements = [
+            item for item in plan.requirement_evidence_statuses if item.status in allowed_statuses
+        ]
+        allowed_evidence = sorted({value for item in allowed_requirements for value in item.evidence_refs})
+        allowed_sub_questions = {
+            value for item in allowed_requirements for value in item.covering_sub_question_ids
+        }
+        result_lines = []
+        for item in plan.sub_question_results:
+            valid_ids = [value for value in item.evidence_ids if value in allowed_evidence]
+            if item.sub_question_id not in allowed_sub_questions or not valid_ids:
+                continue
+            result_lines.append(
+                f"sub_question_id={item.sub_question_id}\n"
+                f"evidence_ids={valid_ids}\nanswer={item.answer or ''}"
+            )
+        limitations = [
+            f"{item.requirement_id}: missing={item.missing_source_types}, reasons={item.reason_codes}"
+            for item in allowed_requirements
+            if item.status == "partially_satisfied"
+        ]
         context = RagContext(
-            query=plan.original_query,
+            query=plan.source_query,
             docs=[],
-            context_text=_format_sub_question_results(results),
+            context_text="\n\n".join(result_lines),
         )
-        # 综合模型只读取序列化后的已完成结果，不能凭空补全 failed/skipped 子问题。
         answer = await self._generate_with_trace(
             query=(
-                f"请回答原始复杂问题：{plan.original_query}\n"
-                f"最终目标：{plan.objective}\n"
-                f"整合要求：{plan.final_synthesis_instruction}\n"
-                f"失败子问题：{failed_sub_questions or []}\n"
-                f"跳过子问题：{skipped_sub_questions or []}\n"
-                "只能使用 completed/partial 结果和实际证据；不得推测失败问题，"
-                "必须明确说明未完成、证据不足和冲突内容。"
+                f"回答任务：{plan.source_query}\n"
+                f"综合约束：{plan.final_synthesis_instruction}\n"
+                f"允许使用的 Requirement：{[item.requirement_id for item in allowed_requirements]}\n"
+                f"证据限制：{limitations}\n"
+                "只能使用上下文中的合法 Evidence 支撑结论；若有部分满足，必须明确说明限制。"
             ),
             context=context,
             langchain_config=(
@@ -391,88 +419,138 @@ class AgenticResearchExecutor:
                 else None
             ),
         )
-        return answer.strip() or _fallback_final_answer(plan, results)
+        if not answer.strip():
+            answer = "\n\n".join(result_lines)
+        return (
+            answer.strip(),
+            [item.requirement_id for item in allowed_requirements],
+            allowed_evidence,
+        )
 
-def _as_text(value: object) -> str:
-    if isinstance(value, str):
-        return value
-    return str(value or "")
+    async def _run_derived_sub_question(
+        self,
+        sub_question: ResearchTaskSubQuestion,
+        dependency_results: list[AgentTaskSubQuestionResult],
+        *,
+        langchain_config_factory: LangChainConfigFactory | None,
+    ) -> AgentTaskSubQuestionResult:
+        """综合已完成依赖；该路径不调用外部事实 Tool。"""
+
+        usable = [
+            item
+            for item in dependency_results
+            if item.status in {"completed", "partial"} and item.answer.strip()
+        ]
+        if not usable:
+            return _failed_legacy_result(sub_question, "DEPENDENCY_EVIDENCE_UNAVAILABLE")
+        context = RagContext(
+            query=sub_question.question,
+            docs=[],
+            context_text="\n\n".join(
+                f"sub_question_id={item.sub_question_id}\n{item.answer}" for item in usable
+            ),
+        )
+        answer = await self._generate_with_trace(
+            query=(
+                f"只基于依赖子问题结果完成综合：{sub_question.question}\n"
+                "不得补充上下文之外的新事实；证据不足时明确说明。"
+            ),
+            context=context,
+            langchain_config=(
+                langchain_config_factory("research.sub_question.derived_synthesis")
+                if langchain_config_factory is not None
+                else None
+            ),
+        )
+        if not answer.strip():
+            return _failed_legacy_result(sub_question, "DERIVED_SYNTHESIS_EMPTY")
+        return AgentTaskSubQuestionResult(
+            sub_question_id=sub_question.sub_question_id,
+            question=sub_question.question,
+            selected_tool="none",
+            status="completed",
+            answer=answer.strip(),
+            attempt_count=1,
+        )
+
+    async def _generate_with_trace(
+        self,
+        *,
+        query: str,
+        context: RagContext,
+        langchain_config: RunnableConfig | None,
+    ) -> str:
+        try:
+            value = await self._llm_client.generate(
+                query=query,
+                context=context,
+                langchain_config=langchain_config,
+            )
+        except TypeError as exc:
+            if "langchain_config" not in str(exc):
+                raise
+            value = await self._llm_client.generate(query=query, context=context)
+        return str(value or "")
+
+    def _save(self, plan: ResearchTaskPlan) -> None:
+        try:
+            self._task_plan_store.save(plan)
+        except Exception as exc:
+            raise _TaskPlanPersistenceError(
+                f"无法持久化 Research TaskPlan: {type(exc).__name__}: {exc}"
+            ) from exc
 
 
-def _failed_research_result(sub_question: AgentTaskSubQuestion, error: str, warning: str | None = None) -> AgentTaskSubQuestionResult:
+def _to_research_result(legacy, validation) -> ResearchTaskSubQuestionResult:
+    return ResearchTaskSubQuestionResult(
+        sub_question_id=legacy.sub_question_id,
+        status=legacy.status,
+        answer=legacy.answer,
+        attempt_count=legacy.attempt_count,
+        tool_calls=legacy.tool_calls,
+        evidence_ids=validation.valid_evidence_refs,
+        evidence_validation=validation,
+        warnings=legacy.warnings,
+        error_code=(str(legacy.error).split(":", 1)[0] if legacy.error else None),
+        error_message=legacy.error,
+    )
+
+
+def _to_legacy_result(result, sub_question) -> AgentTaskSubQuestionResult:
+    return AgentTaskSubQuestionResult(
+        sub_question_id=result.sub_question_id,
+        question=sub_question.question,
+        selected_tool="none",
+        status=result.status,
+        answer=result.answer or "",
+        attempt_count=result.attempt_count,
+        tool_calls=result.tool_calls,
+        evidence=[],
+        warnings=result.warnings,
+        error=result.error_message,
+    )
+
+
+def _failed_legacy_result(sub_question, error: str) -> AgentTaskSubQuestionResult:
     return AgentTaskSubQuestionResult(
         sub_question_id=sub_question.sub_question_id,
         question=sub_question.question,
         selected_tool="none",
         status="failed",
+        answer="",
+        attempt_count=0,
         error=error,
-        warnings=[warning] if warning else [],
+        warnings=["Worker 未产生可验证 Evidence。"],
     )
 
 
-def _sort_results(plan: AgentTaskPlan, results: list[AgentTaskSubQuestionResult]) -> list[AgentTaskSubQuestionResult]:
-    order_by_id = {item.sub_question_id: item.order for item in plan.sub_questions}
-    by_id = {item.sub_question_id: item for item in results}
-    return sorted(by_id.values(), key=lambda item: (order_by_id.get(item.sub_question_id, 0), item.sub_question_id))
+def _sort_results(plan, results):
+    order = {item.sub_question_id: item.order for item in plan.sub_questions}
+    return sorted(results, key=lambda item: (order[item.sub_question_id], item.sub_question_id))
 
 
-def _collect_result_sources(results: list[AgentTaskSubQuestionResult]) -> list[dict[str, Any]]:
-    sources: list[dict[str, Any]] = []
-    for result in results:
-        if result.status in {"completed", "partial"}:
-            sources = merge_evidence(sources, result.evidence)
-    return sources
-
-
-def _result_used_tools(result: AgentTaskSubQuestionResult) -> list[str]:
-    if result.tool_calls:
-        return [item.tool_name for item in result.tool_calls if item.status == "completed" and item.tool_name and item.tool_name != "none"]
-    return [result.selected_tool] if result.selected_tool and result.selected_tool != "none" else []
-
-
-def _fallback_final_answer(
-    plan: AgentTaskPlan,
-    results: list[AgentTaskSubQuestionResult],
-) -> str:
-    """最终综合为空时，只拼接 completed/partial 的已有答案。"""
-
-    lines = [
-        f"# {plan.objective}",
-        "",
-        "最终综合模型没有返回有效正文，以下为基于子问题结果生成的兜底答案。",
-    ]
-    for item in results:
-        if item.status not in {"completed", "partial"} or not item.answer.strip():
-            continue
-        lines.extend(["", f"## {item.question}", "", item.answer.strip()])
-    return "\n".join(lines)
-
-
-def _format_sub_question_results(
-    results: list[AgentTaskSubQuestionResult],
-) -> str:
-    """保留状态、工具、证据和评估，供最终综合模型追溯。"""
-
-    import json
-
-    lines: list[str] = []
-    for result in results:
-        lines.append(
-            "\n".join(
-                [
-                    f"子问题 {result.sub_question_id}: {result.question}",
-                    f"状态: {result.status}",
-                    f"工具: {result.selected_tool}",
-                    f"工具调用: {json.dumps([call.model_dump(mode='json') for call in result.tool_calls], ensure_ascii=False)}",
-                    f"回答: {result.answer}",
-                    f"证据: {json.dumps(result.evidence, ensure_ascii=False)}",
-                    f"评估: {json.dumps(result.evaluation.model_dump(mode='json') if result.evaluation else None, ensure_ascii=False)}",
-                    f"警告: {json.dumps(result.warnings, ensure_ascii=False)}",
-                    f"错误: {result.error or ''}",
-                ]
-            )
-        )
-    return "\n\n".join(lines)
+def _as_int(value: object) -> int | None:
+    return value if isinstance(value, int) and value >= 0 else None
 
 
 __all__ = ["AgenticResearchExecutor"]

@@ -15,6 +15,11 @@ from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.conversation_models import ConversationMessage, ConversationRole
 from fast_app.domain.rag_stream_models import RagStreamEvent
+from fast_app.domain.research_task_plan import (
+    AgentTaskPlanningTurn,
+    ResearchTaskPlan,
+    build_research_task_plan_public_view,
+)
 from fast_app.graph.rag_agent.rag_agent_builder import build_rag_agent_graph
 from fast_app.graph.rag_agent.rag_agent_nodes import (
     build_rag_agent_answer_query,
@@ -24,6 +29,7 @@ from fast_app.graph.rag_agent.rag_agent_nodes import (
     create_agent_error_answer_node,
     create_agent_fail_request_node,
     create_call_knowledge_retrieval_node,
+    create_call_direct_web_node,
     create_call_nl2sql_query_node,
     create_check_loop_limits_node,
     create_execute_task_plan_node,
@@ -51,10 +57,17 @@ from fast_app.services.conversation.conversation_scope import (
     get_request_user_id,
 )
 from fast_app.services.conversation.conversation_summary import ConversationSummaryService
-from fast_app.services.exceptions import ExternalServiceError
+from fast_app.services.exceptions import (
+    AgentTaskPlanningContextUnresolvedError,
+    ExternalServiceError,
+    PromptInjectionBlockedError,
+)
 from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor
 from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 from fast_app.services.agent_tasks.agent_task_router import AgentTaskRouter
+from fast_app.services.agent_tasks.agent_task_capability_service import (
+    AgentTaskCapabilityService,
+)
 from fast_app.services.rag.guarded_streaming import (
     GuardedStreamState,
     guarded_answer_delta_events,
@@ -69,6 +82,12 @@ from fast_app.services.nl2sql.service import Nl2SqlService
 
 
 logger = get_logger(__name__)
+
+
+def _public_task_plan_payload(plan) -> dict[str, object]:
+    if isinstance(plan, ResearchTaskPlan):
+        return build_research_task_plan_public_view(plan).model_dump(mode="json")
+    return plan.model_dump(mode="json")
 
 
 class RagAgentPipeline:
@@ -92,6 +111,7 @@ class RagAgentPipeline:
         task_executor: AgentTaskExecutor | None = None,
         parent_expander: MarkdownParentContextExpander | None = None,
         nl2sql_service: Nl2SqlService | None = None,
+        capability_service: AgentTaskCapabilityService | None = None,
     ):
         """保存依赖并构建非流式图与流式路径共用的 Agent 节点。"""
         # 保存底层组件引用，方便非流式 graph 和流式手写路径复用同一批依赖。
@@ -111,6 +131,7 @@ class RagAgentPipeline:
         self.task_executor = task_executor
         self.parent_expander = parent_expander
         self.nl2sql_service = nl2sql_service
+        self.capability_service = capability_service
         # run() 使用 compiled graph，完整展示 LangGraph Agent 状态机。
         self.graph = build_rag_agent_graph(
             settings=settings,
@@ -125,6 +146,7 @@ class RagAgentPipeline:
             task_executor=task_executor,
             parent_expander=parent_expander,
             nl2sql_service=nl2sql_service,
+            capability_service=capability_service,
         )
 
         # stream / stream_events 需要在生成阶段逐 token yield。
@@ -134,6 +156,7 @@ class RagAgentPipeline:
             settings=settings,
             task_router=task_router,
             task_planner=task_planner,
+            capability_service=capability_service,
         )
         self.check_loop_limits_node = create_check_loop_limits_node(settings=settings)
         self.direct_answer_node = create_rag_agent_direct_answer_node(
@@ -149,6 +172,7 @@ class RagAgentPipeline:
             settings=settings,
             nl2sql_service=nl2sql_service,
         )
+        self.call_direct_web_node = create_call_direct_web_node(settings=settings)
         self.execute_task_plan_node = (
             create_execute_task_plan_node(
                 settings=settings,
@@ -173,7 +197,11 @@ class RagAgentPipeline:
     async def _ensure_query_allowed(self, query: str, *, source: str) -> None:
         """在启用 Prompt Guard 时校验指定边界上的用户查询。"""
         if self.prompt_guard is not None:
-            await self.prompt_guard.ensure_user_input_allowed(query, source=source)
+            await self.prompt_guard.ensure_user_input_allowed(
+                query,
+                source=source,
+                fail_on_classifier_error=True,
+            )
 
     async def _audit_stream_output(self, answer: str, *, source: str) -> None:
         """在 legacy token 流结束后审计完整回答内容。"""
@@ -298,6 +326,20 @@ class RagAgentPipeline:
                     recent_window=history_window,
                 )
 
+            if not history_window.messages and not memory_context.summary_text:
+                state["query_rewrite_reason"] = "history_empty"
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "used_history": False,
+                            "query_rewrite_skipped": True,
+                            "query_rewrite_reason": "history_empty",
+                            "history_message_count": 0,
+                            "summary_used": False,
+                        }
+                    )
+                return state
+
             # 将上下文用于 query rewrite
             rewrite_result = await self.query_rewriter.rewrite(
                 query=req.query,
@@ -312,6 +354,7 @@ class RagAgentPipeline:
                     child_name="query_rewrite.llm",
                     run_name=f"rag_agent_pipeline.{operation}.query_rewrite.llm",
                 ),
+                fail_on_error=True,
             )
 
             state["history_window_text"] = history_window.formatted_text
@@ -327,12 +370,36 @@ class RagAgentPipeline:
             state["rewritten_query"] = rewrite_result.rewritten_query
             state["query_rewrite_reason"] = rewrite_result.reason
             state["query"] = rewrite_result.rewritten_query
+            message_by_id = {item.id: item for item in history_window.messages}
+            state["planning_history"] = [
+                AgentTaskPlanningTurn(
+                    role=message_by_id[item_id].role.value,
+                    content=message_by_id[item_id].content,
+                )
+                for item_id in rewrite_result.relevant_message_ids
+                if item_id in message_by_id
+                and message_by_id[item_id].role.value in {"user", "assistant"}
+            ]
+            if rewrite_result.resolution_status == "unresolved":
+                raise AgentTaskPlanningContextUnresolvedError(
+                    rewrite_result.clarification_question
+                    or "当前会话上下文不足，请补充需要继续分析的对象。"
+                )
 
-            # rewrite完成后，prompt_guard 再一次检测是否存在恶意注入
-            await self._ensure_query_allowed(
-                state["query"],
-                source="rag_agent.query_rewrite.rewritten_query",
-            )
+            # Rewriter 输出只做本地轻量 Guard，避免一次请求重复调用外部安全模型。
+            if self.prompt_guard is not None:
+                resolved_guard = self.prompt_guard.scan_user_input(
+                    state["query"],
+                    source="rag_agent.query_rewrite.rewritten_query",
+                )
+                self.prompt_guard.audit_guard_result(
+                    result=resolved_guard,
+                    source="rag_agent.query_rewrite.rewritten_query",
+                )
+                if resolved_guard.should_block:
+                    raise PromptInjectionBlockedError(
+                        "改写后的请求包含疑似 Prompt Injection，已被拒绝。"
+                    )
 
             if trace_run is not None:
                 trace_run.add_outputs(
@@ -665,7 +732,7 @@ class RagAgentPipeline:
                 else None
             ),
             agent_task_plan=(
-                final_state["agent_task_plan"].model_dump(mode="json")
+                _public_task_plan_payload(final_state["agent_task_plan"])
                 if final_state.get("agent_task_plan") is not None
                 else None
             ),
@@ -725,6 +792,15 @@ class RagAgentPipeline:
         if next_route == "structured_data_query":
             nl2sql_update = await self.call_nl2sql_query_node(state)
             state.update(nl2sql_update)
+            return state
+
+        if next_route == "direct_web":
+            if operation == "stream":
+                raise ExternalServiceError(
+                    "deprecated token stream 不承载 Direct Web，请使用 /rag/chat/stream/events"
+                )
+            web_update = await self.call_direct_web_node(state)
+            state.update(web_update)
             return state
 
         tool_update = await self.call_knowledge_retrieval_node(state)
@@ -958,9 +1034,15 @@ class RagAgentPipeline:
             if task_plan is not None:
                 # Agent task plan 是 React 前端需要单独渲染的结构化状态，
                 # 所以先发 agent_task_plan_created，再继续 answer_delta。
-                yield RagStreamEvent(
-                    event="agent_task_plan_created",
-                    data={
+                if isinstance(task_plan, ResearchTaskPlan):
+                    yield RagStreamEvent(
+                        event="agent_task_plan_created",
+                        data=_public_task_plan_payload(task_plan),
+                    )
+                else:
+                    yield RagStreamEvent(
+                        event="agent_task_plan_created",
+                        data={
                         "task_plan_id": task_plan.task_plan_id,
                         "task_kind": task_plan.task_kind,
                         "task_type": task_plan.task_type,
@@ -981,8 +1063,11 @@ class RagAgentPipeline:
                         "steps": [
                             item.model_dump(mode="json") for item in task_plan.steps
                         ],
-                    },
-                )
+                        },
+                    )
+                if isinstance(task_plan, ResearchTaskPlan):
+                    task_plan = None
+            if task_plan is not None:
                 document_progress = task_plan.final_output.get(
                     "document_progress", {}
                 )

@@ -10,13 +10,13 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
 from fast_app.domain.agent_task_plan import (
-    AgentTaskSubQuestion,
     AgentTaskSubQuestionResult,
 )
+from fast_app.domain.research_task_plan import ResearchTaskSubQuestion
 
 
 ResearchWorkerRunner = Callable[
-    [AgentTaskSubQuestion, list[AgentTaskSubQuestionResult], int],
+    [ResearchTaskSubQuestion, list[AgentTaskSubQuestionResult], int],
     Awaitable[AgentTaskSubQuestionResult],
 ]
 WaveCallback = Callable[[int, list[str]], Awaitable[None]]
@@ -33,7 +33,7 @@ class ResearchExecutionCancelled(RuntimeError):
 
 class ResearchGraphState(TypedDict):
     # 整个 TaskPlan 中等待按依赖关系研究的全部子问题。
-    sub_questions: list[AgentTaskSubQuestion]
+    sub_questions: list[ResearchTaskSubQuestion]
     # 已完成或因依赖失败跳过的结果；Annotated/operator.add 让并行 Worker 的结果追加合并。
     results: Annotated[list[AgentTaskSubQuestionResult], operator.add]
     # 已完成的依赖波次数；每次派发非空批次时递增。
@@ -46,7 +46,7 @@ class ResearchGraphState(TypedDict):
 
 class ResearchWorkerState(TypedDict):
     # 当前 Worker 唯一负责研究的子问题。
-    sub_question: AgentTaskSubQuestion
+    sub_question: ResearchTaskSubQuestion
     # 当前子问题已完成的前置结果；只传递 declared depends_on 中的结果。
     dependency_results: list[AgentTaskSubQuestionResult]
     # 当前 Worker 所属依赖波次，供 trace、进度事件和执行记录标识。
@@ -54,7 +54,7 @@ class ResearchWorkerState(TypedDict):
 
 
 def validate_research_dependencies(
-    sub_questions: list[AgentTaskSubQuestion],
+    sub_questions: list[ResearchTaskSubQuestion],
 ) -> list[list[str]]:
     """校验 ID 和依赖图，并用 Kahn 算法返回稳定执行波次。
 
@@ -63,7 +63,7 @@ def validate_research_dependencies(
     """
 
     # 先建立 id 索引；依赖关系和后续排序都以 sub_question_id 为准。
-    by_id: dict[str, AgentTaskSubQuestion] = {}
+    by_id: dict[str, ResearchTaskSubQuestion] = {}
     for item in sub_questions:
         if item.sub_question_id in by_id:
             raise ValueError(f"重复 sub_question_id: {item.sub_question_id}")

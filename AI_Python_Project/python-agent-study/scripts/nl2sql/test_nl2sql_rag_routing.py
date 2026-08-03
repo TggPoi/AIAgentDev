@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +16,7 @@ from fast_app.services.exceptions import Nl2SqlSensitiveReportForbiddenError
 from fast_app.services.nl2sql.registry import DatasetRegistry
 from fast_app.services.nl2sql.service import Nl2SqlService
 from fast_app.services.nl2sql.models import DatasetDefinition
-from fast_app.domain.agent_task_plan import AgentResearchPolicy
+from fast_app.domain.research_task_plan import ResearchTaskPolicy
 from fast_app.services.research.research_tool_loop import (
     NL2SQL_QUERY_TOOL_NAME,
     ResearchToolLoop,
@@ -105,11 +106,15 @@ async def main() -> None:
     else:
         raise AssertionError("sensitive report was not rejected")
 
-    research_plan = await AgentTaskPlanner(settings).plan_question_decomposition(
-        query="结合知识库与资产费用分析适用资产",
-        research_policy=AgentResearchPolicy(
+    research_plan = SimpleNamespace(
+        research_policy=ResearchTaskPolicy(
+            mode="hybrid",
+            top_k=5,
+            min_score=0.0,
             dataset_id="game_test",
             nl2sql_action="query",
+            allow_direct_web=False,
+            allow_web_fallback=False,
         ),
     )
     loop = ResearchToolLoop(

@@ -1,6 +1,8 @@
 from collections.abc import Callable
 from time import perf_counter
 
+import httpx
+
 from fast_app.agents.runtime.agent_error_policy import (
     AgentErrorDecision,
     build_agent_error_answer,
@@ -16,10 +18,16 @@ from fast_app.agents.tools.rag_agent_tools import (
     KNOWLEDGE_RETRIEVAL_TOOL_NAME,
     retrieve_knowledge_docs,
 )
+from fast_app.agents.tools.web_search_tools import search_web_with_bocha
 from fast_app.domain.agent_task_plan import (
     AgentResearchPolicy,
     AgentTaskPlanStatus,
     AgentToolStepStatus,
+)
+from fast_app.domain.research_task_plan import (
+    ResearchTaskPlan,
+    ResearchTaskPolicy,
+    ResolvedPlanningRequest,
 )
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.rerankers.base import BaseReranker
@@ -40,6 +48,9 @@ from fast_app.graph.rag.rag_graph_nodes import (
 from fast_app.services.exceptions import ExternalServiceError
 from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor
 from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
+from fast_app.services.agent_tasks.agent_task_capability_service import (
+    AgentTaskCapabilityService,
+)
 from fast_app.services.agent_tasks.agent_task_router import (
     AgentRouteDecision,
     AgentTaskRouteResult,
@@ -57,6 +68,45 @@ from fast_app.services.nl2sql.service import Nl2SqlService
 
 
 logger = get_logger(__name__)
+
+
+def create_call_direct_web_node(
+    settings: Settings,
+) -> Callable[[RagAgentState], dict[str, object]]:
+    """执行 Router 已确认的单步骤公开网络检索，不创建 TaskPlan。"""
+
+    async def call_direct_web_node(state: RagAgentState) -> dict[str, object]:
+        async with httpx.AsyncClient() as http_client:
+            results = await search_web_with_bocha(
+                settings=settings,
+                http_client=http_client,
+                query=state["query"],
+                count=min(max(state["top_k"], 2), 10),
+            )
+        docs = [
+            RetrievedDoc(
+                id=f"web:{index}",
+                content="\n".join(
+                    item for item in (result.snippet, result.summary) if item
+                ),
+                score=1.0,
+                source="web_search",
+                title=result.title,
+                metadata={"url": result.url, "site_name": result.site_name},
+                retrieval_sources=["web_search"],
+            )
+            for index, result in enumerate(results, start=1)
+        ]
+        if not docs:
+            raise ExternalServiceError("Web Search 未返回可用结果")
+        return {
+            "docs": docs,
+            "tool_name": "web_search",
+            "tool_error": None,
+            "tool_call_count": state["tool_call_count"] + 1,
+        }
+
+    return call_direct_web_node
 
 
 def get_rag_agent_operation(state: RagAgentState) -> str:
@@ -227,6 +277,7 @@ def route_after_loop_check(state: RagAgentState) -> RagAgentRoute:
         "direct_answer",
         "knowledge_retrieval",
         "structured_data_query",
+        "direct_web",
         "execute_task_plan",
         "clarification_required",
     ):
@@ -252,6 +303,7 @@ def create_next_action_decision_node(
     settings: Settings,
     task_router: AgentTaskRouter | None = None,
     task_planner: AgentTaskPlanner | None = None,
+    capability_service: AgentTaskCapabilityService | None = None,
 ) -> Callable[[RagAgentState], dict[str, object]]:
     """构造意图路由节点：Router 定意图，Planner 为复杂任务创建计划。"""
     # Router 只选择业务意图；Planner 只为已确定的分支创建 TaskPlan。
@@ -393,14 +445,41 @@ def create_next_action_decision_node(
 
             # 进入需要 Planner 拆解的复杂任务
             if decision.intent == "question_decomposition":
-                if task_planner is None:
-                    raise RuntimeError("AgentTaskPlanner 未配置")
+                if task_planner is None or capability_service is None or current_user is None:
+                    raise RuntimeError("Research Planner 或 Capability Service 未配置")
+                capability = await capability_service.resolve_research(
+                    user=current_user,
+                    dataset_id=(str(state["dataset_id"]) if state.get("dataset_id") else None),
+                    allow_direct_web=state.get("allow_direct_web", True),
+                    allow_web_fallback=state.get("allow_web_fallback", False),
+                )
                 task_plan = await task_planner.plan_question_decomposition(
-                    query=state["query"],
-                    history=history,
-                    user_id=user_id,
+                    request=ResolvedPlanningRequest(
+                        current_query=state["original_query"],
+                        relevant_history=state.get("planning_history", []),
+                        resolved_query=state["query"],
+                    ),
+                    user_id=current_user.user_id,
+                    capability_snapshot=capability,
+                    research_policy=ResearchTaskPolicy(
+                        mode=state["mode"],
+                        top_k=state["top_k"],
+                        candidate_k=state["candidate_k"],
+                        min_score=state["min_score"],
+                        source_path=(
+                            str(state["filters"].get("source_path"))
+                            if state["filters"].get("source_path")
+                            else None
+                        ),
+                        section_path=[
+                            str(item) for item in state["filters"].get("section_path", [])
+                        ],
+                        dataset_id=(str(state["dataset_id"]) if state.get("dataset_id") else None),
+                        nl2sql_action=("query" if state.get("dataset_id") else None),
+                        allow_direct_web=state.get("allow_direct_web", True),
+                        allow_web_fallback=state.get("allow_web_fallback", False),
+                    ),
                     langchain_config_factory=build_child_config,
-                    research_policy=research_policy,
                 )
 
             # 进入Planner文档操作任务
@@ -412,17 +491,23 @@ def create_next_action_decision_node(
                     user_id=user_id,
                     research_policy=research_policy,
                 )
-            # 进入Planner网络搜索任务
+            # 简单纯 Web 请求不创建 TaskPlan；执行节点会做统一 Web 能力校验。
             elif decision.intent == "web_research":
-                if task_planner is None:
-                    raise RuntimeError("AgentTaskPlanner 未配置")
-                task_plan = task_planner.build_web_research_plan(
-                    query=state["query"],
-                    user_id=user_id,
-                    research_policy=research_policy.model_copy(
-                        update={"web_policy": "required"}
-                    ),
+                if capability_service is None or current_user is None:
+                    raise RuntimeError("Direct Web Capability Service 未配置")
+                capability_service.resolve_direct_web(
+                    user=current_user,
+                    allow_direct_web=state.get("allow_direct_web", True),
                 )
+                result = {
+                    "route": "direct_web",
+                    "route_reason": "router_selected_direct_web",
+                    "step_count": state["step_count"] + 1,
+                    **route_fields,
+                }
+                if trace_run is not None:
+                    trace_run.add_outputs(result)
+                return result
 
             # 任务已生成，开始执行 拆解后的子任务
             if task_plan is not None:
@@ -825,11 +910,8 @@ def create_execute_task_plan_node(
             ),
         ) as trace_run:
             if plan.task_kind == "question_decomposition":
-                plan.status = AgentTaskPlanStatus.WAITING_CONFIRMATION
-                plan.final_output = {
-                    "status": plan.status.value,
-                    "confirm_endpoint": f"/agent/task-plans/{plan.task_plan_id}/confirm",
-                }
+                if not isinstance(plan, ResearchTaskPlan):
+                    raise RuntimeError("question_decomposition 必须使用 ResearchTaskPlan v2")
                 task_executor.save_plan(plan)
                 answer = build_task_plan_answer(plan)
                 result = {
@@ -917,7 +999,7 @@ def build_task_plan_answer(plan) -> str:
         f"- objective: {plan.objective}",
         f"- source_query: {plan.source_query}",
     ]
-    if plan.target_path:
+    if getattr(plan, "target_path", None):
         lines.append(f"- target_path: {plan.target_path}")
     if plan.sub_questions:
         lines.append("")
@@ -941,7 +1023,10 @@ def build_task_plan_answer(plan) -> str:
         lines.append(
             f"请通过 `POST /agent/task-plans/{plan.task_plan_id}/confirm` 完成人工确认。"
         )
-    final_answer = plan.final_output.get("final_answer")
+    if isinstance(plan, ResearchTaskPlan):
+        final_answer = plan.final_output.answer if plan.final_output is not None else None
+    else:
+        final_answer = plan.final_output.get("final_answer")
     if isinstance(final_answer, str) and final_answer.strip():
         lines.extend(["", "最终答案：", final_answer.strip()])
     return "\n".join(lines)

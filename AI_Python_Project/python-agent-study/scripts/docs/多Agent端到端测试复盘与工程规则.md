@@ -2873,7 +2873,7 @@ KnowledgeDocumentActionRequest(
 
 > Supervisor、Writer、Reviewer 的输出都不是可信执行事实。`DocumentTaskExecutor` 负责把三个 Agent 的输出相互对照，再由文档管理服务和权限服务根据当前服务器事实完成最终校验。
 
-# 服务端组装最终Plan-拆分coordinate的职责：
+# 服务端组装最终Plan的文件写入--拆分coordinate的职责：
 
 ~~~cpp
 //coordinator之前负责编写完整的TaskPlan，但是在文本过长的情况下会出现故障超时，所以现在交给服务端直接写入
@@ -2899,7 +2899,7 @@ KnowledgeDocumentActionRequest(
 
 文档任务开始时，服务端在 [agent_task_planner.py (line 397)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\agent_task_planner.py:397) 创建一个空的文档 `AgentTaskPlan`：
 
-```
+```py
 return AgentTaskPlan(
     task_plan_id=task_plan_id,
     task_kind="knowledge_document_management",
@@ -2947,7 +2947,7 @@ Reviewer 第二次审查结果
 
 以前 Coordinator 在最后还要再调用一次大模型，将这些内容重新整理成：
 
-```
+```py
 DocumentWorkflowResult(
     research_results=[...],
     draft_results=[...],
@@ -3059,7 +3059,7 @@ Reviewer 已批准
 
 [deep_document_agent.py (line 543)](D:\\AI_Agent_Project\\AI_Python_Project\\python-agent-study\\src\\fast_app\\services\\agent_tasks\\deep_document_agent.py:543)
 
-```
+```py
 @hook_config(can_jump_to=["end"])
 def before_model(self, state, runtime):
     """子任务结果已形成终态时由服务端直接组装工作流。"""
@@ -3080,7 +3080,7 @@ def before_model(self, state, runtime):
         return None
 
     return {
-        "jump_to": "end",
+        "jump_to": "end", # 重点是这里，直接跳到end阶段结束节点，进入服务端 直接组装已经完成的文档内容 写入文档
         "structured_response": approved,
     }
 ```
@@ -3095,8 +3095,8 @@ def before_model(self, state, runtime):
 
 以前的流程是：
 
-````
-```mermaid
+````mermaid
+
 sequenceDiagram
     participant C as "Coordinator"
     participant R as "Researcher"
@@ -3112,13 +3112,13 @@ sequenceDiagram
     V-->>C: "DocumentReviewResult"
     C->>L: "再次传入全部结果，生成 DocumentWorkflowResult"
     L-->>C: "再次输出完整正文和结构化结果"
-```
+
 ````
 
 现在的流程是：
 
-````
-```mermaid
+````mermaid
+
 sequenceDiagram
     participant C as "Coordinator"
     participant R as "Researcher"
@@ -3144,7 +3144,7 @@ sequenceDiagram
     E->>E: "_prepare_agentic_proposal()"
     E->>E: "plan.steps.append(...) :367"
     E->>E: "TaskPlanStore.save(plan) :466"
-```
+
 ````
 
 关键是：
@@ -3365,7 +3365,7 @@ DocumentChangeProposal 仍然是 A
 
 最后服务端直接组合：
 
-```
+```py
 return DocumentWorkflowResult(
     research_results=research_results,
     draft_results=draft_results,
@@ -3412,7 +3412,7 @@ DocumentWorkflowResult
 
 ### 第一步：再次验证跨角色一致性
 
-```
+```py
 proposal_ids = _validate_agentic_workflow_result(
     workflow=workflow,
     deliverables=deliverables,

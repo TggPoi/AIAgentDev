@@ -1,217 +1,69 @@
+"""Research v2 与旧 Document TaskPlan 分流回归。"""
+
 from __future__ import annotations
 
 import asyncio
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from fast_app.core.config import Settings
-from fast_app.graph.rag_agent.rag_agent_nodes import build_task_plan_answer
+from fast_app.services.agent_tasks.agent_task_plan_reviewer import AgentTaskPlanReviewer
 from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
-
-
-TODO_PREFIXES = (
-    "检索",
-    "调用",
-    "查询",
-    "搜索",
-    "生成",
-    "保存",
-    "整理",
-    "总结",
-    "写入",
-    "执行",
-)
-
-
-class LowConfidencePlanner(AgentTaskPlanner):
-    def _build_model(self):
-        return object()
-
-    async def _invoke_structured_planner(self, *args, **kwargs):
-        return {"confidence": 0.0}
-
-    async def _invoke_json_planner(self, *args, **kwargs):
-        raise AssertionError("structured planner already returned payload")
-
-
-def assert_question_plan(plan) -> None:
-    # 这个脚本主要保护“子问题必须是问题，不是工具 TODO”这条边界。
-    assert plan is not None
-    assert plan.original_query
-    assert plan.objective
-    assert plan.task_type in {"qa", "comparison", "report_generation", "analysis", "unknown"}
-    assert len(plan.sub_questions) >= 3
-    assert plan.final_synthesis_instruction
-    assert plan.source_query
-    assert len(plan.source_query) < 80
-    assert all(item.question.endswith(("？", "?")) for item in plan.sub_questions)
-    assert not any(
-        item.question.startswith(TODO_PREFIXES)
-        for item in plan.sub_questions
-    )
-    assert any(item.depends_on for item in plan.sub_questions)
-
-
-def assert_topics_covered(plan, topics: list[str]) -> None:
-    text = " ".join(
-        " ".join(
-            [
-                item.question,
-                item.purpose,
-                item.reason,
-                item.expected_evidence or "",
-            ]
-        )
-        for item in plan.sub_questions
-    )
-    missing = [topic for topic in topics if topic.lower() not in text.lower()]
-    assert missing == []
+from fast_app.services.exceptions import AgentTaskPlannerUnavailableError
 
 
 async def main() -> None:
-    deterministic_planner = AgentTaskPlanner(settings=Settings(OPENAI_API_KEY=""))
-    document_plan = deterministic_planner.build_document_management_plan(
+    planner = AgentTaskPlanner(settings=Settings(_env_file=None, OPENAI_API_KEY=""))
+
+    reviewer_settings = Settings(
+        _env_file=None,
+        OPENAI_API_KEY="test-key",
+        AGENT_TASK_PLAN_REVIEWER_MODEL_NAME="reviewer-model",
+    )
+    reviewer = AgentTaskPlanReviewer(reviewer_settings)
+    with patch(
+        "fast_app.services.agent_tasks.agent_task_plan_reviewer.ChatOpenAI",
+        return_value=object(),
+    ) as chat_openai:
+        try:
+            await reviewer.review(
+                request=None,
+                model_context=None,
+                candidate=None,
+                validation_issues=[],
+            )
+        except AttributeError:
+            pass
+        else:
+            raise AssertionError("测试探针应在 Reviewer 模型构造后停止")
+    assert chat_openai.call_args.kwargs["model"] == "reviewer-model"
+
+    document_plan = planner.build_document_management_plan(
         query="请删除知识库中与旧部署说明相关的文档",
         user_id="planner-user",
     )
     assert document_plan.task_kind == "knowledge_document_management"
     assert document_plan.steps == []
+    assert document_plan.sub_questions == []
 
-    low_confidence_planner = LowConfidencePlanner(
-        settings=Settings(OPENAI_API_KEY="fake-key")
-    )
-    low_confidence_plan = await low_confidence_planner.plan_question_decomposition(
-        query="请对比混合检索和 rerank 的关系",
-        user_id="planner-user",
-    )
-    assert low_confidence_plan.task_kind == "question_decomposition"
-
-    settings = Settings(OPENAI_API_KEY="")
-    planner = AgentTaskPlanner(settings=settings)
-    # OPENAI_API_KEY 置空时走规则兜底，保证没有真实 LLM 也能验证 plan 收敛规则。
-    plain_complex_query = "请对比 RAG 系统中的混合检索、rerank、权限设计和 Prompt Guard 之间的关系"
-    plain_plan = await planner.plan_question_decomposition(
-        query=plain_complex_query,
-        user_id="planner-user",
-    )
-    assert_question_plan(plain_plan)
-    assert plain_plan.task_kind == "question_decomposition"
-    assert plain_plan.target_path is None
-    assert plain_plan.steps == []
-    assert "问题拆解" in build_task_plan_answer(plain_plan)
-    assert_topics_covered(plain_plan, ["混合检索", "rerank", "权限设计", "Prompt Guard"])
-
-    query = "对比知识库中的混合检索、rerank、权限设计，生成报告保存到 development/complex-plan.md"
-
-    fallback_plan = planner.build_document_management_plan(
-        query=query,
-        user_id="planner-user",
-    )
-    assert fallback_plan.task_kind == "knowledge_document_management"
-    assert fallback_plan.steps == []
-    assert fallback_plan.sub_questions == []
-
-    payload = {
-        "objective": "对比 RAG 系统中的混合检索、rerank 和权限设计并形成报告",
-        "task_type": "comparison",
-        "source_query": "混合检索 rerank 权限设计 RAG 系统 协同关系",
-        "document_actions": [{"operation": "delete", "target_path": "forged.md"}],
-        "confidence": 0.95,
-    }
-    llm_plan = planner._plan_from_payload(
-        query=query,
-        payload=payload,
-        user_id="planner-user",
-    )
-    assert llm_plan is not None
-    assert llm_plan.task_kind == "question_decomposition"
-    assert llm_plan.steps == []
-    assert "forged.md" not in llm_plan.model_dump_json()
-
-    incomplete_query = "请对比 RAG 系统中的混合检索、rerank、权限设计和 Prompt Guard 之间的关系"
-    incomplete_payload = {
-        "objective": "对比 RAG 系统中的多个模块关系",
-        "task_type": "comparison",
-        "source_query": "rerank Prompt Guard 协同机制",
-        "target_path": None,
-        "report_title": "复杂问题拆解",
-        "final_synthesis_instruction": "整合各模块关系。",
-        "sub_questions": [
-            {
-                "sub_question_id": "sq_1",
-                "order": 1,
-                "question": "rerank 模块在检索链路中承担什么作用？",
-                "purpose": "说明 rerank 的功能。",
-                "depends_on": [],
-                "information_source_hint": "knowledge_retrieval",
-                "reason": "rerank 影响回答质量。",
-                "expected_evidence": "rerank 设计资料。",
-            },
-            {
-                "sub_question_id": "sq_2",
-                "order": 2,
-                "question": "Prompt Guard 如何影响 RAG 系统的安全边界？",
-                "purpose": "说明 Prompt Guard 的安全作用。",
-                "depends_on": [],
-                "information_source_hint": "knowledge_retrieval",
-                "reason": "Prompt Guard 影响安全边界。",
-                "expected_evidence": "Prompt Guard 规则资料。",
-            },
-        ],
-        "confidence": 0.95,
-    }
-    parsed_plan = planner._plan_from_payload(
-        query=incomplete_query,
-        payload=incomplete_payload,
-        user_id="planner-user",
-    )
-    assert parsed_plan.task_kind == "question_decomposition"
-    assert parsed_plan.target_path is None
-    assert parsed_plan.steps == []
-    assert len(parsed_plan.sub_questions) == 2
-    assert parsed_plan.source_query == "rerank Prompt Guard 协同机制"
-
-    # LLM 偶尔会把 `sq_1` 重复拼成 `sqsq_1`。非法依赖图必须在计划创建阶段
-    # 被拒绝并切换规则兜底，不能等到用户确认后才由 Research Graph 抛异常。
-    invalid_dependency_payload = {
-        **incomplete_payload,
-        "sub_questions": [
-            *incomplete_payload["sub_questions"],
-            {
-                "sub_question_id": "sq_3",
-                "order": 3,
-                "question": "如何综合前两个模块的关系？",
-                "purpose": "综合已有结论。",
-                "depends_on": ["sqsq_1", "sqsq_2"],
-                "information_source_hint": "none",
-                "reason": "生成最终综合结论。",
-                "expected_evidence": "前置子问题结论。",
-            },
-        ],
-    }
-    fallback_from_invalid_graph = planner._plan_from_payload(
-        query=incomplete_query,
-        payload=invalid_dependency_payload,
-        user_id="planner-user",
-    )
-    assert fallback_from_invalid_graph is not None
-    valid_ids = {
-        item.sub_question_id for item in fallback_from_invalid_graph.sub_questions
-    }
-    assert all(
-        dependency_id in valid_ids
-        for item in fallback_from_invalid_graph.sub_questions
-        for dependency_id in item.depends_on
-    )
-    assert not any(
-        dependency_id.startswith("sqsq_")
-        for item in fallback_from_invalid_graph.sub_questions
-        for dependency_id in item.depends_on
-    )
+    # Research v2 禁止规则兜底。Planner 未配置属于技术失败，不能保存一个
+    # 表面合法但没有经过真实规划与 Reviewer 的低质量 TaskPlan。
+    try:
+        await planner.plan_question_decomposition(
+            request=None,  # 配置检查发生在读取规划请求之前。
+            user_id="planner-user",
+            capability_snapshot=None,
+            research_policy=None,
+        )
+    except AgentTaskPlannerUnavailableError:
+        pass
+    else:
+        raise AssertionError("未配置模型时 Research Planner 必须 fail closed")
 
     print("agent_task_plan_decomposition=passed")
 

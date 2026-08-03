@@ -4,8 +4,8 @@
 
 这四点都发生在一个 `ResearchWorkerAgent` 的纠正循环中：
 
-````
-```mermaid
+````mermaid
+
 flowchart TD
     A["attempt 1：选择并执行工具"] --> B["汇总本轮和历史完整证据"]
     B --> C["生成一次候选答案"]
@@ -17,7 +17,7 @@ flowchart TD
     H --> I["attempt 2：读取历史、缺失点，再选择工具"]
     I --> B
     E -->|不能继续重试| J["partial 或 failed"]
-```
+
 ````
 
 这里需要区分两个概念：

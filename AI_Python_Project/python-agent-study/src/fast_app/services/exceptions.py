@@ -59,6 +59,58 @@ class AgentTaskPlanBusyError(AppServiceError):
     status_code = 409
 
 
+class AgentTaskPlanningContextUnresolvedError(AppServiceError):
+    """有限历史不足以可靠解析当前指代。"""
+
+    error_code = "AGENT_TASK_PLANNING_CONTEXT_UNRESOLVED"
+    status_code = 400
+
+
+class AgentTaskPlanningServiceUnavailableError(AppServiceError):
+    """Query Rewriter 的模型或结构化输出临时不可用。"""
+
+    error_code = "AGENT_TASK_PLANNING_SERVICE_UNAVAILABLE"
+    error_category = "external_service_error"
+    status_code = 503
+
+
+class AgentTaskPlannerUnavailableError(AppServiceError):
+    """Planner 或 Reviewer 技术调用最终失败。"""
+
+    error_code = "AGENT_TASK_PLANNER_UNAVAILABLE"
+    error_category = "external_service_error"
+    status_code = 503
+
+
+class AgentTaskSourceUnavailableError(AppServiceError):
+    """请求策略或稳定配置不允许 TaskPlan 所需来源。"""
+
+    error_code = "AGENT_TASK_SOURCE_UNAVAILABLE"
+    status_code = 422
+
+
+class AgentTaskPlanQualityRejectedError(AppServiceError):
+    """Reviewer 修订后仍无法形成合格 Research TaskPlan。"""
+
+    error_code = "AGENT_TASK_PLAN_QUALITY_REJECTED"
+    status_code = 422
+
+
+class AgentTaskPlanSchemaUnsupportedError(AppServiceError):
+    """读取到不受支持的 Research TaskPlan Schema。"""
+
+    error_code = "AGENT_TASK_PLAN_SCHEMA_UNSUPPORTED"
+    status_code = 409
+
+
+class AgentTaskEvidenceStateInvalidError(AppServiceError):
+    """Result、Registry 或 Requirement Evidence 状态不一致。"""
+
+    error_code = "AGENT_TASK_EVIDENCE_STATE_INVALID"
+    error_category = "system_error"
+    status_code = 500
+
+
 class KnowledgeVersionNotReadyError(AppServiceError):
     """客户端要求的最低正式知识版本尚未发布。"""
 

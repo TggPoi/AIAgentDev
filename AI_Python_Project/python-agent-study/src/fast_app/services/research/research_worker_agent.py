@@ -12,11 +12,11 @@ from langchain_core.runnables import RunnableConfig
 from fast_app.core.config import Settings
 from fast_app.domain.agent_task_plan import (
     AgentResearchPolicy,
-    AgentTaskPlan,
     AgentTaskSubQuestion,
     AgentTaskSubQuestionResult,
     ResearchEvidenceEvaluation,
 )
+from fast_app.domain.research_task_plan import ResearchTaskPlan, ResearchTaskSubQuestion
 from fast_app.domain.rag_models import RetrievalFilters
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.graph.research.agentic_research_graph import ResearchExecutionCancelled
@@ -40,8 +40,8 @@ ProgressCallback = Callable[[str, dict[str, Any]], Awaitable[None]]
 class ResearchWorkerRequest:
     """父级调度器派给一个 Worker 的完整、隔离输入。"""
 
-    plan: AgentTaskPlan
-    sub_question: AgentTaskSubQuestion
+    plan: ResearchTaskPlan
+    sub_question: ResearchTaskSubQuestion
     dependency_results: list[AgentTaskSubQuestionResult]
     policy: AgentResearchPolicy
     filters: RetrievalFilters

@@ -12,6 +12,7 @@ from fast_app.graph.rag_agent.rag_agent_nodes import (
     create_agent_generate_answer_node,
     create_agent_rerank_node,
     create_call_knowledge_retrieval_node,
+    create_call_direct_web_node,
     create_call_nl2sql_query_node,
     create_check_loop_limits_node,
     create_execute_task_plan_node,
@@ -24,6 +25,9 @@ from fast_app.graph.rag_agent.rag_agent_state import RagAgentState
 from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor
 from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 from fast_app.services.agent_tasks.agent_task_router import AgentTaskRouter
+from fast_app.services.agent_tasks.agent_task_capability_service import (
+    AgentTaskCapabilityService,
+)
 from fast_app.services.rag.prompt_guard_service import PromptGuardService
 from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
 from fast_app.services.nl2sql.service import Nl2SqlService
@@ -42,6 +46,7 @@ def build_rag_agent_graph(
     task_planner: AgentTaskPlanner | None = None,
     task_executor: AgentTaskExecutor | None = None,
     nl2sql_service: Nl2SqlService | None = None,
+    capability_service: AgentTaskCapabilityService | None = None,
 ):
     # 这是 13-11 新增的独立 Agent graph。
     # 它和现有 build_rag_graph() 并列存在，避免改变 langgraph provider 的稳定行为。
@@ -55,6 +60,7 @@ def build_rag_agent_graph(
             settings=settings,
             task_router=task_router,
             task_planner=task_planner,
+            capability_service=capability_service,
         ),
     )
     if task_executor is not None:
@@ -87,6 +93,7 @@ def build_rag_agent_graph(
             nl2sql_service=nl2sql_service,
         ),
     )
+    builder.add_node("call_direct_web", create_call_direct_web_node(settings=settings))
     builder.add_node(
         "rerank",
         create_agent_rerank_node(
@@ -138,6 +145,7 @@ def build_rag_agent_graph(
         "clarification_required": "clarification_required",
         "knowledge_retrieval": "call_knowledge_retrieval",
         "structured_data_query": "call_nl2sql_query",
+        "direct_web": "call_direct_web",
         "final_error_answer": "final_error_answer",
     }
 
@@ -163,6 +171,7 @@ def build_rag_agent_graph(
     )
     # 成功路径：knowledge_retrieval -> rerank -> build_context -> generate_answer。
     builder.add_edge("rerank", "build_context")
+    builder.add_edge("call_direct_web", "build_context")
     builder.add_edge("build_context", "generate_answer")
     # 终止路径：直接回答、可解释错误回答、不可恢复错误、正常生成回答。
     builder.add_edge("direct_answer", END)

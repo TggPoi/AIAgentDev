@@ -198,6 +198,22 @@
 
   <section>
     <h2>2. 对话请求</h2>
+    <div class="row">
+      <select id="scenarioPreset" style="flex:1;min-width:360px">
+        <option value="">手工输入</option>
+        <option value="1">场景 1：复杂知识库</option>
+        <option value="2">场景 2：简单纯 Web</option>
+        <option value="3">场景 3：复杂纯 Web</option>
+        <option value="4">场景 4：知识库与 Web</option>
+        <option value="5">场景 5：知识库与游戏数据库</option>
+        <option value="6">场景 6：知识库、游戏数据库与 Web</option>
+        <option value="7">场景 7：有限会话指代</option>
+        <option value="8">场景 8：请求策略禁止 direct Web</option>
+        <option value="9">场景 9：无 Web Tool 权限</option>
+        <option value="10">场景 10：无 Dataset Grant</option>
+      </select>
+      <button id="applyScenarioBtn" class="secondary">载入冻结场景</button>
+    </div>
     <div class="grid">
       <div>
         <label for="sessionId">session_id</label>
@@ -231,6 +247,10 @@
         </select>
       </div>
     </div>
+    <label>
+      <input id="allowDirectWeb" type="checkbox" style="width:auto" checked />
+      允许用户明确要求的 direct Web 检索
+    </label>
     <label>
       <input id="allowWebFallback" type="checkbox" style="width:auto" />
       允许本次任务在本地证据不足时联网检索
@@ -330,6 +350,7 @@
       mode: $("mode").value,
       top_k: Number($("topK").value || 5),
       min_score: 0,
+      allow_direct_web: $("allowDirectWeb").checked,
       allow_web_fallback: $("allowWebFallback").checked,
       filters: {source_path: null, section_path: []}
     };
@@ -340,6 +361,72 @@
     }
     return body;
   }
+
+  const SCENARIOS = {
+    1: {
+      query: "根据当前知识库，分别说明混合检索、Rerank 和 Prompt Guard 的职责，并分析它们在一次 RAG 请求中的先后关系与协作边界。",
+      dataset: "", direct: false, fallback: false, account: "rbac_operator"
+    },
+    2: {
+      query: "请联网查询 PostgreSQL 16 官方文档中行级安全策略的作用，并给出来源链接。",
+      dataset: "", direct: true, fallback: false, account: "rbac_operator"
+    },
+    3: {
+      query: "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。",
+      dataset: "", direct: true, fallback: false, account: "rbac_operator"
+    },
+    4: {
+      query: "结合当前知识库中的 RAG 设计与 FastAPI 官方部署资料，分析把当前服务部署为多 Worker 时，哪些状态可以保留在进程内，哪些必须外置，并说明依据。",
+      dataset: "", direct: true, fallback: false, account: "rbac_operator"
+    },
+    5: {
+      query: "结合《星港远征资产选型报告》和游戏资产数据库，比较已授权 3D 模型的资产费用、模型面数与设计用途，给出候选资产及依据。",
+      dataset: "game_test", direct: false, fallback: false, account: "rbac_operator"
+    },
+    6: {
+      query: "请联网查询公开的移动端 3D 资产优化建议，并结合《星港远征资产选型报告》和游戏资产数据库中的资产费用、模型面数，判断哪些已授权 3D 模型适合移动端，同时列出仍需进一步核实的问题。",
+      dataset: "game_test", direct: true, fallback: false, account: "rbac_operator"
+    },
+    7: {
+      query: "结合知识库继续比较这些资产，并说明哪些内容还需要公开资料验证。",
+      dataset: "game_test", direct: true, fallback: false, account: "rbac_operator",
+      prerequisite: "先用同一 session 发送：本轮分析对象是《星港远征》中已授权的 3D 模型资产，重点关注费用、模型面数和移动端适配。"
+    },
+    8: {
+      query: "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图，并综合官方证据说明二者的配合边界。",
+      dataset: "", direct: false, fallback: false, account: "rbac_operator",
+      expected: "422 AGENT_TASK_SOURCE_UNAVAILABLE"
+    },
+    9: {
+      query: "请联网查询 PostgreSQL 16 官方文档中行级安全策略的作用，并给出来源链接。",
+      dataset: "", direct: true, fallback: false, account: "rbac_reader",
+      expected: "403 TOOL_PERMISSION_DENIED"
+    },
+    10: {
+      query: "查询《星港远征》中已授权 3D 模型资产的费用和模型面数。",
+      dataset: "game_test", direct: false, fallback: false, account: "rbac_reader",
+      expected: "403 NL2SQL_PERMISSION_DENIED"
+    }
+  };
+
+  $("applyScenarioBtn").addEventListener("click", () => {
+    const scenario = SCENARIOS[$("scenarioPreset").value];
+    if (!scenario) return;
+    $("query").value = scenario.query;
+    $("datasetId").value = scenario.dataset;
+    $("nl2sqlAction").value = "query";
+    $("allowDirectWeb").checked = scenario.direct;
+    $("allowWebFallback").checked = scenario.fallback;
+    $("accountPreset").value = scenario.account;
+    $("username").value = scenario.account;
+    $("sessionId").value = `taskplan-v2-e2e-${$("scenarioPreset").value}`;
+    log({
+      scenario: $("scenarioPreset").value,
+      account: scenario.account,
+      prerequisite: scenario.prerequisite || null,
+      expected: scenario.expected || "按冻结人工基准审查 Router、Plan、Evidence 与结果"
+    }, false);
+  });
 
   function log(value, append = true) {
     const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
@@ -723,9 +810,9 @@
     if (event === "agent_task_status") {
       setTaskPlan(data.task_plan_id, `/agent/task-plans/${data.task_plan_id}/confirm`, data.status);
     }
-    if (event === "agent_task_sub_question_completed") {
+    if (event === "agent_task_sub_question_completed" || event === "sub_question_completed") {
       setAnswer(
-        `\n[${data.sub_question_id}] ${data.question}\n状态：${data.status}\n工具：${data.selected_tool}\n${data.answer || data.error || ""}\n`,
+        `\n[${data.sub_question_id}] ${data.question || ""}\n状态：${data.status}\n工具：${data.selected_tool || "由 Evidence 记录"}\n${data.answer || data.error || data.error_code || ""}\n`,
         true
       );
       loadTaskPlanMarkdown();

@@ -1,0 +1,342 @@
+{
+  "schema_version": 2,
+  "task_plan_id": "task_plan_20260803100145_04bf20347c3c",
+  "task_kind": "question_decomposition",
+  "task_type": "analysis",
+  "user_id": "user_MBeEmT7K2eGguofW4CZ1aGTp",
+  "original_query": "根据当前知识库，分别说明混合检索、Rerank 和 Prompt Guard 的职责，并分析它们在一次 RAG 请求中的先后关系与协作边界。",
+  "source_query": "根据当前知识库，分别说明混合检索、Rerank 和 Prompt Guard 的职责，并分析它们在一次 RAG 请求中的先后关系与协作边界。",
+  "objective": "根据当前知识库，分别说明混合检索、Rerank 和 Prompt Guard 的职责，并分析它们在一次 RAG 请求中的先后关系与协作边界。",
+  "final_synthesis_instruction": "基于所有已满足 Requirements 和对应合法证据回答 resolved query；明确区分事实、推导和未解决项，不得使用未获得 Evidence ID 支撑的结论。",
+  "requirements": [
+    {
+      "requirement_id": "R1",
+      "description": "说明混合检索（Hybrid Search）在 RAG 中的职责",
+      "source_policy": {
+        "mode": "all_of",
+        "source_types": [
+          "knowledge_retrieval"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R2",
+      "description": "说明 Rerank 在 RAG 中的职责",
+      "source_policy": {
+        "mode": "all_of",
+        "source_types": [
+          "knowledge_retrieval"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R3",
+      "description": "说明 Prompt Guard 在 RAG 中的职责",
+      "source_policy": {
+        "mode": "all_of",
+        "source_types": [
+          "knowledge_retrieval"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R4",
+      "description": "分析混合检索、Rerank 和 Prompt Guard 在一次 RAG 请求中的先后执行顺序",
+      "source_policy": {
+        "mode": "all_of",
+        "source_types": [
+          "knowledge_retrieval"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R5",
+      "description": "分析混合检索、Rerank 和 Prompt Guard 之间的协作边界（输入/输出/职责划分）",
+      "source_policy": {
+        "mode": "all_of",
+        "source_types": [
+          "knowledge_retrieval"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    }
+  ],
+  "sub_questions": [
+    {
+      "sub_question_id": "SQ1",
+      "order": 1,
+      "question": "根据知识库，混合检索（Hybrid Search）的职责是什么？它在 RAG 流程中负责什么阶段、输入和输出分别是什么？",
+      "purpose": "覆盖 R1，获取混合检索的职责定义",
+      "depends_on": [],
+      "information_source_hint": "knowledge_retrieval",
+      "covers_requirement_ids": [
+        "R1"
+      ],
+      "reason": "需要明确混合检索在 RAG 中的具体职责，作为后续分析顺序和边界的基础",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "SQ2",
+      "order": 2,
+      "question": "根据知识库，Rerank 的职责是什么？它在 RAG 流程中负责什么阶段、输入和输出分别是什么？",
+      "purpose": "覆盖 R2，获取 Rerank 的职责定义",
+      "depends_on": [],
+      "information_source_hint": "knowledge_retrieval",
+      "covers_requirement_ids": [
+        "R2"
+      ],
+      "reason": "需要明确 Rerank 在 RAG 中的具体职责，作为后续分析顺序和边界的基础",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "SQ3",
+      "order": 3,
+      "question": "根据知识库，Prompt Guard 的职责是什么？它在 RAG 流程中负责什么阶段、输入和输出分别是什么？",
+      "purpose": "覆盖 R3，获取 Prompt Guard 的职责定义",
+      "depends_on": [],
+      "information_source_hint": "knowledge_retrieval",
+      "covers_requirement_ids": [
+        "R3"
+      ],
+      "reason": "需要明确 Prompt Guard 在 RAG 中的具体职责，作为后续分析顺序和边界的基础",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "SQ4",
+      "order": 4,
+      "question": "根据知识库，混合检索、Rerank 和 Prompt Guard 在一次 RAG 请求中的执行先后顺序是怎样的？谁先执行、谁后执行、是否存在并行或条件分支？",
+      "purpose": "覆盖 R4，分析三者在 RAG 请求中的先后关系",
+      "depends_on": [
+        "SQ1",
+        "SQ2",
+        "SQ3"
+      ],
+      "information_source_hint": "knowledge_retrieval",
+      "covers_requirement_ids": [
+        "R4"
+      ],
+      "reason": "需要综合前三者的职责，分析它们在 RAG 流程中的执行顺序",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "SQ5",
+      "order": 5,
+      "question": "根据知识库，混合检索、Rerank 和 Prompt Guard 之间的协作边界是什么？各自的输入来源、输出去向、以及职责划分如何避免重叠或遗漏？",
+      "purpose": "覆盖 R5，分析三者的协作边界",
+      "depends_on": [
+        "SQ1",
+        "SQ2",
+        "SQ3",
+        "SQ4"
+      ],
+      "information_source_hint": "knowledge_retrieval",
+      "covers_requirement_ids": [
+        "R5"
+      ],
+      "reason": "需要综合前三者的职责和顺序，分析它们之间的协作边界，形成完整结论",
+      "web_usage": "not_used"
+    }
+  ],
+  "quality_review": {
+    "verdict": "accepted",
+    "checks": {
+      "requirement_coverage": "pass",
+      "source_alignment": "pass",
+      "semantic_alignment": "pass",
+      "dependency_quality": "pass",
+      "executability": "pass",
+      "completion_policy_alignment": "pass"
+    },
+    "reviewer_findings": [],
+    "revision_summary": null,
+    "revision_count": 0,
+    "initial_validation_findings": []
+  },
+  "validation_issues": [],
+  "capability_snapshot": {
+    "available_source_types": [
+      "knowledge_retrieval"
+    ],
+    "web_direct_allowed": false,
+    "web_fallback_allowed": false,
+    "knowledge_retrieval_available": true,
+    "nl2sql_query_available": false,
+    "dataset_id": null,
+    "dataset_name": null,
+    "dataset_domain": null,
+    "allowed_dataset_views": [],
+    "allowed_dataset_fields": [],
+    "dataset_schema_context": null,
+    "max_requirements": 16,
+    "max_sub_questions": 8
+  },
+  "research_policy": {
+    "mode": "hybrid",
+    "top_k": 5,
+    "candidate_k": null,
+    "min_score": 0.0,
+    "source_path": null,
+    "section_path": [],
+    "dataset_id": null,
+    "nl2sql_action": null,
+    "allow_direct_web": false,
+    "allow_web_fallback": false
+  },
+  "progress": {
+    "current_wave": 0,
+    "workers": {
+      "SQ1": {
+        "status": "skipped",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "SQ2": {
+        "status": "skipped",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "SQ3": {
+        "status": "skipped",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "SQ4": {
+        "status": "skipped",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "SQ5": {
+        "status": "skipped",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      }
+    },
+    "events": []
+  },
+  "sub_question_results": [],
+  "evidence_registry": {
+    "evidence_by_id": {}
+  },
+  "requirement_evidence_statuses": [
+    {
+      "requirement_id": "R1",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ1"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R2",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ2"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R3",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ3"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R4",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ4"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R5",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ5"
+      ],
+      "reason_codes": []
+    }
+  ],
+  "status": "cancelled",
+  "final_output": null,
+  "created_at": "2026-08-03T10:01:45.480924Z",
+  "updated_at": "2026-08-03T10:02:24.627378Z",
+  "error_code": null,
+  "error_message": null
+}

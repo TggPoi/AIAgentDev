@@ -86,12 +86,13 @@ async def main() -> None:
 
     events = [event async for event in pipeline.stream_events(request)]
     names = [event.event for event in events]
-    assert names[:3] == [
+    assert names[:4] == [
+        "agent_route_selected",
         "agent_route_clarification_required",
         "sources",
         "answer_delta",
     ]
-    assert events[1].data == {"sources": []}
+    assert events[2].data == {"sources": []}
 
     sse_payloads = [
         payload
@@ -101,10 +102,11 @@ async def main() -> None:
         )
     ]
     sse_names = [parse_sse_name(payload) for payload in sse_payloads]
-    assert sse_names[:3] == names[:3]
+    assert sse_names[:4] == names[:4]
     assert sse_names[-1] == "done"
     done_data = json.loads(sse_payloads[-1].split("data: ", 1)[1])
-    assert done_data == {"status": "done"}
+    assert done_data["status"] == "done"
+    assert done_data["stale"] is False
     assert "error" not in sse_names
 
     print("agent_router_clarification_flow=passed")

@@ -11,7 +11,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from fast_app.core.config import Settings
-from fast_app.graph.rag_agent.rag_agent_nodes import create_next_action_decision_node
+from fast_app.graph.rag_agent.rag_agent_nodes import (
+    create_next_action_decision_node,
+    route_after_loop_check,
+)
 from fast_app.graph.rag_agent.rag_agent_state import build_rag_agent_initial_state
 from fast_app.schemas.rag_chat_schema import RagChatRequest
 from fast_app.services.agent_tasks import agent_task_router as router_module
@@ -143,8 +146,9 @@ async def main() -> None:
     assert _route_with_high_confidence_rules(
         "请修改 docs/development/rag.md 文档"
     ).intent == "knowledge_document_management"
-    assert _route_with_high_confidence_rules("请联网搜索 FastAPI 最新版本").intent == "web_research"
-    assert _route_with_high_confidence_rules("阅读 https://fastapi.tiangolo.com/").intent == "web_research"
+    # 简单/复杂 Web 必须由结构化 Router 判断，关键词规则不能把复杂比较短路成 direct Web。
+    assert _route_with_high_confidence_rules("请联网搜索 FastAPI 最新版本") is None
+    assert _route_with_high_confidence_rules("阅读 https://fastapi.tiangolo.com/") is None
     # 历史中的“文档”不会被规则拼入当前 query；普通缓存操作必须交给语义 Router。
     assert _route_with_high_confidence_rules("删除 Redis 测试缓存") is None
 
@@ -161,6 +165,26 @@ async def main() -> None:
         assert result.decision.intent == "simple_rag"
         assert result.source == "model"
         assert "extra_body" not in FakeChatOpenAI.init_kwargs
+
+        FakeChatOpenAI.response = AgentRouteDecision(
+            intent="web_research",
+            confidence=0.98,
+            reason="single step public web lookup",
+        )
+        result = await AgentTaskRouter(settings).route(
+            query="请联网查询 PostgreSQL 16 RLS 的作用"
+        )
+        assert result.decision.intent == "web_research"
+
+        FakeChatOpenAI.response = AgentRouteDecision(
+            intent="question_decomposition",
+            confidence=0.98,
+            reason="multi-step web comparison",
+        )
+        result = await AgentTaskRouter(settings).route(
+            query="联网比较 RLS 与 security_invoker 并综合两份证据"
+        )
+        assert result.decision.intent == "question_decomposition"
 
         FakeChatOpenAI.response = AgentRouteDecision(
             intent="structured_data_query",
@@ -224,13 +248,6 @@ async def main() -> None:
     assert document_plan.sub_questions == []
     assert document_plan.steps == []
 
-    web_plan = planner.build_web_research_plan(
-        query="请联网搜索 FastAPI 官方部署建议",
-        user_id="router-test-user",
-    )
-    assert len(web_plan.sub_questions) == 1
-    assert web_plan.sub_questions[0].information_source_hint == "web_search"
-
     initial_state = build_rag_agent_initial_state(
         RagChatRequest(query="你好", mode="hybrid", top_k=3),
         operation="run",
@@ -255,6 +272,7 @@ async def main() -> None:
     )
     assert document_update["route"] == "execute_task_plan"
     assert document_update["agent_task_plan"].steps == []
+    assert route_after_loop_check({**initial_state, "route": "direct_web"}) == "direct_web"
 
     print("agent_task_router=passed")
 

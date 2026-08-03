@@ -83,6 +83,10 @@ class RagChatRequest(BaseModel):
         default=False,
         description="复杂研究本地证据不足时，是否允许把公开问题发送给 WebSearch。",
     )
+    allow_direct_web: bool = Field(
+        default=True,
+        description="是否允许用户明确要求的公开 Web 查询；与本地证据不足后的自动 fallback 独立。",
+    )
     min_knowledge_version: int | None = Field(
         default=None,
         ge=0,

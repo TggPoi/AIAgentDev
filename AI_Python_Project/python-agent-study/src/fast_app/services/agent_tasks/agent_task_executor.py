@@ -33,16 +33,26 @@ from fast_app.domain.agent_task_plan import (
     AgentTaskPlanStatus,
     AgentToolStepStatus,
 )
+from fast_app.domain.research_task_plan import (
+    AgentTaskPlannerCandidate,
+    ResearchTaskPlan,
+    ResearchTaskSubQuestionCandidate,
+)
 from fast_app.domain.rag_models import RetrievalFilters
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.domain.agent_tool_permissions import PermissionCode, RoleCode
 from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
+from fast_app.services.agent_tasks.agent_task_capability_service import (
+    AgentTaskCapabilityService,
+)
+from fast_app.services.agent_tasks.agent_task_plan_validator import AgentTaskPlanValidator
 from fast_app.services.agent_tasks.agent_tool_audit_service import AgentToolAuditService
 from fast_app.services.agent_tasks.agent_tool_permission_service import AgentToolPermissionService
 from fast_app.services.research.agentic_research_executor import AgenticResearchExecutor
 from fast_app.services.agent_tasks.document_task_executor import DocumentTaskExecutor
 from fast_app.services.exceptions import (
     AgentTaskPlanBusyError,
+    AgentTaskSourceUnavailableError,
     AppServiceError,
     ToolPermissionDeniedError,
 )
@@ -142,6 +152,8 @@ class AgentTaskExecutor:
         evidence_evaluator: ResearchEvidenceEvaluator | None = None,
         research_executor: AgenticResearchExecutor | None = None,
         document_executor: DocumentTaskExecutor | None = None,
+        capability_service: AgentTaskCapabilityService | None = None,
+        prompt_guard=None,
     ) -> None:
         """装配专用执行器；可注入协作者，旧脚本仍可传原有依赖。
 
@@ -152,6 +164,8 @@ class AgentTaskExecutor:
 
         self._settings = settings
         self._task_plan_store = task_plan_store
+        self._capability_service = capability_service
+        self._plan_validator = AgentTaskPlanValidator()
         if research_executor is None:
             # Research 三层依赖方向固定：ToolLoop 执行一轮工具，Worker 负责
             # 纠正循环，Executor 负责多 Worker 波次调度和最终综合。
@@ -171,6 +185,7 @@ class AgentTaskExecutor:
                 llm_client=llm_client,
                 task_plan_store=task_plan_store,
                 worker_agent=worker_agent,
+                prompt_guard=prompt_guard,
             )
         self._research_executor = research_executor
         # 文档执行器内部再根据 workflow.execution_mode 选择旧 direct Tool Loop
@@ -185,7 +200,7 @@ class AgentTaskExecutor:
             task_plan_store=task_plan_store,
         )
 
-    def save_plan(self, plan: AgentTaskPlan) -> None:
+    def save_plan(self, plan: AgentTaskPlan | ResearchTaskPlan) -> None:
         """保存等待用户确认的 TaskPlan。
 
         该方法只保留 Facade 的统一入口，JSON/Markdown 原子写入细节由
@@ -198,7 +213,7 @@ class AgentTaskExecutor:
         self,
         task_plan_id: str,
         user: CurrentUserContext,
-    ) -> AgentTaskPlan:
+    ) -> AgentTaskPlan | ResearchTaskPlan:
         """写入任务级取消信号；运行节点会在下一安全边界停止。
 
         cancel 故意不进入 ``_TASK_PLAN_LOCKS.hold()``。如果它先等待正在运行的
@@ -212,6 +227,21 @@ class AgentTaskExecutor:
             RoleCode.SYSTEM_ADMIN.value
         ):
             raise ToolPermissionDeniedError("只能取消自己创建的 Agent task plan")
+        if isinstance(plan, ResearchTaskPlan):
+            if plan.status in {
+                AgentTaskPlanStatus.COMPLETED,
+                AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS,
+                AgentTaskPlanStatus.CANCELLED,
+            }:
+                raise AppServiceError("已完成或已取消的 Research TaskPlan 不能再次取消")
+            plan.status = AgentTaskPlanStatus.CANCELLED
+            plan.error_code = None
+            plan.error_message = None
+            for worker in plan.progress.workers.values():
+                if worker.status in {"pending", "running"}:
+                    worker.status = "skipped"
+            self._task_plan_store.save(plan)
+            return plan
         if plan.status in {
             AgentTaskPlanStatus.COMPLETED,
             AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS,
@@ -249,7 +279,7 @@ class AgentTaskExecutor:
 
     async def execute_question_decomposition_plan(
         self,
-        plan: AgentTaskPlan,
+        plan: ResearchTaskPlan,
         user: CurrentUserContext,
         mode: str,
         top_k: int,
@@ -258,7 +288,7 @@ class AgentTaskExecutor:
         filters: RetrievalFilters,
         langchain_config_factory: LangChainConfigFactory | None = None,
         resume: bool = False,
-    ) -> AgentTaskPlan:
+    ) -> ResearchTaskPlan:
         """兼容原入口并委托给 Research TaskPlan 执行器。
 
         该方法不做新的锁或鉴权，因为正常 confirm/retry 路径已经在
@@ -313,7 +343,7 @@ class AgentTaskExecutor:
         task_plan_id: str,
         user: CurrentUserContext,
         langchain_config_factory: LangChainConfigFactory | None = None,
-    ) -> AgentTaskPlan:
+    ) -> AgentTaskPlan | ResearchTaskPlan:
         """按任务类型恢复最近完整快照。
 
         公开方法只负责 fail-fast 取锁；必须在锁获取后才重读 TaskPlan，
@@ -333,7 +363,7 @@ class AgentTaskExecutor:
         user: CurrentUserContext,
         *,
         langchain_config_factory: LangChainConfigFactory | None,
-    ) -> AgentTaskPlan:
+    ) -> AgentTaskPlan | ResearchTaskPlan:
         """在同任务互斥范围内重新读取并恢复最近快照。
 
         Research 使用 TaskPlan 中的 Worker 结果快照；agentic 文档任务使用
@@ -416,7 +446,7 @@ class AgentTaskExecutor:
         task_plan_id: str,
         user: CurrentUserContext,
         langchain_config_factory: LangChainConfigFactory | None = None,
-    ) -> AgentTaskPlan:
+    ) -> AgentTaskPlan | ResearchTaskPlan:
         """确认计划，并在执行前使用当前身份和权限重新构造事实。
 
         confirm 和 resume 一样先占用 task_plan_id，但业务含义不同：Research confirm
@@ -436,7 +466,7 @@ class AgentTaskExecutor:
         user: CurrentUserContext,
         *,
         langchain_config_factory: LangChainConfigFactory | None,
-    ) -> AgentTaskPlan:
+    ) -> AgentTaskPlan | ResearchTaskPlan:
         """在同任务互斥范围内重新读取、鉴权并执行确认。
 
         只有 ``WAITING_CONFIRMATION`` 可以进入此分支。状态检查放在锁内，保证
@@ -447,6 +477,8 @@ class AgentTaskExecutor:
         if plan.status != AgentTaskPlanStatus.WAITING_CONFIRMATION:
             raise AppServiceError("Agent task plan 状态不是 waiting_confirmation，拒绝执行")
         if plan.task_kind == "question_decomposition":
+            if not isinstance(plan, ResearchTaskPlan):
+                raise AppServiceError("Research TaskPlan Schema 不受支持")
             if not user.is_authenticated:
                 raise ToolPermissionDeniedError("当前用户身份已失效，拒绝执行研究计划")
             return await self._run_research_controlled(
@@ -467,7 +499,7 @@ class AgentTaskExecutor:
         self,
         task_plan_id: str,
         user: CurrentUserContext,
-    ) -> AgentTaskPlan:
+    ) -> AgentTaskPlan | ResearchTaskPlan:
         """从持久化 Store 重读 TaskPlan，并校验当前请求用户的任务归属。
 
         返回的是锁内最新 TaskPlan 快照。普通用户只能操作自己创建的任务，
@@ -483,12 +515,12 @@ class AgentTaskExecutor:
 
     async def _run_research_controlled(
         self,
-        plan: AgentTaskPlan,
+        plan: ResearchTaskPlan,
         user: CurrentUserContext,
         *,
         langchain_config_factory: LangChainConfigFactory | None,
         resume: bool,
-    ) -> AgentTaskPlan:
+    ) -> ResearchTaskPlan:
         """使用保存的 ResearchPolicy 和当前 ACL 启动或恢复 Research Executor。
 
         ``_ACTIVE_RESEARCH_TASK_PLAN_IDS`` 保护当前进程内的 Research 重入，``finally``
@@ -498,14 +530,8 @@ class AgentTaskExecutor:
         task_plan_id = plan.task_plan_id
         if task_plan_id in _ACTIVE_RESEARCH_TASK_PLAN_IDS:
             raise AppServiceError("研究 TaskPlan 当前仍在执行，不能重复确认或恢复")
-        # policy 保存用户创建计划时选择的检索参数和 Web 许可，但不保存
-        # 用户权限。旧 TaskPlan 没有 policy 时使用保守默认，Web 为 disabled。
-        policy = plan.research_policy or AgentResearchPolicy(
-            mode="hybrid",
-            top_k=self._settings.rag_default_top_k,
-            min_score=self._settings.rag_default_min_score,
-            web_policy="disabled",
-        )
+        policy = plan.research_policy
+        await self._refresh_research_capability(plan, user)
         _ACTIVE_RESEARCH_TASK_PLAN_IDS.add(task_plan_id)
         try:
             return await self.execute_question_decomposition_plan(
@@ -526,6 +552,41 @@ class AgentTaskExecutor:
         finally:
             # discard 在 ID 已被移除时也不抛错，适合异常/取消统一收尾。
             _ACTIVE_RESEARCH_TASK_PLAN_IDS.discard(task_plan_id)
+
+    async def _refresh_research_capability(
+        self,
+        plan: ResearchTaskPlan,
+        user: CurrentUserContext,
+    ) -> None:
+        """确认/恢复时按当前 RBAC、Grant、Web 配置重新验证整份 Plan。"""
+
+        if self._capability_service is None:
+            raise AgentTaskSourceUnavailableError("Research Capability Service 未配置")
+        capability = await self._capability_service.resolve_research(
+            user=user,
+            dataset_id=plan.research_policy.dataset_id,
+            allow_direct_web=plan.research_policy.allow_direct_web,
+            allow_web_fallback=plan.research_policy.allow_web_fallback,
+        )
+        candidate = AgentTaskPlannerCandidate(
+            requirements=plan.requirements,
+            sub_questions=[
+                ResearchTaskSubQuestionCandidate.model_validate(
+                    item.model_dump(exclude={"web_usage"})
+                )
+                for item in plan.sub_questions
+            ],
+        )
+        issues = self._plan_validator.validate_formal(
+            candidate,
+            plan.sub_questions,
+            capability,
+        )
+        if any(item.severity == "error" for item in issues):
+            raise AgentTaskSourceUnavailableError(
+                "当前权限、Dataset 或 Web 能力已无法满足这份 Research TaskPlan"
+            )
+        plan.capability_snapshot = capability
 
     @staticmethod
     def _current_filters(

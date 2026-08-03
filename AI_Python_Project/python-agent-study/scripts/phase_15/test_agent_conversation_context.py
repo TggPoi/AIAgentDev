@@ -12,6 +12,7 @@ from fast_app.domain.conversation_models import (
     ConversationSummary,
 )
 from fast_app.domain.user_context import CurrentUserContext
+from fast_app.domain.prompt_guard_models import PromptGuardResult
 from fast_app.graph.rag_agent.rag_agent_nodes import (
     build_rag_agent_answer_query,
     create_next_action_decision_node,
@@ -26,6 +27,7 @@ from fast_app.services.agent_tasks.agent_task_router import (
     AgentRouteDecision,
     AgentTaskRouteResult,
 )
+from fast_app.services.exceptions import ExternalServiceError
 
 
 class RecordingRewriter:
@@ -41,6 +43,7 @@ class RecordingRewriter:
             used_summary=memory_context.summary_text is not None,
             summary_version=memory_context.summary_version,
             reason="test_context",
+            relevant_message_ids=[memory_context.recent_window.messages[-1].id],
         )
 
 
@@ -64,9 +67,9 @@ class RecordingPlanner:
         self.query = None
         self.history = None
 
-    async def plan_question_decomposition(self, query: str, history=None, **_kwargs):
-        self.query = query
-        self.history = history
+    async def plan_question_decomposition(self, request, **_kwargs):
+        self.query = request.resolved_query
+        self.history = request.relevant_history
         return None
 
 
@@ -87,8 +90,52 @@ class RecordingPromptGuard:
     def __init__(self) -> None:
         self.inputs: list[tuple[str, str]] = []
 
-    async def ensure_user_input_allowed(self, text: str, *, source: str):
+    async def ensure_user_input_allowed(self, text: str, *, source: str, **_kwargs):
         self.inputs.append((text, source))
+
+    def scan_user_input(self, text: str, *, source: str):
+        return PromptGuardResult(reason=f"{source}_allowed")
+
+    def audit_guard_result(self, **_kwargs):
+        return None
+
+
+class RecordingCapabilityService:
+    async def resolve_research(self, **_kwargs):
+        from fast_app.domain.research_task_plan import AgentTaskCapabilitySnapshot
+
+        return AgentTaskCapabilitySnapshot(
+            available_source_types=["knowledge_retrieval"],
+            web_direct_allowed=False,
+            web_fallback_allowed=False,
+            knowledge_retrieval_available=True,
+            nl2sql_query_available=False,
+            max_requirements=8,
+            max_sub_questions=4,
+        )
+
+
+class FailingPromptGuard:
+    async def ensure_user_input_allowed(self, *_args, **_kwargs):
+        raise ExternalServiceError("guard unavailable")
+
+
+class CountingRouter:
+    def __init__(self, intent: str) -> None:
+        self.intent = intent
+        self.calls = 0
+
+    async def route(self, **_kwargs):
+        self.calls += 1
+        return AgentTaskRouteResult(
+            decision=AgentRouteDecision(
+                intent=self.intent,
+                confidence=0.99,
+                reason="must not be reached",
+            ),
+            source="model",
+            latency_ms=1.0,
+        )
 
 
 async def main() -> None:
@@ -130,6 +177,11 @@ async def main() -> None:
         conversation_summary_service=cast(Any, FixedSummaryService(summary)),
         prompt_guard=cast(Any, prompt_guard),
         task_router=cast(Any, QuestionRouter()),
+        current_user=CurrentUserContext(
+            user_id="u1",
+            is_authenticated=True,
+            auth_source="jwt",
+        ),
     )
 
     state = await pipeline._prepare_initial_state(
@@ -152,7 +204,6 @@ async def main() -> None:
     assert "已经找到部署规范文档" in rewriter.memory_context.formatted_text
     assert prompt_guard.inputs == [
         ("根据刚才的资料创建清单", "rag_agent.query_rewrite.raw_input"),
-        ("根据刚才的资料创建清单", "rag_agent.query_rewrite.rewritten_query"),
     ]
     assert all("已经找到部署规范文档" not in text for text, _source in prompt_guard.inputs)
 
@@ -161,12 +212,11 @@ async def main() -> None:
         settings,
         task_router=cast(Any, QuestionRouter()),
         task_planner=cast(Any, planner),
+        capability_service=cast(Any, RecordingCapabilityService()),
     )(state)
     assert planner.query == state["query"]
-    assert planner.history == [
-        "【会话摘要】\n用户正在整理 RAG 部署资料。",
-        "【最近对话】\n" + state["history_window_text"],
-    ]
+    assert len(planner.history) == 1
+    assert planner.history[0].content == "已经找到部署规范文档"
     answer_query = build_rag_agent_answer_query(state)
     assert answer_query.startswith(state["query"])
     assert "<conversation_context>" in answer_query
@@ -190,6 +240,7 @@ async def main() -> None:
         settings,
         task_router=cast(Any, QuestionRouter()),
         task_planner=cast(Any, empty_planner),
+        capability_service=cast(Any, RecordingCapabilityService()),
     )(empty_state)
     assert empty_planner.history == []
     assert build_rag_agent_answer_query(empty_state) == empty_state["query"]
@@ -209,6 +260,33 @@ async def main() -> None:
         CurrentUserContext(user_id="bob", auth_source="demo_header"),
     )
     assert alice_req.session_id != bob_req.session_id
+
+    # rag_agent 的所有非敏感路由共享同一个 Guard 前置边界；分类服务技术失败时
+    # 必须 fail closed，不能让任意 Router 或下游节点继续运行。
+    for intent in (
+        "simple_rag",
+        "structured_data_query",
+        "web_research",
+        "question_decomposition",
+        "knowledge_document_management",
+    ):
+        router = CountingRouter(intent)
+        guarded_pipeline = RagAgentPipeline(
+            settings=settings,
+            vector_retriever=MockVectorRetriever(),
+            keyword_retriever=MockKeywordRetriever(),
+            llm_client=MockLLMClient(settings=settings),
+            reranker=MockReranker(),
+            prompt_guard=cast(Any, FailingPromptGuard()),
+            task_router=cast(Any, router),
+        )
+        try:
+            await guarded_pipeline.run(RagChatRequest(query="安全边界测试"))
+        except ExternalServiceError:
+            pass
+        else:
+            raise AssertionError(f"{intent} 必须在 Guard 技术失败时 fail closed")
+        assert router.calls == 0
     print("agent_conversation_context=passed")
 
 

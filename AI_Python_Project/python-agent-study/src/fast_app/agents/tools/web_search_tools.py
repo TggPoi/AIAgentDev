@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from fast_app.core.config import Settings
 from fast_app.core.logging import format_log_fields, get_logger
-from fast_app.services.exceptions import ExternalServiceError
+from fast_app.services.exceptions import ExternalServiceError, ExternalServiceTimeoutError
 
 
 logger = get_logger(__name__)
@@ -182,6 +182,8 @@ async def search_web_with_bocha(
         )
         response.raise_for_status()
         payload = response.json()
+    except httpx.TimeoutException as exc:
+        raise ExternalServiceTimeoutError("博查 Web Search API 调用超时") from exc
     except httpx.HTTPError as exc:
         raise ExternalServiceError(f"博查 Web Search API 调用失败: {exc}") from exc
     except ValueError as exc:

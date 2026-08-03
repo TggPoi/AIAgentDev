@@ -1,0 +1,507 @@
+{
+  "schema_version": 2,
+  "task_plan_id": "task_plan_20260803100554_f7624fc5f212",
+  "task_kind": "question_decomposition",
+  "task_type": "analysis",
+  "user_id": "user_MBeEmT7K2eGguofW4CZ1aGTp",
+  "original_query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。",
+  "source_query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。",
+  "objective": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。",
+  "final_synthesis_instruction": "基于所有已满足 Requirements 和对应合法证据回答 resolved query；明确区分事实、推导和未解决项，不得使用未获得 Evidence ID 支撑的结论。",
+  "requirements": [
+    {
+      "requirement_id": "req-1",
+      "description": "明确 PostgreSQL 16 中 RLS（Row-Level Security）解决的核心问题及其机制。",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "web_search"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "web_citation",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "req-2",
+      "description": "明确 PostgreSQL 16 中 security_invoker 视图解决的核心问题及其机制。",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "web_search"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "web_citation",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "req-3",
+      "description": "说明 RLS 与 security_invoker 视图如何配合使用。",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "web_search"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "web_citation",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "req-4",
+      "description": "基于至少两份官方网页证据，给出 RLS 与 security_invoker 视图各自的适用边界。",
+      "source_policy": {
+        "mode": "all_of",
+        "source_types": [
+          "web_search"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "web_citation",
+          "minimum_count": 2,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    }
+  ],
+  "sub_questions": [
+    {
+      "sub_question_id": "sq-1",
+      "order": 1,
+      "question": "PostgreSQL 16 官方文档中，RLS（Row-Level Security）解决什么问题？其核心机制和典型使用场景是什么？",
+      "purpose": "获取 RLS 的核心问题定义、机制与场景，覆盖 req-1。",
+      "depends_on": [],
+      "information_source_hint": "web_search",
+      "covers_requirement_ids": [
+        "req-1"
+      ],
+      "reason": "需要从官方网页获取 RLS 的定义、机制和场景。",
+      "web_usage": "direct"
+    },
+    {
+      "sub_question_id": "sq-2",
+      "order": 2,
+      "question": "PostgreSQL 16 官方文档中，security_invoker 视图解决什么问题？其核心机制和典型使用场景是什么？",
+      "purpose": "获取 security_invoker 视图的核心问题定义、机制与场景，覆盖 req-2。",
+      "depends_on": [],
+      "information_source_hint": "web_search",
+      "covers_requirement_ids": [
+        "req-2"
+      ],
+      "reason": "需要从官方网页获取 security_invoker 视图的定义、机制和场景。",
+      "web_usage": "direct"
+    },
+    {
+      "sub_question_id": "sq-3",
+      "order": 3,
+      "question": "PostgreSQL 16 中，RLS 与 security_invoker 视图如何配合使用？官方文档或社区文档中是否有明确的配合模式或示例？",
+      "purpose": "获取 RLS 与 security_invoker 视图的配合方式，覆盖 req-3。",
+      "depends_on": [
+        "sq-1",
+        "sq-2"
+      ],
+      "information_source_hint": "web_search",
+      "covers_requirement_ids": [
+        "req-3"
+      ],
+      "reason": "需要综合 RLS 和 security_invoker 视图的机制，从官方网页获取配合方式。",
+      "web_usage": "direct"
+    },
+    {
+      "sub_question_id": "sq-4",
+      "order": 4,
+      "question": "基于 PostgreSQL 16 官方文档，RLS 与 security_invoker 视图各自的适用边界是什么？请提供至少两份不同的官方网页证据。",
+      "purpose": "获取 RLS 与 security_invoker 视图的适用边界，并满足至少两份官方网页证据的要求，覆盖 req-4。",
+      "depends_on": [
+        "sq-1",
+        "sq-2",
+        "sq-3"
+      ],
+      "information_source_hint": "web_search",
+      "covers_requirement_ids": [
+        "req-4"
+      ],
+      "reason": "需要综合前序事实，从至少两份官方网页获取适用边界。",
+      "web_usage": "direct"
+    }
+  ],
+  "quality_review": {
+    "verdict": "accepted",
+    "checks": {
+      "requirement_coverage": "pass",
+      "source_alignment": "pass",
+      "semantic_alignment": "pass",
+      "dependency_quality": "pass",
+      "executability": "pass",
+      "completion_policy_alignment": "pass"
+    },
+    "reviewer_findings": [],
+    "revision_summary": null,
+    "revision_count": 0,
+    "initial_validation_findings": []
+  },
+  "validation_issues": [],
+  "capability_snapshot": {
+    "available_source_types": [
+      "knowledge_retrieval",
+      "web_search"
+    ],
+    "web_direct_allowed": true,
+    "web_fallback_allowed": false,
+    "knowledge_retrieval_available": true,
+    "nl2sql_query_available": false,
+    "dataset_id": null,
+    "dataset_name": null,
+    "dataset_domain": null,
+    "allowed_dataset_views": [],
+    "allowed_dataset_fields": [],
+    "dataset_schema_context": null,
+    "max_requirements": 16,
+    "max_sub_questions": 8
+  },
+  "research_policy": {
+    "mode": "hybrid",
+    "top_k": 5,
+    "candidate_k": null,
+    "min_score": 0.0,
+    "source_path": null,
+    "section_path": [],
+    "dataset_id": null,
+    "nl2sql_action": null,
+    "allow_direct_web": true,
+    "allow_web_fallback": false
+  },
+  "progress": {
+    "current_wave": 1,
+    "workers": {
+      "sq-1": {
+        "status": "partial",
+        "wave": 1,
+        "attempt": 1,
+        "error_code": null
+      },
+      "sq-2": {
+        "status": "failed",
+        "wave": 1,
+        "attempt": 1,
+        "error_code": "同轮包含必须串行执行的工具，请按依赖分轮重试"
+      },
+      "sq-3": {
+        "status": "skipped",
+        "wave": 1,
+        "attempt": 0,
+        "error_code": "DEPENDENCY_FAILED"
+      },
+      "sq-4": {
+        "status": "skipped",
+        "wave": 1,
+        "attempt": 0,
+        "error_code": "DEPENDENCY_FAILED"
+      }
+    },
+    "events": [
+      {
+        "event": "agent_task_research_wave_started",
+        "sub_question_id": null,
+        "wave": 1,
+        "status": null,
+        "reason_code": null
+      },
+      {
+        "event": "agent_task_evidence_evaluated",
+        "sub_question_id": "sq-2",
+        "wave": 1,
+        "status": "failed",
+        "reason_code": null
+      },
+      {
+        "event": "agent_task_evidence_evaluated",
+        "sub_question_id": "sq-1",
+        "wave": 1,
+        "status": "partial",
+        "reason_code": null
+      }
+    ]
+  },
+  "sub_question_results": [
+    {
+      "sub_question_id": "sq-1",
+      "status": "partial",
+      "answer": "根据提供的检索上下文，关于 PostgreSQL 16 中 RLS（Row-Level Security）的回答如下：\n\n**1. 解决什么问题？**\nRLS 解决了在标准 SQL 权限系统（通过 `GRANT` 实现）之外，需要更细粒度数据访问控制的问题。它允许基于每个用户（per-user basis）来限制哪些数据行可以被普通查询返回，或者被数据修改命令（插入、更新、删除）所操作。\n\n**2. 核心机制**\n- **启用机制**：通过执行 `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` 命令在表上启用行级安全。默认情况下，表没有策略，拥有权限的用户可访问所有行。\n- **策略强制**：启用 RLS 后，对表的所有正常行访问（选择或修改行）都必须被行安全策略（row security policy）所允许。\n- **默认拒绝（Default-deny）**：如果表启用了 RLS 但没有配置任何策略，系统将应用默认拒绝策略，即没有任何行可见或可被修改。\n- **所有者豁免**：表的所有者（owner）通常不受行安全策略的限制。\n- **整表操作豁免**：应用于整个表的操作（如 `TRUNCATE` 和 `REFERENCES`）不受行安全策略的限制（注：原文此处截断，但明确指出了此类操作不受限）。\n\n**3. 典型使用场景**\n当前检索上下文中没有提供关于 RLS 典型使用场景的具体信息。\n\n参考文档：[mcp__fetch_c06a7d51ff6f925a]",
+      "attempt_count": 1,
+      "tool_calls": [
+        {
+          "call_id": "sq-1_attempt_1_tool_1_1",
+          "round": 1,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。 PostgreSQL 16 官方文档中，RLS（Row-Level Security）解决什么问题？其核心机制和典型使用场景是什么？",
+            "count": 5
+          },
+          "tool_output": {},
+          "status": "failed",
+          "error": "ExternalServiceError: 博查 Web Search API 调用失败: Client error '403 ' for url 'https://api.bochaai.com/v1/web-search'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403",
+          "reason": "server_enforced_required_web_policy"
+        },
+        {
+          "call_id": "sq-1_attempt_1_call_1555ec1b257f4ea9b097ec19",
+          "round": 2,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。 PostgreSQL 16 官方文档中，RLS（Row-Level Security）解决什么问题？其核心机制和典型使用场景是什么？",
+            "count": 5,
+            "site": "postgresql.org"
+          },
+          "tool_output": {},
+          "status": "failed",
+          "error": "ExternalServiceError: 博查 Web Search API 调用失败: Client error '403 ' for url 'https://api.bochaai.com/v1/web-search'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403",
+          "reason": ""
+        },
+        {
+          "call_id": "sq-1_attempt_1_call_2c3f4d0aef0844fca4f66f50",
+          "round": 2,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。 PostgreSQL 16 官方文档中，RLS（Row-Level Security）解决什么问题？其核心机制和典型使用场景是什么？",
+            "count": 5,
+            "site": "postgresql.org"
+          },
+          "tool_output": {},
+          "status": "failed",
+          "error": "ExternalServiceError: 博查 Web Search API 调用失败: Client error '403 ' for url 'https://api.bochaai.com/v1/web-search'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403",
+          "reason": ""
+        },
+        {
+          "call_id": "sq-1_attempt_1_call_9f68d2fc3e6e4581b004e774",
+          "round": 3,
+          "tool_name": "mcp__fetch",
+          "tool_input": {
+            "url": "https://www.postgresql.org/docs/16/ddl-rowsecurity.html",
+            "max_length": "30000"
+          },
+          "tool_output": {
+            "content_length": 16254,
+            "content_preview": "Contents of https://www.postgresql.org/docs/16/ddl-rowsecurity.html: PostgreSQL: Documentation: 16: 5.8. Row Security Po..."
+          },
+          "status": "completed",
+          "error": null,
+          "reason": ""
+        }
+      ],
+      "evidence_ids": [],
+      "evidence_validation": {
+        "sub_question_id": "sq-1",
+        "valid_evidence_refs": [],
+        "invalid_evidence_refs": [],
+        "reason_codes": []
+      },
+      "warnings": [
+        "Evaluator 不可用: AttributeError"
+      ],
+      "error_code": null,
+      "error_message": null
+    },
+    {
+      "sub_question_id": "sq-2",
+      "status": "failed",
+      "answer": "",
+      "attempt_count": 1,
+      "tool_calls": [
+        {
+          "call_id": "sq-2_attempt_1_tool_1_1",
+          "round": 1,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。 PostgreSQL 16 官方文档中，security_invoker 视图解决什么问题？其核心机制和典型使用场景是什么？",
+            "count": 5
+          },
+          "tool_output": {},
+          "status": "failed",
+          "error": "ExternalServiceError: 博查 Web Search API 调用失败: Client error '403 ' for url 'https://api.bochaai.com/v1/web-search'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403",
+          "reason": "server_enforced_required_web_policy"
+        },
+        {
+          "call_id": "sq-2_attempt_1_call_43f8730d94f44498b602b592",
+          "round": 2,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "PostgreSQL 16 security_invoker view official documentation",
+            "count": 5,
+            "site": "postgresql.org"
+          },
+          "tool_output": {},
+          "status": "failed",
+          "error": "同轮包含必须串行执行的工具，请按依赖分轮重试: mcp__fetch, mcp__fetch",
+          "reason": ""
+        },
+        {
+          "call_id": "sq-2_attempt_1_call_351589be527849c5b4f78ca6",
+          "round": 2,
+          "tool_name": "mcp__fetch",
+          "tool_input": {
+            "url": "https://www.postgresql.org/docs/16/rules-privileges.html",
+            "max_length": "15000"
+          },
+          "tool_output": {},
+          "status": "failed",
+          "error": "同轮包含必须串行执行的工具，请按依赖分轮重试: mcp__fetch, mcp__fetch",
+          "reason": ""
+        },
+        {
+          "call_id": "sq-2_attempt_1_call_ea6e0601aeeb41699d38a087",
+          "round": 2,
+          "tool_name": "mcp__fetch",
+          "tool_input": {
+            "url": "https://www.postgresql.org/docs/16/sql-createview.html",
+            "max_length": "10000"
+          },
+          "tool_output": {},
+          "status": "failed",
+          "error": "同轮包含必须串行执行的工具，请按依赖分轮重试: mcp__fetch, mcp__fetch",
+          "reason": ""
+        }
+      ],
+      "evidence_ids": [],
+      "evidence_validation": {
+        "sub_question_id": "sq-2",
+        "valid_evidence_refs": [],
+        "invalid_evidence_refs": [],
+        "reason_codes": []
+      },
+      "warnings": [],
+      "error_code": "同轮包含必须串行执行的工具，请按依赖分轮重试",
+      "error_message": "同轮包含必须串行执行的工具，请按依赖分轮重试: mcp__fetch, mcp__fetch"
+    },
+    {
+      "sub_question_id": "sq-3",
+      "status": "skipped",
+      "answer": "",
+      "attempt_count": 0,
+      "tool_calls": [],
+      "evidence_ids": [],
+      "evidence_validation": {
+        "sub_question_id": "sq-3",
+        "valid_evidence_refs": [],
+        "invalid_evidence_refs": [],
+        "reason_codes": []
+      },
+      "warnings": [
+        "前置子问题失败，当前子问题未执行。"
+      ],
+      "error_code": "DEPENDENCY_FAILED",
+      "error_message": "DEPENDENCY_FAILED: sq-2"
+    },
+    {
+      "sub_question_id": "sq-4",
+      "status": "skipped",
+      "answer": "",
+      "attempt_count": 0,
+      "tool_calls": [],
+      "evidence_ids": [],
+      "evidence_validation": {
+        "sub_question_id": "sq-4",
+        "valid_evidence_refs": [],
+        "invalid_evidence_refs": [],
+        "reason_codes": []
+      },
+      "warnings": [
+        "前置子问题失败，当前子问题未执行。"
+      ],
+      "error_code": "DEPENDENCY_FAILED",
+      "error_message": "DEPENDENCY_FAILED: sq-2"
+    }
+  ],
+  "evidence_registry": {
+    "evidence_by_id": {}
+  },
+  "requirement_evidence_statuses": [
+    {
+      "requirement_id": "req-1",
+      "status": "failed",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "web_search"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "sq-1"
+      ],
+      "reason_codes": [
+        "REQUIREMENT_EVIDENCE_INSUFFICIENT"
+      ]
+    },
+    {
+      "requirement_id": "req-2",
+      "status": "failed",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "web_search"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "sq-2"
+      ],
+      "reason_codes": [
+        "REQUIREMENT_EVIDENCE_INSUFFICIENT"
+      ]
+    },
+    {
+      "requirement_id": "req-3",
+      "status": "failed",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "web_search"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "sq-3"
+      ],
+      "reason_codes": [
+        "REQUIREMENT_EVIDENCE_INSUFFICIENT"
+      ]
+    },
+    {
+      "requirement_id": "req-4",
+      "status": "failed",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "web_search"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "sq-4"
+      ],
+      "reason_codes": [
+        "REQUIREMENT_EVIDENCE_INSUFFICIENT"
+      ]
+    }
+  ],
+  "status": "failed",
+  "final_output": null,
+  "created_at": "2026-08-03T10:05:54.476333Z",
+  "updated_at": "2026-08-03T10:09:33.212756Z",
+  "error_code": "AGENT_TASK_REQUIREMENT_FAILED",
+  "error_message": "至少一个 Requirement 未满足证据契约。"
+}

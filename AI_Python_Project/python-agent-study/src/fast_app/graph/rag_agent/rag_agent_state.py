@@ -3,6 +3,7 @@ from typing import Literal, NotRequired, TypedDict
 from fast_app.agents.runtime.agent_error_policy import AgentErrorDecision
 from fast_app.agents.runtime.agent_loop_control import AgentLoopDecision
 from fast_app.domain.agent_task_plan import AgentTaskPlan
+from fast_app.domain.research_task_plan import AgentTaskPlanningTurn, ResearchTaskPlan
 from fast_app.domain.rag_models import RagContext, RetrievedDoc
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.schemas.rag_chat_schema import RagChatRequest
@@ -20,6 +21,7 @@ RagAgentRoute = Literal[
     "direct_answer",
     "knowledge_retrieval",
     "structured_data_query",
+    "direct_web",
     "execute_task_plan",
     "clarification_required",
     "final_error_answer",
@@ -40,6 +42,7 @@ class RagAgentState(TypedDict):
     rewritten_query: str | None
     # 从 Redis 最近消息窗口冻结出的文本，只供 Planner 和最终回答理解多轮指代。
     history_window_text: str | None
+    planning_history: list[AgentTaskPlanningTurn]
     # 记录本次为何改写或保留原 query，便于日志、trace 和问题排查。
     query_rewrite_reason: str | None
     # 从 PostgreSQL 读取的会话摘要；与 recent window 一起构成一次请求固定的对话快照。
@@ -64,6 +67,8 @@ class RagAgentState(TypedDict):
     filters: dict[str, object]
     # 只表达本次请求是否允许公开网络兜底；不代表 Web 服务一定可用。
     allow_web_fallback: bool
+    # 用户是否允许明确的 direct Web 任务；与证据不足后的 fallback 独立。
+    allow_direct_web: bool
     # 客户端显式请求、API 已鉴权的 Dataset 绑定；只用于确定性报告分流。
     dataset_id: NotRequired[str | None]
     nl2sql_action: NotRequired[str | None]
@@ -127,7 +132,7 @@ class RagAgentState(TypedDict):
     # 当前认证用户的服务端上下文；权限节点以它为输入，不能由对话历史替代。
     current_user: NotRequired[CurrentUserContext | None]
     # 复杂任务规划或文档 dry-run 产生的完整 TaskPlan，供后续执行或响应转换使用。
-    agent_task_plan: NotRequired[AgentTaskPlan | None]
+    agent_task_plan: NotRequired[AgentTaskPlan | ResearchTaskPlan | None]
     # TaskPlan 的稳定 ID；前端据此调用独立的查询、确认或恢复接口。
     agent_task_plan_id: NotRequired[str | None]
     # 当前计划是否必须先由用户通过确认 API 审核，再执行高风险动作。
@@ -147,6 +152,7 @@ def build_rag_agent_initial_state(
         "query": req.query,
         "rewritten_query": None,
         "history_window_text": None,
+        "planning_history": [],
         "query_rewrite_reason": None,
         "summary_text": None,
         "summary_used": False,
@@ -163,6 +169,7 @@ def build_rag_agent_initial_state(
             knowledge_version=req._knowledge_version,
         ),
         "allow_web_fallback": req.allow_web_fallback,
+        "allow_direct_web": req.allow_direct_web,
         "dataset_id": req.dataset_id,
         "nl2sql_action": req.nl2sql_action,
         "operation": operation,

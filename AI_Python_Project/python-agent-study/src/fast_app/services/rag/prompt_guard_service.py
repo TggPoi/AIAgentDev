@@ -24,7 +24,11 @@ from fast_app.domain.prompt_guard_models import (
     PromptRiskLevel,
 )
 from fast_app.domain.rag_models import RetrievedDoc
-from fast_app.services.exceptions import PromptInjectionBlockedError
+from fast_app.services.exceptions import (
+    ExternalServiceError,
+    ExternalServiceTimeoutError,
+    PromptInjectionBlockedError,
+)
 
 
 logger = get_logger(__name__)
@@ -191,10 +195,15 @@ class PromptGuardService:
         text: str,
         *,
         source: str,
+        fail_on_classifier_error: bool = False,
     ) -> PromptGuardResult:
         """检查用户原始 query 或 rewritten query，必要时阻断请求。"""
 
-        result = await self.classify_user_input(text=text, source=source)
+        result = await self.classify_user_input(
+            text=text,
+            source=source,
+            fail_on_classifier_error=fail_on_classifier_error,
+        )
         self.audit_guard_result(result=result, source=source)
 
         if result.should_block:
@@ -209,6 +218,7 @@ class PromptGuardService:
         text: str,
         *,
         source: str,
+        fail_on_classifier_error: bool = False,
     ) -> PromptGuardResult:
         """按 rule / llm / hybrid 模式分类用户输入。"""
 
@@ -227,6 +237,7 @@ class PromptGuardService:
             classifier_type="input",
             source=source,
             fallback_result=rule_result,
+            fail_on_classifier_error=fail_on_classifier_error,
         )
 
     def scan_user_input(self, text: str, *, source: str) -> PromptGuardResult:
@@ -558,6 +569,7 @@ class PromptGuardService:
         classifier_type: str,
         source: str,
         fallback_result: PromptGuardResult,
+        fail_on_classifier_error: bool = False,
     ) -> PromptGuardResult:
         """调用独立 LLM classifier，并把调用包装成 LangSmith step。"""
 
@@ -591,6 +603,14 @@ class PromptGuardService:
                         error_type=type(exc).__name__,
                     ),
                 )
+                if fail_on_classifier_error:
+                    if isinstance(exc, TimeoutError):
+                        raise ExternalServiceTimeoutError(
+                            "Prompt Guard classifier 调用超时"
+                        ) from exc
+                    raise ExternalServiceError(
+                        "Prompt Guard classifier 暂时不可用"
+                    ) from exc
                 result = (
                     self._build_classifier_failure_result(classifier_type)
                     if self.mode == "llm"

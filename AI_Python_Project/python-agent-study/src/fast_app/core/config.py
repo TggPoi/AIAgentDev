@@ -201,6 +201,12 @@ class Settings(BaseSettings):
     llm_model_name: str = Field(default="qwen-plus", alias="LLM_MODEL_NAME")
     llm_provider: str = Field(default="mock", alias="LLM_PROVIDER")
 
+    agent_task_plan_reviewer_model_name: str = Field(
+        default="qwen3.7-max",
+        alias="AGENT_TASK_PLAN_REVIEWER_MODEL_NAME",
+        description="Research TaskPlan Reviewer 使用的模型名称，与 Planner 主模型独立配置。",
+    )
+
     # Agent Router 使用独立连接配置，不能在代码中隐式继承主 LLM 的凭据。
     # 本地开发可以在 .env 中显式填入相同值，生产环境则可单独切换低延迟模型。
     agent_router_api_key: str = Field(default="", alias="AGENT_ROUTER_API_KEY")

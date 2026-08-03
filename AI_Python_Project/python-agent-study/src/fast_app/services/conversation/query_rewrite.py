@@ -1,18 +1,22 @@
-from typing import Any
+from __future__ import annotations
 
-from langchain_core.messages import AIMessage
-from langchain_core.prompts import ChatPromptTemplate
+import json
+from typing import Any, Literal
+
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from fast_app.core.config import Settings
+from fast_app.core.structured_output import invoke_structured_model
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.services.conversation.conversation_history import (
     ConversationHistoryWindow,
     ConversationMemoryContext,
     build_conversation_memory_context,
 )
+from fast_app.services.exceptions import AgentTaskPlanningServiceUnavailableError
 
 
 logger = get_logger(__name__)
@@ -25,9 +29,11 @@ QUERY_REWRITE_SYSTEM_PROMPT = """你是一个多轮 RAG 检索问题改写助手
 规则：
 1. 如果当前问题依赖历史中的指代、省略或上下文，请补全必要上下文。
 2. 如果当前问题已经可以独立检索，请原样返回当前问题。
-3. 只输出改写后的检索问题，不要解释，不要输出编号，不要输出引号。
+3. 返回结构化解析结果，不回答问题本身。
 4. 不要回答问题本身。
 5. 不要引入历史和当前问题之外的新事实。
+6. 只有上下文确实不足时才返回 unresolved，并提供一个澄清问题。
+7. relevant_message_ids 只能选择输入中真实存在且确实用于解析指代的消息 ID。
 """
 
 
@@ -57,6 +63,49 @@ class QueryRewriteResult(BaseModel):
         description="使用的会话摘要版本；未使用摘要时为空。",
     )
     reason: str = Field(description="保持原问题或执行改写的简短理由。")
+    resolution_status: Literal["resolved", "unresolved"] = Field(
+        default="resolved",
+        description="resolved 表示语义完整；unresolved 表示必须向用户澄清。",
+    )
+    relevant_message_ids: list[str] = Field(
+        default_factory=list,
+        description="本次指代解析实际使用且经服务端验证的历史消息 ID。",
+    )
+    clarification_question: str | None = Field(
+        default=None,
+        description="仅 unresolved 时返回的单个澄清问题。",
+    )
+
+
+class QueryResolutionDecision(BaseModel):
+    """Query Rewriter 模型唯一允许输出的结构。"""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    resolution_status: Literal["resolved", "unresolved"] = Field(
+        description="当前问题是否已经能被可靠解析为完整任务语义。"
+    )
+    resolved_query: str | None = Field(
+        default=None,
+        description="resolved 时的完整任务语义；当前 query 优先于历史。",
+    )
+    relevant_message_ids: list[str] = Field(
+        default_factory=list,
+        description="仅列出为解决当前指代实际使用的输入消息 ID。",
+    )
+    clarification_question: str | None = Field(
+        default=None,
+        description="unresolved 时询问用户的单个澄清问题。",
+    )
+    reason: str = Field(description="解析或需要澄清的简短原因。")
+
+    @model_validator(mode="after")
+    def validate_resolution(self) -> QueryResolutionDecision:
+        if self.resolution_status == "resolved" and not self.resolved_query:
+            raise ValueError("resolved 必须返回 resolved_query")
+        if self.resolution_status == "unresolved" and not self.clarification_question:
+            raise ValueError("unresolved 必须返回 clarification_question")
+        return self
 
 
 class ConversationQueryRewriter:
@@ -69,13 +118,6 @@ class ConversationQueryRewriter:
     ) -> None:
         self.settings = settings
         self.model = model
-        self.prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", QUERY_REWRITE_SYSTEM_PROMPT),
-                ("human", QUERY_REWRITE_HUMAN_PROMPT),
-            ]
-        )
-        self.chain = self.prompt | model if model is not None else None
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "ConversationQueryRewriter":
@@ -106,6 +148,7 @@ class ConversationQueryRewriter:
         history_window: ConversationHistoryWindow | None = None,
         memory_context: ConversationMemoryContext | None = None,
         langchain_config: RunnableConfig | None = None,
+        fail_on_error: bool = False,
     ) -> QueryRewriteResult:
         """结合历史窗口把当前追问改写成独立检索 query。"""
 
@@ -121,23 +164,59 @@ class ConversationQueryRewriter:
         if memory_context is None or not memory_context.formatted_text.strip():
             return _fallback_result(query, "history_window_empty")
 
-        if self.chain is None:
+        if self.model is None:
+            if fail_on_error:
+                raise AgentTaskPlanningServiceUnavailableError(
+                    "Query Rewriter 模型未配置"
+                )
             return _fallback_result(query, "query_rewrite_model_unavailable")
 
         try:
-            response = await self.chain.ainvoke(
+            message_payload = [
                 {
-                    "memory_context": memory_context.formatted_text,
-                    "query": query,
-                },
-                # chain内部runnable包装langsmith信息
+                    "message_id": item.id,
+                    "role": item.role.value,
+                    "content": item.content,
+                }
+                for item in memory_context.recent_window.messages
+                if item.role.value in {"user", "assistant"}
+            ]
+            response = await invoke_structured_model(
+                model=self.model,
+                schema=QueryResolutionDecision,
+                messages=[
+                    SystemMessage(content=QUERY_REWRITE_SYSTEM_PROMPT),
+                    HumanMessage(
+                        content=json.dumps(
+                            {
+                                "summary": memory_context.summary_text,
+                                "recent_messages": message_payload,
+                                "current_query": query,
+                            },
+                            ensure_ascii=False,
+                        )
+                    ),
+                ],
                 config=langchain_config,
             )
-            rewritten_query = _normalize_rewritten_query(
-                _extract_message_content(response)
-            )
-            if rewritten_query == "":
-                return _fallback_result(query, "query_rewrite_empty_response")
+            valid_ids = {item["message_id"] for item in message_payload}
+            if not set(response.relevant_message_ids).issubset(valid_ids):
+                raise ValueError("Rewriter 返回了不存在的历史消息 ID")
+            if response.resolution_status == "unresolved":
+                return QueryRewriteResult(
+                    original_query=query,
+                    rewritten_query=query,
+                    used_history=False,
+                    used_summary=False,
+                    reason=response.reason,
+                    resolution_status="unresolved",
+                    relevant_message_ids=response.relevant_message_ids,
+                    clarification_question=response.clarification_question,
+                )
+
+            rewritten_query = _normalize_rewritten_query(response.resolved_query or "")
+            if not rewritten_query:
+                raise ValueError("Query Rewriter 返回空 resolved_query")
 
             used_history = rewritten_query != query
             used_summary = memory_context.summary_text is not None
@@ -167,7 +246,9 @@ class ConversationQueryRewriter:
                 used_history=used_history,
                 used_summary=used_summary,
                 summary_version=memory_context.summary_version,
-                reason=reason,
+                reason=response.reason or reason,
+                resolution_status="resolved",
+                relevant_message_ids=response.relevant_message_ids,
             )
 
         except Exception as exc:
@@ -179,6 +260,10 @@ class ConversationQueryRewriter:
                     error_type=type(exc).__name__,
                 ),
             )
+            if fail_on_error:
+                raise AgentTaskPlanningServiceUnavailableError(
+                    "Query Rewriter 技术调用失败"
+                ) from exc
             return _fallback_result(query, f"query_rewrite_failed:{type(exc).__name__}")
 
 

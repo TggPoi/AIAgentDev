@@ -5372,7 +5372,67 @@ MCP tools（仅现有配置允许时）
 冻结的 `research_policy.dataset_id`，用户身份来自当前 Worker Request。Agent 可以决定
 是否调用该工具，却不能通过 Tool 参数换库或扩权。
 
-### 4.2.5 用四次真实 Web 验收把分流规则串起来
+### 4.2.5 复杂查询现在怎样保证“每项需求都有对应证据”
+
+`question_decomposition` 不再让 Planner 只输出一组看似合理的问题。它先生成
+`ResearchTaskPlan` 的候选数据，其中最重要的是两层关系：
+
+```text
+Requirement：用户到底要求系统查明什么
+SubQuestion：哪一次 Worker 工作为哪些 Requirement 提供证据
+```
+
+例如“结合资产选型报告和游戏资产数据库，比较费用、模型面数与用途”不能只拆成一句
+宽泛的“分析哪些资产值得使用”。一个合格计划至少要表达：
+
+```text
+报告中的资产事实
+→ knowledge_retrieval
+→ knowledge_chunk Evidence
+
+数据库中的资产事实
+→ nl2sql_query
+→ sql_query_result Evidence + query_id
+
+候选资产结论
+→ information_source_hint=none
+→ 依赖前两项事实产生 derived_synthesis Evidence
+```
+
+Planner 只决定候选 Requirement、来源提示和依赖。后端随后依次执行确定性校验、一次
+Reviewer 审查、再次确定性校验，再把候选转换成正式 `ResearchTaskSubQuestion`。因此
+`web_usage`、Dataset、用户权限和 Scope 都不是 Planner 可以填写的字段。
+
+Worker 执行后也不能在自然语言里说一句“证据充分”就算完成。后端把真实 Tool 输出转换成
+Typed Evidence，先校验 `query_id`、Chunk 引用、网页 URL 和依赖引用，再写入唯一的
+Evidence Registry。`Requirement Evidence Aggregator` 最后按 Requirement 独立计算：
+
+```text
+satisfied
+pending
+partially_satisfied
+failed
+```
+
+`strict` Requirement 缺少任何必需证据都会失败，系统不会生成一份看似完整的最终答案；
+只有明确允许部分完成的 Requirement 才可能进入 `partially_satisfied`，并且最终回答必须
+说明缺失证据。
+
+2026-08-02 的场景 5 实际产生：
+
+```text
+TaskPlan = task_plan_20260802051816_5824cf7942af
+R1 = knowledge_retrieval = satisfied
+R2 = nl2sql_query = satisfied
+R3 = derived_synthesis = satisfied
+query_id = fd6d13fd-1d49-4453-9c3d-180fb2ce606c
+最终状态 = completed
+```
+
+完整执行记录、失败场景和待复测项见
+`scripts/docs/TaskPlan真实模型Web测试过程与问题记录.md`。
+
+### 4.2.6 用四次真实 Web 验收把分流规则串起来
 
 前面讲的是代码为什么这样分流。现在把 2026-07-31 至 2026-08-01 在
 `rag_agent_manual_acceptance.html` 中真实观察到的四个结果放在一起。四次请求都显式绑定

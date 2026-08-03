@@ -624,44 +624,6 @@ async def main() -> None:
         assert "attempt_1" in correction_result.tool_calls[0].call_id
         assert "attempt_2" in correction_result.tool_calls[1].call_id
 
-        plan = await executor.execute_question_decomposition_plan(
-            plan=build_plan("task_plan_202607080001_tool_loop"),
-            user=build_user(),
-            mode="hybrid",
-            top_k=3,
-            candidate_k=None,
-            min_score=0.0,
-            filters=RetrievalFilters(),
-        )
-
-        assert plan.status == AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS
-        results = plan.final_output["sub_question_results"]
-        assert [item["sub_question_id"] for item in results] == [
-            "sq_loop",
-            "sq_limit",
-            "sq_unknown",
-        ]
-        assert [call["tool_name"] for call in results[0]["tool_calls"]] == [
-            "knowledge_retrieval",
-            "web_search",
-        ]
-        assert len(results[1]["tool_calls"]) == 2
-        assert results[1]["tool_calls"][-1]["round"] == 2
-        assert results[2]["status"] == "failed"
-        assert results[2]["tool_calls"][0]["tool_name"] == "unknown_tool"
-        assert "未注册工具" in results[2]["tool_calls"][0]["error"]
-        assert plan.final_output["used_tools"] == [
-            "knowledge_retrieval",
-            "web_search",
-        ]
-        saved = list(Path(temp_dir).glob("*_task_plan_202607080001_tool_loop.json"))
-        assert len(saved) == 1
-        payload = json.loads(saved[0].read_text(encoding="utf-8"))
-        assert "tool_calls" in payload["final_output"]["sub_question_results"][0]
-        for call in payload["final_output"]["sub_question_results"][0]["tool_calls"]:
-            assert "answer" not in call["tool_output"]
-            assert "evidence" not in call["tool_output"]
-
         parallel_llm = FakeLLM()
         parallel_executor = ResearchHarness(
             tool_loop_class=ParallelResearchToolLoop,

@@ -1,4 +1,0 @@
-INFO:     127.0.0.1:51990 - "GET /health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52021 - "POST /auth/login HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52021 - "POST /rag/chat HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52021 - "POST /agent/task-plans/task_plan_20260716144732_ed902ce039f5/confirm HTTP/1.1" 200 OK

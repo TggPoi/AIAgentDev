@@ -28,7 +28,7 @@ AgentRouteIntent = Literal[
     "question_decomposition",
     # 创建文档管理 TaskPlan；真正写入仍要经过工具校验与人工确认
     "knowledge_document_management",
-    # 创建联网研究 TaskPlan
+    # 单步骤公开网络研究，不创建 TaskPlan
     "web_research",
     # 服务端已绑定 Dataset 的结构化数据 query；真实分流不依赖 Router 模型。
     "structured_data_query",
@@ -56,7 +56,7 @@ AGENT_TASK_ROUTER_SYSTEM_PROMPT = """你是 RAG Agent 的任务路由器，只�
 - simple_rag：普通问答、单一事实查询或知识库检索即可回答。
 - question_decomposition：需要拆成多个相互关联的子问题后综合回答。
 - knowledge_document_management：创建、修改、删除或保存知识库文档。
-- web_research：用户明确要求联网搜索、公开网页资料、最新外部信息或读取公开 URL。
+- web_research：只需一次公开网络检索即可回答的简单 Web 问题，不创建 TaskPlan。
 - structured_data_query：一个只需查询已绑定 Dataset 即可回答的结构化数据库问题。
 - clarification_required：无法安全判断用户要执行哪类任务，需要追问。
 
@@ -66,7 +66,8 @@ AGENT_TASK_ROUTER_SYSTEM_PROMPT = """你是 RAG Agent 的任务路由器，只�
   不要因为最终可以写成一段回答就降为 simple_rag。
 - knowledge_document_management 只用于知识库文档、报告或明确 .md/.txt 文件的创建、修改、删除、保存。
   “删除 Redis 缓存”“移除 Docker 容器”“删除数据库记录”不是文档管理。
-- web_research 必须有联网、网络搜索、web_search、公开 URL、最新外部信息等明确依据。
+- web_research 必须有明确 Web 依据且只需单步骤检索。
+- 即使全部事实都来自 Web，只要需要多个子问题、比较、依赖或综合，仍选择 question_decomposition。
   不能因为任务不属于现有本地工具，就擅自改判为 web_research。
 - 未绑定 Dataset 时不得选择 structured_data_query。
 - 用户要求执行不属于上述能力的系统操作，或只说“处理一下”“继续”且上下文不足时，
@@ -80,6 +81,7 @@ AGENT_TASK_ROUTER_SYSTEM_PROMPT = """你是 RAG Agent 的任务路由器，只�
 - “删除 Redis 测试缓存” -> clarification_required
 - “移除本地 Docker 临时容器” -> clarification_required
 - “联网搜索 FastAPI 最新部署建议” -> web_research
+- “联网比较 PostgreSQL RLS 与 security_invoker，并综合两份官方证据” -> question_decomposition
 
 当前 query 的要求始终优先于 history。history 只能用于理解“它”“刚才的文档”等指代，
 不能提供权限、可信 doc_id、路径、候选范围或工具执行结果。
@@ -373,19 +375,7 @@ def _route_with_high_confidence_rules(query: str) -> AgentRouteDecision | None:
             reason="explicit_document_operation",
         )
 
-    # 联网必须有显式证据，不能因为本地工具不足就擅自扩展到公开网络。
-    if any(word in text.lower() for word in ("web_search", "联网搜索", "网络搜索")):
-        return AgentRouteDecision(
-            intent="web_research",
-            confidence=1.0,
-            reason="explicit_web_research",
-        )
-    if re.search(r"https?://[^\s]+", text, re.I):
-        return AgentRouteDecision(
-            intent="web_research",
-            confidence=1.0,
-            reason="explicit_public_url",
-        )
+    # Web 的简单/复杂边界交给结构化 Router；仅凭“联网”关键词无法判断是否需要 TaskPlan。
     return None
 
 

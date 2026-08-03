@@ -30,9 +30,17 @@ from fast_app.domain.document_workflow import (
     DocumentWorkflowDecision,
     DocumentWorkflowResult,
 )
-from fast_app.services.agent_tasks.agent_task_planner import (
-    AgentTaskPlannerPayload,
-    AgentTaskPlannerSubQuestionPayload,
+from fast_app.domain.research_task_plan import (
+    AgentTaskEvidencePublicView,
+    AgentTaskExpectedEvidence,
+    AgentTaskPlannerCandidate,
+    AgentTaskPlanReviewDecision,
+    AgentTaskRequirement,
+    CapabilitySnapshotPublicView,
+    RequirementSourcePolicy,
+    ResearchTaskPlanPublicView,
+    ResearchTaskSubQuestion,
+    ResearchTaskSubQuestionCandidate,
 )
 from fast_app.services.agent_tasks.agent_task_router import AgentRouteDecision
 from fast_app.services.agent_tasks.deep_document_agent import (
@@ -47,7 +55,7 @@ from fast_app.services.nl2sql.models import (
     Nl2SqlQueryResult,
     SqlGenerationResult,
 )
-from fast_app.services.conversation.query_rewrite import QueryRewriteResult
+from fast_app.services.conversation.query_rewrite import QueryResolutionDecision, QueryRewriteResult
 from fast_app.services.research.research_tool_loop import (
     AgentTaskKnowledgeRetrievalToolInput,
     AgentTaskToolSelectionPayload,
@@ -58,8 +66,11 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     AgentResearchPolicy,
     AgentRouteDecision,
     AgentTaskKnowledgeRetrievalToolInput,
-    AgentTaskPlannerPayload,
-    AgentTaskPlannerSubQuestionPayload,
+    AgentTaskEvidencePublicView,
+    AgentTaskExpectedEvidence,
+    AgentTaskPlannerCandidate,
+    AgentTaskPlanReviewDecision,
+    AgentTaskRequirement,
     AgentTaskPlanConfirmResponse,
     AgentTaskPlanControlResponse,
     AgentTaskSubQuestionResult,
@@ -83,6 +94,7 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     KnowledgeImportJobListResponse,
     KnowledgeImportJobResponse,
     QueryRewriteResult,
+    QueryResolutionDecision,
     RagChatRequest,
     RagChatResponse,
     ResearchEvidenceEvaluation,
@@ -90,6 +102,11 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     Nl2SqlQueryRequest,
     Nl2SqlQueryResult,
     SqlGenerationResult,
+    CapabilitySnapshotPublicView,
+    RequirementSourcePolicy,
+    ResearchTaskPlanPublicView,
+    ResearchTaskSubQuestion,
+    ResearchTaskSubQuestionCandidate,
 )
 
 

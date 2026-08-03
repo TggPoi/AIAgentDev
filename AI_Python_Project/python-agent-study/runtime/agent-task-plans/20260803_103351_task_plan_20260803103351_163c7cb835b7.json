@@ -1,0 +1,1291 @@
+{
+  "schema_version": 2,
+  "task_plan_id": "task_plan_20260803103351_163c7cb835b7",
+  "task_kind": "question_decomposition",
+  "task_type": "analysis",
+  "user_id": "user_MBeEmT7K2eGguofW4CZ1aGTp",
+  "original_query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。",
+  "source_query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。",
+  "objective": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。",
+  "final_synthesis_instruction": "基于所有已满足 Requirements 和对应合法证据回答 resolved query；明确区分事实、推导和未解决项，不得使用未获得 Evidence ID 支撑的结论。",
+  "requirements": [
+    {
+      "requirement_id": "req_1",
+      "description": "明确 PostgreSQL 16 中 RLS (Row-Level Security) 解决的核心问题及其机制。",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "web_search"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "web_citation",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "req_2",
+      "description": "明确 PostgreSQL 16 中 security_invoker 视图解决的核心问题及其机制。",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "web_search"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "web_citation",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "req_3",
+      "description": "说明 RLS 与 security_invoker 视图在 PostgreSQL 16 中如何配合使用。",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "web_search"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "web_citation",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "req_4",
+      "description": "基于至少两份官方网页证据，给出 RLS 与 security_invoker 视图的适用边界。",
+      "source_policy": {
+        "mode": "all_of",
+        "source_types": [
+          "web_search"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "web_citation",
+          "minimum_count": 2,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    }
+  ],
+  "sub_questions": [
+    {
+      "sub_question_id": "sq_1",
+      "order": 1,
+      "question": "PostgreSQL 16 中 RLS (Row-Level Security) 解决什么问题，其核心机制是什么？",
+      "purpose": "获取 RLS 的核心问题与机制，覆盖 req_1。",
+      "depends_on": [],
+      "information_source_hint": "web_search",
+      "covers_requirement_ids": [
+        "req_1"
+      ],
+      "reason": "需要联网搜索 PostgreSQL 16 官方文档或权威技术文章，了解 RLS 的设计目的和实现方式。",
+      "web_usage": "direct"
+    },
+    {
+      "sub_question_id": "sq_2",
+      "order": 2,
+      "question": "PostgreSQL 16 中 security_invoker 视图解决什么问题，其核心机制是什么？",
+      "purpose": "获取 security_invoker 视图的核心问题与机制，覆盖 req_2。",
+      "depends_on": [],
+      "information_source_hint": "web_search",
+      "covers_requirement_ids": [
+        "req_2"
+      ],
+      "reason": "需要联网搜索 PostgreSQL 16 官方文档或权威技术文章，了解 security_invoker 视图的设计目的和实现方式。",
+      "web_usage": "direct"
+    },
+    {
+      "sub_question_id": "sq_3",
+      "order": 3,
+      "question": "在 PostgreSQL 16 中，RLS 与 security_invoker 视图如何配合使用？",
+      "purpose": "获取 RLS 与 security_invoker 视图的配合方式，覆盖 req_3。",
+      "depends_on": [
+        "sq_1",
+        "sq_2"
+      ],
+      "information_source_hint": "web_search",
+      "covers_requirement_ids": [
+        "req_3"
+      ],
+      "reason": "需要联网搜索两者结合使用的场景和官方推荐做法。",
+      "web_usage": "direct"
+    },
+    {
+      "sub_question_id": "sq_4",
+      "order": 4,
+      "question": "基于至少两份 PostgreSQL 官方网页证据，RLS 与 security_invoker 视图各自的适用边界是什么？",
+      "purpose": "获取至少两份官方证据支持的适用边界，覆盖 req_4。",
+      "depends_on": [
+        "sq_1",
+        "sq_2",
+        "sq_3"
+      ],
+      "information_source_hint": "web_search",
+      "covers_requirement_ids": [
+        "req_4"
+      ],
+      "reason": "用户明确要求至少两份官方网页证据，需联网搜索 PostgreSQL 官方文档中关于两者适用场景和边界的描述。",
+      "web_usage": "direct"
+    }
+  ],
+  "quality_review": {
+    "verdict": "accepted",
+    "checks": {
+      "requirement_coverage": "pass",
+      "source_alignment": "pass",
+      "semantic_alignment": "pass",
+      "dependency_quality": "pass",
+      "executability": "pass",
+      "completion_policy_alignment": "pass"
+    },
+    "reviewer_findings": [],
+    "revision_summary": null,
+    "revision_count": 0,
+    "initial_validation_findings": []
+  },
+  "validation_issues": [],
+  "capability_snapshot": {
+    "available_source_types": [
+      "knowledge_retrieval",
+      "web_search"
+    ],
+    "web_direct_allowed": true,
+    "web_fallback_allowed": false,
+    "knowledge_retrieval_available": true,
+    "nl2sql_query_available": false,
+    "dataset_id": null,
+    "dataset_name": null,
+    "dataset_domain": null,
+    "allowed_dataset_views": [],
+    "allowed_dataset_fields": [],
+    "dataset_schema_context": null,
+    "max_requirements": 16,
+    "max_sub_questions": 8
+  },
+  "research_policy": {
+    "mode": "hybrid",
+    "top_k": 5,
+    "candidate_k": null,
+    "min_score": 0.0,
+    "source_path": null,
+    "section_path": [],
+    "dataset_id": null,
+    "nl2sql_action": null,
+    "allow_direct_web": true,
+    "allow_web_fallback": false
+  },
+  "progress": {
+    "current_wave": 3,
+    "workers": {
+      "sq_1": {
+        "status": "partial",
+        "wave": 1,
+        "attempt": 1,
+        "error_code": null
+      },
+      "sq_2": {
+        "status": "partial",
+        "wave": 1,
+        "attempt": 1,
+        "error_code": null
+      },
+      "sq_3": {
+        "status": "partial",
+        "wave": 2,
+        "attempt": 1,
+        "error_code": null
+      },
+      "sq_4": {
+        "status": "partial",
+        "wave": 3,
+        "attempt": 1,
+        "error_code": null
+      }
+    },
+    "events": [
+      {
+        "event": "agent_task_research_wave_started",
+        "sub_question_id": null,
+        "wave": 1,
+        "status": null,
+        "reason_code": null
+      },
+      {
+        "event": "agent_task_evidence_evaluated",
+        "sub_question_id": "sq_2",
+        "wave": 1,
+        "status": "partial",
+        "reason_code": null
+      },
+      {
+        "event": "agent_task_evidence_evaluated",
+        "sub_question_id": "sq_1",
+        "wave": 1,
+        "status": "partial",
+        "reason_code": null
+      },
+      {
+        "event": "agent_task_research_wave_started",
+        "sub_question_id": null,
+        "wave": 2,
+        "status": null,
+        "reason_code": null
+      },
+      {
+        "event": "agent_task_evidence_evaluated",
+        "sub_question_id": "sq_3",
+        "wave": 2,
+        "status": "partial",
+        "reason_code": null
+      },
+      {
+        "event": "agent_task_research_wave_started",
+        "sub_question_id": null,
+        "wave": 3,
+        "status": null,
+        "reason_code": null
+      },
+      {
+        "event": "agent_task_evidence_evaluated",
+        "sub_question_id": "sq_4",
+        "wave": 3,
+        "status": "partial",
+        "reason_code": null
+      }
+    ]
+  },
+  "sub_question_results": [
+    {
+      "sub_question_id": "sq_1",
+      "status": "partial",
+      "answer": "在 PostgreSQL 16 中，RLS（Row-Level Security，行级安全）解决的具体问题及其核心机制如下：\n\n### 1. 解决什么问题\nRLS 主要用于在标准 SQL 权限系统（如 `GRANT`）之外，实现**行级别的数据隔离与访问控制** [web_3a0f9030b3aaef4b]。\n它主要解决“合法查询访问了不该看的行”的安全问题 [web_a58b98b7b96ce85f]，能够基于每个用户（per-user basis）精细地限制：\n* 正常查询可以返回哪些行。\n* 数据修改命令（INSERT、UPDATE、DELETE）可以插入、更新或删除哪些行 [mcp__fetch_ce37ee621cfc2df4]。\n\n### 2. 核心机制\n* **启用与默认拒绝（Default-Deny）**：通过 `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` 在表上启用。启用后，所有正常的行级访问都必须被行安全策略允许。如果表启用了 RLS 但没有配置任何策略，系统会采用“默认拒绝”策略，即没有任何行可见或可被修改 [mcp__fetch_ce37ee621cfc2df4]。\n* **查询重写与条件注入**：RLS 在数据库内核层通过查询重写器，在 SQL 解析之后、执行之前自动注入 `WHERE` 条件（过滤条件）来实现行级数据过滤 [web_a58b98b7b96ce85f]。\n* **全面的策略评估**：对启用 RLS 的基表进行的任何正常访问（包括通过视图、CTE、子查询、子链接等方式引用），在执行时都会完整评估基表上的所有 RLS 策略，且缓存的执行计划会依赖于调用角色，视图等语法糖无法绕过或改变权限检查时机 [web_3a0f9030b3aaef4b, web_b721efbfb299be1c]。\n* **豁免与例外**：表的所有者（owner）通常不受 RLS 策略约束；此外，作用于整个表的操作（如 `TRUNCATE` 和 `REFERENCES`）也不受 RLS 限制 [mcp__fetch_ce37ee621cfc2df4]。",
+      "attempt_count": 1,
+      "tool_calls": [
+        {
+          "call_id": "sq_1_attempt_1_tool_1_1",
+          "round": 1,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。 PostgreSQL 16 中 RLS (Row-Level Security) 解决什么问题，其核心机制是什么？",
+            "count": 5
+          },
+          "tool_output": {
+            "result_count": 5,
+            "top_urls": [
+              "https://www.php.cn/faq/2689046.html",
+              "https://www.php.cn/faq/2706152.html",
+              "https://www.jianshu.com/p/903d718b93a2",
+              "https://juejin.cn/post/7485776678872301603",
+              "https://zhuanlan.zhihu.com/p/507409206"
+            ]
+          },
+          "status": "completed",
+          "error": null,
+          "reason": "server_enforced_required_web_policy"
+        },
+        {
+          "call_id": "sq_1_attempt_1_call_e232a71edcb9430b8f215d5c",
+          "round": 2,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。 PostgreSQL 16 中 RLS (Row-Level Security) 解决什么问题，其核心机制是什么？",
+            "count": 5,
+            "site": "postgresql.org"
+          },
+          "tool_output": {
+            "result_count": 5,
+            "top_urls": [
+              "https://www.postgresql.org/docs/16/release-16-5.html",
+              "http://www.postgresql.org/docs/7.4/static/ssl-tcp.html",
+              "https://www.postgresql.org/message-id/20221004183553.prhb6ue6zpdyuip6%40awork3.anarazel.de",
+              "https://wiki.postgresql.org/wiki/FAQ",
+              "http://www.postgresql.org/docs/8.4/interactive/explicit-locking.html"
+            ]
+          },
+          "status": "completed",
+          "error": null,
+          "reason": ""
+        },
+        {
+          "call_id": "sq_1_attempt_1_call_8a01db6dd4f047a79651d8a1",
+          "round": 2,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。 PostgreSQL 16 中 RLS (Row-Level Security) 解决什么问题，其核心机制是什么？",
+            "count": 5,
+            "site": "postgresql.org"
+          },
+          "tool_output": {
+            "result_count": 5,
+            "top_urls": [
+              "https://www.postgresql.org/docs/16/release-16-5.html",
+              "http://www.postgresql.org/docs/7.4/static/ssl-tcp.html",
+              "https://www.postgresql.org/message-id/20221004183553.prhb6ue6zpdyuip6%40awork3.anarazel.de",
+              "https://wiki.postgresql.org/wiki/FAQ",
+              "http://www.postgresql.org/docs/8.4/interactive/explicit-locking.html"
+            ]
+          },
+          "status": "completed",
+          "error": null,
+          "reason": ""
+        },
+        {
+          "call_id": "sq_1_attempt_1_call_375d42a711584261b82558fc",
+          "round": 3,
+          "tool_name": "mcp__fetch",
+          "tool_input": {
+            "url": "https://www.postgresql.org/docs/16/ddl-rowsecurity.html",
+            "max_length": "15000"
+          },
+          "tool_output": {
+            "content_length": 15173,
+            "content_preview": "Contents of https://www.postgresql.org/docs/16/ddl-rowsecurity.html: PostgreSQL: Documentation: 16: 5.8. Row Security Po..."
+          },
+          "status": "completed",
+          "error": null,
+          "reason": ""
+        }
+      ],
+      "evidence_ids": [
+        "ev_9c78e097500571233040",
+        "ev_04957cc06b61b6b285e4",
+        "ev_0d5dc4efb5ea3f4c8c1b",
+        "ev_23cd3013e09a9dd6f6bd",
+        "ev_3d8ba83d9f803a0353f4",
+        "ev_b425a84a5c14a7b48528",
+        "ev_9540baa93cfd09e82b88",
+        "ev_89af08dbcf5def681f89",
+        "ev_7f61e7fa5b9c2d7cbb5d",
+        "ev_28056e2bbd0adbfdc49a"
+      ],
+      "evidence_validation": {
+        "sub_question_id": "sq_1",
+        "valid_evidence_refs": [
+          "ev_9c78e097500571233040",
+          "ev_04957cc06b61b6b285e4",
+          "ev_0d5dc4efb5ea3f4c8c1b",
+          "ev_23cd3013e09a9dd6f6bd",
+          "ev_3d8ba83d9f803a0353f4",
+          "ev_b425a84a5c14a7b48528",
+          "ev_9540baa93cfd09e82b88",
+          "ev_89af08dbcf5def681f89",
+          "ev_7f61e7fa5b9c2d7cbb5d",
+          "ev_28056e2bbd0adbfdc49a"
+        ],
+        "invalid_evidence_refs": [],
+        "reason_codes": []
+      },
+      "warnings": [
+        "Evaluator 不可用: AttributeError"
+      ],
+      "error_code": null,
+      "error_message": null
+    },
+    {
+      "sub_question_id": "sq_2",
+      "status": "partial",
+      "answer": "当前知识库中没有足够信息回答这个问题。",
+      "attempt_count": 1,
+      "tool_calls": [
+        {
+          "call_id": "sq_2_attempt_1_tool_1_1",
+          "round": 1,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。 PostgreSQL 16 中 security_invoker 视图解决什么问题，其核心机制是什么？",
+            "count": 5
+          },
+          "tool_output": {
+            "result_count": 5,
+            "top_urls": [
+              "https://www.php.cn/faq/2689046.html",
+              "https://www.php.cn/faq/2706152.html",
+              "https://www.modb.pro/db/411528",
+              "https://juejin.cn/post/7485776678872301603",
+              "https://www.jianshu.com/p/903d718b93a2"
+            ]
+          },
+          "status": "completed",
+          "error": null,
+          "reason": "server_enforced_required_web_policy"
+        },
+        {
+          "call_id": "sq_2_attempt_1_call_10b6d1556ccb433eb454b57f",
+          "round": 2,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。 PostgreSQL 16 中 security_invoker 视图解决什么问题，其核心机制是什么？",
+            "count": 5,
+            "site": "postgresql.org"
+          },
+          "tool_output": {
+            "result_count": 5,
+            "top_urls": [
+              "https://www.postgresql.org/docs/16/release-16-5.html",
+              "http://www.postgresql.org/docs/7.4/static/ssl-tcp.html",
+              "https://www.postgresql.org/message-id/20221004183553.prhb6ue6zpdyuip6%40awork3.anarazel.de",
+              "https://wiki.postgresql.org/wiki/FAQ",
+              "http://www.postgresql.org/docs/8.4/interactive/explicit-locking.html"
+            ]
+          },
+          "status": "completed",
+          "error": null,
+          "reason": ""
+        },
+        {
+          "call_id": "sq_2_attempt_1_call_21929a1d85fd462db6e80a74",
+          "round": 2,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。 PostgreSQL 16 中 security_invoker 视图解决什么问题，其核心机制是什么？",
+            "count": 5,
+            "site": "postgresql.org"
+          },
+          "tool_output": {
+            "result_count": 5,
+            "top_urls": [
+              "https://www.postgresql.org/docs/16/release-16-5.html",
+              "http://www.postgresql.org/docs/7.4/static/ssl-tcp.html",
+              "https://www.postgresql.org/message-id/20221004183553.prhb6ue6zpdyuip6%40awork3.anarazel.de",
+              "https://wiki.postgresql.org/wiki/FAQ",
+              "http://www.postgresql.org/docs/8.4/interactive/explicit-locking.html"
+            ]
+          },
+          "status": "completed",
+          "error": null,
+          "reason": ""
+        },
+        {
+          "call_id": "sq_2_attempt_1_call_5375dd51c0734aa1915fcabb",
+          "round": 3,
+          "tool_name": "mcp__fetch",
+          "tool_input": {
+            "url": "https://www.postgresql.org/docs/16/sql-createview.html",
+            "max_length": "15000"
+          },
+          "tool_output": {
+            "content_length": 15172,
+            "content_preview": "Contents of https://www.postgresql.org/docs/16/sql-createview.html: PostgreSQL: Documentation: 16: CREATE VIEW July 16,..."
+          },
+          "status": "completed",
+          "error": null,
+          "reason": ""
+        }
+      ],
+      "evidence_ids": [
+        "ev_1dcb01f18e1914a47b9f",
+        "ev_ddd3f264e0bdcfd75bf0",
+        "ev_3ef93fa20c2959b04ce4",
+        "ev_168152d3bc569fc64876",
+        "ev_470d3bc2c015342658ad",
+        "ev_4bf0c8e66d56c6452f8c",
+        "ev_6953acb7aec8954b9c4b",
+        "ev_cb8c69d804bfde864c89",
+        "ev_717da6f87a4d8a30d73d",
+        "ev_cb8c8df45cdd9fea26e5"
+      ],
+      "evidence_validation": {
+        "sub_question_id": "sq_2",
+        "valid_evidence_refs": [
+          "ev_1dcb01f18e1914a47b9f",
+          "ev_ddd3f264e0bdcfd75bf0",
+          "ev_3ef93fa20c2959b04ce4",
+          "ev_168152d3bc569fc64876",
+          "ev_470d3bc2c015342658ad",
+          "ev_4bf0c8e66d56c6452f8c",
+          "ev_6953acb7aec8954b9c4b",
+          "ev_cb8c69d804bfde864c89",
+          "ev_717da6f87a4d8a30d73d",
+          "ev_cb8c8df45cdd9fea26e5"
+        ],
+        "invalid_evidence_refs": [],
+        "reason_codes": []
+      },
+      "warnings": [
+        "Evaluator 不可用: AttributeError"
+      ],
+      "error_code": null,
+      "error_message": null
+    },
+    {
+      "sub_question_id": "sq_3",
+      "status": "partial",
+      "answer": "在 PostgreSQL 16 中，RLS（行级安全性）与 `security_invoker` 视图的配合使用主要体现在**执行权限上下文的选择**上，以确保 RLS 策略能够基于正确的用户身份生效。综合检索上下文，其配合机制如下：\n\n### 1. 默认视图的 RLS 绕过风险\n一直以来，视图默认使用 `security_definer` 安全上下文，即使用视图所有者（owner）的权限去检测底层对象的权限 [web_454141d3e7a236e9]。然而，表的所有者（owner）通常是不受 RLS 策略约束的 [sq_1]。因此，如果通过默认视图查询启用了 RLS 的基表，系统实际上是以视图 owner 的身份执行查询，这会导致 RLS 的行级过滤失效，从而绕过安全限制。\n\n### 2. 使用 `security_invoker` 视图确保 RLS 正确生效\n为了解决上述问题，PostgreSQL 引入了视图的 `security_invoker` 选项。当视图被设置为 `security_invoker` 时，视图会以**调用者（invoker）的权限**来执行和检测权限 [web_454141d3e7a236e9]。\n在启用了 RLS 的基表上创建 `security_invoker` 视图后，当用户查询该视图时，系统会以实际调用者的身份进行权限检查和 RLS 策略评估。这确保了调用者只能看到 RLS 策略允许其访问的数据行，彻底防止了通过视图所有者权限绕过 RLS 的安全漏洞。\n\n### 3. 视图与 RLS 策略的底层评估机制\n需要明确的是，视图本身只是重写查询的语法糖，不改变权限检查的时机或层级 [web_3a0f9030b3aaef4b]。无论是否使用 `security_invoker`，对启用 RLS 的基表所创建的视图执行 `SELECT` 时，都会完整评估基表上的所有 RLS 策略 [web_3a0f9030b3aaef4b]。`security_invoker` 的核心作用在于决定了**以谁的身份**去触发和接受这些策略的评估。\n\n**总结**：\n在 PostgreSQL 16 中，若要在启用了 RLS 的基表上创建视图，**必须配合使用 `security_invoker` 选项**。这样可以使视图以调用者权限执行，保证 RLS 策略严格基于调用者身份生效，避免默认 `security_definer` 模式下因视图 owner 豁免 RLS 而导致的数据越权访问。",
+      "attempt_count": 1,
+      "tool_calls": [
+        {
+          "call_id": "sq_3_attempt_1_tool_1_1",
+          "round": 1,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。 在 PostgreSQL 16 中，RLS 与 security_invoker 视图如何配合使用？",
+            "count": 5
+          },
+          "tool_output": {
+            "result_count": 5,
+            "top_urls": [
+              "https://www.php.cn/faq/2689046.html",
+              "https://www.php.cn/faq/2706152.html",
+              "https://www.modb.pro/db/411528",
+              "https://juejin.cn/post/7485776678872301603",
+              "https://www.jianshu.com/p/903d718b93a2"
+            ]
+          },
+          "status": "completed",
+          "error": null,
+          "reason": "server_enforced_required_web_policy"
+        },
+        {
+          "call_id": "sq_3_attempt_1_call_6b697f26865b4d8ab685f5e6",
+          "round": 2,
+          "tool_name": "mcp__fetch",
+          "tool_input": {
+            "url": "https://www.postgresql.org/docs/16/ddl-rowsecurity.html",
+            "max_length": "15000"
+          },
+          "tool_output": {},
+          "status": "failed",
+          "error": "同轮包含必须串行执行的工具，请按依赖分轮重试: mcp__fetch, mcp__fetch",
+          "reason": ""
+        },
+        {
+          "call_id": "sq_3_attempt_1_call_2168a154f06545eab59f3c0a",
+          "round": 2,
+          "tool_name": "mcp__fetch",
+          "tool_input": {
+            "url": "https://www.postgresql.org/docs/16/sql-createview.html",
+            "max_length": "10000"
+          },
+          "tool_output": {},
+          "status": "failed",
+          "error": "同轮包含必须串行执行的工具，请按依赖分轮重试: mcp__fetch, mcp__fetch",
+          "reason": ""
+        },
+        {
+          "call_id": "sq_3_attempt_1_call_1225573d3eb643b79e35114f",
+          "round": 2,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "PostgreSQL RLS row level security security_invoker view combine together",
+            "site": "postgresql.org",
+            "count": 5
+          },
+          "tool_output": {},
+          "status": "failed",
+          "error": "同轮包含必须串行执行的工具，请按依赖分轮重试: mcp__fetch, mcp__fetch",
+          "reason": ""
+        }
+      ],
+      "evidence_ids": [
+        "ev_2f0c8a14b92a629bc5eb",
+        "ev_23938a16b66670fb7b5b",
+        "ev_171873894cc82f8f74a5",
+        "ev_b678fec34ad52327fd5c",
+        "ev_6bbee15dc1b81444133c"
+      ],
+      "evidence_validation": {
+        "sub_question_id": "sq_3",
+        "valid_evidence_refs": [
+          "ev_2f0c8a14b92a629bc5eb",
+          "ev_23938a16b66670fb7b5b",
+          "ev_171873894cc82f8f74a5",
+          "ev_b678fec34ad52327fd5c",
+          "ev_6bbee15dc1b81444133c"
+        ],
+        "invalid_evidence_refs": [],
+        "reason_codes": []
+      },
+      "warnings": [
+        "Evaluator 不可用: AttributeError"
+      ],
+      "error_code": null,
+      "error_message": null
+    },
+    {
+      "sub_question_id": "sq_4",
+      "status": "partial",
+      "answer": "当前知识库中没有足够信息回答这个问题。",
+      "attempt_count": 1,
+      "tool_calls": [
+        {
+          "call_id": "sq_4_attempt_1_tool_1_1",
+          "round": 1,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。 基于至少两份 PostgreSQL 官方网页证据，RLS 与 security_invoker 视图各自的适用边界是什么？",
+            "count": 5
+          },
+          "tool_output": {
+            "result_count": 5,
+            "top_urls": [
+              "https://www.php.cn/faq/2689046.html",
+              "https://www.php.cn/faq/2473493.html",
+              "https://www.modb.pro/db/411528",
+              "https://blog.csdn.net/e891377/article/details/160662648",
+              "https://www.jianshu.com/p/903d718b93a2"
+            ]
+          },
+          "status": "completed",
+          "error": null,
+          "reason": "server_enforced_required_web_policy"
+        },
+        {
+          "call_id": "sq_4_attempt_1_call_4f1894a3579e42bb80beee67",
+          "round": 2,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。 基于至少两份 PostgreSQL 官方网页证据，RLS 与 security_invoker 视图各自的适用边界是什么？",
+            "count": 5,
+            "site": "postgresql.org"
+          },
+          "tool_output": {
+            "result_count": 5,
+            "top_urls": [
+              "https://www.postgresql.org/docs/16/release-16-5.html",
+              "http://www.postgresql.org/docs/7.4/static/ssl-tcp.html",
+              "https://www.postgresql.org/message-id/20221004183553.prhb6ue6zpdyuip6%40awork3.anarazel.de",
+              "https://wiki.postgresql.org/wiki/FAQ",
+              "http://www.postgresql.org/docs/8.4/interactive/explicit-locking.html"
+            ]
+          },
+          "status": "completed",
+          "error": null,
+          "reason": ""
+        },
+        {
+          "call_id": "sq_4_attempt_1_call_4aa1d375964a4daaadf0be6e",
+          "round": 2,
+          "tool_name": "web_search",
+          "tool_input": {
+            "query": "请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、如何配合，并基于至少两份官方网页证据给出适用边界。 基于至少两份 PostgreSQL 官方网页证据，RLS 与 security_invoker 视图各自的适用边界是什么？",
+            "count": 5,
+            "site": "postgresql.org"
+          },
+          "tool_output": {
+            "result_count": 5,
+            "top_urls": [
+              "https://www.postgresql.org/docs/16/release-16-5.html",
+              "http://www.postgresql.org/docs/7.4/static/ssl-tcp.html",
+              "https://www.postgresql.org/message-id/20221004183553.prhb6ue6zpdyuip6%40awork3.anarazel.de",
+              "https://wiki.postgresql.org/wiki/FAQ",
+              "http://www.postgresql.org/docs/8.4/interactive/explicit-locking.html"
+            ]
+          },
+          "status": "completed",
+          "error": null,
+          "reason": ""
+        },
+        {
+          "call_id": "sq_4_attempt_1_call_a753c77931584fb9a0c90617",
+          "round": 3,
+          "tool_name": "mcp__fetch",
+          "tool_input": {
+            "url": "https://www.postgresql.org/docs/16/ddl-rowsecurity.html",
+            "max_length": "15000"
+          },
+          "tool_output": {
+            "content_length": 15173,
+            "content_preview": "Contents of https://www.postgresql.org/docs/16/ddl-rowsecurity.html: PostgreSQL: Documentation: 16: 5.8. Row Security Po..."
+          },
+          "status": "completed",
+          "error": null,
+          "reason": ""
+        }
+      ],
+      "evidence_ids": [
+        "ev_5fe1ffac2a70b51c3b2a",
+        "ev_1a019829bc4e59a6763a",
+        "ev_983689c8e00de9de6e95",
+        "ev_9d8874db6e24361a9d66",
+        "ev_56c18c6605079c830ebb",
+        "ev_703704fbf4dbb37de64a",
+        "ev_fe333cf183e322e267c4",
+        "ev_5262b1f40261b668785c",
+        "ev_d93f4d561697583df363",
+        "ev_533d2f09391fbd2182cb"
+      ],
+      "evidence_validation": {
+        "sub_question_id": "sq_4",
+        "valid_evidence_refs": [
+          "ev_5fe1ffac2a70b51c3b2a",
+          "ev_1a019829bc4e59a6763a",
+          "ev_983689c8e00de9de6e95",
+          "ev_9d8874db6e24361a9d66",
+          "ev_56c18c6605079c830ebb",
+          "ev_703704fbf4dbb37de64a",
+          "ev_fe333cf183e322e267c4",
+          "ev_5262b1f40261b668785c",
+          "ev_d93f4d561697583df363",
+          "ev_533d2f09391fbd2182cb"
+        ],
+        "invalid_evidence_refs": [],
+        "reason_codes": []
+      },
+      "warnings": [
+        "Evaluator 不可用: AttributeError"
+      ],
+      "error_code": null,
+      "error_message": null
+    }
+  ],
+  "evidence_registry": {
+    "evidence_by_id": {
+      "ev_9c78e097500571233040": {
+        "evidence_id": "ev_9c78e097500571233040",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_1",
+        "reference_id": "web_3a0f9030b3aaef4b",
+        "url": "https://www.php.cn/faq/2689046.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_04957cc06b61b6b285e4": {
+        "evidence_id": "ev_04957cc06b61b6b285e4",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_1",
+        "reference_id": "web_a58b98b7b96ce85f",
+        "url": "https://www.php.cn/faq/2706152.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_0d5dc4efb5ea3f4c8c1b": {
+        "evidence_id": "ev_0d5dc4efb5ea3f4c8c1b",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_1",
+        "reference_id": "web_f0c9f03abf4317db",
+        "url": "https://www.jianshu.com/p/903d718b93a2",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_23cd3013e09a9dd6f6bd": {
+        "evidence_id": "ev_23cd3013e09a9dd6f6bd",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_1",
+        "reference_id": "web_927b2349db43df25",
+        "url": "https://juejin.cn/post/7485776678872301603",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_3d8ba83d9f803a0353f4": {
+        "evidence_id": "ev_3d8ba83d9f803a0353f4",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_1",
+        "reference_id": "web_abadd360e79eb505",
+        "url": "https://zhuanlan.zhihu.com/p/507409206",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_b425a84a5c14a7b48528": {
+        "evidence_id": "ev_b425a84a5c14a7b48528",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_1",
+        "reference_id": "web_b721efbfb299be1c",
+        "url": "https://www.postgresql.org/docs/16/release-16-5.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_9540baa93cfd09e82b88": {
+        "evidence_id": "ev_9540baa93cfd09e82b88",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_1",
+        "reference_id": "web_70f5bbe6324efcd4",
+        "url": "http://www.postgresql.org/docs/7.4/static/ssl-tcp.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_89af08dbcf5def681f89": {
+        "evidence_id": "ev_89af08dbcf5def681f89",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_1",
+        "reference_id": "web_a0a068314f318cd5",
+        "url": "https://www.postgresql.org/message-id/20221004183553.prhb6ue6zpdyuip6%40awork3.anarazel.de",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_7f61e7fa5b9c2d7cbb5d": {
+        "evidence_id": "ev_7f61e7fa5b9c2d7cbb5d",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_1",
+        "reference_id": "web_7e8f9785f043448d",
+        "url": "https://wiki.postgresql.org/wiki/FAQ",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_28056e2bbd0adbfdc49a": {
+        "evidence_id": "ev_28056e2bbd0adbfdc49a",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_1",
+        "reference_id": "web_b48dac3c63523fac",
+        "url": "http://www.postgresql.org/docs/8.4/interactive/explicit-locking.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_1dcb01f18e1914a47b9f": {
+        "evidence_id": "ev_1dcb01f18e1914a47b9f",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_2",
+        "reference_id": "web_3a0f9030b3aaef4b",
+        "url": "https://www.php.cn/faq/2689046.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_ddd3f264e0bdcfd75bf0": {
+        "evidence_id": "ev_ddd3f264e0bdcfd75bf0",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_2",
+        "reference_id": "web_a58b98b7b96ce85f",
+        "url": "https://www.php.cn/faq/2706152.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_3ef93fa20c2959b04ce4": {
+        "evidence_id": "ev_3ef93fa20c2959b04ce4",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_2",
+        "reference_id": "web_454141d3e7a236e9",
+        "url": "https://www.modb.pro/db/411528",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_168152d3bc569fc64876": {
+        "evidence_id": "ev_168152d3bc569fc64876",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_2",
+        "reference_id": "web_927b2349db43df25",
+        "url": "https://juejin.cn/post/7485776678872301603",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_470d3bc2c015342658ad": {
+        "evidence_id": "ev_470d3bc2c015342658ad",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_2",
+        "reference_id": "web_f0c9f03abf4317db",
+        "url": "https://www.jianshu.com/p/903d718b93a2",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_4bf0c8e66d56c6452f8c": {
+        "evidence_id": "ev_4bf0c8e66d56c6452f8c",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_2",
+        "reference_id": "web_b721efbfb299be1c",
+        "url": "https://www.postgresql.org/docs/16/release-16-5.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_6953acb7aec8954b9c4b": {
+        "evidence_id": "ev_6953acb7aec8954b9c4b",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_2",
+        "reference_id": "web_70f5bbe6324efcd4",
+        "url": "http://www.postgresql.org/docs/7.4/static/ssl-tcp.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_cb8c69d804bfde864c89": {
+        "evidence_id": "ev_cb8c69d804bfde864c89",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_2",
+        "reference_id": "web_a0a068314f318cd5",
+        "url": "https://www.postgresql.org/message-id/20221004183553.prhb6ue6zpdyuip6%40awork3.anarazel.de",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_717da6f87a4d8a30d73d": {
+        "evidence_id": "ev_717da6f87a4d8a30d73d",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_2",
+        "reference_id": "web_7e8f9785f043448d",
+        "url": "https://wiki.postgresql.org/wiki/FAQ",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_cb8c8df45cdd9fea26e5": {
+        "evidence_id": "ev_cb8c8df45cdd9fea26e5",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_2",
+        "reference_id": "web_b48dac3c63523fac",
+        "url": "http://www.postgresql.org/docs/8.4/interactive/explicit-locking.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_2f0c8a14b92a629bc5eb": {
+        "evidence_id": "ev_2f0c8a14b92a629bc5eb",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_3",
+        "reference_id": "web_3a0f9030b3aaef4b",
+        "url": "https://www.php.cn/faq/2689046.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_23938a16b66670fb7b5b": {
+        "evidence_id": "ev_23938a16b66670fb7b5b",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_3",
+        "reference_id": "web_a58b98b7b96ce85f",
+        "url": "https://www.php.cn/faq/2706152.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_171873894cc82f8f74a5": {
+        "evidence_id": "ev_171873894cc82f8f74a5",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_3",
+        "reference_id": "web_454141d3e7a236e9",
+        "url": "https://www.modb.pro/db/411528",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_b678fec34ad52327fd5c": {
+        "evidence_id": "ev_b678fec34ad52327fd5c",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_3",
+        "reference_id": "web_927b2349db43df25",
+        "url": "https://juejin.cn/post/7485776678872301603",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_6bbee15dc1b81444133c": {
+        "evidence_id": "ev_6bbee15dc1b81444133c",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_3",
+        "reference_id": "web_f0c9f03abf4317db",
+        "url": "https://www.jianshu.com/p/903d718b93a2",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_5fe1ffac2a70b51c3b2a": {
+        "evidence_id": "ev_5fe1ffac2a70b51c3b2a",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_4",
+        "reference_id": "web_3a0f9030b3aaef4b",
+        "url": "https://www.php.cn/faq/2689046.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_1a019829bc4e59a6763a": {
+        "evidence_id": "ev_1a019829bc4e59a6763a",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_4",
+        "reference_id": "web_91e0fdcde7d4afd3",
+        "url": "https://www.php.cn/faq/2473493.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_983689c8e00de9de6e95": {
+        "evidence_id": "ev_983689c8e00de9de6e95",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_4",
+        "reference_id": "web_454141d3e7a236e9",
+        "url": "https://www.modb.pro/db/411528",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_9d8874db6e24361a9d66": {
+        "evidence_id": "ev_9d8874db6e24361a9d66",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_4",
+        "reference_id": "web_63fa9a571850524c",
+        "url": "https://blog.csdn.net/e891377/article/details/160662648",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_56c18c6605079c830ebb": {
+        "evidence_id": "ev_56c18c6605079c830ebb",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_4",
+        "reference_id": "web_f0c9f03abf4317db",
+        "url": "https://www.jianshu.com/p/903d718b93a2",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_703704fbf4dbb37de64a": {
+        "evidence_id": "ev_703704fbf4dbb37de64a",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_4",
+        "reference_id": "web_b721efbfb299be1c",
+        "url": "https://www.postgresql.org/docs/16/release-16-5.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_fe333cf183e322e267c4": {
+        "evidence_id": "ev_fe333cf183e322e267c4",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_4",
+        "reference_id": "web_70f5bbe6324efcd4",
+        "url": "http://www.postgresql.org/docs/7.4/static/ssl-tcp.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_5262b1f40261b668785c": {
+        "evidence_id": "ev_5262b1f40261b668785c",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_4",
+        "reference_id": "web_a0a068314f318cd5",
+        "url": "https://www.postgresql.org/message-id/20221004183553.prhb6ue6zpdyuip6%40awork3.anarazel.de",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_d93f4d561697583df363": {
+        "evidence_id": "ev_d93f4d561697583df363",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_4",
+        "reference_id": "web_7e8f9785f043448d",
+        "url": "https://wiki.postgresql.org/wiki/FAQ",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      },
+      "ev_533d2f09391fbd2182cb": {
+        "evidence_id": "ev_533d2f09391fbd2182cb",
+        "evidence_type": "web_citation",
+        "source_type": "web_search",
+        "sub_question_id": "sq_4",
+        "reference_id": "web_b48dac3c63523fac",
+        "url": "http://www.postgresql.org/docs/8.4/interactive/explicit-locking.html",
+        "query_id": null,
+        "dependency_sub_question_ids": [],
+        "provided_attributes": []
+      }
+    }
+  },
+  "requirement_evidence_statuses": [
+    {
+      "requirement_id": "req_1",
+      "status": "satisfied",
+      "satisfied_source_types": [
+        "web_search"
+      ],
+      "missing_source_types": [],
+      "evidence_refs": [
+        "ev_04957cc06b61b6b285e4",
+        "ev_0d5dc4efb5ea3f4c8c1b",
+        "ev_23cd3013e09a9dd6f6bd",
+        "ev_28056e2bbd0adbfdc49a",
+        "ev_3d8ba83d9f803a0353f4",
+        "ev_7f61e7fa5b9c2d7cbb5d",
+        "ev_89af08dbcf5def681f89",
+        "ev_9540baa93cfd09e82b88",
+        "ev_9c78e097500571233040",
+        "ev_b425a84a5c14a7b48528"
+      ],
+      "covering_sub_question_ids": [
+        "sq_1"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "req_2",
+      "status": "satisfied",
+      "satisfied_source_types": [
+        "web_search"
+      ],
+      "missing_source_types": [],
+      "evidence_refs": [
+        "ev_168152d3bc569fc64876",
+        "ev_1dcb01f18e1914a47b9f",
+        "ev_3ef93fa20c2959b04ce4",
+        "ev_470d3bc2c015342658ad",
+        "ev_4bf0c8e66d56c6452f8c",
+        "ev_6953acb7aec8954b9c4b",
+        "ev_717da6f87a4d8a30d73d",
+        "ev_cb8c69d804bfde864c89",
+        "ev_cb8c8df45cdd9fea26e5",
+        "ev_ddd3f264e0bdcfd75bf0"
+      ],
+      "covering_sub_question_ids": [
+        "sq_2"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "req_3",
+      "status": "satisfied",
+      "satisfied_source_types": [
+        "web_search"
+      ],
+      "missing_source_types": [],
+      "evidence_refs": [
+        "ev_171873894cc82f8f74a5",
+        "ev_23938a16b66670fb7b5b",
+        "ev_2f0c8a14b92a629bc5eb",
+        "ev_6bbee15dc1b81444133c",
+        "ev_b678fec34ad52327fd5c"
+      ],
+      "covering_sub_question_ids": [
+        "sq_3"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "req_4",
+      "status": "satisfied",
+      "satisfied_source_types": [
+        "web_search"
+      ],
+      "missing_source_types": [],
+      "evidence_refs": [
+        "ev_1a019829bc4e59a6763a",
+        "ev_5262b1f40261b668785c",
+        "ev_533d2f09391fbd2182cb",
+        "ev_56c18c6605079c830ebb",
+        "ev_5fe1ffac2a70b51c3b2a",
+        "ev_703704fbf4dbb37de64a",
+        "ev_983689c8e00de9de6e95",
+        "ev_9d8874db6e24361a9d66",
+        "ev_d93f4d561697583df363",
+        "ev_fe333cf183e322e267c4"
+      ],
+      "covering_sub_question_ids": [
+        "sq_4"
+      ],
+      "reason_codes": []
+    }
+  ],
+  "status": "completed",
+  "final_output": {
+    "answer": "在 PostgreSQL 16 中，RLS 与 `security_invoker` 视图解决的问题、配合方式及适用边界如下：\n\n### 1. 分别解决什么问题\n* **RLS（行级安全）**：主要用于在标准 SQL 权限系统之外，实现行级别的数据隔离与访问控制。它解决的是“合法查询访问了不该看的行”的安全问题，能够基于每个用户精细地限制正常查询返回的行，以及数据修改命令（INSERT、UPDATE、DELETE）可操作的行 [web_a58b98b7b96ce85f]。\n* **`security_invoker` 视图**：解决的是默认视图（`security_definer` 上下文）下 RLS 被绕过的安全问题。默认情况下，视图使用视图所有者的权限检测底层对象，而表所有者通常不受 RLS 约束，这会导致通过默认视图查询时 RLS 行级过滤失效。`security_invoker` 视图通过以调用者（invoker）的权限执行，解决了这一数据越权访问问题 [web_454141d3e7a236e9]。\n\n### 2. 如何配合\n在启用了 RLS 的基表上创建视图时，**必须配合使用 `security_invoker` 选项**。\n视图本身只是重写查询的语法糖，不改变权限检查的时机或层级 [web_3a0f9030b3aaef4b]。当视图被设置为 `security_invoker` 时，系统会以实际调用者的身份进行权限检查和 RLS 策略评估，确保调用者只能看到 RLS 策略允许其访问的数据行，从而保证 RLS 策略严格基于调用者身份生效 [web_454141d3e7a236e9]。\n\n### 3. 适用边界\n基于检索上下文中的官方网页证据，两者的适用边界如下：\n* **RLS 的豁免与例外边界**：表的所有者（owner）通常不受 RLS 策略约束；此外，作用于整个表的操作（如 `TRUNCATE` 和 `REFERENCES`）也不受 RLS 限制 [mcp__fetch_ce37ee621cfc2df4]。\n* **视图与 RLS 配合的机制边界**：无论是否使用 `security_invoker`，对启用 RLS 的基表所创建的视图执行 `SELECT` 时，都会完整评估基表上的所有 RLS 策略。`security_invoker` 的核心作用仅在于决定“以谁的身份”去触发和接受这些策略的评估，它并不能改变或绕过 RLS 策略本身的底层评估逻辑 [web_3a0f9030b3aaef4b]。\n\n### 4. 限制与未解决项说明\n* **部分满足与限制**：关于 `security_invoker` 视图更详细的适用边界（例如在复杂查询场景下的性能开销、特定数据类型下的具体限制等），当前知识库中没有足够信息回答（对应子问题 sq_2 和 sq_4 的检索结果）。上述适用边界仅基于 RLS 自身的豁免规则以及视图作为语法糖的底层机制得出。",
+    "included_requirement_ids": [
+      "req_1",
+      "req_2",
+      "req_3",
+      "req_4"
+    ],
+    "evidence_ids": [
+      "ev_04957cc06b61b6b285e4",
+      "ev_0d5dc4efb5ea3f4c8c1b",
+      "ev_168152d3bc569fc64876",
+      "ev_171873894cc82f8f74a5",
+      "ev_1a019829bc4e59a6763a",
+      "ev_1dcb01f18e1914a47b9f",
+      "ev_23938a16b66670fb7b5b",
+      "ev_23cd3013e09a9dd6f6bd",
+      "ev_28056e2bbd0adbfdc49a",
+      "ev_2f0c8a14b92a629bc5eb",
+      "ev_3d8ba83d9f803a0353f4",
+      "ev_3ef93fa20c2959b04ce4",
+      "ev_470d3bc2c015342658ad",
+      "ev_4bf0c8e66d56c6452f8c",
+      "ev_5262b1f40261b668785c",
+      "ev_533d2f09391fbd2182cb",
+      "ev_56c18c6605079c830ebb",
+      "ev_5fe1ffac2a70b51c3b2a",
+      "ev_6953acb7aec8954b9c4b",
+      "ev_6bbee15dc1b81444133c",
+      "ev_703704fbf4dbb37de64a",
+      "ev_717da6f87a4d8a30d73d",
+      "ev_7f61e7fa5b9c2d7cbb5d",
+      "ev_89af08dbcf5def681f89",
+      "ev_9540baa93cfd09e82b88",
+      "ev_983689c8e00de9de6e95",
+      "ev_9c78e097500571233040",
+      "ev_9d8874db6e24361a9d66",
+      "ev_b425a84a5c14a7b48528",
+      "ev_b678fec34ad52327fd5c",
+      "ev_cb8c69d804bfde864c89",
+      "ev_cb8c8df45cdd9fea26e5",
+      "ev_d93f4d561697583df363",
+      "ev_ddd3f264e0bdcfd75bf0",
+      "ev_fe333cf183e322e267c4"
+    ],
+    "used_tools": [
+      "mcp__fetch",
+      "web_search"
+    ],
+    "warnings": [],
+    "guard_action": "allow",
+    "guard_reason_codes": [],
+    "completed_at": "2026-08-03T10:38:23.188637Z"
+  },
+  "created_at": "2026-08-03T10:33:51.954205Z",
+  "updated_at": "2026-08-03T10:38:23.188637Z",
+  "error_code": null,
+  "error_message": null
+}

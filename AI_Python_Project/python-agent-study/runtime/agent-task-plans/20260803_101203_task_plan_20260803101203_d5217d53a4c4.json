@@ -1,0 +1,281 @@
+{
+  "schema_version": 2,
+  "task_plan_id": "task_plan_20260803101203_d5217d53a4c4",
+  "task_kind": "question_decomposition",
+  "task_type": "analysis",
+  "user_id": "user_MBeEmT7K2eGguofW4CZ1aGTp",
+  "original_query": "结合当前知识库中的 RAG 设计与 FastAPI 官方部署资料，分析把当前服务部署为多 Worker 时，哪些状态可以保留在进程内，哪些必须外置，并说明依据。",
+  "source_query": "结合当前知识库中的 RAG 设计与 FastAPI 官方部署资料，分析把当前服务部署为多 Worker 时，哪些状态可以保留在进程内，哪些必须外置，并说明依据。",
+  "objective": "结合当前知识库中的 RAG 设计与 FastAPI 官方部署资料，分析把当前服务部署为多 Worker 时，哪些状态可以保留在进程内，哪些必须外置，并说明依据。",
+  "final_synthesis_instruction": "基于所有已满足 Requirements 和对应合法证据回答 resolved query；明确区分事实、推导和未解决项，不得使用未获得 Evidence ID 支撑的结论。",
+  "requirements": [
+    {
+      "requirement_id": "req_1",
+      "description": "获取当前知识库中关于 RAG 设计的服务架构与状态管理信息",
+      "source_policy": {
+        "mode": "all_of",
+        "source_types": [
+          "knowledge_retrieval"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "req_2",
+      "description": "获取 FastAPI 官方关于多 Worker 部署的架构说明与状态管理建议",
+      "source_policy": {
+        "mode": "all_of",
+        "source_types": [
+          "web_search"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "web_citation",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "req_3",
+      "description": "识别当前 RAG 服务中可保留在进程内的状态类型及其依据",
+      "source_policy": {
+        "mode": "none",
+        "source_types": []
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "derived_synthesis",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "req_4",
+      "description": "识别当前 RAG 服务中必须外置的状态类型及其依据",
+      "source_policy": {
+        "mode": "none",
+        "source_types": []
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "derived_synthesis",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    }
+  ],
+  "sub_questions": [
+    {
+      "sub_question_id": "sq_1",
+      "order": 1,
+      "question": "当前知识库中的 RAG 设计文档描述了哪些服务状态、缓存、会话或内存数据结构？这些状态的生命周期和共享需求是什么？",
+      "purpose": "获取当前 RAG 服务中存在的状态类型及其特征，为判断多 Worker 下的状态管理策略提供事实基础",
+      "depends_on": [],
+      "information_source_hint": "knowledge_retrieval",
+      "covers_requirement_ids": [
+        "req_1"
+      ],
+      "reason": "需要从知识库中提取 RAG 设计中的状态管理相关信息",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "sq_2",
+      "order": 2,
+      "question": "FastAPI 官方文档关于多 Worker 部署（如使用 Uvicorn workers 或 Gunicorn）时，对进程内状态、全局变量、缓存和会话管理有哪些限制和建议？哪些状态必须外置到共享存储？",
+      "purpose": "获取 FastAPI 多 Worker 部署的官方架构约束，为判断状态外置需求提供权威依据",
+      "depends_on": [],
+      "information_source_hint": "web_search",
+      "covers_requirement_ids": [
+        "req_2"
+      ],
+      "reason": "需要从 FastAPI 官方资料获取多 Worker 部署的状态管理规范",
+      "web_usage": "direct"
+    },
+    {
+      "sub_question_id": "sq_3",
+      "order": 3,
+      "question": "结合 RAG 服务中的状态特征和 FastAPI 多 Worker 部署约束，哪些状态可以安全保留在进程内？依据是什么？",
+      "purpose": "综合分析可保留在进程内的状态类型，生成结论",
+      "depends_on": [
+        "sq_1",
+        "sq_2"
+      ],
+      "information_source_hint": "none",
+      "covers_requirement_ids": [
+        "req_3"
+      ],
+      "reason": "需要综合知识库 RAG 设计状态和 FastAPI 多 Worker 约束进行推导",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "sq_4",
+      "order": 4,
+      "question": "结合 RAG 服务中的状态特征和 FastAPI 多 Worker 部署约束，哪些状态必须外置到共享存储（如 Redis、数据库）？依据是什么？",
+      "purpose": "综合分析必须外置的状态类型，生成结论",
+      "depends_on": [
+        "sq_1",
+        "sq_2"
+      ],
+      "information_source_hint": "none",
+      "covers_requirement_ids": [
+        "req_4"
+      ],
+      "reason": "需要综合知识库 RAG 设计状态和 FastAPI 多 Worker 约束进行推导",
+      "web_usage": "not_used"
+    }
+  ],
+  "quality_review": {
+    "verdict": "accepted",
+    "checks": {
+      "requirement_coverage": "pass",
+      "source_alignment": "pass",
+      "semantic_alignment": "pass",
+      "dependency_quality": "pass",
+      "executability": "pass",
+      "completion_policy_alignment": "pass"
+    },
+    "reviewer_findings": [],
+    "revision_summary": null,
+    "revision_count": 0,
+    "initial_validation_findings": []
+  },
+  "validation_issues": [],
+  "capability_snapshot": {
+    "available_source_types": [
+      "knowledge_retrieval",
+      "web_search"
+    ],
+    "web_direct_allowed": true,
+    "web_fallback_allowed": false,
+    "knowledge_retrieval_available": true,
+    "nl2sql_query_available": false,
+    "dataset_id": null,
+    "dataset_name": null,
+    "dataset_domain": null,
+    "allowed_dataset_views": [],
+    "allowed_dataset_fields": [],
+    "dataset_schema_context": null,
+    "max_requirements": 16,
+    "max_sub_questions": 8
+  },
+  "research_policy": {
+    "mode": "hybrid",
+    "top_k": 5,
+    "candidate_k": null,
+    "min_score": 0.0,
+    "source_path": null,
+    "section_path": [],
+    "dataset_id": null,
+    "nl2sql_action": null,
+    "allow_direct_web": true,
+    "allow_web_fallback": false
+  },
+  "progress": {
+    "current_wave": 0,
+    "workers": {
+      "sq_1": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "sq_2": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "sq_3": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "sq_4": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      }
+    },
+    "events": []
+  },
+  "sub_question_results": [],
+  "evidence_registry": {
+    "evidence_by_id": {}
+  },
+  "requirement_evidence_statuses": [
+    {
+      "requirement_id": "req_1",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "sq_1"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "req_2",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "web_search"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "sq_2"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "req_3",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "sq_3"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "req_4",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "sq_4"
+      ],
+      "reason_codes": []
+    }
+  ],
+  "status": "waiting_confirmation",
+  "final_output": null,
+  "created_at": "2026-08-03T10:12:03.299087Z",
+  "updated_at": "2026-08-03T10:12:03.301244Z",
+  "error_code": null,
+  "error_message": null
+}

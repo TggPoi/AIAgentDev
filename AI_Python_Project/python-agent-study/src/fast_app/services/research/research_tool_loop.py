@@ -856,12 +856,14 @@ class ResearchToolLoop:
                     "query_id": result.query_id,
                     "dataset_id": result.dataset_id,
                     "row_count": result.row_count,
+                    "columns": list(result.columns),
                 },
             )
             return ToolExecutionResult(
                 tool_output={
                     "query_id": result.query_id,
                     "row_count": result.row_count,
+                    "columns": list(result.columns),
                     "status": "completed",
                 },
                 evidence=[doc_to_evidence(doc)],
