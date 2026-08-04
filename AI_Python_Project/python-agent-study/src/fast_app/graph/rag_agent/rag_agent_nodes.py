@@ -1,5 +1,9 @@
 from collections.abc import Callable
+from html import unescape
+import re
 from time import perf_counter
+from urllib.parse import urlparse
+from xml.etree import ElementTree
 
 import httpx
 
@@ -60,6 +64,10 @@ from fast_app.services.knowledge.knowledge_permission_policy import (
     build_retrieval_filters_from_mapping,
 )
 from fast_app.services.rag.rag_pipeline_service import build_top_doc_ids
+from fast_app.services.rag.direct_web_search_planner import (
+    DirectWebSearchPlan,
+    DirectWebSearchPlanner,
+)
 from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
 from fast_app.services.rag.rag_context_assembler import assemble_rag_context
 from fast_app.services.rag.rag_context_assembler import build_context_observation
@@ -70,24 +78,216 @@ from fast_app.services.nl2sql.service import Nl2SqlService
 logger = get_logger(__name__)
 
 
+def _matches_direct_web_plan(result, *, plan: DirectWebSearchPlan) -> bool:
+    """确定性检查候选网页是否满足规划器声明的域名、版本和主题契约。"""
+
+    parsed = urlparse(result.url)
+    hostname = (parsed.hostname or "").lower()
+    site = (plan.site or "").lower()
+    if site and hostname != site and not hostname.endswith(f".{site}"):
+        return False
+    lowered_url = result.url.lower()
+    if any(item.lower() not in lowered_url for item in plan.required_url_fragments):
+        return False
+    searchable = " ".join(
+        (result.title, result.snippet, result.summary)
+    ).lower()
+    return all(item.lower() in searchable for item in plan.required_content_terms)
+
+
+def _official_page_text(raw_html: str) -> str:
+    """把受信官方页面转换成供现有 RAG 上下文使用的纯文本。"""
+
+    for tag in ("article", "main", "body"):
+        matched = re.search(
+            rf"(?is)<{tag}\b[^>]*>(.*?)</{tag}>",
+            raw_html,
+        )
+        if matched:
+            raw_html = matched.group(1)
+            break
+    without_scripts = re.sub(
+        r"(?is)<(?:script|style|nav|header|footer)\b[^>]*>.*?</(?:script|style|nav|header|footer)>",
+        " ",
+        raw_html,
+    )
+    return " ".join(unescape(re.sub(r"(?s)<[^>]+>", " ", without_scripts)).split())
+
+
+async def _official_sitemap_candidates(
+    http_client: httpx.AsyncClient,
+    *,
+    plan: DirectWebSearchPlan,
+) -> list[dict[str, str]]:
+    """从官方网站标准 sitemap 提取与当前问题最相关的真实 URL。"""
+
+    if not plan.site:
+        return []
+    try:
+        response = await http_client.get(
+            f"https://{plan.site}/sitemap.xml",
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        if len(response.content) > 5_000_000:
+            return []
+        root = ElementTree.fromstring(response.content)
+    except (httpx.HTTPError, ElementTree.ParseError):
+        return []
+
+    needles = {
+        token.lower()
+        for value in (plan.query, *plan.required_content_terms)
+        for token in re.findall(r"[A-Za-z0-9]+", value)
+        if len(token) >= 2
+    }
+    ranked: list[tuple[int, str]] = []
+    for element in root.iter():
+        if not element.tag.endswith("loc") or not element.text:
+            continue
+        url = element.text.strip()
+        parsed = urlparse(url)
+        hostname = (parsed.hostname or "").lower()
+        if parsed.scheme != "https" or (
+            hostname != plan.site.lower()
+            and not hostname.endswith(f".{plan.site.lower()}")
+        ):
+            continue
+        compact_url = re.sub(r"[^a-z0-9]", "", url.lower())
+        score = sum(token in compact_url for token in needles)
+        if score:
+            ranked.append((score, url))
+    ranked.sort(key=lambda item: (-item[0], len(item[1]), item[1]))
+    return [
+        {"title": url, "url": url, "summary": "official sitemap candidate"}
+        for _, url in ranked[:20]
+    ]
+
+
 def create_call_direct_web_node(
     settings: Settings,
+    search_planner: DirectWebSearchPlanner | None = None,
 ) -> Callable[[RagAgentState], dict[str, object]]:
     """执行 Router 已确认的单步骤公开网络检索，不创建 TaskPlan。"""
+    # 先根据用户query 由 llm 规划当前query需要查询哪些站点，不能直接交给bocha搜索引擎，会导致搜索结果很烂
+    planner = search_planner or DirectWebSearchPlanner(settings)
 
     async def call_direct_web_node(state: RagAgentState) -> dict[str, object]:
-        async with httpx.AsyncClient() as http_client:
-            results = await search_web_with_bocha(
+        operation = get_rag_agent_operation(state)
+        # 先根据用户query得出候选url，如果有多个候选，由下面的 planner.select_candidate_url 再进行一次筛选
+        plan = await planner.plan(
+            question=state["query"],
+            count=min(max(state["top_k"], 2), 10),
+            langchain_config=build_rag_langchain_child_config(
+                settings=settings,
+                state=state,
+                pipeline_provider="rag_agent",
+                operation=operation,
+                step_name="call_direct_web",
+                step_index=get_rag_agent_step_index(operation, "call_direct_web"),
+                child_name="search_plan",
+                run_name=f"rag_agent_pipeline.{operation}.call_direct_web.search_plan",
+            ),
+        )
+        direct_doc: RetrievedDoc | None = None
+        async with httpx.AsyncClient(follow_redirects=True) as http_client:
+            results = []
+            raw_results = await search_web_with_bocha(
                 settings=settings,
                 http_client=http_client,
-                query=state["query"],
-                count=min(max(state["top_k"], 2), 10),
+                query=plan.query,
+                count=plan.count,
+                site=plan.site,
             )
+            # TODO：这里存在设计问题！把所有带站点限制的搜索都当成“官方资料搜索”，更合理的设计应该是 if plan.source_mode == "official": 增加明确的来源模式
+            if plan.site:
+                strict_results = [
+                    item
+                    for item in raw_results
+                    if _matches_direct_web_plan(item, plan=plan)
+                ]
+                candidate_payload = [
+                    {
+                        "title": item.title,
+                        "url": item.url,
+                        "summary": item.summary or item.snippet,
+                    }
+                    for item in raw_results
+                    if _matches_direct_web_plan(
+                        item,
+                        plan=plan.model_copy(
+                            update={
+                                "required_url_fragments": [],
+                                "required_content_terms": [],
+                            }
+                        ),
+                    )
+                ]
+                if not strict_results:
+                    candidate_payload.extend(
+                        await _official_sitemap_candidates(http_client, plan=plan)
+                    )
+                if plan.exact_url:
+                    candidate_payload.append(
+                        {
+                            "title": plan.exact_url,
+                            "url": plan.exact_url,
+                            "summary": "planner candidate",
+                        }
+                    )
+                unique_candidates = list(
+                    {item["url"]: item for item in candidate_payload}.values()
+                )
+                selected_url = await planner.select_candidate_url(
+                    question=state["query"],
+                    plan=plan,
+                    candidates=unique_candidates,
+                    langchain_config=build_rag_langchain_child_config(
+                        settings=settings,
+                        state=state,
+                        pipeline_provider="rag_agent",
+                        operation=operation,
+                        step_name="call_direct_web",
+                        step_index=get_rag_agent_step_index(
+                            operation, "call_direct_web"
+                        ),
+                        child_name="candidate_selection",
+                        run_name=(
+                            f"rag_agent_pipeline.{operation}."
+                            "call_direct_web.candidate_selection"
+                        ),
+                    ),
+                )
+                if selected_url:
+                    try:
+                        response = await http_client.get(selected_url, timeout=10.0)
+                        response.raise_for_status()
+                        direct_doc = RetrievedDoc(
+                            id="web:1",
+                            content=(
+                                f"{selected_url}\n{_official_page_text(response.text)}"
+                            ),
+                            score=1.0,
+                            source="web_search",
+                            title=selected_url,
+                            metadata={"url": selected_url, "site_name": plan.site},
+                            retrieval_sources=["web_search"],
+                        )
+                    except httpx.HTTPError:
+                        direct_doc = None
+            if direct_doc is None:
+                results = [
+                    result
+                    for result in raw_results
+                    if _matches_direct_web_plan(result, plan=plan)
+                ]
         docs = [
             RetrievedDoc(
                 id=f"web:{index}",
                 content="\n".join(
-                    item for item in (result.snippet, result.summary) if item
+                    item
+                    for item in (result.title, result.snippet, result.summary, result.url)
+                    if item
                 ),
                 score=1.0,
                 source="web_search",
@@ -97,6 +297,8 @@ def create_call_direct_web_node(
             )
             for index, result in enumerate(results, start=1)
         ]
+        if direct_doc is not None:
+            docs = [direct_doc]
         if not docs:
             raise ExternalServiceError("Web Search 未返回可用结果")
         return {
@@ -157,6 +359,7 @@ def get_rag_agent_step_index(operation: str, step_name: str) -> int:
             "check_loop_limits": 2,
             "direct_answer": 3,
             "call_nl2sql_query": 3,
+            "call_direct_web": 3,
             "clarification_required": 3,
             "execute_task_plan": 3,
             "call_knowledge_retrieval": 3,
@@ -176,6 +379,7 @@ def get_rag_agent_step_index(operation: str, step_name: str) -> int:
         "check_loop_limits": 2,
         "direct_answer": 3,
         "call_nl2sql_query": 3,
+        "call_direct_web": 3,
         "clarification_required": 3,
         "execute_task_plan": 3,
         "call_knowledge_retrieval": 3,

@@ -17,12 +17,13 @@ from fast_app.domain.agent_task_plan import (
     AgentTaskSubQuestion,
     ResearchEvidenceEvaluation,
 )
+from fast_app.domain.research_task_plan import AgentTaskRequirement, ResearchTaskSubQuestion
 
 
 logger = get_logger(__name__)
 
 EVALUATOR_PROMPT = """你是研究证据评估器。只评估证据，不补写事实。
-根据当前子问题、期望证据、候选回答和证据摘要，返回结构化判断。
+根据当前子问题、它覆盖的 Requirement 证据契约、候选回答和证据摘要，返回结构化判断。
 没有证据时必须判为 insufficient。存在互相矛盾且无法消解的证据时判为 conflict。
 recommended_action 只能是 accept、rewrite_local_query、search_web、
 combine_local_and_web、clarify、stop_with_limitation 之一。
@@ -39,7 +40,8 @@ class ResearchEvidenceEvaluator:
     async def evaluate(
         self,
         *,
-        sub_question: AgentTaskSubQuestion,
+        sub_question: AgentTaskSubQuestion | ResearchTaskSubQuestion,
+        requirements: list[AgentTaskRequirement] | None = None,
         answer: str,
         evidence: list[dict[str, Any]],
         langchain_config: RunnableConfig | None = None,
@@ -48,6 +50,8 @@ class ResearchEvidenceEvaluator:
 
         if not evidence:
             return _insufficient("当前轮次没有获得可核验证据。")
+        if isinstance(sub_question, ResearchTaskSubQuestion) and not requirements:
+            raise ValueError("Research v2 子问题没有对应 Requirement")
         # 离线测试不伪造模型调用，但仍给已有证据一个确定性、可回归的判断。
         if not self._settings.openai_api_key:
             return ResearchEvidenceEvaluation(
@@ -62,7 +66,11 @@ class ResearchEvidenceEvaluator:
 
         payload = {
             "question": sub_question.question,
-            "expected_evidence": sub_question.expected_evidence,
+            "requirements": (
+                [requirement.model_dump(mode="json") for requirement in requirements]
+                if requirements is not None
+                else [{"expected_evidence": sub_question.expected_evidence}]
+            ),
             "candidate_answer": answer,
             # 只给 Evaluator 证据摘要；它不需要工具的完整原始消息。
             "evidence": evidence,

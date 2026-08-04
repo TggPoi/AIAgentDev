@@ -400,6 +400,10 @@ class AgentTaskPlanReviewDecision(BaseModel):
 
     @model_validator(mode="after")
     def validate_decision_state(self) -> AgentTaskPlanReviewDecision:
+        if self.verdict in {"accepted", "revised"} and any(
+            value == "fail" for value in self.checks.model_dump().values()
+        ):
+            raise ValueError("accepted/revised 的最终质量检查必须全部通过")
         remaining_errors = [
             item
             for item in self.reviewer_findings
@@ -442,6 +446,8 @@ class AgentTaskPlanQualityReview(BaseModel):
 
     @model_validator(mode="after")
     def validate_persisted_review(self) -> AgentTaskPlanQualityReview:
+        if any(value == "fail" for value in self.checks.model_dump().values()):
+            raise ValueError("有效 TaskPlan 的最终质量检查必须全部通过")
         if any(
             item.severity == "error" and item.status != "resolved"
             for item in self.reviewer_findings

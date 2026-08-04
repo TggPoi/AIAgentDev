@@ -1,0 +1,6 @@
+INFO:     127.0.0.1:64859 - "OPTIONS /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64859 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64859 - "OPTIONS /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64859 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64928 - "OPTIONS /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64928 - "POST /rag/chat/stream/events HTTP/1.1" 200 OK

@@ -1020,3 +1020,366 @@ git diff --check
 ```
 
 最终专项结论：**场景 1、5、6 通过，场景 7 未通过；不能宣称 11.2 四个场景全部通过。**
+
+## 13. 场景 7 历史恢复、真实流式重放与拒绝根因（2026-08-04）
+
+### 13.1 Redis 与 PostgreSQL 历史核对
+
+本次继续使用普通员工 `rbac_operator`、真实 PostgreSQL、真实 DashScope 模型和结构化流式接口 `POST /rag/chat/stream/events`。
+
+Rewriter 实际只从 Redis key `conversation:{scoped_conversation_id}:messages` 读取最近窗口，PostgreSQL 不会被 Rewriter 自动回读。检查时 Redis key 已过期：
+
+```text
+REDIS_KEY_EXISTS=0
+REDIS_TTL=-2
+REDIS_MESSAGE_COUNT=0
+```
+
+PostgreSQL 中同一 scoped conversation 只有两条冻结历史，没有混入其他场景：
+
+1. 用户：`本轮分析对象是《星港远征》中已授权的 3D 模型资产，重点关注费用、模型面数和移动端适配。`
+2. 助手：返回角色资产01和角色资产06的费用、面数和用途。
+
+将这两条 PostgreSQL 原始消息按原 ID、role、created_at 和 metadata 恢复到 Redis 后，复核为 `2` 条、TTL `3600`。重放结束后已再次把 Redis 清理回这两条冻结消息，避免本次调试轮次干扰后续验证。
+
+### 13.2 真实流式重放结果
+
+- Request / Trace ID：`f87bb83648664024aa254c06fe8a9d44`
+- Rewriter 输入历史数：`2`
+- Rewriter 结果：`resolved`
+- Resolved query：`结合知识库继续比较《星港远征》中已授权的3D模型资产（角色资产01和角色资产06），重点关注费用、模型面数和移动端适配维度，并说明哪些内容还需要公开资料验证。`
+- Router：`question_decomposition`
+- TaskPlan：`task_plan_20260804053233_72ab0ae0eaa5`
+- 状态：`waiting_confirmation`
+
+本次证明 Rewriter 在干净的两条历史上可以正确保留资产对象、费用、面数和移动端适配维度。因此 12.5 最后一次拒绝不是由历史消息混乱造成。
+
+但本次生成的计划仍不能作为“稳定通过”证明：Reviewer 把移动端适配 Requirements 设为 `allow_partial`，而用户没有表达“尽量”或“可选”；这与当前 Prompt 中“CompletionPolicy 默认 strict”的规则不一致。
+
+### 13.3 旧失败的确定性根因
+
+从 LangSmith 只读取回 `request_id=5065214f3a9d4816b9fb73afa36caad4` 的真实 Reviewer 响应后，本地契约重放结果为：
+
+```text
+PYDANTIC_ACCEPTED=True
+VERDICT=revised
+FAILED_CHECKS=[semantic_alignment]
+PLANNER_WOULD_REJECT=True
+REVISED_REQUIREMENTS=4
+REVISED_SUBQUESTIONS=4
+```
+
+确定性执行链是：
+
+1. Reviewer Prompt 明确规定 `revised` 时所有 checks 必须为 `pass`，位置：`src/fast_app/services/agent_tasks/agent_task_plan_reviewer.py:37`。
+2. 真实模型输出却同时返回 `verdict=revised` 和 `semantic_alignment=fail`。
+3. `AgentTaskPlanReviewDecision.validate_decision_state()` 只检查修订内容和 finding 状态，没有拒绝 `accepted/revised + fail check`，位置：`src/fast_app/domain/research_task_plan.py:401-422`。所以这份自相矛盾的 structured output 被 Pydantic 当成合法响应，不会触发一次技术重试。
+4. Planner 随后在 `src/fast_app/services/agent_tasks/agent_task_planner.py:168-169` 检测到任意 `fail`，必然返回 `AGENT_TASK_PLAN_QUALITY_REJECTED`。
+5. 该请求的最终确定性 Validator 输出是 `error_count=0`，所以不是 DAG、字段、来源可用性或 Dataset Schema 校验导致拒绝。
+
+根因归类：
+
+- **不是历史混乱**：PostgreSQL 原始历史只有两条，Rewriter 重放可正确解析。
+- **不是 Rewriter 当前 Prompt 约束缺失造成的这次拒绝**：旧 trace 的 resolved query 已完整保留三个维度。
+- **直接原因是 Reviewer 响应违反 Prompt 状态契约**：修订后仍返回 fail check。
+- **代码契约存在缺口**：Pydantic validator 没有将这种自相矛盾的 Reviewer 输出当成 Schema 错误，因此无法使用现有 structured-output 技术重试自动纠正。
+- **更广的质量问题仍存在**：旧修订结果仍把多个可独立验收事实合并；本次通过结果又错用 `allow_partial`。这说明 Planner/Reviewer 的语义质量仍有模型波动，不能因一次生成 TaskPlan 就判定场景 7 稳定通过。
+
+本节只完成故障复现和根因定位，未修改 Planner、Reviewer、Pydantic Schema 或质量门禁代码。
+
+## 14. 场景 7 Reviewer 决策一致性修复与真实流式回归（2026-08-04）
+
+### 14.1 根因修复
+
+本轮没有放宽 Planner 的质量门禁，也没有增加业务关键词规则。修复位于 Reviewer structured output 的领域模型边界：
+
+- `src/fast_app/domain/research_task_plan.py`
+  - `AgentTaskPlanReviewDecision.validate_decision_state()`：`accepted/revised` 只要存在任一 `fail` check，就直接产生 Pydantic `ValidationError`。
+  - `AgentTaskPlanQualityReview.validate_persisted_review()`：最终有效 TaskPlan 的 checks 也必须全部为 `pass`，阻止其他调用方绕过 Planner 构造无效持久化计划。
+- `scripts/phase_15/test_research_task_plan_v2.py`
+  - 固化旧故障形状：`verdict=revised + semantic_alignment=fail` 必须解析失败。
+  - 固化持久化边界：`verdict=accepted + semantic_alignment=fail` 也必须解析失败。
+
+修复前运行最小回归时稳定失败：
+
+```text
+AssertionError: revised 不应接受失败的最终质量检查
+```
+
+修复后，旧矛盾状态在进入 Planner 前即被拒绝，并可使用现有 structured-output transport 的唯一一次技术重试；不需要新增重试循环。
+
+### 14.2 自动化回归
+
+以下检查全部通过：
+
+```text
+scripts/phase_15/test_research_task_plan_v2.py
+scripts/phase_15/test_agent_task_plan_decomposition.py
+scripts/phase_15/test_agent_task_planning_flow.py
+scripts/phase_15/test_agent_conversation_context.py
+scripts/phase_15/test_schema_field_descriptions.py
+scripts/phase_15/test_structured_output_transport.py
+scripts/test_langsmith_tracing.py
+python -m py_compile src/fast_app/domain/research_task_plan.py scripts/phase_15/test_research_task_plan_v2.py
+git diff --check
+```
+
+`test_agent_conversation_context.py` 输出的 Prompt Guard 异常日志是该测试主动验证 fail-closed 的预期分支，脚本最终状态为 `passed`。
+
+### 14.3 真实 Web 结构化流式重放
+
+通过 `scripts/phase_15/rag_agent_manual_acceptance.html`，使用普通员工 `rbac_operator` 和 `POST /rag/chat/stream/events` 重放场景 7；没有调用非流式接口，也没有确认或执行 TaskPlan。
+
+- Request / Trace ID：`372d7e1b39bc49e6b7aa228cc072679b`
+- Redis 冻结历史：原始两条消息
+- Rewriter：读取 `2` 条历史并正确生成与 13.2 相同的 resolved query
+- Router：`question_decomposition`
+- 第一次 Reviewer structured output：再次出现 `verdict=revised + fail check`
+- 新校验行为：日志记录 `ValidationError`，拒绝该矛盾响应
+- transport 行为：只对当前 `json_schema` transport 技术重试一次
+- 重试结果：生成有效 TaskPlan `task_plan_20260804060040_073ea3a45aa7`
+- 最终状态：`waiting_confirmation`
+- Reviewer verdict：`revised`
+- Reviewer checks：六项全部为 `pass`
+- Final Validation：`0` 个 issue
+
+这次真实重放直接覆盖了旧故障：模型第一次仍返回矛盾状态，但后端没有再把它当成合法 Reviewer 决策，也没有直接落入旧的 `AGENT_TASK_PLAN_QUALITY_REJECTED` 路径；一次重试后正常保存有效计划。因此 **Reviewer 决策一致性 bug 验收通过**。
+
+测试启动过程中还观察到两次环境配置拒绝：`NL2SQL_DISABLED` 和“Dataset 的只读数据库连接尚未配置”。两次都发生在 Rewriter/Planner 前，补齐测试进程的 `NL2SQL_ENABLED` 与只读 Dataset 连接映射后消失，不属于本次代码回归。
+
+### 14.4 TaskPlan 人工质量评估
+
+新计划包含 8 个 Requirements 和 6 个 SubQuestions。正确部分包括：
+
+1. 费用、模型面数分别拆成独立且 `strict` 的 SQL Requirements。
+2. 同一个 NL2SQL SubQuestion 合批获取字段，但不合并 Requirement 验收语义。
+3. 费用比较、面数比较、移动端适配比较和待核实项均使用 `none + derived_synthesis`。
+4. 综合 SubQuestions 具有明确依赖，没有把推导结论伪装成数据库或知识库事实。
+5. 本次不实际要求联网取证，因此“说明哪些内容还需要公开资料验证”作为综合输出，而不是强行增加 `web_search`，方向正确。
+
+仍存在一个语义质量问题：resolved query 明确聚焦费用、模型面数和移动端适配，但 R3/SQ1 额外加入了“推荐应用场景”。该字段虽然在 Dataset 中可查询，也出现在旧助手历史中，但不属于当前 resolved query 的三个明确比较维度，属于范围扩大。
+
+测试期间还观测到同一冻结输入生成的第二份计划 `task_plan_20260804060151_fb237d5a72bb`。它把应用场景和授权状态同时加入知识库、数据库 Requirements，并缺少“从知识库获取移动端适配信息”的独立 Requirement，人工质量低于第一份计划。这进一步证明：本次 Schema 修复解决的是 Reviewer 状态一致性和有限重试问题，不能消除真实模型在 Requirement 范围守恒上的波动。
+
+因此本轮结论必须拆开：
+
+- **Reviewer 决策一致性 bug：通过。** 真实模型的矛盾响应已被 Schema 拦截并触发有限重试。
+- **场景 7 TaskPlan 整体语义质量：未完全通过。** 当前计划仍包含一个未请求的业务事实，不能仅凭所有 Reviewer checks 为 `pass` 就认定人工质量合格。
+
+本轮只修复已经确认的状态契约 bug；没有顺带修改 Planner/Reviewer Prompt 来掩盖新发现的语义扩大问题。
+
+## 15. 场景 7 范围守恒、来源守恒与结构化重试修复（2026-08-04）
+
+### 15.1 两轮真实失败暴露出的剩余问题
+
+在 14.4 的人工质量结论之后继续修复，没有把“能够保存 TaskPlan”当作场景通过。
+
+第一轮补充 Planner/Reviewer 范围守恒约束后，真实流式请求
+`c5ca9b584ac04fd2be743c2e9a165241` 生成的
+`task_plan_20260804062117_5cb6819237f7` 仍未通过人工质量审查：计划删除了用户明确要求的
+`knowledge_retrieval` 来源，并继续使用 `usage_scenario` 代替移动端适配判断。
+
+对应 Prompt 缺口位于：
+
+- `src/fast_app/services/agent_tasks/agent_task_planner.py:58-66`
+- `src/fast_app/services/agent_tasks/agent_task_plan_reviewer.py:34-37`
+
+补充的约束包括：
+
+1. `resolved_query` 是唯一任务范围权威；历史 assistant 回答和 Dataset 字段不能自动变成新需求。
+2. 用户明确指定的每一种外部来源都必须保留。
+3. “某来源可能没有证据”不能成为 Planner/Reviewer 删除 Requirement 的理由；证据充足性由 Worker 和 Aggregator 在执行阶段判断。
+4. 移动端适配需要从用户指定的知识库取得标准或约束，再由综合 Requirement 结合资产事实判断，不能用 `usage_scenario` 冒充。
+
+第二轮真实流式请求 `d21bba758e444505a5c153546a35a20f` 中，Planner 已保留知识库和数据库来源，
+但 Reviewer 两次都返回：
+
+```text
+verdict=revised
+source_alignment=fail
+semantic_alignment=fail
+全部 error finding=status=resolved
+```
+
+两次响应的修订内容实际已经删除 `usage_scenario` 并保留知识库来源，但 checks 仍描述修订前状态。
+Pydantic 正确拒绝了这两份矛盾响应；由于第二次调用只是原样重发同一组消息，模型没有收到字段级错误反馈，
+最终返回 `AGENT_TASK_PLANNER_UNAVAILABLE`。这说明问题已不再是质量门禁缺失，而是共享 structured-output
+技术重试没有纠错上下文。
+
+### 15.2 共享 structured-output 重试修复
+
+修复位置：
+
+- `src/fast_app/core/structured_output.py:21-81`
+- `scripts/phase_15/test_structured_output_transport.py:97-123`
+
+第一次 `ValidationError` 后，第二次调用仍使用同一个已确认支持的 transport，但会追加一条精简的
+Schema 纠错消息。纠错消息只包含字段路径和 Pydantic 错误说明，不包含上一份原始模型输出，也不改变
+Planner/Reviewer 的任务语义。最大调用次数、transport 缓存和 fail-closed 规则保持不变。
+
+该修复没有把 `fail` 自动改成 `pass`，也没有绕过
+`AgentTaskPlanReviewDecision.validate_decision_state()`；模型第二次仍必须返回一份完整、合法且所有最终 checks
+均为 `pass` 的对象，否则继续拒绝。81908 998 0778
+
+### 15.3 自动化回归结果
+
+以下检查通过：
+
+```text
+scripts/phase_15/test_structured_output_transport.py
+scripts/phase_15/test_research_task_plan_v2.py
+scripts/phase_15/test_agent_task_plan_decomposition.py
+scripts/phase_15/test_agent_task_planning_flow.py
+scripts/phase_15/test_schema_field_descriptions.py
+```
+
+新增断言同时验证：第二次调用收到了字段级纠错信息，但没有收到上一份非法值正文。
+
+### 15.4 真实 Web 结构化流式最终重放
+
+通过 `scripts/phase_15/rag_agent_manual_acceptance.html`，使用员工账号 `rbac_operator`、真实 Redis
+两条冻结历史、真实 PostgreSQL、真实 DashScope Planner/Reviewer 和
+`POST /rag/chat/stream/events` 重新执行。没有调用非流式接口，没有确认或执行 TaskPlan。
+
+- Request / Trace ID：`cc9c9ead6a6a40f293a39dd005e831ce`
+- Rewriter 历史数：`2`
+- Resolved query：完整保留角色资产01、角色资产06、费用、模型面数、移动端适配和待公开验证项
+- Router：`question_decomposition`
+- Reviewer 第一次响应：被领域 Schema 以 `accepted/revised + fail check` 拒绝
+- Reviewer 第二次响应：收到字段级纠错信息后返回合法 `revised`
+- TaskPlan：`task_plan_20260804064439_b7994fac221c`
+- 状态：`waiting_confirmation`
+- Final Validation：无 error
+- Reviewer 六项 checks：全部 `pass`
+
+### 15.5 TaskPlan 人工质量评估
+
+本次不是只检查 TaskPlan 是否生成，而是按冻结人工基准逐项审查：
+
+| 检查项 | 实际结果 | 结论 |
+|---|---|---|
+| 当前指代 | 正确解析为角色资产01和角色资产06 | 通过 |
+| 费用事实 | 独立 `strict` Requirement，来源为 `nl2sql_query` | 通过 |
+| 模型面数事实 | 独立 `strict` Requirement，来源为 `nl2sql_query` | 通过 |
+| 知识库来源 | 独立检索移动端面数标准或技术要求 | 通过 |
+| SQL 合批 | 一个 SQ 同时查询费用和面数，但分别覆盖两个 Requirement | 通过 |
+| 移动端适配 | 由数据库面数与知识库标准综合判断，不再使用 `usage_scenario` 代替 | 通过 |
+| 综合比较 | `mode=none`，依赖 SQL 与知识库事实子任务 | 通过 |
+| 待公开验证项 | 独立 `mode=none` Requirement，依赖已有事实和比较结论 | 通过 |
+| 范围守恒 | 未新增应用场景、授权状态、项目均值或其他未请求事实 | 通过 |
+| CompletionPolicy | 五个 Requirements 全部为 `strict` | 通过 |
+| WebUsage | 本问题只要求列出待公开验证项，没有要求立即联网，全部 `not_used` 合理 | 通过 |
+
+本地还对持久化 JSON 执行了独立断言，验证来源序列、依赖、Requirement 覆盖、全部 checks、全部
+`strict` 以及不存在 `usage_scenario`，结果为：
+
+```text
+SCENARIO7_MANUAL_QUALITY_ASSERTIONS=passed
+```
+
+流式请求正常保存一轮对话后，Redis 消息数暂时变为 `4`；测试结束已使用 `LTRIM 0 1` 恢复为原始两条
+冻结消息并续期，避免本次调试输出污染下一次指代测试。
+
+最终结论：**场景 7 的 Rewriter、Planner、Reviewer 状态契约、有限纠错重试和 TaskPlan 人工语义质量均通过本次真实流式 Web 验收。**
+
+## 16. 11.3 与 11.4 修复及真实 Web 验证（2026-08-04）
+
+### 16.1 11.3 Direct Web 修复
+
+第一次修复曾在 `rag_agent_nodes.py` 中根据 PostgreSQL/RLS 关键词拼接固定文档地址。该实现只能覆盖冻结测试问题，不能处理其他产品和主题，因此已撤销，不能作为 11.3 的最终修复。
+
+最终实现不包含 PostgreSQL、RLS 或固定官方页面的业务分支：
+
+- `src/fast_app/services/rag/direct_web_search_planner.py:37`：模型把任意用户问题转换为结构化搜索 query、官方网站域名、URL 片段和主题约束；后端 Pydantic Schema 校验 URL、域名和字段边界。
+- `src/fast_app/services/rag/direct_web_search_planner.py:159`：模型只能从后端提供的真实候选 URL 中选择，返回不在候选集合中的 URL 会被丢弃，不能自由拼接地址。
+- `src/fast_app/graph/rag_agent/rag_agent_nodes.py:81`：后端确定性校验搜索结果域名、URL 片段和主题条件。
+- `src/fast_app/graph/rag_agent/rag_agent_nodes.py:117`：当搜索提供商没有召回精确官方页面时，读取该官方网站的标准 `sitemap.xml`，按当前 query 计算通用候选；没有产品、版本或主题硬编码。
+- `src/fast_app/graph/rag_agent/rag_agent_nodes.py:98`：按 `article → main → body` 提取网页主内容，避免站点导航耗尽 RAG 上下文预算。
+- `src/fast_app/graph/rag_agent/rag_agent_nodes.py:167`：统一串联搜索规划、Bocha 真实搜索、sitemap 候选、候选选择、HTTP 读取和 `RetrievedDoc` 构造。
+- `src/fast_app/components/llms/qwen_langchain_llm_client.py`、`src/fast_app/services/rag/rag_context_builder.py`：把回答语义从“知识库”改为“当前检索上下文”，并允许引用公开网页 URL。
+
+真实 Web 页面使用 `POST /rag/chat/stream/events`，冻结输入为：
+
+```text
+请联网查询 PostgreSQL 16 官方文档中行级安全策略的作用，并给出来源链接。
+```
+
+最终结果：
+
+- request/trace ID：`c97258896f554f5e8c2a772dc2d60fc3`。
+- Router intent：`web_research`。
+- 未创建 TaskPlan，符合简单纯 Web 边界。
+- Source 只有 `https://www.postgresql.org/docs/16/ddl-rowsecurity.html`。
+- 后端日志记录 Bocha 搜索、读取标准 sitemap，并对模型从真实候选中选择的官方 URL 执行 `GET`，HTTP 200。
+- 最终回答正确说明 per-user 行过滤、RLS 启用、默认拒绝、owner 豁免等机制，并包含上述来源链接。
+- 结构化 SSE 收到 `sources`、多段 `answer_delta` 和 `done`。
+
+为证明实现不是只适配 PostgreSQL，额外执行了冻结场景之外的交叉验证：
+
+```text
+请联网查询 FastAPI 官方文档中使用多个 Worker 部署的作用，并给出来源链接。
+```
+
+- request/trace ID：`7e11c7464ffd49528a90e40f2e218cda`。
+- Router intent：`web_research`，未创建 TaskPlan。
+- Source：`https://fastapi.tiangolo.com/deployment/server-workers/`。
+- 回答正确说明进程复制可利用多核 CPU 并处理更多请求，包含官方来源链接。
+- 结构化 SSE 收到 `sources`、`answer_delta` 和 `done`。
+
+排查中还观察到两个不能计为通过的中间结果：一是模型猜测不存在的 `/deployment/multiple-workers/` 路径；二是正确 URL 的导航文本挤占上下文，导致回答“证据不足”。最终实现分别通过“只允许真实候选 URL”和“优先提取 article 主内容”修复。
+
+结论：11.3 已通过 PostgreSQL 原场景和 FastAPI 跨主题场景的真实流式 Web 验证。最终证据页面、主题和版本均匹配问题，生产代码中不再存在针对测试问题的固定地址。
+
+### 16.2 11.4 Evidence Evaluator 修复
+
+修改位置：
+
+- `src/fast_app/services/research/research_evidence_evaluator.py:40`：Evaluator 同时兼容旧 `AgentTaskSubQuestion` 和 Research v2 `ResearchTaskSubQuestion`；v2 从覆盖的 Requirement 读取结构化证据契约。
+- `src/fast_app/services/research/research_worker_agent.py:200`：Worker 根据 `covers_requirement_ids` 找到当前子问题对应的 Requirements，并显式传给 Evaluator；旧 TaskPlan 继续使用原有契约。
+
+真实 Web 页面使用 `POST /rag/chat/stream/events` 创建并确认复杂纯 Web 任务：
+
+```text
+请联网比较 PostgreSQL 16 的 RLS 与 security_invoker 视图分别解决什么问题、
+如何配合，并基于至少两份官方网页证据给出适用边界。
+```
+
+运行标识：
+
+- TaskPlan ID：`task_plan_20260804091105_f2e7acc7fc2b`。
+- 执行 request/trace ID：`3334020a5fc94f058120a70a5fa2b880`。
+- TaskPlan 最终状态：`completed`。
+
+Evaluator 的实际语义结果：
+
+- SQ1 为 `partial`：明确指出第三方来源较多，缺少 PostgreSQL 16 官方文档直接引用。
+- SQ2 为 `partial`：明确指出只有一份 PostgreSQL 官方页面，缺少第二份官方网页证据。
+- SQ3 为 `completed`。
+- runtime JSON 与后端日志中均未再出现 `Evaluator 不可用: AttributeError`。
+
+结论：11.4 的模型契约不兼容错误已经修复。Evaluator 不再因读取不存在的 `sub_question.expected_evidence` 崩溃，而是能够基于 Requirement 契约给出有业务含义的证据充分性判断。
+
+### 16.3 本轮明确没有修复的独立问题
+
+本次真实运行再次证明 11.5 仍存在：SQ1、SQ2 已被 Evaluator 判为 `partial`，但 Requirement Aggregator 仍将 R1～R4 标记为 `satisfied`，并继续完成 Final Synthesis。因此：
+
+- 11.3：已修复并通过。
+- 11.4：已修复并通过。
+- 11.5：仍未修复，不能因为 TaskPlan 最终为 `completed` 就判定证据质量通过。
+
+### 16.4 自动化回归
+
+以下脚本通过：
+
+```powershell
+$env:PYTHONPATH = "src"
+$env:LANGSMITH_TRACING = "false"
+
+.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_router.py
+.\.venv\Scripts\python.exe scripts\phase_15\test_research_task_plan_v2.py
+.\.venv\Scripts\python.exe scripts\phase_15\test_agentic_research_orchestration.py
+.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_tool_loop.py
+.\.venv\Scripts\python.exe scripts\phase_15\test_agent_conversation_context.py
+.\.venv\Scripts\python.exe scripts\phase_15\test_schema_field_descriptions.py
+.\.venv\Scripts\python.exe scripts\test_langsmith_tracing.py
+```

@@ -1,0 +1,18 @@
+INFO:     Started server process [25656]
+INFO:     Waiting for application startup.
+2026-08-04 13:23:21,504 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.enabled" project="python-agent-study-phase-final-2" endpoint="https://api.smith.langchain.com"
+2026-08-04 13:23:21,504 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+2026-08-04 13:23:21,521 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-04 13:23:21,522 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-04 13:23:21,914 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-04 13:23:21,915 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-04 13:23:21,916 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-04 13:23:22,008 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-04 13:23:22,067 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint/store 已创建
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-08-04 13:23:22,924 | INFO | fast_app.middlewares.request_id_middleware | request_id=84b2abdcec9b434fb9e0cfc065091fcb | trace_id=84b2abdcec9b434fb9e0cfc065091fcb | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=3.55
+2026-08-04 13:24:41,655 | INFO | fast_app.middlewares.request_id_middleware | request_id=d8c42db96ceb490fba09391fa41ee57d | trace_id=d8c42db96ceb490fba09391fa41ee57d | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=0.94
+2026-08-04 13:24:49,911 | WARNING | fast_app.core.exception_handlers | request_id=9f8f5d65c1fe4270bdd875e5422f2e0d | trace_id=9f8f5d65c1fe4270bdd875e5422f2e0d | http_error event="http.error" error_category="user_error" error_code="APP_SERVICE_ERROR" path="/rag/chat/stream/events" method="POST" status_code=400 error_type="AppServiceError" message="Dataset 的只读数据库连接尚未配置"
+2026-08-04 13:24:49,911 | INFO | fast_app.middlewares.request_id_middleware | request_id=9f8f5d65c1fe4270bdd875e5422f2e0d | trace_id=9f8f5d65c1fe4270bdd875e5422f2e0d | http_request event="http.request.finish" method="POST" path="/rag/chat/stream/events" status_code=400 latency_ms=3511.15
+2026-08-04 13:24:49,912 | WARNING | fast_app.middlewares.request_id_middleware | request_id=9f8f5d65c1fe4270bdd875e5422f2e0d | trace_id=9f8f5d65c1fe4270bdd875e5422f2e0d | slow_operation event="http.request.slow" latency_ms=3511.15 threshold_ms=3000.0 slow_component="http_request" method="POST" path="/rag/chat/stream/events" status_code=400 status="success"

@@ -1,0 +1,4 @@
+127.0.0.1 - - [04/Aug/2026 13:20:00] "GET /rag_agent_manual_acceptance.html HTTP/1.1" 200 -
+127.0.0.1 - - [04/Aug/2026 13:20:14] "GET /rag_agent_manual_acceptance.html HTTP/1.1" 304 -
+127.0.0.1 - - [04/Aug/2026 13:20:14] code 404, message File not found
+127.0.0.1 - - [04/Aug/2026 13:20:14] "GET /favicon.ico HTTP/1.1" 404 -

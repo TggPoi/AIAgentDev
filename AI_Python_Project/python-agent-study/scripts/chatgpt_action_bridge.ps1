@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("Start", "Stop", "Status", "CopyKey")]
+    [ValidateSet("Start", "Stop", "Restart", "Status", "CopyKey")]
     [string]$Action = "Start",
     [int]$Port = 8765
 )
@@ -42,6 +42,14 @@ function Read-ApiKey {
     }
 }
 
+function Show-AndCopyApiKey {
+    param([string]$ApiKey)
+
+    Set-Clipboard -Value $ApiKey
+    Write-Host ("API key: {0}" -f $ApiKey)
+    Write-Host "API key copied to clipboard."
+}
+
 function Stop-Bridge {
     Stop-RecordedProcess $tunnelPidFile @("cloudflared")
     Stop-RecordedProcess $apiPidFile @("python", "pythonw")
@@ -71,6 +79,9 @@ if ($Action -eq "Stop") {
     Stop-Bridge
     exit 0
 }
+if ($Action -eq "Restart") {
+    Stop-Bridge
+}
 if ($Action -eq "Status") {
     Get-BridgeStatus
     exit 0
@@ -79,8 +90,7 @@ if ($Action -eq "CopyKey") {
     if (-not (Test-Path -LiteralPath $keyFile)) {
         throw "No saved API key. Run this script with -Action Start first."
     }
-    Set-Clipboard -Value (Read-ApiKey)
-    Write-Host "API key copied to clipboard."
+    Show-AndCopyApiKey (Read-ApiKey)
     exit 0
 }
 
@@ -93,13 +103,19 @@ if (-not (Test-Path -LiteralPath $cloudflared)) {
 }
 
 try {
-    Invoke-RestMethod -Uri ("http://127.0.0.1:{0}/health" -f $Port) -TimeoutSec 1 | Out-Null
-    throw "Port $Port already has a running bridge. Run this script with -Action Stop first."
+    $runningBridge = Invoke-RestMethod -Uri ("http://127.0.0.1:{0}/health" -f $Port) -TimeoutSec 1
 }
 catch {
-    if ($_.Exception.Message -like "Port $Port already*") {
-        throw
+    $runningBridge = $null
+}
+if ($runningBridge) {
+    if (-not (Test-Path -LiteralPath $keyFile)) {
+        throw "The bridge is running, but its saved API key is missing."
     }
+    Write-Host "ChatGPT code bridge is already running; reusing it."
+    Show-AndCopyApiKey (Read-ApiKey)
+    Get-BridgeStatus
+    exit 0
 }
 
 $createdKey = -not (Test-Path -LiteralPath $keyFile)
@@ -190,14 +206,7 @@ if (-not $match) {
 }
 
 $publicUrl = $match.Matches[0].Value
-if ($createdKey) {
-    Set-Clipboard -Value $apiKey
-    Write-Host "API key: copied to clipboard (first run only)"
-}
-else {
-    Set-Clipboard -Value ("{0}/openapi.json" -f $publicUrl)
-    Write-Host "Schema URL: copied to clipboard"
-}
+Show-AndCopyApiKey $apiKey
 Write-Host ("Local API: http://127.0.0.1:{0}" -f $Port)
 Write-Host ("Schema: {0}/openapi.json" -f $publicUrl)
 Write-Host ("Privacy: {0}/privacy" -f $publicUrl)

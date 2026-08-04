@@ -1,0 +1,25 @@
+INFO:     Started server process [25328]
+INFO:     Waiting for application startup.
+2026-08-04 13:17:56,698 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.enabled" project="python-agent-study-phase-final-2" endpoint="https://api.smith.langchain.com"
+2026-08-04 13:17:56,698 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+2026-08-04 13:17:56,745 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-04 13:17:56,746 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-04 13:17:57,485 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-04 13:17:57,485 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-04 13:17:57,487 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-04 13:17:57,668 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-04 13:17:57,834 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint/store 已创建
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-08-04 13:20:00,536 | INFO | fast_app.middlewares.request_id_middleware | request_id=6d4ed179182a4ed5b0915df765b97567 | trace_id=6d4ed179182a4ed5b0915df765b97567 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=4.69
+2026-08-04 13:20:32,892 | INFO | fast_app.middlewares.request_id_middleware | request_id=eed942777583449f8e04872d323a3702 | trace_id=eed942777583449f8e04872d323a3702 | http_request event="http.request.finish" method="OPTIONS" path="/auth/login" status_code=200 latency_ms=0.39
+2026-08-04 13:20:33,246 | INFO | fast_app.middlewares.request_id_middleware | request_id=58dd5c48777243e3bdf159fea2926315 | trace_id=58dd5c48777243e3bdf159fea2926315 | http_request event="http.request.finish" method="POST" path="/auth/login" status_code=200 latency_ms=350.4
+2026-08-04 13:20:33,251 | INFO | fast_app.middlewares.request_id_middleware | request_id=ad530cf3dc0a4541b382e9c27848255a | trace_id=ad530cf3dc0a4541b382e9c27848255a | http_request event="http.request.finish" method="OPTIONS" path="/auth/me" status_code=200 latency_ms=0.43
+2026-08-04 13:20:33,309 | INFO | fast_app.middlewares.request_id_middleware | request_id=e517fe077ba54f8c80315b6517075b18 | trace_id=e517fe077ba54f8c80315b6517075b18 | http_request event="http.request.finish" method="GET" path="/auth/me" status_code=200 latency_ms=54.22
+2026-08-04 13:20:44,380 | INFO | fast_app.middlewares.request_id_middleware | request_id=3b7f691651ea4b0e8a26fa59cea2ec38 | trace_id=3b7f691651ea4b0e8a26fa59cea2ec38 | http_request event="http.request.finish" method="OPTIONS" path="/rag/chat/stream/events" status_code=200 latency_ms=0.34
+2026-08-04 13:20:49,699 | WARNING | fast_app.core.exception_handlers | request_id=d654ed2b864f4223bed45303a42e0507 | trace_id=d654ed2b864f4223bed45303a42e0507 | http_error event="http.error" error_category="user_error" error_code="NL2SQL_DISABLED" path="/rag/chat/stream/events" method="POST" status_code=503 error_type="Nl2SqlDisabledError" message="NL2SQL 功能未启用"
+2026-08-04 13:20:49,700 | INFO | fast_app.middlewares.request_id_middleware | request_id=d654ed2b864f4223bed45303a42e0507 | trace_id=d654ed2b864f4223bed45303a42e0507 | http_request event="http.request.finish" method="POST" path="/rag/chat/stream/events" status_code=503 latency_ms=5316.63
+2026-08-04 13:20:49,700 | WARNING | fast_app.middlewares.request_id_middleware | request_id=d654ed2b864f4223bed45303a42e0507 | trace_id=d654ed2b864f4223bed45303a42e0507 | slow_operation event="http.request.slow" latency_ms=5316.63 threshold_ms=3000.0 slow_component="http_request" method="POST" path="/rag/chat/stream/events" status_code=503 status="success"
+2026-08-04 13:21:50,901 | INFO | fast_app.middlewares.request_id_middleware | request_id=b6b88a969460468cad99c8db751a3d1a | trace_id=b6b88a969460468cad99c8db751a3d1a | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.03
+2026-08-04 13:22:06,028 | WARNING | fast_app.core.exception_handlers | request_id=2df55795ee7442bf8d1b304b5ab4d9fd | trace_id=2df55795ee7442bf8d1b304b5ab4d9fd | http_error event="http.error" error_category="user_error" error_code="NL2SQL_DISABLED" path="/rag/chat/stream/events" method="POST" status_code=503 error_type="Nl2SqlDisabledError" message="NL2SQL 功能未启用"
+2026-08-04 13:22:06,029 | INFO | fast_app.middlewares.request_id_middleware | request_id=2df55795ee7442bf8d1b304b5ab4d9fd | trace_id=2df55795ee7442bf8d1b304b5ab4d9fd | http_request event="http.request.finish" method="POST" path="/rag/chat/stream/events" status_code=503 latency_ms=1672.12

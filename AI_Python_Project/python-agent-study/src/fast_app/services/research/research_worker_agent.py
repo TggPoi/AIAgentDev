@@ -205,8 +205,20 @@ class ResearchWorkerAgent:
         if request.should_stop():
             raise ResearchExecutionCancelled("TaskPlan 已取消")
         try:
+            requirements = None
+            if isinstance(request.plan, ResearchTaskPlan) and isinstance(
+                request.sub_question,
+                ResearchTaskSubQuestion,
+            ):
+                covered_ids = set(request.sub_question.covers_requirement_ids)
+                requirements = [
+                    requirement
+                    for requirement in request.plan.requirements
+                    if requirement.requirement_id in covered_ids
+                ]
             evaluation = await self._evaluator.evaluate(
                 sub_question=request.sub_question,
+                requirements=requirements,
                 answer=state["last_result"].answer,
                 evidence=state["all_evidence"],
                 langchain_config=(

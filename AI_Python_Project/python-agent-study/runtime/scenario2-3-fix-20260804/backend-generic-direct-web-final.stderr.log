@@ -1,0 +1,34 @@
+INFO:     Started server process [20980]
+INFO:     Waiting for application startup.
+2026-08-04 17:49:52,065 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.enabled" project="python-agent-study-phase-final-2" endpoint="https://api.smith.langchain.com"
+2026-08-04 17:49:52,065 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+2026-08-04 17:49:52,082 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-04 17:49:52,083 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-04 17:49:52,487 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-04 17:49:52,487 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-04 17:49:52,489 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-04 17:49:52,618 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-04 17:49:52,695 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint/store 已创建
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-08-04 17:49:59,272 | INFO | fast_app.middlewares.request_id_middleware | request_id=8c6359867c594fbcb98868fe6500db2a | trace_id=8c6359867c594fbcb98868fe6500db2a | http_request event="http.request.finish" method="POST" path="/rag/chat/stream/events" status_code=200 latency_ms=3425.85
+2026-08-04 17:49:59,273 | WARNING | fast_app.middlewares.request_id_middleware | request_id=8c6359867c594fbcb98868fe6500db2a | trace_id=8c6359867c594fbcb98868fe6500db2a | slow_operation event="http.request.slow" latency_ms=3425.85 threshold_ms=3000.0 slow_component="http_request" method="POST" path="/rag/chat/stream/events" status_code=200 status="success"
+2026-08-04 17:50:06,814 | INFO | httpx | request_id=8c6359867c594fbcb98868fe6500db2a | trace_id=8c6359867c594fbcb98868fe6500db2a | HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-04 17:50:07,902 | INFO | httpx | request_id=8c6359867c594fbcb98868fe6500db2a | trace_id=8c6359867c594fbcb98868fe6500db2a | HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-04 17:50:07,910 | INFO | fast_app.graph.rag_agent.rag_agent_nodes | request_id=8c6359867c594fbcb98868fe6500db2a | trace_id=8c6359867c594fbcb98868fe6500db2a | rag_agent_loop event="rag_agent.check_loop_limits.finish" pipeline_provider="rag_agent" route="direct_web" should_continue=True reason="continue" step_count=1 tool_call_count=0
+2026-08-04 17:50:08,432 | INFO | httpx | request_id=8c6359867c594fbcb98868fe6500db2a | trace_id=8c6359867c594fbcb98868fe6500db2a | HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-04 17:50:08,763 | INFO | fast_app.agents.tools.web_search_tools | request_id=8c6359867c594fbcb98868fe6500db2a | trace_id=8c6359867c594fbcb98868fe6500db2a | web_search event="web_search.bocha.start" query="FastAPI official documentation multiple workers deployment" count=5
+2026-08-04 17:50:09,091 | INFO | httpx | request_id=8c6359867c594fbcb98868fe6500db2a | trace_id=8c6359867c594fbcb98868fe6500db2a | HTTP Request: POST https://api.bochaai.com/v1/web-search "HTTP/1.1 200 "
+2026-08-04 17:50:09,093 | INFO | fast_app.agents.tools.web_search_tools | request_id=8c6359867c594fbcb98868fe6500db2a | trace_id=8c6359867c594fbcb98868fe6500db2a | web_search event="web_search.bocha.finish" query="FastAPI official documentation multiple workers deployment" count=5 result_count=5
+2026-08-04 17:50:09,566 | INFO | httpx | request_id=8c6359867c594fbcb98868fe6500db2a | trace_id=8c6359867c594fbcb98868fe6500db2a | HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-04 17:50:11,375 | INFO | httpx | request_id=8c6359867c594fbcb98868fe6500db2a | trace_id=8c6359867c594fbcb98868fe6500db2a | HTTP Request: GET https://fastapi.tiangolo.com/deployment/multiple-workers/ "HTTP/1.1 404 Not Found"
+2026-08-04 17:54:41,925 | INFO | fast_app.middlewares.request_id_middleware | request_id=1b8340830f504bc6b9a1c7bb9fc28cbf | trace_id=1b8340830f504bc6b9a1c7bb9fc28cbf | http_request event="http.request.finish" method="POST" path="/rag/chat/stream/events" status_code=200 latency_ms=1426.45
+2026-08-04 17:54:48,553 | INFO | httpx | request_id=1b8340830f504bc6b9a1c7bb9fc28cbf | trace_id=1b8340830f504bc6b9a1c7bb9fc28cbf | HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-04 17:54:49,515 | INFO | httpx | request_id=1b8340830f504bc6b9a1c7bb9fc28cbf | trace_id=1b8340830f504bc6b9a1c7bb9fc28cbf | HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-04 17:54:49,525 | INFO | fast_app.graph.rag_agent.rag_agent_nodes | request_id=1b8340830f504bc6b9a1c7bb9fc28cbf | trace_id=1b8340830f504bc6b9a1c7bb9fc28cbf | rag_agent_loop event="rag_agent.check_loop_limits.finish" pipeline_provider="rag_agent" route="direct_web" should_continue=True reason="continue" step_count=1 tool_call_count=0
+2026-08-04 17:54:50,252 | INFO | httpx | request_id=1b8340830f504bc6b9a1c7bb9fc28cbf | trace_id=1b8340830f504bc6b9a1c7bb9fc28cbf | HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-04 17:54:50,566 | INFO | fast_app.agents.tools.web_search_tools | request_id=1b8340830f504bc6b9a1c7bb9fc28cbf | trace_id=1b8340830f504bc6b9a1c7bb9fc28cbf | web_search event="web_search.bocha.start" query="FastAPI official documentation multiple workers deployment" count=5
+2026-08-04 17:54:50,894 | INFO | httpx | request_id=1b8340830f504bc6b9a1c7bb9fc28cbf | trace_id=1b8340830f504bc6b9a1c7bb9fc28cbf | HTTP Request: POST https://api.bochaai.com/v1/web-search "HTTP/1.1 200 "
+2026-08-04 17:54:50,898 | INFO | fast_app.agents.tools.web_search_tools | request_id=1b8340830f504bc6b9a1c7bb9fc28cbf | trace_id=1b8340830f504bc6b9a1c7bb9fc28cbf | web_search event="web_search.bocha.finish" query="FastAPI official documentation multiple workers deployment" count=5 result_count=5
+2026-08-04 17:54:51,355 | INFO | httpx | request_id=1b8340830f504bc6b9a1c7bb9fc28cbf | trace_id=1b8340830f504bc6b9a1c7bb9fc28cbf | HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"
+2026-08-04 17:54:53,081 | INFO | httpx | request_id=1b8340830f504bc6b9a1c7bb9fc28cbf | trace_id=1b8340830f504bc6b9a1c7bb9fc28cbf | HTTP Request: GET https://fastapi.tiangolo.com/deployment/multiple-workers/ "HTTP/1.1 404 Not Found"

@@ -1,0 +1,4 @@
+127.0.0.1 - - [04/Aug/2026 13:24:41] "GET /rag_agent_manual_acceptance.html HTTP/1.1" 200 -
+127.0.0.1 - - [04/Aug/2026 13:52:54] "GET /rag_agent_manual_acceptance.html HTTP/1.1" 304 -
+127.0.0.1 - - [04/Aug/2026 14:17:38] "GET /rag_agent_manual_acceptance.html HTTP/1.1" 304 -
+127.0.0.1 - - [04/Aug/2026 16:51:33] "GET /rag_agent_manual_acceptance.html HTTP/1.1" 304 -

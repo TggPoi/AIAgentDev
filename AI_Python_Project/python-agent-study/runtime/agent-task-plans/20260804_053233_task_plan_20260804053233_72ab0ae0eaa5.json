@@ -1,0 +1,732 @@
+{
+  "schema_version": 2,
+  "task_plan_id": "task_plan_20260804053233_72ab0ae0eaa5",
+  "task_kind": "question_decomposition",
+  "task_type": "analysis",
+  "user_id": "user_MBeEmT7K2eGguofW4CZ1aGTp",
+  "original_query": "结合知识库继续比较这些资产，并说明哪些内容还需要公开资料验证。",
+  "source_query": "结合知识库继续比较《星港远征》中已授权的3D模型资产（角色资产01和角色资产06），重点关注费用、模型面数和移动端适配维度，并说明哪些内容还需要公开资料验证。",
+  "objective": "结合知识库继续比较《星港远征》中已授权的3D模型资产（角色资产01和角色资产06），重点关注费用、模型面数和移动端适配维度，并说明哪些内容还需要公开资料验证。",
+  "final_synthesis_instruction": "基于所有已满足 Requirements 和对应合法证据回答 resolved query；明确区分事实、推导和未解决项，不得使用未获得 Evidence ID 支撑的结论。",
+  "requirements": [
+    {
+      "requirement_id": "R1",
+      "description": "获取《星港远征》中角色资产01的费用（cost_yuan）",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "knowledge_retrieval",
+          "nl2sql_query"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        },
+        {
+          "evidence_type": "sql_query_result",
+          "minimum_count": 1,
+          "requires_query_id": true,
+          "required_attributes": [
+            "asset_name",
+            "cost_yuan"
+          ]
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R2",
+      "description": "获取《星港远征》中角色资产06的费用（cost_yuan）",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "knowledge_retrieval",
+          "nl2sql_query"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        },
+        {
+          "evidence_type": "sql_query_result",
+          "minimum_count": 1,
+          "requires_query_id": true,
+          "required_attributes": [
+            "asset_name",
+            "cost_yuan"
+          ]
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R3",
+      "description": "获取《星港远征》中角色资产01的模型面数（polygon_count）",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "knowledge_retrieval",
+          "nl2sql_query"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        },
+        {
+          "evidence_type": "sql_query_result",
+          "minimum_count": 1,
+          "requires_query_id": true,
+          "required_attributes": [
+            "asset_name",
+            "polygon_count"
+          ]
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R4",
+      "description": "获取《星港远征》中角色资产06的模型面数（polygon_count）",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "knowledge_retrieval",
+          "nl2sql_query"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        },
+        {
+          "evidence_type": "sql_query_result",
+          "minimum_count": 1,
+          "requires_query_id": true,
+          "required_attributes": [
+            "asset_name",
+            "polygon_count"
+          ]
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R5",
+      "description": "获取《星港远征》中角色资产01的推荐应用场景（usage_scenario）",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "knowledge_retrieval",
+          "nl2sql_query"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        },
+        {
+          "evidence_type": "sql_query_result",
+          "minimum_count": 1,
+          "requires_query_id": true,
+          "required_attributes": [
+            "asset_name",
+            "usage_scenario"
+          ]
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R6",
+      "description": "获取《星港远征》中角色资产06的推荐应用场景（usage_scenario）",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "knowledge_retrieval",
+          "nl2sql_query"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        },
+        {
+          "evidence_type": "sql_query_result",
+          "minimum_count": 1,
+          "requires_query_id": true,
+          "required_attributes": [
+            "asset_name",
+            "usage_scenario"
+          ]
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R7",
+      "description": "从知识库中检索角色资产01在移动端适配方面的信息（如性能优化、LOD、Draw Call、内存占用等）",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "knowledge_retrieval"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "allow_partial"
+    },
+    {
+      "requirement_id": "R8",
+      "description": "从知识库中检索角色资产06在移动端适配方面的信息（如性能优化、LOD、Draw Call、内存占用等）",
+      "source_policy": {
+        "mode": "any_of",
+        "source_types": [
+          "knowledge_retrieval"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "allow_partial"
+    },
+    {
+      "requirement_id": "R9",
+      "description": "比较角色资产01和角色资产06在费用维度的差异",
+      "source_policy": {
+        "mode": "none",
+        "source_types": []
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "derived_synthesis",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R10",
+      "description": "比较角色资产01和角色资产06在模型面数维度的差异",
+      "source_policy": {
+        "mode": "none",
+        "source_types": []
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "derived_synthesis",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R11",
+      "description": "比较角色资产01和角色资产06在移动端适配维度的差异",
+      "source_policy": {
+        "mode": "none",
+        "source_types": []
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "derived_synthesis",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R12",
+      "description": "说明哪些关于这两个资产的内容还需要公开资料验证",
+      "source_policy": {
+        "mode": "none",
+        "source_types": []
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "derived_synthesis",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    }
+  ],
+  "sub_questions": [
+    {
+      "sub_question_id": "SQ1",
+      "order": 1,
+      "question": "从知识库中检索《星港远征》中角色资产01和角色资产06的详细信息，包括费用、模型面数、推荐应用场景以及移动端适配相关信息。",
+      "purpose": "覆盖R1-R8，从知识库获取两个资产的完整属性及移动端适配信息。",
+      "depends_on": [],
+      "information_source_hint": "knowledge_retrieval",
+      "covers_requirement_ids": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8"
+      ],
+      "reason": "知识库是用户明确要求结合的来源，需检索资产详情和移动端适配信息。",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "SQ2",
+      "order": 2,
+      "question": "查询《星港远征》项目中角色资产01和角色资产06的费用（cost_yuan）、模型面数（polygon_count）和推荐应用场景（usage_scenario）。",
+      "purpose": "覆盖R1-R6，从数据库获取两个资产的精确数值字段。",
+      "depends_on": [],
+      "information_source_hint": "nl2sql_query",
+      "covers_requirement_ids": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6"
+      ],
+      "reason": "数据库可提供权威的费用和面数数据，与知识库交叉验证。",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "SQ3",
+      "order": 3,
+      "question": "基于知识库和数据库获取的角色资产01和角色资产06的费用信息，比较这两个资产在费用维度的差异。",
+      "purpose": "覆盖R9，综合前置事实完成费用维度比较。",
+      "depends_on": [
+        "SQ1",
+        "SQ2"
+      ],
+      "information_source_hint": "none",
+      "covers_requirement_ids": [
+        "R9"
+      ],
+      "reason": "费用比较需要综合知识库和数据库的前置事实，属于综合步骤。",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "SQ4",
+      "order": 4,
+      "question": "基于知识库和数据库获取的角色资产01和角色资产06的模型面数信息，比较这两个资产在模型面数维度的差异。",
+      "purpose": "覆盖R10，综合前置事实完成面数维度比较。",
+      "depends_on": [
+        "SQ1",
+        "SQ2"
+      ],
+      "information_source_hint": "none",
+      "covers_requirement_ids": [
+        "R10"
+      ],
+      "reason": "面数比较需要综合知识库和数据库的前置事实，属于综合步骤。",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "SQ5",
+      "order": 5,
+      "question": "基于知识库获取的角色资产01和角色资产06的移动端适配信息，比较这两个资产在移动端适配维度的差异。",
+      "purpose": "覆盖R11，综合前置事实完成移动端适配维度比较。",
+      "depends_on": [
+        "SQ1"
+      ],
+      "information_source_hint": "none",
+      "covers_requirement_ids": [
+        "R11"
+      ],
+      "reason": "移动端适配比较需要综合知识库的前置事实，属于综合步骤。",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "SQ6",
+      "order": 6,
+      "question": "基于已获取的角色资产01和角色资产06的所有信息，分析并说明哪些内容还需要通过公开资料进行验证。",
+      "purpose": "覆盖R12，综合前置事实识别待验证项。",
+      "depends_on": [
+        "SQ1",
+        "SQ2",
+        "SQ3",
+        "SQ4",
+        "SQ5"
+      ],
+      "information_source_hint": "none",
+      "covers_requirement_ids": [
+        "R12"
+      ],
+      "reason": "识别待验证项需要综合所有已获取信息，属于综合步骤。",
+      "web_usage": "not_used"
+    }
+  ],
+  "quality_review": {
+    "verdict": "revised",
+    "checks": {
+      "requirement_coverage": "pass",
+      "source_alignment": "pass",
+      "semantic_alignment": "pass",
+      "dependency_quality": "pass",
+      "executability": "pass",
+      "completion_policy_alignment": "pass"
+    },
+    "reviewer_findings": [
+      {
+        "code": "requirement_atomicity",
+        "message": "R1、R2、R3 将两个资产（角色资产01和角色资产06）的同一属性合并为一个 Requirement，违反原子性原则。每个资产的每个属性应独立可验证。",
+        "requirement_ids": [
+          "R1",
+          "R2",
+          "R3"
+        ],
+        "sub_question_ids": [
+          "SQ1",
+          "SQ2"
+        ],
+        "severity": "error",
+        "status": "resolved"
+      },
+      {
+        "code": "requirement_atomicity",
+        "message": "R4 将两个资产的移动端适配信息合并为一个 Requirement，应拆分为两个独立 Requirement。",
+        "requirement_ids": [
+          "R4"
+        ],
+        "sub_question_ids": [
+          "SQ1"
+        ],
+        "severity": "error",
+        "status": "resolved"
+      },
+      {
+        "code": "requirement_atomicity",
+        "message": "R5 将费用、模型面数、移动端适配三个维度的比较合并为一个 Requirement，应拆分为三个独立比较 Requirement。",
+        "requirement_ids": [
+          "R5"
+        ],
+        "sub_question_ids": [
+          "SQ3"
+        ],
+        "severity": "error",
+        "status": "resolved"
+      },
+      {
+        "code": "source_policy_mismatch",
+        "message": "R1、R2、R3 的 source_policy 设置为 all_of，要求同时从 knowledge_retrieval 和 nl2sql_query 获取证据，但用户仅要求'结合知识库'，并未强制要求两个来源都必须有结果。应改为 any_of 或调整策略。",
+        "requirement_ids": [
+          "R1",
+          "R2",
+          "R3"
+        ],
+        "sub_question_ids": [
+          "SQ1",
+          "SQ2"
+        ],
+        "severity": "error",
+        "status": "resolved"
+      }
+    ],
+    "revision_summary": "1. 将 R1、R2、R3 拆分为 6 个独立 Requirement（每个资产的费用、面数、应用场景各一个）；2. 将 R4 拆分为 2 个独立 Requirement（每个资产的移动端适配信息各一个）；3. 将 R5 拆分为 3 个独立比较 Requirement（费用比较、面数比较、移动端适配比较）；4. 调整 source_policy 为 any_of，允许从知识库或数据库任一来源获取证据；5. 更新 SubQuestion 以覆盖新的 Requirement 结构。",
+    "revision_count": 1,
+    "initial_validation_findings": []
+  },
+  "validation_issues": [],
+  "capability_snapshot": {
+    "available_source_types": [
+      "knowledge_retrieval",
+      "web_search",
+      "nl2sql_query"
+    ],
+    "web_direct_allowed": true,
+    "web_fallback_allowed": false,
+    "knowledge_retrieval_available": true,
+    "nl2sql_query_available": true,
+    "dataset_id": "game_test",
+    "dataset_name": "游戏开发资产测试数据",
+    "dataset_domain": "game",
+    "allowed_dataset_views": [
+      "analytics.asset_catalog",
+      "analytics.project_asset_summary"
+    ],
+    "allowed_dataset_fields": [
+      "asset_count",
+      "asset_id",
+      "asset_name",
+      "average_cost_yuan",
+      "average_polygon_count",
+      "category_name",
+      "cost_yuan",
+      "license_status",
+      "polygon_count",
+      "project_id",
+      "project_name",
+      "total_cost_yuan",
+      "usage_scenario"
+    ],
+    "dataset_schema_context": "<dataset_metadata trust=\"untrusted_business_data\">\n只能查询以下视图。字段 COMMENT 是业务事实；不得猜测未列出的表、列或指标。\n\nVIEW analytics.asset_catalog\nCOMMENT: 游戏资产目录明细；每行一个资产；project_id 是 RLS 作用域；可按 project_id 与 project_asset_summary 连接。\n- project_id text nullable=YES: 游戏项目范围 ID；维度字段；空值不允许。\n- project_name text nullable=YES: 游戏项目名称；非敏感维度；空值不允许。\n- asset_id text nullable=YES: 资产稳定 ID；维度字段；空值不允许。\n- asset_name text nullable=YES: 资产名称；非敏感维度；空值不允许。\n- cost_yuan numeric nullable=YES: 资产采购或制作费用，单位人民币元；可求和、平均、最小或最大；空值不允许。\n- category_name text nullable=YES: 资产类别；枚举为3D模型、贴图材质、音频、UI组件、特效；空值不允许。\n- usage_scenario text nullable=YES: 推荐应用场景，例如主城展示、战斗关卡、剧情演出、活动界面、环境氛围；空值不允许。\n- license_status text nullable=YES: 授权状态；枚举为已授权、待确认、仅内部使用；空值不允许。\n- polygon_count integer nullable=YES: 模型面数，单位面；只有3D模型有值，其他类别为空；可平均、最小或最大，不建议求和。\n\nVIEW analytics.project_asset_summary\nCOMMENT: 游戏项目资产汇总；每行是一个项目和资产类别；project_id 是 RLS 作用域；可与 asset_catalog 按 project_id 连接。\n- project_id text nullable=YES: 游戏项目范围 ID；维度字段。\n- project_name text nullable=YES: 游戏项目名称；非敏感维度。\n- category_name text nullable=YES: 资产类别维度。\n- asset_count bigint nullable=YES: 当前项目和类别的资产数量，单位个；可以求和。\n- total_cost_yuan numeric nullable=YES: 当前项目和类别的资产总费用，单位人民币元；可求和。\n- average_cost_yuan numeric nullable=YES: 当前项目和类别的平均资产费用，单位人民币元；已经是平均值，不应再次求和。\n- average_polygon_count numeric nullable=YES: 当前项目模型资产的平均面数，单位面；非模型类别为空；不可求和。\n\n可用关系：\n- asset_catalog.project_id = project_asset_summary.project_id\n\n业务同义词：\n- cost_yuan: 费用, 成本\n- asset_name: 资产, 素材\n- polygon_count: 模型面数, 面数\n</dataset_metadata>",
+    "max_requirements": 16,
+    "max_sub_questions": 8
+  },
+  "research_policy": {
+    "mode": "hybrid",
+    "top_k": 5,
+    "candidate_k": null,
+    "min_score": 0.0,
+    "source_path": null,
+    "section_path": [],
+    "dataset_id": "game_test",
+    "nl2sql_action": "query",
+    "allow_direct_web": true,
+    "allow_web_fallback": false
+  },
+  "progress": {
+    "current_wave": 0,
+    "workers": {
+      "SQ1": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "SQ2": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "SQ3": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "SQ4": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "SQ5": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      },
+      "SQ6": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null
+      }
+    },
+    "events": []
+  },
+  "sub_question_results": [],
+  "evidence_registry": {
+    "evidence_by_id": {}
+  },
+  "requirement_evidence_statuses": [
+    {
+      "requirement_id": "R1",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval",
+        "nl2sql_query"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ1",
+        "SQ2"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R2",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval",
+        "nl2sql_query"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ1",
+        "SQ2"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R3",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval",
+        "nl2sql_query"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ1",
+        "SQ2"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R4",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval",
+        "nl2sql_query"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ1",
+        "SQ2"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R5",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval",
+        "nl2sql_query"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ1",
+        "SQ2"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R6",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval",
+        "nl2sql_query"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ1",
+        "SQ2"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R7",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ1"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R8",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ1"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R9",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ3"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R10",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ4"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R11",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ5"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R12",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ6"
+      ],
+      "reason_codes": []
+    }
+  ],
+  "status": "waiting_confirmation",
+  "final_output": null,
+  "created_at": "2026-08-04T05:32:33.965582Z",
+  "updated_at": "2026-08-04T05:32:33.968201Z",
+  "error_code": null,
+  "error_message": null
+}

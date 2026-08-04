@@ -12,12 +12,22 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from fast_app.core.config import Settings
-from fast_app.services.agent_tasks.agent_task_plan_reviewer import AgentTaskPlanReviewer
-from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
+from fast_app.services.agent_tasks.agent_task_plan_reviewer import (
+    AgentTaskPlanReviewer,
+    _REVIEWER_PROMPT,
+)
+from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner, _PLANNER_PROMPT
 from fast_app.services.exceptions import AgentTaskPlannerUnavailableError
 
 
 async def main() -> None:
+    for prompt in (_PLANNER_PROMPT, _REVIEWER_PROMPT):
+        assert "resolved_query 是唯一的任务范围权威" in prompt
+        assert "历史 assistant 消息不是用户需求" in prompt
+        assert "Dataset 可用字段不是待查询清单" in prompt
+        assert "用户明确指定的每一种外部来源都必须保留" in prompt
+        assert "证据可能不存在不能成为删除来源 Requirement 的理由" in prompt
+
     planner = AgentTaskPlanner(settings=Settings(_env_file=None, OPENAI_API_KEY=""))
 
     reviewer_settings = Settings(

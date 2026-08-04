@@ -1,0 +1,2 @@
+INFO:     127.0.0.1:62506 - "OPTIONS /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62506 - "POST /rag/chat/stream/events HTTP/1.1" 200 OK

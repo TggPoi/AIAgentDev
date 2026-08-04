@@ -1,0 +1,8 @@
+INFO:     127.0.0.1:50561 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50740 - "OPTIONS /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50740 - "GET /auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:50763 - "OPTIONS /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50763 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50763 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50859 - "OPTIONS /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50859 - "POST /rag/chat/stream/events HTTP/1.1" 503 Service Unavailable

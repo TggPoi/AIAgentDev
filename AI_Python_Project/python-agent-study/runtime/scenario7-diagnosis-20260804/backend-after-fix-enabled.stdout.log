@@ -1,0 +1,10 @@
+INFO:     127.0.0.1:51213 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51234 - "POST /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51254 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51411 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51411 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51511 - "POST /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51721 - "OPTIONS /agent/task-plans/task_plan_20260804060040_073ea3a45aa7/markdown HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51721 - "GET /agent/task-plans/task_plan_20260804060040_073ea3a45aa7/markdown HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51848 - "OPTIONS /agent/task-plans/task_plan_20260804060151_fb237d5a72bb/markdown HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51848 - "GET /agent/task-plans/task_plan_20260804060151_fb237d5a72bb/markdown HTTP/1.1" 200 OK

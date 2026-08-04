@@ -1,0 +1,127 @@
+INFO:     Started server process [30236]
+INFO:     Waiting for application startup.
+2026-08-04 13:26:27,815 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.enabled" project="python-agent-study-phase-final-2" endpoint="https://api.smith.langchain.com"
+2026-08-04 13:26:27,815 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+2026-08-04 13:26:27,830 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-04 13:26:27,831 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-04 13:26:28,213 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-04 13:26:28,214 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-04 13:26:28,214 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-04 13:26:28,312 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-04 13:26:28,376 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint/store 已创建
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-08-04 13:26:29,293 | INFO | fast_app.middlewares.request_id_middleware | request_id=65073204dc8b495d87aeed01a48f4ef8 | trace_id=65073204dc8b495d87aeed01a48f4ef8 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=2.15
+2026-08-04 13:27:01,231 | INFO | fast_app.middlewares.request_id_middleware | request_id=4455fa9559bc44d9a0a53dc6d0cff582 | trace_id=4455fa9559bc44d9a0a53dc6d0cff582 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.19
+2026-08-04 13:27:09,367 | INFO | fast_app.middlewares.request_id_middleware | request_id=3444ee8c0f0749bdba5b2d018159a6f6 | trace_id=3444ee8c0f0749bdba5b2d018159a6f6 | http_request event="http.request.finish" method="POST" path="/rag/chat/stream/events" status_code=200 latency_ms=3376.57
+2026-08-04 13:27:09,368 | WARNING | fast_app.middlewares.request_id_middleware | request_id=3444ee8c0f0749bdba5b2d018159a6f6 | trace_id=3444ee8c0f0749bdba5b2d018159a6f6 | slow_operation event="http.request.slow" latency_ms=3376.57 threshold_ms=3000.0 slow_component="http_request" method="POST" path="/rag/chat/stream/events" status_code=200 status="success"
+2026-08-04 13:27:09,544 | INFO | openai._base_client | request_id=3444ee8c0f0749bdba5b2d018159a6f6 | trace_id=3444ee8c0f0749bdba5b2d018159a6f6 | Retrying request to /chat/completions in 0.451766 seconds
+2026-08-04 13:27:09,985 | INFO | openai._base_client | request_id=3444ee8c0f0749bdba5b2d018159a6f6 | trace_id=3444ee8c0f0749bdba5b2d018159a6f6 | Retrying request to /chat/completions in 0.809672 seconds
+2026-08-04 13:27:11,151 | ERROR | fast_app.services.rag.prompt_guard_service | request_id=3444ee8c0f0749bdba5b2d018159a6f6 | trace_id=3444ee8c0f0749bdba5b2d018159a6f6 | prompt_guard event="prompt_guard.llm_classifier.failed" classifier_type="input" source="rag_agent.query_rewrite.raw_input" error_type="APIConnectionError"
+Traceback (most recent call last):
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpx\_transports\default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpx\_transports\default.py", line 394, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 256, in handle_async_request
+    raise exc from None
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 236, in handle_async_request
+    response = await connection.handle_async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpcore\_async\connection.py", line 101, in handle_async_request
+    raise exc
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpcore\_async\connection.py", line 78, in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpcore\_async\connection.py", line 124, in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpcore\_backends\auto.py", line 31, in connect_tcp
+    return await self._backend.connect_tcp(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 113, in connect_tcp
+    with map_exceptions(exc_map):
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 155, in __exit__
+    self.gen.throw(value)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpcore\_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\openai\_base_client.py", line 1648, in request
+    response = await self._send_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\openai\_client.py", line 946, in _send_request
+    return await self._send_with_auth_retry(request, stream=stream, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\openai\_client.py", line 924, in _send_with_auth_retry
+    response = await super()._send_request(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\openai\_base_client.py", line 1571, in _send_request
+    return await self._client.send(request, stream=stream, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpx\_client.py", line 1629, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpx\_client.py", line 1657, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpx\_client.py", line 1694, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpx\_client.py", line 1730, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpx\_transports\default.py", line 393, in handle_async_request
+    with map_httpcore_exceptions():
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 155, in __exit__
+    self.gen.throw(value)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\httpx\_transports\default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\src\fast_app\services\rag\prompt_guard_service.py", line 583, in _classify_with_llm
+    parsed_result, classifier_output_mode = await self._invoke_classifier(
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\src\fast_app\services\rag\prompt_guard_service.py", line 681, in _invoke_classifier
+    response = await self._get_classifier_model().ainvoke(messages)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 497, in ainvoke
+    llm_result = await self.agenerate_prompt(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1834, in agenerate_prompt
+    return await self.agenerate(
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1792, in agenerate
+    raise exceptions[0]
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 2127, in _agenerate_with_cache
+    result = await self._agenerate(
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 1937, in _agenerate
+    _handle_openai_api_error(e)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 1930, in _agenerate
+    raw_response = await self.async_client.with_raw_response.create(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\openai\_legacy_response.py", line 384, in wrapped
+    return cast(LegacyAPIResponse[R], await func(*args, **kwargs))
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 2739, in create
+    return await self._post(
+           ^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\openai\_base_client.py", line 1931, in post
+    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\openai\_base_client.py", line 1683, in request
+    raise APIConnectionError(request=request) from err
+openai.APIConnectionError: Connection error.
+2026-08-04 13:27:12,384 | WARNING | langsmith.client | request_id=- | trace_id=- | Failed to get info from https://api.smith.langchain.com: LangSmithConnectionError('Connection error caused failure to GET /info in LangSmith API. Please confirm your internet connection. ConnectionError(MaxRetryError(\'HTTPSConnectionPool(host=\\\'api.smith.langchain.com\\\', port=443): Max retries exceeded with url: /info (Caused by NewConnectionError("HTTPSConnection(host=\\\'api.smith.langchain.com\\\', port=443): Failed to establish a new connection: [WinError 10013] 以一种访问权限不允许的方式做了一个访问套接字的尝试。"))\'))\nContent-Length: None\nAPI Key: lsv2_********************************************69')
+2026-08-04 13:27:12,385 | WARNING | langsmith.client | request_id=- | trace_id=- | Run compression is not enabled. Please update to the latest version of LangSmith. Falling back to regular multipart ingestion.
+2026-08-04 13:27:21,467 | WARNING | langsmith.client | request_id=- | trace_id=- | Failed to multipart ingest runs: Connection error caused failure to POST https://api.smith.langchain.com/runs/multipart in LangSmith API. Please confirm your internet connection. ConnectionError(MaxRetryError('HTTPSConnectionPool(host=\'api.smith.langchain.com\', port=443): Max retries exceeded with url: /runs/multipart (Caused by NewConnectionError("HTTPSConnection(host=\'api.smith.langchain.com\', port=443): Failed to establish a new connection: [WinError 10013] 以一种访问权限不允许的方式做了一个访问套接字的尝试。"))'))
+Content-Length: 28968
+API Key: lsv2_********************************************69trace=6d8de9a5-6060-4ac4-bd51-d65c85032119,id=6d8de9a5-6060-4ac4-bd51-d65c85032119; trace=6d8de9a5-6060-4ac4-bd51-d65c85032119,id=b72331a3-762b-4431-bc95-acc5cbe829de; trace=6d8de9a5-6060-4ac4-bd51-d65c85032119,id=019fcb3d-71dc-74f2-9def-54f6190d0f0d

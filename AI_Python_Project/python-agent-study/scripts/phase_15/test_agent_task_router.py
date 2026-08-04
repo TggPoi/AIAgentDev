@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from pydantic import ValidationError
 
@@ -12,11 +13,15 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from fast_app.core.config import Settings
 from fast_app.graph.rag_agent.rag_agent_nodes import (
+    _official_sitemap_candidates,
+    create_call_direct_web_node,
     create_next_action_decision_node,
     route_after_loop_check,
 )
+from fast_app.graph.rag_agent import rag_agent_nodes as nodes_module
 from fast_app.graph.rag_agent.rag_agent_state import build_rag_agent_initial_state
 from fast_app.schemas.rag_chat_schema import RagChatRequest
+from fast_app.services.rag.direct_web_search_planner import DirectWebSearchPlan
 from fast_app.services.agent_tasks import agent_task_router as router_module
 from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 from fast_app.services.agent_tasks.agent_task_router import (
@@ -273,6 +278,112 @@ async def main() -> None:
     assert document_update["route"] == "execute_task_plan"
     assert document_update["agent_task_plan"].steps == []
     assert route_after_loop_check({**initial_state, "route": "direct_web"}) == "direct_web"
+
+    observed_web_call: dict[str, object] = {}
+    observed_plan_call: dict[str, object] = {}
+    original_web_search = nodes_module.search_web_with_bocha
+
+    class FakeDirectWebPlanner:
+        async def plan(self, **kwargs):
+            observed_plan_call.update(kwargs)
+            return DirectWebSearchPlan(
+                query="PostgreSQL 16 row security policies",
+                count=2,
+                site="postgresql.org",
+                exact_url=None,
+            )
+
+        async def select_candidate_url(self, **kwargs):
+            urls = {item["url"] for item in kwargs["candidates"]}
+            expected = "https://www.postgresql.org/docs/16/ddl-rowsecurity.html"
+            return expected if expected in urls else None
+
+    async def fake_web_search(**kwargs):
+        observed_web_call.update(kwargs)
+        return [
+            SimpleNamespace(
+                title="PostgreSQL 16 Row Security Policies",
+                snippet="RLS restricts rows returned by a query.",
+                summary="Official PostgreSQL 16 documentation.",
+                url="https://www.postgresql.org/docs/16/ddl-rowsecurity.html",
+                site_name="PostgreSQL",
+            ),
+            SimpleNamespace(
+                title="Unrelated article",
+                snippet="not official",
+                summary="",
+                url="https://example.com/postgresql-rls",
+                site_name="Example",
+            ),
+        ]
+
+    nodes_module.search_web_with_bocha = fake_web_search
+    try:
+        direct_web_update = await create_call_direct_web_node(
+            settings,
+            search_planner=FakeDirectWebPlanner(),
+        )(
+            {
+                **initial_state,
+                "query": "请联网查询 PostgreSQL 16 官方文档中行级安全策略的作用，并给出来源链接。",
+            }
+        )
+    finally:
+        nodes_module.search_web_with_bocha = original_web_search
+    assert observed_plan_call["question"].startswith("请联网查询 PostgreSQL 16")
+    assert observed_web_call["query"] == "PostgreSQL 16 row security policies"
+    assert observed_web_call["site"] == "postgresql.org"
+    assert [item.metadata["url"] for item in direct_web_update["docs"]] == [
+        "https://www.postgresql.org/docs/16/ddl-rowsecurity.html"
+    ]
+    assert "https://www.postgresql.org/docs/16/ddl-rowsecurity.html" in direct_web_update["docs"][0].content
+    assert nodes_module._official_page_text(
+        "<style>hidden</style><h1>Row Security</h1><p>Policy &amp; role</p>"
+    ) == "Row Security Policy & role"
+    assert nodes_module._official_page_text(
+        "<body><nav>menu</nav><main><h1>Workers</h1><p>Multiple processes</p></main></body>"
+    ) == "Workers Multiple processes"
+
+    class FakeSitemapResponse:
+        content = b"""<?xml version='1.0'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'><url><loc>https://fastapi.tiangolo.com/deployment/server-workers/</loc></url><url><loc>https://example.com/ignore/</loc></url></urlset>"""
+
+        def raise_for_status(self):
+            return None
+
+    class FakeSitemapClient:
+        async def get(self, *_args, **_kwargs):
+            return FakeSitemapResponse()
+
+    sitemap_candidates = await _official_sitemap_candidates(
+        FakeSitemapClient(),
+        plan=DirectWebSearchPlan(
+            query="FastAPI multiple workers deployment",
+            count=5,
+            site="fastapi.tiangolo.com",
+            required_content_terms=["workers"],
+        ),
+    )
+    assert [item["url"] for item in sitemap_candidates] == [
+        "https://fastapi.tiangolo.com/deployment/server-workers/"
+    ]
+    generic_official_plan = DirectWebSearchPlan(
+        query="FastAPI deployment official documentation",
+        count=3,
+        site="fastapi.tiangolo.com",
+        exact_url="https://fastapi.tiangolo.com/deployment/",
+    )
+    assert generic_official_plan.site == "fastapi.tiangolo.com"
+    try:
+        DirectWebSearchPlan(
+            query="official documentation",
+            count=3,
+            site="example.com",
+            exact_url="https://attacker.example.org/page",
+        )
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("exact_url 不允许越过规划的官方网站域名")
 
     print("agent_task_router=passed")
 

@@ -42,11 +42,12 @@ async def invoke_structured_model(
     last_error: Exception | None = None
     for transport in transports:
         attempts = 0
+        retry_messages = messages
         while attempts < 2 and calls < 5:
             attempts += 1
             calls += 1
             try:
-                value = await _invoke_transport(model, schema, messages, transport, config)
+                value = await _invoke_transport(model, schema, retry_messages, transport, config)
                 _TRANSPORT_CACHE[key] = transport
                 return value
             except Exception as exc:
@@ -62,6 +63,20 @@ async def invoke_structured_model(
                     if _TRANSPORT_CACHE.get(key) == transport:
                         _TRANSPORT_CACHE.pop(key, None)
                     break
+                if isinstance(exc, ValidationError) and attempts == 1:
+                    details = "; ".join(
+                        f"{'.'.join(map(str, item['loc'])) or '<root>'}: {item['msg']}"
+                        for item in exc.errors(include_input=False)
+                    )
+                    retry_messages = [
+                        *messages,
+                        SystemMessage(
+                            content=(
+                                "上一次结构化响应未通过 Schema 校验。只修正以下契约错误，"
+                                "不要改变用户任务语义；重新输出完整对象：\n" + details
+                            )
+                        ),
+                    ]
                 if attempts == 2:
                     raise
     raise RuntimeError("模型不支持可用的 structured-output transport") from last_error

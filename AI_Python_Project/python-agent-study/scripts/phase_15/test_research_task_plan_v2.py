@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from tempfile import TemporaryDirectory
 
@@ -15,6 +16,7 @@ from fast_app.domain.research_task_plan import (
     AgentTaskEvidenceRegistry,
     AgentTaskExpectedEvidence,
     AgentTaskPlannerCandidate,
+    AgentTaskPlanReviewDecision,
     AgentTaskPlanQualityChecks,
     AgentTaskPlanQualityReview,
     AgentTaskRequirement,
@@ -37,6 +39,8 @@ from fast_app.graph.rag_agent.rag_agent_nodes import build_task_plan_answer
 from fast_app.services.research.requirement_evidence_service import (
     AgentTaskRequirementEvidenceService,
 )
+from fast_app.services.research.research_evidence_evaluator import ResearchEvidenceEvaluator
+from fast_app.domain.agent_task_plan import ResearchEvidenceEvaluation
 
 
 def expected(kind: str, *, attributes: list[str] | None = None):
@@ -170,6 +174,45 @@ def main() -> None:
         ["knowledge_retrieval", "web_search"],
         [expected("knowledge_chunk"), expected("web_citation")],
     )
+
+    # Reviewer 不能一边声称 revised，一边保留失败的最终质量检查。
+    try:
+        AgentTaskPlanReviewDecision(
+            verdict="revised",
+            checks=AgentTaskPlanQualityChecks(
+                requirement_coverage="pass",
+                source_alignment="pass",
+                semantic_alignment="fail",
+                dependency_quality="pass",
+                executability="pass",
+                completion_policy_alignment="pass",
+            ),
+            revision_summary="已修订",
+            revised_requirements=[req_all],
+            revised_sub_questions=[candidate],
+        )
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("revised 不应接受失败的最终质量检查")
+    try:
+        AgentTaskPlanQualityReview(
+            verdict="accepted",
+            checks=AgentTaskPlanQualityChecks(
+                requirement_coverage="pass",
+                source_alignment="pass",
+                semantic_alignment="fail",
+                dependency_quality="pass",
+                executability="pass",
+                completion_policy_alignment="pass",
+            ),
+            revision_count=0,
+        )
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("有效 TaskPlan 不应接受失败的最终质量检查")
+
     sq_k = sub_question("sq_1", "knowledge_retrieval", ["req_1"])
     sq_w = sub_question("sq_2", "web_search", ["req_1"], web_usage="direct")
     ev_k = evidence("ev_k", "knowledge_chunk", "sq_1")
@@ -396,6 +439,32 @@ def main() -> None:
         pass
     else:
         raise AssertionError("请求策略禁止 direct Web 时必须返回来源不可用")
+
+    evaluator = ResearchEvidenceEvaluator(
+        Settings(_env_file=None, OPENAI_API_KEY="test-key")
+    )
+
+    async def sufficient(*_args, **_kwargs):
+        return ResearchEvidenceEvaluation(
+            verdict="sufficient",
+            confidence=0.9,
+            relevance=0.9,
+            coverage=0.9,
+            authority=0.9,
+            recommended_action="accept",
+            reason="test",
+        )
+
+    evaluator._try_structured = sufficient
+    evaluation = asyncio.run(
+        evaluator.evaluate(
+            sub_question=sq_sql,
+            requirements=[req_cost],
+            answer="asset_1 costs 100 yuan",
+            evidence=[{"source": "nl2sql_query", "query_id": "query-1"}],
+        )
+    )
+    assert evaluation.verdict == "sufficient"
 
     print("research_task_plan_v2=passed")
 
