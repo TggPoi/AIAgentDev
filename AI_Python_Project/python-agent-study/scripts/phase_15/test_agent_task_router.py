@@ -21,7 +21,14 @@ from fast_app.graph.rag_agent.rag_agent_nodes import (
 from fast_app.graph.rag_agent import rag_agent_nodes as nodes_module
 from fast_app.graph.rag_agent.rag_agent_state import build_rag_agent_initial_state
 from fast_app.schemas.rag_chat_schema import RagChatRequest
-from fast_app.services.rag.direct_web_search_planner import DirectWebSearchPlan
+from fast_app.services.exceptions import ExternalServiceError
+from fast_app.services.rag.direct_web_search_planner import (
+    DIRECT_WEB_CANDIDATE_SELECTOR_PROMPT,
+    DIRECT_WEB_SEARCH_PLANNER_PROMPT,
+    DirectWebCandidateSelection,
+    DirectWebSearchPlan,
+    DirectWebSearchPlanner,
+)
 from fast_app.services.agent_tasks import agent_task_router as router_module
 from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 from fast_app.services.agent_tasks.agent_task_router import (
@@ -279,68 +286,150 @@ async def main() -> None:
     assert document_update["agent_task_plan"].steps == []
     assert route_after_loop_check({**initial_state, "route": "direct_web"}) == "direct_web"
 
-    observed_web_call: dict[str, object] = {}
-    observed_plan_call: dict[str, object] = {}
+    observed_web_calls: list[dict[str, object]] = []
     original_web_search = nodes_module.search_web_with_bocha
+    original_http_client = nodes_module.httpx.AsyncClient
 
     class FakeDirectWebPlanner:
-        async def plan(self, **kwargs):
-            observed_plan_call.update(kwargs)
-            return DirectWebSearchPlan(
-                query="PostgreSQL 16 row security policies",
-                count=2,
-                site="postgresql.org",
-                exact_url=None,
-            )
+        def __init__(self, plan: DirectWebSearchPlan) -> None:
+            self.search_plan = plan
+            self.selection_calls = 0
+
+        async def plan(self, **_kwargs):
+            return self.search_plan
 
         async def select_candidate_url(self, **kwargs):
-            urls = {item["url"] for item in kwargs["candidates"]}
-            expected = "https://www.postgresql.org/docs/16/ddl-rowsecurity.html"
-            return expected if expected in urls else None
+            self.selection_calls += 1
+            return kwargs["candidates"][0]["url"]
 
     async def fake_web_search(**kwargs):
-        observed_web_call.update(kwargs)
+        observed_web_calls.append(kwargs)
+        site = kwargs["site"]
+        domain = site or "example.com"
         return [
             SimpleNamespace(
-                title="PostgreSQL 16 Row Security Policies",
-                snippet="RLS restricts rows returned by a query.",
-                summary="Official PostgreSQL 16 documentation.",
-                url="https://www.postgresql.org/docs/16/ddl-rowsecurity.html",
-                site_name="PostgreSQL",
+                title="FastAPI lifespan solution one",
+                snippet="FastAPI lifespan practical experience",
+                summary="First relevant result",
+                url=f"https://{domain}/questions/1",
+                site_name=domain,
             ),
             SimpleNamespace(
-                title="Unrelated article",
-                snippet="not official",
-                summary="",
-                url="https://example.com/postgresql-rls",
-                site_name="Example",
+                title="FastAPI lifespan solution two",
+                snippet="FastAPI lifespan practical experience",
+                summary="Second relevant result",
+                url=f"https://{domain}/questions/2",
+                site_name=domain,
             ),
         ]
 
-    nodes_module.search_web_with_bocha = fake_web_search
-    try:
-        direct_web_update = await create_call_direct_web_node(
+    class FakePageResponse:
+        content = b""
+        text = "<main><h1>FastAPI lifespan</h1><p>Selected page</p></main>"
+
+        def raise_for_status(self):
+            return None
+
+    class FakeHttpClient:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, *_args, **_kwargs):
+            return FakePageResponse()
+
+    async def run_direct_web_case(
+        question: str,
+        plan: DirectWebSearchPlan,
+    ) -> tuple[dict[str, object], FakeDirectWebPlanner]:
+        fake_planner = FakeDirectWebPlanner(plan)
+        update = await create_call_direct_web_node(
             settings,
-            search_planner=FakeDirectWebPlanner(),
-        )(
-            {
-                **initial_state,
-                "query": "请联网查询 PostgreSQL 16 官方文档中行级安全策略的作用，并给出来源链接。",
-            }
+            search_planner=fake_planner,
+        )({**initial_state, "query": question})
+        return update, fake_planner
+
+    nodes_module.search_web_with_bocha = fake_web_search
+    nodes_module.httpx.AsyncClient = FakeHttpClient
+    try:
+        official_update, official_planner = await run_direct_web_case(
+            "查询 Python 3.13 官方 typing 文档",
+            DirectWebSearchPlan(
+                query="Python 3.13 typing documentation",
+                count=2,
+                source_mode="official",
+                result_strategy="single_best_page",
+                site="docs.python.org",
+            ),
         )
+        assert official_planner.selection_calls == 1
+        assert len(official_update["docs"]) == 1
+        assert "Selected page" in official_update["docs"][0].content
+
+        community_update, community_planner = await run_direct_web_case(
+            "搜索社区中关于 FastAPI lifespan 的实践经验",
+            DirectWebSearchPlan(
+                query="FastAPI lifespan community experience",
+                count=2,
+                source_mode="community",
+                result_strategy="multiple_sources",
+            ),
+        )
+        assert community_planner.selection_calls == 0
+        assert len(community_update["docs"]) == 2
+
+        stack_update, stack_planner = await run_direct_web_case(
+            "搜索 Stack Overflow 上关于 FastAPI lifespan 的多个解决方案",
+            DirectWebSearchPlan(
+                query="FastAPI lifespan multiple solutions",
+                count=2,
+                source_mode="specified_site",
+                result_strategy="multiple_sources",
+                site="stackoverflow.com",
+            ),
+        )
+        assert stack_planner.selection_calls == 0
+        assert len(stack_update["docs"]) == 2
+        assert observed_web_calls[-1]["site"] == "stackoverflow.com"
+
+        github_update, github_planner = await run_direct_web_case(
+            "查询 GitHub Discussions 中关于该问题的不同观点",
+            DirectWebSearchPlan(
+                query="FastAPI lifespan different viewpoints",
+                count=2,
+                source_mode="specified_site",
+                result_strategy="multiple_sources",
+                site="github.com",
+            ),
+        )
+        assert github_planner.selection_calls == 0
+        assert len(github_update["docs"]) == 2
+
+        best_update, best_planner = await run_direct_web_case(
+            "在 Stack Overflow 中找一个最相关的解决方案",
+            DirectWebSearchPlan(
+                query="FastAPI lifespan best solution",
+                count=2,
+                source_mode="specified_site",
+                result_strategy="single_best_page",
+                site="stackoverflow.com",
+            ),
+        )
+        assert best_planner.selection_calls == 1
+        assert len(best_update["docs"]) == 1
     finally:
         nodes_module.search_web_with_bocha = original_web_search
-    assert observed_plan_call["question"].startswith("请联网查询 PostgreSQL 16")
-    assert observed_web_call["query"] == "PostgreSQL 16 row security policies"
-    assert observed_web_call["site"] == "postgresql.org"
-    assert [item.metadata["url"] for item in direct_web_update["docs"]] == [
-        "https://www.postgresql.org/docs/16/ddl-rowsecurity.html"
-    ]
-    assert "https://www.postgresql.org/docs/16/ddl-rowsecurity.html" in direct_web_update["docs"][0].content
-    assert nodes_module._official_page_text(
+        nodes_module.httpx.AsyncClient = original_http_client
+
+    assert nodes_module._direct_page_text(
         "<style>hidden</style><h1>Row Security</h1><p>Policy &amp; role</p>"
     ) == "Row Security Policy & role"
-    assert nodes_module._official_page_text(
+    assert nodes_module._direct_page_text(
         "<body><nav>menu</nav><main><h1>Workers</h1><p>Multiple processes</p></main></body>"
     ) == "Workers Multiple processes"
 
@@ -359,6 +448,8 @@ async def main() -> None:
         plan=DirectWebSearchPlan(
             query="FastAPI multiple workers deployment",
             count=5,
+            source_mode="official",
+            result_strategy="single_best_page",
             site="fastapi.tiangolo.com",
             required_content_terms=["workers"],
         ),
@@ -369,6 +460,8 @@ async def main() -> None:
     generic_official_plan = DirectWebSearchPlan(
         query="FastAPI deployment official documentation",
         count=3,
+        source_mode="official",
+        result_strategy="single_best_page",
         site="fastapi.tiangolo.com",
         exact_url="https://fastapi.tiangolo.com/deployment/",
     )
@@ -384,6 +477,109 @@ async def main() -> None:
         pass
     else:
         raise AssertionError("exact_url 不允许越过规划的官方网站域名")
+
+    try:
+        DirectWebSearchPlan(
+            query="official documentation",
+            count=3,
+            source_mode="official",
+        )
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("官方来源缺少 site 时必须拒绝")
+
+    default_plan = DirectWebSearchPlan(query="FastAPI lifespan", count=3)
+    assert default_plan.source_mode == "general"
+    assert default_plan.result_strategy == "multiple_sources"
+
+    plan_schema = DirectWebSearchPlan.model_json_schema()["properties"]
+    description_markers = {
+        "query": ("JSON 字符串", "不回答问题"),
+        "count": ("JSON 整数", "1 到 10", "禁止"),
+        "source_mode": ("四个值之一", "official", "community", "specified_site"),
+        "result_strategy": ("两个值之一", "single_best_page", "multiple_sources"),
+        "site": ("JSON null", "空字符串", "不代表官方网站"),
+        "exact_url": ("HTTPS", "JSON null", "同时提供 site"),
+        "required_url_fragments": ("JSON 字符串数组", "[]", "最多 5 项"),
+        "required_content_terms": ("JSON 字符串数组", "[]", "最多 5 项"),
+    }
+    for field_name, markers in description_markers.items():
+        description = plan_schema[field_name]["description"]
+        assert all(marker in description for marker in markers)
+    assert "必须包含且只能包含" in DIRECT_WEB_SEARCH_PLANNER_PROMPT
+    assert "输出前逐字段检查" in DIRECT_WEB_SEARCH_PLANNER_PROMPT
+
+    selection_description = DirectWebCandidateSelection.model_json_schema()[
+        "properties"
+    ]["selected_url"]["description"]
+    assert all(
+        marker in selection_description
+        for marker in ("完全一致", "JSON null", "候选列表之外")
+    )
+    assert "不得输出解释、Markdown 或额外字段" in DIRECT_WEB_CANDIDATE_SELECTOR_PROMPT
+
+    class RecordingStructuredModel:
+        def __init__(self, response) -> None:
+            self.response = response
+            self.messages = []
+
+        def with_structured_output(self, _schema, method):
+            assert method == "function_calling"
+            return self
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return self.response
+
+    selector_planner = DirectWebSearchPlanner(settings)
+    selector_model = RecordingStructuredModel(
+        DirectWebCandidateSelection(
+            selected_url="https://attacker.example/page"
+        )
+    )
+    selector_planner._model = selector_model
+    selected_url = await selector_planner.select_candidate_url(
+        question="在 Stack Overflow 中找一个最相关的解决方案",
+        plan=DirectWebSearchPlan(
+            query="FastAPI lifespan best solution",
+            count=2,
+            source_mode="specified_site",
+            result_strategy="single_best_page",
+            site="stackoverflow.com",
+        ),
+        candidates=[
+            {
+                "title": "Allowed",
+                "url": "https://stackoverflow.com/questions/1",
+                "summary": "FastAPI lifespan",
+            }
+        ],
+    )
+    assert selected_url is None
+    selector_payload = selector_model.messages[-1].content
+    assert '"source_mode": "specified_site"' in selector_payload
+    assert '"result_strategy": "single_best_page"' in selector_payload
+
+    invalid_planner = DirectWebSearchPlanner(settings)
+    invalid_planner._model = RecordingStructuredModel(
+        {
+            "query": "Python typing official documentation",
+            "count": 2,
+            "source_mode": "official",
+            "result_strategy": "single_best_page",
+            "site": None,
+        }
+    )
+    try:
+        await invalid_planner.plan(
+            question="查询 Python 官方文档",
+            count=2,
+        )
+    except ExternalServiceError:
+        pass
+    else:
+        raise AssertionError("非法 Planner 结构化输出必须转换为统一服务异常")
 
     print("agent_task_router=passed")
 

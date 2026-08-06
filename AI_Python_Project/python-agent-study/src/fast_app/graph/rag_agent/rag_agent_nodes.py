@@ -95,8 +95,8 @@ def _matches_direct_web_plan(result, *, plan: DirectWebSearchPlan) -> bool:
     return all(item.lower() in searchable for item in plan.required_content_terms)
 
 
-def _official_page_text(raw_html: str) -> str:
-    """把受信官方页面转换成供现有 RAG 上下文使用的纯文本。"""
+def _direct_page_text(raw_html: str) -> str:
+    """把选中的公开页面转换成供现有 RAG 上下文使用的纯文本。"""
 
     for tag in ("article", "main", "body"):
         matched = re.search(
@@ -174,7 +174,6 @@ def create_call_direct_web_node(
 
     async def call_direct_web_node(state: RagAgentState) -> dict[str, object]:
         operation = get_rag_agent_operation(state)
-        # 先根据用户query得出候选url，如果有多个候选，由下面的 planner.select_candidate_url 再进行一次筛选
         plan = await planner.plan(
             question=state["query"],
             count=min(max(state["top_k"], 2), 10),
@@ -199,8 +198,7 @@ def create_call_direct_web_node(
                 count=plan.count,
                 site=plan.site,
             )
-            # TODO：这里存在设计问题！把所有带站点限制的搜索都当成“官方资料搜索”，更合理的设计应该是 if plan.source_mode == "official": 增加明确的来源模式
-            if plan.site:
+            if plan.result_strategy == "single_best_page":
                 strict_results = [
                     item
                     for item in raw_results
@@ -223,7 +221,11 @@ def create_call_direct_web_node(
                         ),
                     )
                 ]
-                if not strict_results:
+                if (
+                    not strict_results
+                    and plan.source_mode == "official"
+                    and plan.site is not None
+                ):
                     candidate_payload.extend(
                         await _official_sitemap_candidates(http_client, plan=plan)
                     )
@@ -265,7 +267,7 @@ def create_call_direct_web_node(
                         direct_doc = RetrievedDoc(
                             id="web:1",
                             content=(
-                                f"{selected_url}\n{_official_page_text(response.text)}"
+                                f"{selected_url}\n{_direct_page_text(response.text)}"
                             ),
                             score=1.0,
                             source="web_search",
@@ -275,7 +277,9 @@ def create_call_direct_web_node(
                         )
                     except httpx.HTTPError:
                         direct_doc = None
-            if direct_doc is None:
+                if direct_doc is None:
+                    results = strict_results[:1]
+            else:
                 results = [
                     result
                     for result in raw_results

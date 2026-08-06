@@ -211,6 +211,11 @@
         <option value="8">场景 8：请求策略禁止 direct Web</option>
         <option value="9">场景 9：无 Web Tool 权限</option>
         <option value="10">场景 10：无 Dataset Grant</option>
+        <option value="11">场景 11：官方文档单页面</option>
+        <option value="12">场景 12：普通社区多来源</option>
+        <option value="13">场景 13：Stack Overflow 多来源</option>
+        <option value="14">场景 14：GitHub Discussions 多来源</option>
+        <option value="15">场景 15：非官方最佳单页面</option>
       </select>
       <button id="applyScenarioBtn" class="secondary">载入冻结场景</button>
     </div>
@@ -406,6 +411,31 @@
       query: "查询《星港远征》中已授权 3D 模型资产的费用和模型面数。",
       dataset: "game_test", direct: false, fallback: false, account: "rbac_reader",
       expected: "403 NL2SQL_PERMISSION_DENIED"
+    },
+    11: {
+      query: "查询 Python 3.13 官方 typing 文档",
+      dataset: "", direct: true, fallback: false, account: "rbac_operator",
+      expected: "official + single_best_page；只返回一个抓取后的页面"
+    },
+    12: {
+      query: "搜索社区中关于 FastAPI lifespan 的实践经验",
+      dataset: "", direct: true, fallback: false, account: "rbac_operator",
+      expected: "community + multiple_sources；保留多个搜索结果"
+    },
+    13: {
+      query: "搜索 Stack Overflow 上关于 FastAPI lifespan 的多个解决方案",
+      dataset: "", direct: true, fallback: false, account: "rbac_operator",
+      expected: "specified_site + multiple_sources；限制 stackoverflow.com 且保留多个结果"
+    },
+    14: {
+      query: "查询 GitHub Discussions 中关于 FastAPI lifespan 的不同观点",
+      dataset: "", direct: true, fallback: false, account: "rbac_operator",
+      expected: "specified_site + multiple_sources；限制 github.com 且不进入单页面选择"
+    },
+    15: {
+      query: "在 Stack Overflow 中找一个最相关的 FastAPI lifespan 解决方案",
+      dataset: "", direct: true, fallback: false, account: "rbac_operator",
+      expected: "specified_site + single_best_page；选择并抓取一个非官方页面"
     }
   };
 

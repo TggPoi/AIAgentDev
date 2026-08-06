@@ -60,6 +60,10 @@ from fast_app.services.research.research_tool_loop import (
     AgentTaskKnowledgeRetrievalToolInput,
     AgentTaskToolSelectionPayload,
 )
+from fast_app.services.rag.direct_web_search_planner import (
+    DirectWebCandidateSelection,
+    DirectWebSearchPlan,
+)
 
 
 SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
@@ -86,6 +90,8 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     DocumentWebResearchInput,
     DocumentWorkflowDecision,
     DocumentWorkflowResult,
+    DirectWebCandidateSelection,
+    DirectWebSearchPlan,
     ExcelFieldProfile,
     ExcelProfileConfirmRequest,
     ExcelProfileResponse,
