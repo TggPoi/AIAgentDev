@@ -1383,3 +1383,430 @@ $env:LANGSMITH_TRACING = "false"
 .\.venv\Scripts\python.exe scripts\phase_15\test_schema_field_descriptions.py
 .\.venv\Scripts\python.exe scripts\test_langsmith_tracing.py
 ```
+
+## 17、Direct Web 修复的遗留问题（2026-8-6）
+
+### 〇、修复范围回顾（Git 视角）
+
+| 提交               | 内容                                                         |
+| ------------------ | ------------------------------------------------------------ |
+| `4307ef3`（08-04） | 11.3/11.4 主体修复：新增 `direct_web_search_planner.py`（+202）、`rag_agent_nodes.py`（+214）、`rag_context_builder.py` 语义修改，以及大量测试日志/TaskPlan 运行产物 |
+| `d3f2443`（08-06） | planner 优化、强化约束规则：`direct_web_search_planner.py`（+96/-）、`rag_agent_nodes.py`（+20），提交信息自注 **"TODO：未测试"** |
+
+⚠️ 最新提交自注"未测试"，说明第二次约束强化（source_mode 四枚举、community/specified_site 分支等）尚无真实 Web 验证，这是本次稳定性评估的重点。
+
+---
+
+### 一、风险点逐项评估
+
+### 风险 2：sitemap 补充逻辑健壮性 —— **部分修复**
+
+[_official_sitemap_candidates](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py#L117-L164) 现状：
+
+- ✅ 网络异常/XML 解析失败 → `except (httpx.HTTPError, ElementTree.ParseError): return []`，有明确降级
+- ✅ 响应 > 5MB 直接放弃；候选只接受 `https` 且域名属于 site/子域
+- ❌ **只尝试固定路径 `https://{site}/sitemap.xml`**：不读 `robots.txt`，不解析 sitemap index。许多站点根路径返回的是 `<sitemapindex>`，其中 `<loc>` 指向的是子 sitemap 的 XML 地址——这些 URL 会参与 token 打分并被当作页面候选，最终 GET 到的是 XML 文本而非网页正文
+- ❌ **纯中文 query 基本失效**：打分 token 用 `re.findall(r"[A-Za-z0-9]+")` 只提取英文/数字，中文官网查询的 `needles` 为空集，`ranked` 恒为空
+- ❌ 打分只看 URL 文本匹配（`token in compact_url`），无版本优先级；候选 `title=url、summary="official sitemap candidate"`，选择器模型拿到的语义信息很少
+
+### 风险 3：内容提取 article → main → body —— **部分修复**
+
+[_direct_page_text](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py#L98-L114)：
+
+- ✅ 提取主容器后又移除 `script/style/nav/header/footer`，配合下游 [format_doc_for_context](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/rag/rag_context_builder.py#L26-L43) 的 1500 字符硬截断，**上下文预算耗尽问题已被封死**（16.1 观察到的 FastAPI 导航挤占问题）
+- ❌ 正则 `(?is)<{tag}\b[^>]*>(.*?)</{tag}>` 是**非贪婪首匹配**：页面存在多个 `<article>`（列表页、相关推荐卡片在前）时只取第一个，可能取到无关块
+- ❌ 三个容器都不存在（SPA/JS 渲染页面）时直接走整页 HTML 兜底，此时提取到的就是骨架占位文本
+- ⚠️ 截断到 1500 字符后，官方文档页开头的面包屑/目录/警告框可能吃掉全部有效预算，真正答案段落被截掉
+
+### 风险 4：阶段失败时的行为 —— **已修复（无静默无约束降级），但错误语义不统一**
+
+逐步核对 [call_direct_web_node](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py#L175-L313) 的每条失败路径：
+
+| 阶段                   | 失败行为                                                     |
+| ---------------------- | ------------------------------------------------------------ |
+| ① plan 生成失败        | 抛 `ExternalServiceError("Direct Web 搜索参数生成失败")` ✅ 明确 |
+| ② 官方问题但 site 缺失 | 抛 `ExternalServiceError("Direct Web 未能确定用户要求的官方网站")` ✅ 明确 |
+| ③ Bocha 失败           | 底层抛 `ExternalServiceError` ✅ 明确                         |
+| ④ sitemap 失败         | 静默返回 `[]`，但后续候选为空 → 最终在 L306-307 抛 `"Web Search 未返回可用结果"` ✅ 终态明确 |
+| ⑤ 候选选择 LLM 失败    | 抛 `ExternalServiceError("Direct Web 候选页面选择失败")` ✅ 明确 |
+| ⑥ 模型返回候选外 URL   | `selected_url not in allowed_urls → None`（L240-242）✅ 丢弃  |
+| ⑦ GET 选中页失败       | `direct_doc=None` → 回退 `strict_results[:1]`（摘要级内容，**仍通过严格域名/片段/主题过滤**），为空则抛错 |
+
+**关键结论**：所有进入 `docs` 的结果都经过 `_matches_direct_web_plan` 过滤，**不存在回退到"未过滤 raw_results"的路径**，不会静默降级为无约束搜索。唯一的降级是"全文读取失败 → 用搜索摘要"，约束仍然生效。
+
+**残留问题**：与 `call_knowledge_retrieval` 节点不同，本节点异常**没有经过 `classify_agent_error` 分类**、不产生 `error_decision`，是裸异常直接抛出，前端拿到的错误语义结构化程度较低。
+
+### 风险 5：测试场景硬编码 —— **已修复**
+
+全量 grep `src/fast_app` 下 `postgresql.org / rowsecurity / RLS`：
+
+- 无任何固定文档 URL 残留；`RLS` 仅出现在 nl2sql 服务（合法业务域）
+- 唯一边缘项：[agent_task_router.py L84](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_router.py#L84) 的 Router Prompt 中有一条 `"联网比较 PostgreSQL RLS 与 security_invoker"` 的 few-shot 示例——属于意图分类示例而非 URL 硬编码，风险极低，但可能让 Router 对该措辞过度倾向 `question_decomposition`
+
+与文档 16.1 的陈述一致：第一次的固定 URL 拼接修复已撤销，当前实现无产品/版本/主题业务分支。
+
+---
+
+### 二、额外发现的不稳定因素（不在五个问题内）
+
+1. **跨域重定向未校验**（[rag_agent_nodes.py L192](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py#L192)、L265）：`httpx.AsyncClient(follow_redirects=True)` GET 选中 URL 后**没有检查最终 `response.url` 的域名**。候选 URL 虽然都通过域名校验，但服务器可以 302 到任意第三方域名，正文即脱离官方约束。
+2. **multiple_sources + official 组合深度不足**（L282-287）：`else` 分支只做过滤，不读取全文，doc content 仅为 `title+snippet+summary+url`。"要求多份官方证据"的场景答案质量依赖 Bocha 摘要。
+3. **`required_content_terms` 存在误杀风险**（L92-95）：主题词在 `title+snippet+summary` 中做子串匹配，Bocha summary 常为空，正确官方页面可能因摘要未含主题词被过滤——表现为"搜得到但全被拒"，最终抛"未返回可用结果"。
+4. **exact_url 会无条件加入候选**（L232-239）：Prompt 要求"不知道就填 null"，但模型若幻觉一个通过 Schema 校验的 URL，它会绕过"只从真实候选选择"的设计意图直接进入候选池。Schema 校验只能保证格式与域名一致，不能保证页面存在且匹配。
+
+---
+
+
+
+## 17.1 风险二的具体原因（2026年8月6日）
+
+这三个问题都集中在 [_official_sitemap_candidates](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py#L117-L164) 这一个函数里。先交代它的触发时机：只有当 Bocha 搜索**没有召回任何通过严格校验的页面**（`strict_results` 为空）、且 `source_mode="official"` 时才会走到这里（[rag_agent_nodes.py L224-231](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py#L224-L231)）。也就是说它是整条链路的"最后救援手段"，它的缺陷直接决定救援成功率。
+
+---
+
+### 缺陷 1：只试固定路径 `/sitemap.xml`，且不处理 sitemap 索引
+
+**相关代码**（[L127-134](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py#L127-L134)）：
+
+```python
+response = await http_client.get(
+    f"https://{plan.site}/sitemap.xml",
+    timeout=10.0,
+)
+response.raise_for_status()
+...
+root = ElementTree.fromstring(response.content)
+```
+
+**为什么有风险**——两个子问题：
+
+**(a) 路径是猜的。** 网站 sitemap 的真实位置按标准应该写在 `robots.txt` 的 `Sitemap:` 字段里，很多站点的路径是 `/sitemap_index.xml`、`/sitemap-index.xml` 或 `/wp-sitemap.xml`。这些站点的 `/sitemap.xml` 返回 404 → `raise_for_status()` 抛异常 → 被 except 捕获返回 `[]` → 救援静默失败。结果是"功能看起来正常，实际对大部分站点从未生效过"。
+
+**(b) 不区分 sitemap 索引和页面列表。** 大型站点（文档站尤其常见）的 `/sitemap.xml` 根节点是 `<sitemapindex>`，里面的 `<loc>` 指向的是**子 sitemap 的 XML 地址**，不是网页：
+
+```xml
+<sitemapindex>
+  <sitemap><loc>https://example.com/sitemap-docs-1.xml</loc></sitemap>
+  <sitemap><loc>https://example.com/sitemap-blog.xml</loc></sitemap>
+</sitemapindex>
+```
+
+而提取代码是这样遍历的（[L145-147](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py#L145-L147)）：
+
+```python
+for element in root.iter():
+    if not element.tag.endswith("loc") or not element.text:
+        continue
+```
+
+它只认"标签名以 `loc` 结尾"，**无法区分这个 `<loc>` 属于 `<url>`（网页）还是 `<sitemap>`（索引）**。于是 `.xml` 结尾的子 sitemap 地址会被当成网页候选参与打分。如果后续选择器模型选中了它，[L265](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py#L265) 会真的去 GET 这个 XML 文件，`_direct_page_text` 找不到 article/main/body 就把整份 XML 剥标签后塞进上下文——全是 URL 文本，没有任何答案内容。
+
+---
+
+### 缺陷 2：纯中文 query 时打分词集为空，救援整体失效
+
+**相关代码**（[L138-143](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py#L138-L143)）：
+
+```python
+needles = {
+    token.lower()
+    for value in (plan.query, *plan.required_content_terms)
+    for token in re.findall(r"[A-Za-z0-9]+", value)
+    if len(token) >= 2
+}
+```
+
+**为什么有风险**：`re.findall(r"[A-Za-z0-9]+", ...)` 只提取 ASCII 字母和数字。举例：
+
+| query                                      | needles 结果                               |
+| ------------------------------------------ | ------------------------------------------ |
+| `PostgreSQL 16 row level security`         | `{postgresql, 16, row, level, security}` ✅ |
+| `PostgreSQL 16 行级安全策略`               | `{postgresql, 16}` ⚠️ 尚可                  |
+| `查询某国产数据库官方文档中主备切换的配置` | `{}` ❌ 空集                                |
+
+needles 为空后，看打分这一行（[L157-159](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py#L157-L159)）：
+
+```python
+score = sum(token in compact_url for token in needles)
+if score:
+    ranked.append((score, url))
+```
+
+对空集求和永远是 0 → `if score:` 永远为假 → `ranked` 为空 → 函数返回 `[]`。
+
+也就是说：**凡是中文官网 + 中文 query 的场景，sitemap 救援机制从头到尾不会产出任何候选**，然后链路以"Web Search 未返回可用结果"报错结束。这不是偶发质量问题，是整类场景的结构性盲区。
+
+---
+
+### 缺陷 3：打分和候选信息都太弱，选择器模型"盲选"
+
+**相关代码**（[L156-163](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py#L156-L163)）：
+
+```python
+compact_url = re.sub(r"[^a-z0-9]", "", url.lower())
+score = sum(token in compact_url for token in needles)
+...
+ranked.sort(key=lambda item: (-item[0], len(item[1]), item[1]))
+return [
+    {"title": url, "url": url, "summary": "official sitemap candidate"}
+    for _, url in ranked[:20]
+]
+```
+
+三个叠加的问题：
+
+**(a) 子串匹配没有区分度。** 打分是把 URL 里所有非字母数字字符剥掉后做 `token in compact_url`。像 `docs`、`16` 这类词会命中该站点的**几乎每一个页面**（PostgreSQL 文档全在 `/docs/16/` 下），导致大量页面同分。
+
+**(b) 同分时按 URL 长度升序排。** `sort` 的第二个键是 `len(item[1])`——越短越靠前。同分情况下，`https://www.postgresql.org/docs/16/` 这种**章节首页**会排在 `https://www.postgresql.org/docs/16/ddl-rowsecurity.html` 这种**真正答案页**前面。救援本意是找精确页面，排序规则却优先给泛化入口页。
+
+**(c) 交给选择器的候选没有任何语义信息。** 候选字典里 `title` 就是 URL 本身，`summary` 是固定字符串 `"official sitemap candidate"`。对比 Bocha 真实结果（有真实标题和摘要），选择器模型在这里只能看 URL 路径串做判断。再叠加 [planner 只取前 10 个候选](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/rag/direct_web_search_planner.py#L221)（`candidates[:10]`），而排序又偏向短 URL——正确答案页完全可能被挤在 10 名之外，选择器根本看不到它。
+
+---
+
+### 总结：三个缺陷的联动后果
+
+```
+Bocha 未召回官方页面
+   ↓
+sitemap 救援触发
+   ↓
+缺陷1: 站点没有 /sitemap.xml 或是 sitemap 索引 → 返回 [] 或返回 XML 地址
+缺陷2: 中文 query → needles 空 → 必然返回 []
+缺陷3: 即使有候选，排序偏向泛化页 + 选择器盲选 + 只取前10 → 选错或选不到
+   ↓
+最终 "Web Search 未返回可用结果"，或更糟：把 sitemap XML 文本当正文喂给生成层
+```
+
+其中**缺陷 2 是必现的**（中文 query 100% 失效），**缺陷 1 的 (b) 是最危险的**（不是失败，而是产出错误内容），**缺陷 3 是概率性的**（降低救援命中率）。
+
+需要我按这三个点给出具体修复方案吗？
+
+
+
+## 17.1.1风险二的修复方案（2026年8月6日）
+
+下面给出完整修复方案，只描述设计与代码，**不修改任何文件**。所有改动集中在 [rag_agent_nodes.py](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py) 的 sitemap 救援部分，`create_call_direct_web_node` 的调用点签名不变。
+
+---
+
+### 一、结构重构：拆出三个可独立测试的纯函数
+
+当前 `_official_sitemap_candidates` 把"发现 sitemap、解析 XML、打分排序"混在一起，无法离线测试。重构为：
+
+```
+_official_sitemap_candidates()          # 编排层，签名不变
+  ├── _collect_sitemap_page_urls()      # 修复缺陷 1：发现 + 解析
+  │     ├── _robots_sitemap_urls()
+  │     ├── _fetch_sitemap_tree()
+  │     └── _sitemap_child_locs()
+  └── _rank_sitemap_candidates()        # 修复缺陷 2、3：纯函数，可离线测试
+```
+
+---
+
+### 二、缺陷 1 修复：路径发现 + 区分索引与页面
+
+### 1a. robots.txt 回退（解决 `/sitemap.xml` 404 静默失效）
+
+```python
+_SITEMAP_DEFAULT_PATH = "/sitemap.xml"
+_SITEMAP_MAX_BYTES = 5_000_000
+_SITEMAP_MAX_CHILD_INDEXES = 3   # 索引最多展开 3 个子 sitemap
+_SITEMAP_MAX_ROBOTS_DECLARED = 2 # robots.txt 最多尝试 2 个声明地址
+
+async def _robots_sitemap_urls(http_client, *, site: str) -> list[str]:
+    """按标准从 robots.txt 读取 Sitemap: 声明；失败返回空列表。"""
+    try:
+        response = await http_client.get(f"https://{site}/robots.txt", timeout=10.0)
+        response.raise_for_status()
+    except httpx.HTTPError:
+        return []
+    declared: list[str] = []
+    for line in response.text.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith("sitemap:"):
+            declared.append(stripped[len("sitemap:"):].strip())
+    return declared
+```
+
+### 1b. 只收集直接子节点的 `<loc>`（解决索引地址被当页面）
+
+旧代码 `root.iter()` + `tag.endswith("loc")` 无法区分 `<url><loc>` 和 `<sitemap><loc>`。新代码按**节点类型**分别收集：
+
+```python
+def _xml_local_name(tag: object) -> str:
+    """去掉 XML 命名空间前缀；注释等非字符串节点返回空串。"""
+    if not isinstance(tag, str):
+        return ""
+    return tag.rsplit("}", 1)[-1].lower()
+
+def _sitemap_child_locs(root, *, child_kind: str) -> list[str]:
+    """只收集根节点直接子节点中指定类型（url 或 sitemap）的 <loc>。
+
+    sitemapindex 的子节点是 <sitemap>，urlset 的子节点是 <url>；
+    按类型收集后，索引地址不会再被当成网页候选。
+    """
+    locs: list[str] = []
+    for element in root:
+        if _xml_local_name(element.tag) != child_kind:
+            continue
+        for child in element:
+            if _xml_local_name(child.tag) == "loc" and child.text:
+                locs.append(child.text.strip())
+    return locs
+```
+
+### 编排层：先标准路径，再 robots；遇索引只展开一层
+
+```python
+async def _collect_sitemap_page_urls(http_client, *, site: str) -> list[str]:
+    lower_site = site.lower()
+
+    def allowed(url: str) -> bool:
+        parsed = urlparse(url)
+        hostname = (parsed.hostname or "").lower()
+        return parsed.scheme == "https" and (
+            hostname == lower_site or hostname.endswith(f".{lower_site}")
+        )
+
+    def pages_from_tree(root) -> list[str]:
+        pages = [u for u in _sitemap_child_locs(root, child_kind="url") if allowed(u)]
+        if pages:
+            return pages
+        # 根是 <sitemapindex>：只展开一层，不递归，防止无限下载
+        collected: list[str] = []
+        for sub in _sitemap_child_locs(root, child_kind="sitemap")[:_SITEMAP_MAX_CHILD_INDEXES]:
+            if not allowed(sub):
+                continue
+            sub_root = await _fetch_sitemap_tree(http_client, sub)  # 见下方说明
+            if sub_root is not None:
+                collected.extend(
+                    u for u in _sitemap_child_locs(sub_root, child_kind="url") if allowed(u)
+                )
+        return collected
+    ...
+    root = await _fetch_sitemap_tree(http_client, f"https://{site}{_SITEMAP_DEFAULT_PATH}")
+    if root is not None:
+        return pages_from_tree(root)
+    # 缺陷 1a：标准路径不存在时回退 robots.txt 声明
+    for declared in await _robots_sitemap_urls(http_client, site=site)[:_SITEMAP_MAX_ROBOTS_DECLARED]:
+        declared_root = await _fetch_sitemap_tree(http_client, declared)
+        if declared_root is not None:
+            pages = pages_from_tree(declared_root)
+            if pages:
+                return pages
+    return []
+```
+
+> 注：`pages_from_tree` 因内部 await 需定义为内层 async 函数；`_fetch_sitemap_tree` 即现有 GET + 5MB 上限 + `except (httpx.HTTPError, ElementTree.ParseError)` 逻辑原样提取。HTTP 请求总量上界约 1 + 3（索引展开）+ 1（robots）+ 2×(1+3)（声明回退）≈ 13 次，全部 10 秒超时，不会无限膨胀。
+
+---
+
+### 三、缺陷 2 修复：中文 query 的确定性回退
+
+先说明一个事实：官方站点 URL 几乎全是 ASCII，**把中文分词拿去匹配 URL 永远命不中**，所以正确做法不是"提取中文 token"，而是承认 URL 文本排序失效，走结构化回退：
+
+```python
+_ASCII_TOKEN = re.compile(r"[A-Za-z0-9]{2,}")
+_DOC_PATH_HINTS = ("/docs/", "/doc/", "/documentation/", "/guide/", "/help/", "/wiki/", "/manual/")
+
+def _sitemap_needles(plan: DirectWebSearchPlan) -> set[str]:
+    """打分词集合：query + 主题词 + URL 片段约束（新增 fragments，信号更准）。"""
+    return {
+        token.lower()
+        for value in (
+            plan.query,
+            *plan.required_content_terms,
+            *plan.required_url_fragments,
+        )
+        for token in _ASCII_TOKEN.findall(value)
+    }
+
+def _doc_root_score(url: str) -> int:
+    lowered = url.lower()
+    return sum(hint in lowered for hint in _DOC_PATH_HINTS)
+```
+
+打分逻辑中（见下一节）：`needles` 非空走 URL 文本打分；**为空时不再返回全空，而是回退到文档目录启发式**，仍无候选才返回 `[]` 走原有明确报错路径——不产生静默垃圾。
+
+---
+
+### 四、缺陷 3 修复：IDF 加权 + 深路径优先 + 候选携带命中信息
+
+```python
+def _rank_sitemap_candidates(entries: list[str], needles: set[str]) -> list[dict[str, str]]:
+    """纯函数：把去重后的 sitemap 页面 URL 排序成最多 20 个候选。"""
+    unique_entries = list(dict.fromkeys(entries))
+
+    if needles:
+        hits: list[tuple[str, set[str]]] = []
+        doc_freq: dict[str, int] = defaultdict(int)
+        for url in unique_entries:
+            compact = re.sub(r"[^a-z0-9]", "", url.lower())
+            matched = {token for token in needles if token in compact}
+            if matched:
+                hits.append((url, matched))
+                for token in matched:
+                    doc_freq[token] += 1
+        # 修复 3a：docs/16 这类泛化词几乎命中全站，用 1/文档频率加权拉开区分度
+        scored = [
+            (sum(1.0 / doc_freq[token] for token in matched), url, matched)
+            for url, matched in hits
+        ]
+        # 修复 3b：同分优先深路径（具体页面），废弃旧版"URL 越短越靠前"
+        scored.sort(key=lambda item: (-item[0], -item[1].count("/"), item[1]))
+        return [
+            {
+                "title": url,
+                "url": url,
+                # 修复 3c：把命中的词交给选择器模型，不再是固定字符串
+                "summary": f"official sitemap candidate; matched: {', '.join(sorted(matched))}",
+            }
+            for _, url, matched in scored[:20]
+        ]
+
+    # 缺陷 2 回退：纯中文 query 没有可用 ASCII 词，退化为文档目录启发式
+    doc_pages = [url for url in unique_entries if _doc_root_score(url)]
+    doc_pages.sort(key=lambda url: (-_doc_root_score(url), url))
+    return [
+        {"title": url, "url": url, "summary": "official sitemap candidate; doc-path heuristic"}
+        for url in doc_pages[:20]
+    ]
+```
+
+### 可选配套改动（planner 侧 1 行）
+
+候选选择器目前只取前 10 个候选（[direct_web_search_planner.py L221](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/rag/direct_web_search_planner.py#L221) 的 `candidates[:10]`）。sitemap 候选本身缺少标题语义，建议放宽到 `candidates[:15]`，给选择器更多可见范围。**此项可选，默认建议一起改。**
+
+---
+
+### 五、行为对比表
+
+| 场景                                                | 修复前                                                       | 修复后                                                    |
+| --------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------- |
+| 站点只有 `/sitemap_index.xml` 或位置写在 robots.txt | 404 → 静默返回 `[]`                                          | robots.txt 声明回退                                       |
+| `/sitemap.xml` 是 sitemapindex                      | 子 sitemap 的 **XML 地址被当页面候选**，可能被 GET 后喂给生成层 | 按 `<url>`/`<sitemap>` 类型区分，索引只展开一层取真实页面 |
+| 纯中文 query                                        | needles 空 → **必然返回 `[]`**                               | 回退到文档目录启发式候选，选择器可判 null，无候选才报错   |
+| `docs`、`16` 等泛化词命中全站                       | 全部同分，按 URL 长度升序 → **章节首页排最前**               | IDF 加权 + 深路径优先 → 具体页面排前                      |
+| 选择器拿到的信息                                    | title=URL、summary 固定串                                    | summary 附带命中词列表                                    |
+
+### 六、测试方案
+
+新增 `scripts/phase_15/test_direct_web_sitemap.py`（离线、不发网络请求）：
+
+1. **urlset 正常解析**：构造小型 XML，断言候选 URL 与命中词
+2. **sitemapindex 展开**：索引 XML + mock 子 sitemap，断言不返回 `.xml` 地址
+3. **纯中文 query**：needles 空 → 走 doc-path 启发式分支的断言
+4. **泛化词排序**：构造 `/docs/16/` 与 `/docs/16/ddl-rowsecurity.html`，断言后者排前
+5. robots.txt 回退用 mock http_client 断言
+
+真实 Web 验证沿用现有冻结问题，另加一个 sitemapindex 型站点（如 WordPress 类文档站）实测。
+
+---
+
+请审核。需要调整的点（例如：是否加 robots.txt 回退、`candidates[:15]` 是否采纳、doc-path 启发式的路径清单）确认后我再动手实施。
+
+## 18、遗留问题修复方案：web sitemap 搜索匹配质量低
+
+[文档技术点讲解](D:\AI_Agent_Project\AI_Python_Project\python-agent-study\scripts\docs\TaskPlan--web搜索质量提升技术方案：.md)
+

@@ -1,9 +1,6 @@
 from collections.abc import Callable
-from html import unescape
-import re
 from time import perf_counter
 from urllib.parse import urlparse
-from xml.etree import ElementTree
 
 import httpx
 
@@ -49,7 +46,7 @@ from fast_app.graph.rag.rag_graph_nodes import (
     DIRECT_ANSWER_TEXT,
     should_retrieve_for_query,
 )
-from fast_app.services.exceptions import ExternalServiceError
+from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
 from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor
 from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 from fast_app.services.agent_tasks.agent_task_capability_service import (
@@ -68,6 +65,13 @@ from fast_app.services.rag.direct_web_search_planner import (
     DirectWebSearchPlan,
     DirectWebSearchPlanner,
 )
+from fast_app.services.rag.direct_web_page_fetch import (
+    fetch_direct_web_page_texts,
+    final_url_within_constraint,
+    verify_exact_url_page,
+)
+from fast_app.services.rag.direct_web_page_text import extract_page_text
+from fast_app.services.rag.direct_web_sitemap import _official_sitemap_candidates
 from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
 from fast_app.services.rag.rag_context_assembler import assemble_rag_context
 from fast_app.services.rag.rag_context_assembler import build_context_observation
@@ -77,9 +81,12 @@ from fast_app.services.nl2sql.service import Nl2SqlService
 
 logger = get_logger(__name__)
 
+# 主题词降级时最多保留的候选数：域名/片段硬约束仍然生效，主题词仅作排序信号。
+_CONTENT_TERM_RELAX_MAX = 3
 
-def _matches_direct_web_plan(result, *, plan: DirectWebSearchPlan) -> bool:
-    """确定性检查候选网页是否满足规划器声明的域名、版本和主题契约。"""
+
+def _hard_match_direct_web_plan(result, *, plan: DirectWebSearchPlan) -> bool:
+    """确定性检查域名与 URL 片段硬约束；site 为空时域名检查跳过。"""
 
     parsed = urlparse(result.url)
     hostname = (parsed.hostname or "").lower()
@@ -87,81 +94,97 @@ def _matches_direct_web_plan(result, *, plan: DirectWebSearchPlan) -> bool:
     if site and hostname != site and not hostname.endswith(f".{site}"):
         return False
     lowered_url = result.url.lower()
-    if any(item.lower() not in lowered_url for item in plan.required_url_fragments):
-        return False
+    return not any(
+        item.lower() not in lowered_url for item in plan.required_url_fragments
+    )
+
+
+def _content_term_hit_count(result, *, plan: DirectWebSearchPlan) -> int:
+    """统计主题词在标题、摘要和 summary 中的命中数量。"""
+
     searchable = " ".join(
         (result.title, result.snippet, result.summary)
     ).lower()
-    return all(item.lower() in searchable for item in plan.required_content_terms)
-
-
-def _direct_page_text(raw_html: str) -> str:
-    """把选中的公开页面转换成供现有 RAG 上下文使用的纯文本。"""
-
-    for tag in ("article", "main", "body"):
-        matched = re.search(
-            rf"(?is)<{tag}\b[^>]*>(.*?)</{tag}>",
-            raw_html,
-        )
-        if matched:
-            raw_html = matched.group(1)
-            break
-    without_scripts = re.sub(
-        r"(?is)<(?:script|style|nav|header|footer)\b[^>]*>.*?</(?:script|style|nav|header|footer)>",
-        " ",
-        raw_html,
+    return sum(
+        1 for item in plan.required_content_terms if item.lower() in searchable
     )
-    return " ".join(unescape(re.sub(r"(?s)<[^>]+>", " ", without_scripts)).split())
 
 
-async def _official_sitemap_candidates(
-    http_client: httpx.AsyncClient,
+def _matches_direct_web_plan(result, *, plan: DirectWebSearchPlan) -> bool:
+    """严格过滤：硬约束加全部主题词命中。"""
+
+    if not _hard_match_direct_web_plan(result, plan=plan):
+        return False
+    return _content_term_hit_count(result, plan=plan) == len(
+        plan.required_content_terms
+    )
+
+
+def _relax_content_term_results(
+    raw_results,
+    strict_results: list,
     *,
     plan: DirectWebSearchPlan,
-) -> list[dict[str, str]]:
-    """从官方网站标准 sitemap 提取与当前问题最相关的真实 URL。"""
+) -> list:
+    """严格过滤全拒且存在域名硬约束时，把主题词降级为排序信号。
 
-    if not plan.site:
+    仅 site 非空时启用（域名约束仍强制生效）；general 模式无 site 时
+    保持原有的空结果报错行为，不做无约束降级。
+    """
+
+    if strict_results or not plan.site or not plan.required_content_terms:
         return []
-    try:
-        response = await http_client.get(
-            f"https://{plan.site}/sitemap.xml",
-            timeout=10.0,
+    relaxed = sorted(
+        (
+            item
+            for item in raw_results
+            if _hard_match_direct_web_plan(item, plan=plan)
+        ),
+        key=lambda item: _content_term_hit_count(item, plan=plan),
+        reverse=True,
+    )[:_CONTENT_TERM_RELAX_MAX]
+    if relaxed:
+        logger.warning(
+            "direct_web_content_terms_relaxed %s",
+            format_log_fields(
+                site=plan.site,
+                raw_count=len(raw_results),
+                relaxed_count=len(relaxed),
+            ),
         )
-        response.raise_for_status()
-        if len(response.content) > 5_000_000:
-            return []
-        root = ElementTree.fromstring(response.content)
-    except (httpx.HTTPError, ElementTree.ParseError):
-        return []
+    return relaxed
 
-    needles = {
-        token.lower()
-        for value in (plan.query, *plan.required_content_terms)
-        for token in re.findall(r"[A-Za-z0-9]+", value)
-        if len(token) >= 2
-    }
-    ranked: list[tuple[int, str]] = []
-    for element in root.iter():
-        if not element.tag.endswith("loc") or not element.text:
-            continue
-        url = element.text.strip()
-        parsed = urlparse(url)
-        hostname = (parsed.hostname or "").lower()
-        if parsed.scheme != "https" or (
-            hostname != plan.site.lower()
-            and not hostname.endswith(f".{plan.site.lower()}")
-        ):
-            continue
-        compact_url = re.sub(r"[^a-z0-9]", "", url.lower())
-        score = sum(token in compact_url for token in needles)
-        if score:
-            ranked.append((score, url))
-    ranked.sort(key=lambda item: (-item[0], len(item[1]), item[1]))
-    return [
-        {"title": url, "url": url, "summary": "official sitemap candidate"}
-        for _, url in ranked[:20]
-    ]
+
+def _needs_sitemap_rescue(
+    strict_results: list, relaxed_results: list, *, plan: DirectWebSearchPlan
+) -> bool:
+    """判断是否需要官方 sitemap 救援。
+
+    触发条件：严格过滤无候选通过，且降级候选的主题词命中数全部为 0。
+    这表示搜索引擎只返回了碰巧满足域名/版本硬约束的离题页面，
+    目标官方页大概率不在召回池里，需要直接查官网 sitemap 补召回。
+    降级候选为空时 all() 返回 True，兼容原有“候选全空即救援”行为。
+    """
+
+    if strict_results:
+        return False
+    return all(
+        _content_term_hit_count(item, plan=plan) == 0 for item in relaxed_results
+    )
+
+
+def _build_direct_web_doc(url: str, page_text: str, site: str | None) -> RetrievedDoc:
+    """用选中页面的真实正文构造 Web 检索文档。"""
+
+    return RetrievedDoc(
+        id="web:1",
+        content=f"{url}\n{page_text}",
+        score=1.0,
+        source="web_search",
+        title=url,
+        metadata={"url": url, "site_name": site},
+        retrieval_sources=["web_search"],
+    )
 
 
 def create_call_direct_web_node(
@@ -173,146 +196,262 @@ def create_call_direct_web_node(
     planner = search_planner or DirectWebSearchPlanner(settings)
 
     async def call_direct_web_node(state: RagAgentState) -> dict[str, object]:
-        operation = get_rag_agent_operation(state)
-        plan = await planner.plan(
-            question=state["query"],
-            count=min(max(state["top_k"], 2), 10),
-            langchain_config=build_rag_langchain_child_config(
-                settings=settings,
-                state=state,
-                pipeline_provider="rag_agent",
-                operation=operation,
-                step_name="call_direct_web",
-                step_index=get_rag_agent_step_index(operation, "call_direct_web"),
-                child_name="search_plan",
-                run_name=f"rag_agent_pipeline.{operation}.call_direct_web.search_plan",
-            ),
-        )
-        direct_doc: RetrievedDoc | None = None
-        async with httpx.AsyncClient(follow_redirects=True) as http_client:
-            results = []
-            raw_results = await search_web_with_bocha(
-                settings=settings,
-                http_client=http_client,
-                query=plan.query,
-                count=plan.count,
-                site=plan.site,
-            )
-            if plan.result_strategy == "single_best_page":
-                strict_results = [
-                    item
-                    for item in raw_results
-                    if _matches_direct_web_plan(item, plan=plan)
-                ]
-                candidate_payload = [
+        # 与其他节点一致：用 step trace 包裹整个工具执行，
+        # search_plan 与 candidate_selection 两个 LLM 子调用挂在同一个
+        # call_direct_web run 下，而不是各自成为独立顶层 trace。
+        async with rag_agent_langsmith_step_trace(
+            settings=settings,
+            state=state,
+            step_name="call_direct_web",
+            run_type="tool",
+            inputs=build_rag_agent_step_inputs(state, tool_name="web_search"),
+        ) as trace_run:
+            try:
+                result = await _execute_direct_web_search(
+                    state=state, planner=planner, settings=settings
+                )
+            except Exception as exc:
+                # 工具失败先分类成 AgentErrorDecision，而不是马上让整个 graph 中断。
+                # NoSearchResultError 会被转成 final_answer，外部服务失败通常会 fail_request。
+                decision = classify_agent_error(
+                    exc, error_node="call_direct_web", tool_name="web_search"
+                )
+                logger.warning(
+                    "rag_agent_tool %s",
+                    format_log_fields(
+                        event="rag_agent.call_direct_web.failed",
+                        pipeline_provider="rag_agent",
+                        tool_name="web_search",
+                        error_type=type(exc).__name__,
+                        error_kind=decision.kind,
+                        error_action=decision.action,
+                    ),
+                )
+                if trace_run is not None:
+                    trace_run.add_outputs(
+                        {
+                            "tool_name": "web_search",
+                            "tool_error": type(exc).__name__,
+                            "error_kind": decision.kind,
+                            "error_action": decision.action,
+                        }
+                    )
+                return {
+                    "tool_name": "web_search",
+                    "tool_call_count": state["tool_call_count"] + 1,
+                    "tool_error": type(exc).__name__,
+                    "error_decision": decision,
+                    "final_reason": decision.kind,
+                }
+
+            if trace_run is not None:
+                docs = result.get("docs") or []
+                trace_run.add_outputs(
                     {
-                        "title": item.title,
-                        "url": item.url,
-                        "summary": item.summary or item.snippet,
+                        "tool_name": "web_search",
+                        "tool_result_count": len(docs),
+                        "top_doc_urls": [
+                            str((doc.metadata or {}).get("url") or doc.title)
+                            for doc in docs[:3]
+                        ],
                     }
-                    for item in raw_results
-                    if _matches_direct_web_plan(
-                        item,
-                        plan=plan.model_copy(
-                            update={
-                                "required_url_fragments": [],
-                                "required_content_terms": [],
-                            }
-                        ),
-                    )
-                ]
-                if (
-                    not strict_results
-                    and plan.source_mode == "official"
-                    and plan.site is not None
-                ):
-                    candidate_payload.extend(
-                        await _official_sitemap_candidates(http_client, plan=plan)
-                    )
-                if plan.exact_url:
+                )
+            return result
+
+    return call_direct_web_node
+
+
+async def _execute_direct_web_search(
+    *,
+    state: RagAgentState,
+    planner: DirectWebSearchPlanner,
+    settings: Settings,
+) -> dict[str, object]:
+    """Direct Web 检索执行体；异常由节点包裹层统一分类。"""
+
+    operation = get_rag_agent_operation(state)
+    top_k = state["top_k"]
+    plan = await planner.plan(
+        question=state["query"],
+        count=min(max(top_k, 2), 10),
+        langchain_config=build_rag_langchain_child_config(
+            settings=settings,
+            state=state,
+            pipeline_provider="rag_agent",
+            operation=operation,
+            step_name="call_direct_web",
+            step_index=get_rag_agent_step_index(operation, "call_direct_web"),
+            child_name="search_plan",
+            run_name=f"rag_agent_pipeline.{operation}.call_direct_web.search_plan",
+        ),
+    )
+    direct_doc: RetrievedDoc | None = None
+    async with httpx.AsyncClient(follow_redirects=True) as http_client:
+        results = []
+        fulltext_by_url: dict[str, str] = {}
+        raw_results = await search_web_with_bocha(
+            settings=settings,
+            http_client=http_client,
+            query=plan.query,
+            count=plan.count,
+            site=plan.site,
+        )
+        strict_results = [
+            item
+            for item in raw_results
+            if _matches_direct_web_plan(item, plan=plan)
+        ]
+        relaxed_results = _relax_content_term_results(
+            raw_results, strict_results, plan=plan
+        )
+        usable_results = strict_results or relaxed_results
+        if plan.result_strategy == "single_best_page":
+            # 候选池保留域名与 URL 片段硬约束（用户明确要求的版本/路径
+            # 必须在选择阶段继续生效），只把主题词放宽为软信号，
+            # 避免错误版本页面进入选择器视野。
+            candidate_payload = [
+                {
+                    "title": item.title,
+                    "url": item.url,
+                    "summary": item.summary or item.snippet,
+                }
+                for item in raw_results
+                if _matches_direct_web_plan(
+                    item,
+                    plan=plan.model_copy(
+                        update={
+                            "required_content_terms": [],
+                        }
+                    ),
+                )
+            ]
+            if (
+                _needs_sitemap_rescue(
+                    strict_results, relaxed_results, plan=plan
+                )
+                and plan.source_mode == "official"
+                and plan.site is not None
+            ):
+                candidate_payload.extend(
+                    await _official_sitemap_candidates(http_client, plan=plan)
+                )
+            exact_url_text: str | None = None
+            if plan.exact_url:
+                exact_url_text = await verify_exact_url_page(
+                    http_client, plan.exact_url, site=plan.site
+                )
+                if exact_url_text is not None:
                     candidate_payload.append(
                         {
                             "title": plan.exact_url,
                             "url": plan.exact_url,
-                            "summary": "planner candidate",
+                            "summary": "planner candidate (verified)",
                         }
                     )
-                unique_candidates = list(
-                    {item["url"]: item for item in candidate_payload}.values()
-                )
-                selected_url = await planner.select_candidate_url(
-                    question=state["query"],
-                    plan=plan,
-                    candidates=unique_candidates,
-                    langchain_config=build_rag_langchain_child_config(
-                        settings=settings,
-                        state=state,
-                        pipeline_provider="rag_agent",
-                        operation=operation,
-                        step_name="call_direct_web",
-                        step_index=get_rag_agent_step_index(
-                            operation, "call_direct_web"
-                        ),
-                        child_name="candidate_selection",
-                        run_name=(
-                            f"rag_agent_pipeline.{operation}."
-                            "call_direct_web.candidate_selection"
-                        ),
+            unique_candidates = list(
+                {item["url"]: item for item in candidate_payload}.values()
+            )
+            selected_url = await planner.select_candidate_url(
+                question=state["query"],
+                plan=plan,
+                candidates=unique_candidates,
+                langchain_config=build_rag_langchain_child_config(
+                    settings=settings,
+                    state=state,
+                    pipeline_provider="rag_agent",
+                    operation=operation,
+                    step_name="call_direct_web",
+                    step_index=get_rag_agent_step_index(
+                        operation, "call_direct_web"
                     ),
-                )
-                if selected_url:
+                    child_name="candidate_selection",
+                    run_name=(
+                        f"rag_agent_pipeline.{operation}."
+                        "call_direct_web.candidate_selection"
+                    ),
+                ),
+            )
+            if selected_url:
+                if selected_url == plan.exact_url and exact_url_text:
+                    # 复用入池预验证时已读取的正文，避免二次请求。
+                    direct_doc = _build_direct_web_doc(
+                        selected_url, exact_url_text, plan.site
+                    )
+                else:
                     try:
                         response = await http_client.get(selected_url, timeout=10.0)
                         response.raise_for_status()
-                        direct_doc = RetrievedDoc(
-                            id="web:1",
-                            content=(
-                                f"{selected_url}\n{_direct_page_text(response.text)}"
-                            ),
-                            score=1.0,
-                            source="web_search",
-                            title=selected_url,
-                            metadata={"url": selected_url, "site_name": plan.site},
-                            retrieval_sources=["web_search"],
-                        )
+                        if not final_url_within_constraint(
+                            str(response.url),
+                            site=plan.site,
+                            original_url=selected_url,
+                        ):
+                            # 重定向逃逸约束：丢弃正文，回退过滤后的摘要。
+                            direct_doc = None
+                        else:
+                            page_text = extract_page_text(response.text)
+                            if page_text:
+                                direct_doc = _build_direct_web_doc(
+                                    selected_url, page_text, plan.site
+                                )
+                        # 正文为空（SPA/骨架页）或重定向逃逸时 direct_doc
+                        # 保持 None，复用下方摘要回退，过滤约束仍然生效。
                     except httpx.HTTPError:
                         direct_doc = None
-                if direct_doc is None:
-                    results = strict_results[:1]
-            else:
-                results = [
-                    result
-                    for result in raw_results
-                    if _matches_direct_web_plan(result, plan=plan)
-                ]
-        docs = [
-            RetrievedDoc(
-                id=f"web:{index}",
-                content="\n".join(
+            if direct_doc is None:
+                results = usable_results[:1]
+        else:
+            results = usable_results
+            # 多来源分支读取前几页真实全文；单页失败回退该文档摘要。
+            fulltext_by_url = dict(
+                await fetch_direct_web_page_texts(
+                    http_client,
+                    [result.url for result in results],
+                    site=plan.site,
+                )
+            )
+    docs = [
+        RetrievedDoc(
+            id=f"web:{index}",
+            content=(
+                f"{result.url}\n{fulltext_by_url[result.url]}"
+                if fulltext_by_url.get(result.url)
+                else "\n".join(
                     item
                     for item in (result.title, result.snippet, result.summary, result.url)
                     if item
-                ),
-                score=1.0,
-                source="web_search",
-                title=result.title,
-                metadata={"url": result.url, "site_name": result.site_name},
-                retrieval_sources=["web_search"],
-            )
-            for index, result in enumerate(results, start=1)
-        ]
-        if direct_doc is not None:
-            docs = [direct_doc]
-        if not docs:
-            raise ExternalServiceError("Web Search 未返回可用结果")
-        return {
-            "docs": docs,
-            "tool_name": "web_search",
-            "tool_error": None,
-            "tool_call_count": state["tool_call_count"] + 1,
-        }
+                )
+            ),
+            score=1.0,
+            source="web_search",
+            title=result.title,
+            metadata={"url": result.url, "site_name": result.site_name},
+            retrieval_sources=["web_search"],
+        )
+        for index, result in enumerate(results, start=1)
+    ]
+    if direct_doc is not None:
+        docs = [direct_doc]
+    if not docs:
+        raise NoSearchResultError("Web Search 未返回可用结果")
+    return {
+        "docs": docs,
+        "tool_name": "web_search",
+        "tool_error": None,
+        "error_decision": None,
+        "tool_call_count": state["tool_call_count"] + 1,
+    }
 
-    return call_direct_web_node
+
+def route_after_direct_web(state: RagAgentState) -> RagAgentRoute:
+    """direct_web 工具后按错误决策分流；成功进入上下文构建。"""
+
+    decision = state.get("error_decision")
+    if decision is not None:
+        if decision.action == "final_answer":
+            return "final_error_answer"
+        return "fail_request"
+    return "build_context"
 
 
 def get_rag_agent_operation(state: RagAgentState) -> str:

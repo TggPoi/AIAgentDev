@@ -18,6 +18,7 @@ from fast_app.graph.rag_agent.rag_agent_nodes import (
     create_execute_task_plan_node,
     create_next_action_decision_node,
     create_rag_agent_direct_answer_node,
+    route_after_direct_web,
     route_after_loop_check,
     route_after_tool_call,
 )
@@ -171,7 +172,17 @@ def build_rag_agent_graph(
     )
     # 成功路径：knowledge_retrieval -> rerank -> build_context -> generate_answer。
     builder.add_edge("rerank", "build_context")
-    builder.add_edge("call_direct_web", "build_context")
+    # direct_web 工具后与 knowledge_retrieval 同样受错误策略管控：
+    # 成功进入 build_context，可解释错误进入最终错误回答，不可恢复错误终止请求。
+    builder.add_conditional_edges(
+        "call_direct_web",
+        route_after_direct_web,
+        {
+            "build_context": "build_context",
+            "final_error_answer": "final_error_answer",
+            "fail_request": "fail_request",
+        },
+    )
     builder.add_edge("build_context", "generate_answer")
     # 终止路径：直接回答、可解释错误回答、不可恢复错误、正常生成回答。
     builder.add_edge("direct_answer", END)

@@ -5,20 +5,24 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import json
+import logging
 from typing import Literal
 from urllib.parse import urlparse
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from fast_app.core.config import Settings
 from fast_app.services.exceptions import ExternalServiceError
 
 
+logger = logging.getLogger(__name__)
+
+
 DIRECT_WEB_SEARCH_PLANNER_PROMPT = """你是单步骤公开网络检索的参数规划器，不回答用户问题。
-只返回一个符合 Schema 的结构化对象；必须包含且只能包含 query、count、source_mode、result_strategy、site、exact_url、required_url_fragments、required_content_terms 八个字段，不得输出解释、Markdown 或额外字段。
+只返回一个符合 Schema 的结构化对象；必须包含且只能包含 query、count、source_mode、result_strategy、site、exact_url、required_url_fragments、required_content_terms、url_search_terms 九个字段，不得输出解释、Markdown 或额外字段。
 
 字段格式是硬性契约：
 - query：非空 JSON 字符串，只写适合搜索引擎的简洁关键词；忠实保留用户的产品、版本、主题、时间范围和来源要求，不写回答。
@@ -27,8 +31,9 @@ DIRECT_WEB_SEARCH_PLANNER_PROMPT = """你是单步骤公开网络检索的参数
 - result_strategy：只能是 "single_best_page" 或 "multiple_sources"。
 - site：域名 JSON 字符串或 JSON null；域名不含协议、端口和路径。没有站点限制时输出 null，禁止输出空字符串或字符串 "null"。
 - exact_url：完整 HTTPS URL 的 JSON 字符串或 JSON null。只有明确知道目标公开页面时才填写；否则输出 null，禁止猜测、空字符串或字符串 "null"。
-- required_url_fragments：JSON 字符串数组，最多 5 项；没有内容输出 []，单个值也输出 ["值"]，禁止输出字符串或 null。
-- required_content_terms：JSON 字符串数组，最多 5 项；没有内容输出 []，单个值也输出 ["值"]，禁止输出字符串或 null。
+- required_url_fragments：JSON 字符串数组，最多 5 项；用户明确提到产品版本号时必须包含版本号（如“PostgreSQL 16”必须输出 ["16"]），这是硬性要求不是可选项；没有内容输出 []，单个值也输出 ["值"]，禁止输出字符串或 null。
+- required_content_terms：JSON 字符串数组，最多 2 项；没有内容输出 []，单个值也输出 ["值"]，禁止输出字符串或 null。
+- url_search_terms：JSON 字符串数组，最多 5 项；把用户问题翻译或提取为可能出现在官方文档 URL 中的英文关键词，例如"主备切换"对应 ["failover", "ha", "replication"]；没有内容输出 []，单个值也输出 ["值"]，禁止输出字符串或 null。
 
 来源与结果策略必须独立判断：
 - 用户要求官方、官网、官方文档或 official：source_mode="official"，site 必须是对应官方网站域名；未说明数量时 result_strategy="single_best_page"。
@@ -43,9 +48,12 @@ DIRECT_WEB_SEARCH_PLANNER_PROMPT = """你是单步骤公开网络检索的参数
 - source_mode="official" 时 site 不能是 null。
 - exact_url 非 null 时 site 不能是 null，且 exact_url 的域名必须等于 site 或属于其子域名。
 - required_url_fragments 只放用户明确要求且应出现在 URL 中的版本或路径片段。
-- required_content_terms 只放用于排除同站无关页面的少量主题短语，并使用目标资料常用语言。
+- 用户明确提到产品版本号（如“PostgreSQL 16”“MySQL 8.0”“Python 3.13”）时，必须把版本号作为独立片段写入 required_url_fragments，例如 ["16"]、["8.0"]、["3.13"]；版本号用最可能出现在 URL 中的写法。
+- 用户没有提到版本号时禁止编造版本片段；不要为了凑数重复产品名。
+- required_content_terms 最多 2 项，必须使用目标资料的常用语言：英文站点资料只能输出英文短语，中文站点资料只能输出中文短语，禁止混用语言；只放无法从产品名或版本号推出的主题短语。
 
 输出前逐字段检查 JSON 类型、枚举值、null、数组和交叉字段约束。
+完整示例：用户问“PostgreSQL 16 官方文档中行级安全策略的作用”时，required_url_fragments 必须是 ["16"]，不能是 []。
 """
 
 DIRECT_WEB_CANDIDATE_SELECTOR_PROMPT = """你是单页面候选选择器，不回答用户问题。
@@ -100,12 +108,17 @@ class DirectWebSearchPlan(BaseModel):
     required_url_fragments: list[str] = Field(
         default_factory=list,
         max_length=5,
-        description='用户明确要求且必须出现在结果 URL 中的版本或路径片段，必须是最多 5 项的 JSON 字符串数组；无内容输出 []，单个值也输出 ["值"]，禁止输出字符串、null 或非字符串元素。',
+        description='用户明确要求且必须出现在结果 URL 中的版本号或路径片段，必须是最多 5 项的 JSON 字符串数组；用户明确提到产品版本号时必须包含该版本号片段（如 PostgreSQL 16 输出 ["16"]），未提到版本时禁止编造；无内容输出 []，单个值也输出 ["值"]，禁止输出字符串、null 或非字符串元素。',
     )
     required_content_terms: list[str] = Field(
         default_factory=list,
+        max_length=2,
+        description='用于排除同站无关页面、且候选标题或摘要应包含的主题短语，最多 2 项且必须使用目标资料的常用语言（英文站点资料输出英文、中文站点资料输出中文）；必须是最多 2 项的 JSON 字符串数组，无内容输出 []，单个值也输出 ["值"]，禁止输出字符串、null 或非字符串元素。',
+    )
+    url_search_terms: list[str] = Field(
+        default_factory=list,
         max_length=5,
-        description='用于排除同站无关页面、且候选标题或摘要应包含的主题短语，必须是最多 5 项的 JSON 字符串数组；无内容输出 []，单个值也输出 ["值"]，禁止输出字符串、null 或非字符串元素。',
+        description='从用户问题翻译或提取的、可能出现在官方文档 URL 中的英文（或拼音）关键词，用于非英文问题的候选页面匹配，例如"主备切换"对应 ["failover", "ha", "replication"]；必须是最多 5 项的 JSON 字符串数组，无内容输出 []，单个值也输出 ["值"]，禁止输出字符串、null 或非字符串元素。',
     )
 
     @model_validator(mode="after")
@@ -147,6 +160,66 @@ class DirectWebCandidateSelection(BaseModel):
     )
 
 
+def _extract_structured_payload(value: object) -> object:
+    """从结构化输出中取出参数字典。
+
+    include_raw=True 时 LangChain 返回 {raw, parsed, parsing_error}，
+    解析失败不会抛异常而是把原始 tool_call 参数保留在 raw 中；
+    同时兼容直接返回模型或字典的测试桩。
+    """
+
+    if isinstance(value, BaseModel):
+        return value.model_dump()
+    if isinstance(value, dict) and "raw" in value:
+        raw = value["raw"]
+        tool_calls = getattr(raw, "tool_calls", None)
+        if tool_calls:
+            return tool_calls[0].get("args")
+        content = getattr(raw, "content", None)
+        if isinstance(content, str) and content.strip():
+            return json.loads(content)
+        parsed = value.get("parsed")
+        if parsed is not None:
+            return parsed.model_dump() if isinstance(parsed, BaseModel) else parsed
+        raise ValueError("结构化输出为空")
+    return value
+
+
+def validate_direct_web_plan_payload(payload: object) -> DirectWebSearchPlan:
+    """两阶段校验搜索参数；无效 exact_url 只被丢弃，不拖垮整个规划。
+
+    exact_url 是乐观提示而非必需输入：模型层校验仍拒绝非法值，
+    但服务层遇到校验失败时会先把 exact_url 置空重试一次，
+    主搜索链路（Bocha 搜索 + 白名单选择器 + 预验证）不受影响。
+    置空重试仍失败时把原始 exact_url 记入告警日志再外抛，
+    避免丢失问题现场。
+    """
+
+    try:
+        return DirectWebSearchPlan.model_validate(payload)
+    except ValidationError:
+        # 模型可能输出空字符串、http:// 等非法 exact_url；只要该键非 None
+        # 就置空重试，不依赖值的真值判断（空字符串同样非法）。
+        if not isinstance(payload, dict) or payload.get("exact_url") is None:
+            raise
+        exact_url = payload.get("exact_url")
+        logger.warning(
+            "direct_web_exact_url_dropped exact_url=%r", exact_url
+        )
+        try:
+            return DirectWebSearchPlan.model_validate(
+                {**payload, "exact_url": None}
+            )
+        except ValidationError as exc:
+            logger.warning(
+                "direct_web_plan_rejected_with_dropped_exact_url "
+                "exact_url=%r error=%s",
+                exact_url,
+                exc,
+            )
+            raise
+
+
 class DirectWebSearchPlanner:
     """使用现有 Router 模型连接生成通用 WebSearch 参数。"""
 
@@ -178,6 +251,7 @@ class DirectWebSearchPlanner:
                 self._model.with_structured_output(
                     DirectWebSearchPlan,
                     method=self._settings.agent_router_structured_output_method,
+                    include_raw=True,
                 ).ainvoke(
                     [
                         SystemMessage(content=DIRECT_WEB_SEARCH_PLANNER_PROMPT),
@@ -187,7 +261,7 @@ class DirectWebSearchPlanner:
                 ),
                 timeout=self._settings.agent_router_timeout_seconds,
             )
-            plan = DirectWebSearchPlan.model_validate(value)
+            plan = validate_direct_web_plan_payload(_extract_structured_payload(value))
         except Exception as exc:
             raise ExternalServiceError("Direct Web 搜索参数生成失败") from exc
 
@@ -218,7 +292,7 @@ class DirectWebSearchPlanner:
             "source_mode": plan.source_mode,
             "result_strategy": plan.result_strategy,
             "site": plan.site,
-            "untrusted_candidates": candidates[:10],
+            "untrusted_candidates": candidates[:15],
         }
         try:
             value = await asyncio.wait_for(

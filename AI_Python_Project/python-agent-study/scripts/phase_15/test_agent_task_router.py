@@ -22,6 +22,7 @@ from fast_app.graph.rag_agent import rag_agent_nodes as nodes_module
 from fast_app.graph.rag_agent.rag_agent_state import build_rag_agent_initial_state
 from fast_app.schemas.rag_chat_schema import RagChatRequest
 from fast_app.services.exceptions import ExternalServiceError
+from fast_app.services.rag.direct_web_page_text import extract_page_text
 from fast_app.services.rag.direct_web_search_planner import (
     DIRECT_WEB_CANDIDATE_SELECTOR_PROMPT,
     DIRECT_WEB_SEARCH_PLANNER_PROMPT,
@@ -294,18 +295,43 @@ async def main() -> None:
         def __init__(self, plan: DirectWebSearchPlan) -> None:
             self.search_plan = plan
             self.selection_calls = 0
+            self.last_candidates: list[dict[str, str]] = []
 
         async def plan(self, **_kwargs):
             return self.search_plan
 
         async def select_candidate_url(self, **kwargs):
             self.selection_calls += 1
+            self.last_candidates = kwargs["candidates"]
             return kwargs["candidates"][0]["url"]
 
     async def fake_web_search(**kwargs):
         observed_web_calls.append(kwargs)
         site = kwargs["site"]
         domain = site or "example.com"
+        # query 里带 "has16"/"version15" 时模拟搜索引擎同时召回
+        # 新旧版本页面，用于验证候选池的 URL 片段硬约束。
+        extra = []
+        if "has16" in kwargs.get("query", ""):
+            extra.append(
+                SimpleNamespace(
+                    title="New version page",
+                    snippet="current docs",
+                    summary="version 16 page",
+                    url=f"https://{domain}/docs/16/page.html",
+                    site_name=domain,
+                )
+            )
+        if "version15" in kwargs.get("query", ""):
+            extra.append(
+                SimpleNamespace(
+                    title="Old version page",
+                    snippet="legacy docs",
+                    summary="version 15 page",
+                    url=f"https://{domain}/docs/15/page.html",
+                    site_name=domain,
+                )
+            )
         return [
             SimpleNamespace(
                 title="FastAPI lifespan solution one",
@@ -321,11 +347,17 @@ async def main() -> None:
                 url=f"https://{domain}/questions/2",
                 site_name=domain,
             ),
+            *extra,
         ]
 
     class FakePageResponse:
         content = b""
-        text = "<main><h1>FastAPI lifespan</h1><p>Selected page</p></main>"
+        # 正文必须超过正文提取的最小有效字符数，才能命中全文路径。
+        text = (
+            "<main><h1>FastAPI lifespan</h1><p>Selected page</p>"
+            "<p>" + "FastAPI lifespan 实践说明。" * 30 + "</p></main>"
+        )
+        url = "https://docs.python.org/3/library/typing.html"
 
         def raise_for_status(self):
             return None
@@ -422,16 +454,38 @@ async def main() -> None:
         )
         assert best_planner.selection_calls == 1
         assert len(best_update["docs"]) == 1
+
+        # 盲区 A 回归：候选池必须保留 URL 片段硬约束，
+        # 错误版本页面不得进入选择器视野。
+        version_update, version_planner = await run_direct_web_case(
+            "查询 PostgreSQL 16 官方文档",
+            DirectWebSearchPlan(
+                query="PostgreSQL 16 row security has16 version15",
+                count=2,
+                source_mode="official",
+                result_strategy="single_best_page",
+                site="docs.python.org",
+                required_url_fragments=["16"],
+            ),
+        )
+        assert version_planner.selection_calls == 1
+        candidate_urls = [
+            item["url"] for item in version_planner.last_candidates
+        ]
+        assert all("16" in url for url in candidate_urls)
+        assert len(version_update["docs"]) == 1
     finally:
         nodes_module.search_web_with_bocha = original_web_search
         nodes_module.httpx.AsyncClient = original_http_client
 
-    assert nodes_module._direct_page_text(
+    assert extract_page_text(
         "<style>hidden</style><h1>Row Security</h1><p>Policy &amp; role</p>"
-    ) == "Row Security Policy & role"
-    assert nodes_module._direct_page_text(
-        "<body><nav>menu</nav><main><h1>Workers</h1><p>Multiple processes</p></main></body>"
-    ) == "Workers Multiple processes"
+    ) == ""
+    long_body = "<p>" + "行级安全策略实践说明。" * 40 + "</p>"
+    assert (
+        extract_page_text(f"<body><nav>menu</nav>{long_body}</body>")
+        == "行级安全策略实践说明。" * 40
+    )
 
     class FakeSitemapResponse:
         content = b"""<?xml version='1.0'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'><url><loc>https://fastapi.tiangolo.com/deployment/server-workers/</loc></url><url><loc>https://example.com/ignore/</loc></url></urlset>"""
@@ -501,13 +555,15 @@ async def main() -> None:
         "result_strategy": ("两个值之一", "single_best_page", "multiple_sources"),
         "site": ("JSON null", "空字符串", "不代表官方网站"),
         "exact_url": ("HTTPS", "JSON null", "同时提供 site"),
-        "required_url_fragments": ("JSON 字符串数组", "[]", "最多 5 项"),
-        "required_content_terms": ("JSON 字符串数组", "[]", "最多 5 项"),
+        "required_url_fragments": ("JSON 字符串数组", "[]", "最多 5 项", "版本号"),
+        "required_content_terms": ("JSON 字符串数组", "[]", "最多 2 项"),
     }
     for field_name, markers in description_markers.items():
         description = plan_schema[field_name]["description"]
         assert all(marker in description for marker in markers)
     assert "必须包含且只能包含" in DIRECT_WEB_SEARCH_PLANNER_PROMPT
+    assert "版本号" in DIRECT_WEB_SEARCH_PLANNER_PROMPT
+    assert "禁止编造版本片段" in DIRECT_WEB_SEARCH_PLANNER_PROMPT
     assert "输出前逐字段检查" in DIRECT_WEB_SEARCH_PLANNER_PROMPT
 
     selection_description = DirectWebCandidateSelection.model_json_schema()[
@@ -524,7 +580,7 @@ async def main() -> None:
             self.response = response
             self.messages = []
 
-        def with_structured_output(self, _schema, method):
+        def with_structured_output(self, _schema, method, **_kwargs):
             assert method == "function_calling"
             return self
 
@@ -580,6 +636,41 @@ async def main() -> None:
         pass
     else:
         raise AssertionError("非法 Planner 结构化输出必须转换为统一服务异常")
+
+    drop_planner = DirectWebSearchPlanner(settings)
+    drop_planner._model = RecordingStructuredModel(
+        {
+            "query": "PostgreSQL 16 row level security",
+            "count": 3,
+            "source_mode": "official",
+            "result_strategy": "single_best_page",
+            "site": "postgresql.org",
+            "exact_url": "http://www.postgresql.org/docs/current/ddl-rowsecurity.html",
+        }
+    )
+    dropped_plan = await drop_planner.plan(
+        question="查询 PostgreSQL 16 官方文档的行级安全策略",
+        count=3,
+    )
+    assert dropped_plan.exact_url is None
+    assert dropped_plan.site == "postgresql.org"
+
+    empty_url_planner = DirectWebSearchPlanner(settings)
+    empty_url_planner._model = RecordingStructuredModel(
+        {
+            "query": "PostgreSQL 16 row level security",
+            "count": 3,
+            "source_mode": "official",
+            "result_strategy": "single_best_page",
+            "site": "postgresql.org",
+            "exact_url": "",
+        }
+    )
+    empty_url_plan = await empty_url_planner.plan(
+        question="查询 PostgreSQL 16 官方文档的行级安全策略",
+        count=3,
+    )
+    assert empty_url_plan.exact_url is None
 
     print("agent_task_router=passed")
 
