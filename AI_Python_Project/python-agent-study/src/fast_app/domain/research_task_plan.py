@@ -8,7 +8,11 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from fast_app.domain.agent_task_plan import AgentTaskPlanStatus, AgentTaskToolCallTrace
+from fast_app.domain.agent_task_plan import (
+    AgentTaskPlanStatus,
+    AgentTaskToolCallTrace,
+    ResearchEvidenceEvaluation,
+)
 
 
 AgentTaskExternalSourceType = Literal[
@@ -226,6 +230,13 @@ class ResearchTaskSubQuestionResult(BaseModel):
     evidence_validation: AgentTaskSubQuestionEvidenceValidation | None = Field(
         default=None,
         description="Evidence 合法性校验结果；尚未合并 Wave 时为空。",
+    )
+    evaluation: ResearchEvidenceEvaluation | None = Field(
+        default=None,
+        description=(
+            "Worker 最近一次语义证据充分性评估；未进入 Evaluator、派生综合或加载旧快照时为空。"
+            "该字段用于持久化诊断，Requirement 状态仍由服务端根据 Worker 状态和合法 Evidence 聚合。"
+        ),
     )
     warnings: list[str] = Field(default_factory=list, description="影响答案完整性的限制说明。")
     error_code: str | None = Field(default=None, description="Worker 失败时的稳定错误码。")

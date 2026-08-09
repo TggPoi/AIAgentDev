@@ -443,6 +443,9 @@ class AgenticResearchExecutor:
         ]
         if not usable:
             return _failed_legacy_result(sub_question, "DEPENDENCY_EVIDENCE_UNAVAILABLE")
+        has_partial_dependency = any(
+            item.status == "partial" for item in dependency_results
+        )
         context = RagContext(
             query=sub_question.question,
             docs=[],
@@ -468,9 +471,14 @@ class AgenticResearchExecutor:
             sub_question_id=sub_question.sub_question_id,
             question=sub_question.question,
             selected_tool="none",
-            status="completed",
+            status="partial" if has_partial_dependency else "completed",
             answer=answer.strip(),
             attempt_count=1,
+            warnings=(
+                ["至少一个前置子问题仅部分完成，派生综合结果不能标记为完整。"]
+                if has_partial_dependency
+                else []
+            ),
         )
 
     async def _generate_with_trace(
@@ -510,6 +518,7 @@ def _to_research_result(legacy, validation) -> ResearchTaskSubQuestionResult:
         tool_calls=legacy.tool_calls,
         evidence_ids=validation.valid_evidence_refs,
         evidence_validation=validation,
+        evaluation=legacy.evaluation,
         warnings=legacy.warnings,
         error_code=(str(legacy.error).split(":", 1)[0] if legacy.error else None),
         error_message=legacy.error,
@@ -526,6 +535,7 @@ def _to_legacy_result(result, sub_question) -> AgentTaskSubQuestionResult:
         attempt_count=result.attempt_count,
         tool_calls=result.tool_calls,
         evidence=[],
+        evaluation=result.evaluation,
         warnings=result.warnings,
         error=result.error_message,
     )

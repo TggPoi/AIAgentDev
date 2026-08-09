@@ -48,10 +48,12 @@ logger = get_logger(__name__)
 
 LangChainConfigFactory = Callable[[str], RunnableConfig]
 NL2SQL_QUERY_TOOL_NAME = "nl2sql_query"
+MCP_FETCH_TOOL_NAME = "mcp__fetch"
 PARALLEL_SAFE_TASK_TOOL_NAMES = {
     KNOWLEDGE_RETRIEVAL_TOOL_NAME,
     WEB_SEARCH_TOOL_NAME,
     NL2SQL_QUERY_TOOL_NAME,
+    MCP_FETCH_TOOL_NAME,
 }
 
 
@@ -121,7 +123,10 @@ TASK_TOOL_SELECTION_PROMPT = """你是 Agent TaskPlan 的工具选择器。
 
 你只负责为当前子问题选择一个或多个已绑定工具。
 可用工具只来自 bound tools，不允许编造工具名。
-同一轮可以选择多个彼此独立的只读工具；存在依赖时必须等待上一轮结果。
+同一轮只有 knowledge_retrieval、web_search、nl2sql_query 和 mcp__fetch
+可以组成多个彼此独立的只读 ToolCall；存在依赖时必须等待上一轮结果。
+可以为多个互不依赖的 URL 同轮选择多个 mcp__fetch。
+除 mcp__fetch 外，任何其他 mcp__* 工具每轮只能选择一个，且不能与其他工具混合。
 如果已有工具结果足够回答当前子问题，不再调用工具。
 如果当前子问题可以只依赖已有子问题答案进行推理，可以不调用工具。
 如果系统进入结构化输出模式，必须返回符合 schema 的 JSON 对象。
@@ -133,6 +138,7 @@ TASK_TOOL_SELECTION_PROMPT = """你是 Agent TaskPlan 的工具选择器。
 - 当前知识库可能没有、需要公开互联网或最新资料时，选择 web_search。
 - 查询官方资料且已知官方域名时，把不含协议和路径的域名传入 web_search.site。
 - 子问题中已经给出明确 URL，且存在 mcp__fetch 工具时，优先 mcp__fetch 读取网页正文。
+- 多个独立网页需要读取时，可以同轮返回多个 mcp__fetch，每个调用只包含自己的 URL。
 - 综合性问题如果已有前置答案足够，可以不调用工具。
 """
 
@@ -1225,7 +1231,7 @@ def _repair_fetch_tool_selection(
 ) -> dict[str, Any]:
     """【URL 场景下的稳定性补丁】判断拆解后的subquestion中是否包含明确的 URL，如果有则强制使用 Fetch MCP 工具读取网页正文"""
 
-    if "mcp__fetch" not in {tool.name for tool in tools}:
+    if MCP_FETCH_TOOL_NAME not in {tool.name for tool in tools}:
         return selection
 
     # 提取question中的 URL，为空时，直接返回原始选择
@@ -1234,7 +1240,7 @@ def _repair_fetch_tool_selection(
         return selection
 
     tool_input = normalize_tool_input(selection.get("tool_input"))
-    if selection.get("selected_tool") == "mcp__fetch":
+    if selection.get("selected_tool") == MCP_FETCH_TOOL_NAME:
         # 保留模型填出的其他合法参数，只在 url 缺失时补上已从问题提取出的地址。
         return {
             **selection,
@@ -1242,7 +1248,7 @@ def _repair_fetch_tool_selection(
         }
 
     return {
-        "selected_tool": "mcp__fetch",
+        "selected_tool": MCP_FETCH_TOOL_NAME,
         "tool_input": {"url": url},
         "reason": "子问题包含明确 URL，使用 Fetch MCP 读取网页正文。",
     }

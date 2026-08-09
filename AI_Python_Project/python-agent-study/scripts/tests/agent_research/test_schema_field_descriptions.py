@@ -41,6 +41,7 @@ from fast_app.domain.research_task_plan import (
     ResearchTaskPlanPublicView,
     ResearchTaskSubQuestion,
     ResearchTaskSubQuestionCandidate,
+    ResearchTaskSubQuestionResult,
 )
 from fast_app.services.agent_tasks.agent_task_router import AgentRouteDecision
 from fast_app.services.agent_tasks.deep_document_agent import (
@@ -113,6 +114,7 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     ResearchTaskPlanPublicView,
     ResearchTaskSubQuestion,
     ResearchTaskSubQuestionCandidate,
+    ResearchTaskSubQuestionResult,
 )
 
 

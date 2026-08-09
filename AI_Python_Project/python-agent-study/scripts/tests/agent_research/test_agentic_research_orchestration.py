@@ -9,7 +9,12 @@ from time import perf_counter
 
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.core.config import Settings
-from fast_app.domain.agent_task_plan import AgentTaskPlanStatus, AgentTaskSubQuestionResult, AgentTaskToolCallTrace
+from fast_app.domain.agent_task_plan import (
+    AgentTaskPlanStatus,
+    AgentTaskSubQuestionResult,
+    AgentTaskToolCallTrace,
+    ResearchEvidenceEvaluation,
+)
 from fast_app.domain.rag_models import RagContext, RetrievalFilters
 from fast_app.domain.research_task_plan import (
     AgentTaskCapabilitySnapshot,
@@ -45,6 +50,7 @@ class FakeLLM(BaseLLMClient):
 class ControlledWorker:
     def __init__(self) -> None:
         self.fail_ids: set[str] = set()
+        self.partial_ids: set[str] = set()
         self.started: dict[str, float] = {}
         self.finished: dict[str, float] = {}
 
@@ -72,6 +78,11 @@ class ControlledWorker:
             )
         tool_name = item.information_source_hint
         call_id = f"{item.sub_question_id}_call"
+        status = (
+            "partial"
+            if item.sub_question_id in self.partial_ids
+            else "completed"
+        )
         metadata = (
             {"url": "https://example.com/source"}
             if tool_name == "web_search"
@@ -81,8 +92,22 @@ class ControlledWorker:
             sub_question_id=item.sub_question_id,
             question=item.question,
             selected_tool=tool_name,
-            status="completed",
+            status=status,
             answer=f"answer:{item.sub_question_id}",
+            evaluation=(
+                ResearchEvidenceEvaluation(
+                    verdict="partial",
+                    confidence=0.9,
+                    relevance=0.9,
+                    coverage=0.5,
+                    authority=0.8,
+                    missing_points=["缺少完整证据"],
+                    recommended_action="stop_with_limitation",
+                    reason="测试 partial 依赖传播。",
+                )
+                if status == "partial"
+                else None
+            ),
             tool_calls=[
                 AgentTaskToolCallTrace(
                     call_id=call_id,
@@ -293,7 +318,66 @@ async def main() -> None:
         assert failed.status == AgentTaskPlanStatus.FAILED
         assert failed.final_output is None
 
+        worker.fail_ids.clear()
+        worker.partial_ids = {"sq_1"}
+        partial_dependency_plan = plan(
+            "task_plan_202608020002_partial_dependency",
+            [
+                requirement(
+                    "req_a",
+                    "knowledge_retrieval",
+                    completion="allow_partial",
+                ),
+                requirement("req_b", "none"),
+            ],
+            [
+                question(
+                    "sq_1",
+                    1,
+                    "knowledge_retrieval",
+                    ["req_a"],
+                ),
+                question(
+                    "sq_2",
+                    2,
+                    "none",
+                    ["req_b"],
+                    ["sq_1"],
+                ),
+            ],
+        )
+        partial_dependency_result = (
+            await executor.execute_question_decomposition_plan(
+                plan=partial_dependency_plan,
+                user=user,
+                mode="keyword",
+                top_k=3,
+                candidate_k=None,
+                min_score=0.0,
+                filters=RetrievalFilters(),
+            )
+        )
+        result_by_id = {
+            item.sub_question_id: item
+            for item in partial_dependency_result.sub_question_results
+        }
+        requirement_by_id = {
+            item.requirement_id: item
+            for item in partial_dependency_result.requirement_evidence_statuses
+        }
+
+        assert partial_dependency_result.status == AgentTaskPlanStatus.FAILED
+        assert result_by_id["sq_1"].status == "partial"
+        assert result_by_id["sq_1"].evaluation is not None
+        assert result_by_id["sq_1"].evaluation.verdict == "partial"
+        assert result_by_id["sq_2"].status == "partial"
+        assert requirement_by_id["req_a"].status == "partially_satisfied"
+        assert requirement_by_id["req_b"].status == "failed"
+        assert partial_dependency_result.final_output is None
+        worker.partial_ids.clear()
+
         # allow_partial 只有“已有合法部分证据”时才成立；failed 仍禁止最终综合。
+        worker.fail_ids = {"sq_1"}
         synthesis_calls = llm.calls
         partial_without_evidence = plan(
             "task_plan_202608020002_partial_failed",

@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from langchain_core.messages import AIMessage
+from langchain_core.tools import StructuredTool
 
 import fast_app.services.research.research_tool_loop as tool_loop_module
 from fast_app.components.llms.base import BaseLLMClient
@@ -168,6 +169,73 @@ class ParallelResearchToolLoop(LoopResearchToolLoop):
         return ToolExecutionResult(
             tool_output={"doc_count": 1},
             evidence=[{"id": "parallel_doc", "source": "knowledge_retrieval"}],
+            context_docs=[doc],
+        )
+
+
+class ParallelMcpFetchResearchToolLoop(LoopResearchToolLoop):
+    """模拟模型同轮读取两个独立 URL，验证 Fetch 进入并行安全白名单。"""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.started = 0
+        self.both_started = asyncio.Event()
+
+    async def _build_available_task_tools(self, *args, **kwargs):
+        async def fetch(url: str) -> str:
+            return url
+
+        return [
+            StructuredTool.from_function(
+                coroutine=fetch,
+                name=tool_loop_module.MCP_FETCH_TOOL_NAME,
+                description="读取公开网页正文。",
+            )
+        ]
+
+    async def _select_tool_for_sub_question(self, *args, **kwargs):
+        if kwargs.get("current_tool_calls"):
+            return []
+        return [
+            {
+                "call_id": "fetch_a",
+                "selected_tool": tool_loop_module.MCP_FETCH_TOOL_NAME,
+                "tool_input": {"url": "https://example.com/a"},
+            },
+            {
+                "call_id": "fetch_b",
+                "selected_tool": tool_loop_module.MCP_FETCH_TOOL_NAME,
+                "tool_input": {"url": "https://example.com/b"},
+            },
+        ]
+
+    async def _run_task_tool_for_sub_question(self, *args, **kwargs):
+        self.started += 1
+        call_number = self.started
+        if self.started == 2:
+            self.both_started.set()
+        await asyncio.wait_for(self.both_started.wait(), timeout=1)
+
+        url = str(kwargs["tool_input"]["url"])
+        doc = RetrievedDoc(
+            id=f"fetch_{call_number}",
+            content=f"fetched content: {url}",
+            score=1.0,
+            source=tool_loop_module.MCP_FETCH_TOOL_NAME,
+            metadata={"url": url},
+        )
+        return ToolExecutionResult(
+            tool_output={
+                "content_length": len(doc.content),
+                "content_preview": doc.content,
+            },
+            evidence=[
+                {
+                    "id": doc.id,
+                    "source": tool_loop_module.MCP_FETCH_TOOL_NAME,
+                    "metadata": {"url": url},
+                }
+            ],
             context_docs=[doc],
         )
 
@@ -666,6 +734,45 @@ async def main() -> None:
         assert parallel_result.status == "completed"
         assert len(parallel_llm.generate_calls) == 1
         assert "parallel full context" in parallel_llm.generate_calls[0][1].context_text
+
+        fetch_llm = FakeLLM()
+        fetch_loop = ParallelMcpFetchResearchToolLoop(
+            settings=Settings(
+                OPENAI_API_KEY="",
+                AGENT_TASK_PLAN_DIR=temp_dir,
+                AGENT_MAX_TOOL_CALLS=4,
+                AGENT_MAX_PARALLEL_TOOL_CALLS=4,
+            ),
+            vector_retriever=FakeRetriever(),
+            keyword_retriever=FakeRetriever(),
+            llm_client=fetch_llm,
+        )
+        fetch_plan = build_plan("task_plan_parallel_mcp_fetch")
+        fetch_outcome = await fetch_loop.run_attempt(
+            plan=fetch_plan,
+            sub_question=fetch_plan.sub_questions[0],
+            dependency_results=[],
+            mode="hybrid",
+            top_k=3,
+            candidate_k=None,
+            min_score=0.0,
+            filters=RetrievalFilters(),
+        )
+
+        assert fetch_loop.started == 2
+        assert [
+            call.tool_name for call in fetch_outcome.result.tool_calls
+        ] == ["mcp__fetch", "mcp__fetch"]
+        assert [call.round for call in fetch_outcome.result.tool_calls] == [1, 1]
+        assert all(
+            call.status == "completed"
+            for call in fetch_outcome.result.tool_calls
+        )
+        assert fetch_outcome.result.status == "completed"
+        assert len(fetch_llm.generate_calls) == 1
+        fetch_context = fetch_llm.generate_calls[0][1].context_text
+        assert "https://example.com/a" in fetch_context
+        assert "https://example.com/b" in fetch_context
 
         # 只剩 1 次预算时不能因为 LLM 返回 2 个候选就整批拒绝；应稳定执行
         # 第一个合法调用，并保证实际 ToolCall 数不突破 Worker 预算。

@@ -20,6 +20,7 @@ from fast_app.domain.research_task_plan import (
     AgentTaskPlanQualityChecks,
     AgentTaskPlanQualityReview,
     AgentTaskRequirement,
+    AgentTaskSubQuestionEvidenceValidation,
     RequirementSourcePolicy,
     ResearchTaskPlan,
     ResearchTaskPolicy,
@@ -39,8 +40,15 @@ from fast_app.graph.rag_agent.rag_agent_nodes import build_task_plan_answer
 from fast_app.services.research.requirement_evidence_service import (
     AgentTaskRequirementEvidenceService,
 )
+from fast_app.services.research.agentic_research_executor import (
+    _to_legacy_result,
+    _to_research_result,
+)
 from fast_app.services.research.research_evidence_evaluator import ResearchEvidenceEvaluator
-from fast_app.domain.agent_task_plan import ResearchEvidenceEvaluation
+from fast_app.domain.agent_task_plan import (
+    AgentTaskSubQuestionResult,
+    ResearchEvidenceEvaluation,
+)
 
 
 def expected(kind: str, *, attributes: list[str] | None = None):
@@ -216,6 +224,34 @@ def main() -> None:
     sq_k = sub_question("sq_1", "knowledge_retrieval", ["req_1"])
     sq_w = sub_question("sq_2", "web_search", ["req_1"], web_usage="direct")
     ev_k = evidence("ev_k", "knowledge_chunk", "sq_1")
+    semantic_evaluation = ResearchEvidenceEvaluation(
+        verdict="partial",
+        confidence=0.9,
+        relevance=0.9,
+        coverage=0.5,
+        authority=0.8,
+        missing_points=["仍缺少官方完整说明"],
+        recommended_action="stop_with_limitation",
+        reason="现有证据只能覆盖一部分问题。",
+    )
+    legacy_result = AgentTaskSubQuestionResult(
+        sub_question_id="sq_1",
+        question=sq_k.question,
+        selected_tool="knowledge_retrieval",
+        status="partial",
+        answer="部分回答",
+        evaluation=semantic_evaluation,
+    )
+    validation = AgentTaskSubQuestionEvidenceValidation(
+        sub_question_id="sq_1",
+        valid_evidence_refs=["ev_k"],
+    )
+    converted_result = _to_research_result(legacy_result, validation)
+    assert converted_result.evaluation == semantic_evaluation
+    assert (
+        _to_legacy_result(converted_result, sq_k).evaluation
+        == semantic_evaluation
+    )
     pending = service.aggregate(
         requirements=[req_all],
         sub_questions=[sq_k, sq_w],
@@ -232,10 +268,49 @@ def main() -> None:
     satisfied = service.aggregate(
         requirements=[req_all],
         sub_questions=[sq_k, sq_w],
-        results=[result("sq_1", "completed"), result("sq_2", "completed")],
+        results=[
+            result("sq_1", "completed", ["ev_k"]),
+            result("sq_2", "completed", ["ev_w"]),
+        ],
         registry=AgentTaskEvidenceRegistry(evidence_by_id={"ev_k": ev_k, "ev_w": ev_w}),
     )[0]
     assert satisfied.status == "satisfied"
+
+    req_web_strict = requirement(
+        "req_web_strict",
+        "all_of",
+        ["web_search"],
+        [expected("web_citation")],
+    )
+    sq_web_strict = sq_w.model_copy(
+        update={"covers_requirement_ids": ["req_web_strict"]}
+    )
+    partial_strict = service.aggregate(
+        requirements=[req_web_strict],
+        sub_questions=[sq_web_strict],
+        results=[result("sq_2", "partial", ["ev_w"])],
+        registry=AgentTaskEvidenceRegistry(evidence_by_id={"ev_w": ev_w}),
+    )[0]
+    assert partial_strict.status == "failed"
+    assert partial_strict.evidence_refs == ["ev_w"]
+
+    req_stale = requirement(
+        "req_stale",
+        "all_of",
+        ["knowledge_retrieval"],
+        [expected("knowledge_chunk")],
+    )
+    sq_stale = sq_k.model_copy(
+        update={"covers_requirement_ids": ["req_stale"]}
+    )
+    stale_registry_status = service.aggregate(
+        requirements=[req_stale],
+        sub_questions=[sq_stale],
+        results=[result("sq_1", "failed")],
+        registry=AgentTaskEvidenceRegistry(evidence_by_id={"ev_k": ev_k}),
+    )[0]
+    assert stale_registry_status.status == "failed"
+    assert stale_registry_status.evidence_refs == []
 
     # any_of 已由 A 满足时，B 仍运行也不能把 Requirement 降级为 pending。
     req_any = requirement(
@@ -250,7 +325,7 @@ def main() -> None:
             sub_question("sq_1", "knowledge_retrieval", ["req_2"]),
             sub_question("sq_2", "web_search", ["req_2"], web_usage="direct"),
         ],
-        results=[result("sq_1", "completed"), result("sq_2", "running")],
+        results=[result("sq_1", "completed", ["ev_k"]), result("sq_2", "running")],
         registry=AgentTaskEvidenceRegistry(evidence_by_id={"ev_k": ev_k}),
     )[0]
     assert any_status.status == "satisfied"
@@ -290,7 +365,7 @@ def main() -> None:
     partial = service.aggregate(
         requirements=[req_partial],
         sub_questions=[sq_k, sq_w],
-        results=[result("sq_1", "completed"), result("sq_2", "failed")],
+        results=[result("sq_1", "completed", ["ev_k"]), result("sq_2", "failed")],
         registry=AgentTaskEvidenceRegistry(evidence_by_id={"ev_k": ev_k}),
     )[0]
     assert partial.status == "partially_satisfied"

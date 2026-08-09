@@ -697,6 +697,35 @@ allow_partial，但没有覆盖“partial Worker + 形式完整 Evidence + stric
 也没有把 Worker/Evaluator 结论作为 strict Requirement 的必要条件。第 16.3 节记录的真实运行现象与
 当前代码一致，因此不能把该问题标记为已修复。
 
+#### 11.5.2 代码修复、自动化回归与真实模型验收（2026-08-09）
+
+**状态：代码修复、确定性回归和真实模型流式验收均已通过。**
+
+本次修复建立了三层服务端防线。第一，`ResearchTaskSubQuestionResult` 现在持久化最近一次
+`ResearchEvidenceEvaluation`，新旧执行模型双向转换时不再丢失 Evaluator 结论；该字段仍为内部诊断状态，
+公开 View 不返回。第二，Aggregator 只读取当前 Result 的 `evidence_ids`，Registry 中已经不再被当前结果引用的
+历史 Evidence 不能参与聚合；strict 完全满足只统计 `completed` Result 的 Evidence，`partial` Evidence 只允许
+进入 `allow_partial`。第三，派生综合只要包含一个 `partial` 依赖，自身也保持 `partial`，不能通过
+`derived_synthesis` 间接把不完整证据提升成 strict satisfied。
+
+确定性回归已经覆盖：partial + strict 必须失败、allow_partial 保持部分满足、旧 Registry Evidence 不得复用、
+Evaluator 双向转换不丢失，以及 partial 依赖不能被派生综合洗白。
+
+随后使用真实 `qwen3.7-plus`、Bocha Web Search、MCP Fetch 和启用的 LangSmith，对冻结场景 3 重新执行了
+`POST /rag/chat/stream/events` 和 `POST /agent/task-plans/{task_plan_id}/confirm/stream`。本轮使用新 session 和
+新 TaskPlan，没有继承旧失败快照：
+
+- TaskPlan：`task_plan_20260809124136_51529b4cad5d`。
+- Query request/trace：`d9f7b3752f4b4623b16e83ea320c17de`。
+- Confirm request/trace：`efe3fa07b04b4e37adcaba9ee32adca4`。
+- LangSmith Query 根 Run：`de0267a9-0cbd-44b1-8d7f-f35417eadba3`。
+- LangSmith Confirm 根 Run：`4eaf8d2c-b94a-41a8-b7e7-5419d4dd36d7`。
+
+真实结果中，`SQ2`、`SQ4` 都是 `partial`，各自仍有当前 Result 明确引用的形式合法 Evidence；两者持久化的
+Evaluator verdict 均为 `insufficient`。Aggregator 没有再把这些 Evidence 提升为 strict satisfied：对应的
+`R2`、`R4` 均为 `failed`，依赖综合被阻断，TaskPlan 最终为 `failed`，`final_output=None`。这正面覆盖了原 Bug
+“partial Worker + 合法 Evidence → strict satisfied → TaskPlan completed”，因此 11.5 可以关闭。
+
 ### 11.6 场景 3、4：Tool 并行提示与执行安全规则互相矛盾
 
 Tool Selector Prompt 告诉模型可以在同一轮选择多个独立只读工具：
@@ -767,6 +796,34 @@ if batch_error:
 根因不是单个模型偶发输出错误，而是模型可见契约只有“只读工具可以并行”，每个 Tool Schema 中没有可见的
 并行安全语义；真正的白名单只存在于执行层。该问题会制造额外的 `partial/failed` Worker，并可继续触发
 11.5 的错误聚合，因此两项属于同一条执行真实性故障链。
+
+#### 11.6.2 代码修复、自动化回归与真实模型验收（2026-08-09）
+
+**状态：代码修复、确定性回归和真实模型定向验收均已通过。**
+
+本次没有放开全部 MCP 工具，而是只把准确名称 `mcp__fetch` 加入 Research 并行安全白名单。Tool Selector
+Prompt 同步明确：`knowledge_retrieval`、`web_search`、`nl2sql_query` 和 `mcp__fetch` 可以组成独立只读批次；
+多个互不依赖的 URL 可以同轮生成多个 `mcp__fetch`；其他 `mcp__*` 每轮只能单独选择。两个 Fetch 现在通过
+既有 `asyncio.gather()` 同轮执行，分别计入真实 ToolCall 预算，并继续受单轮并行上限约束。
+
+其他 MCP 工具仍默认副作用未知，`parallel_batch_error()`、Document Agent 和共享安全边界均未修改。自动化
+回归先使用两个本地 Fake Fetch 和 `asyncio.Event` 证明两个调用在同一轮真实并发。
+
+完整场景 3 的真实模型执行没有自然生成双 Fetch，因此不能用该次运行单独证明 11.6。随后针对故障所在的
+Research Tool Loop 执行真实定向验收：保留真实 Tool Selector、`qwen3.7-plus`、Bocha Web Search、MCP Fetch
+和 LangSmith，只跳过与并行批次无关的账号认证、Router 和 Planner。输入要求搜索多个 FastAPI 社区来源并读取
+至少两个不同 URL 的正文。验收结果：
+
+- LangSmith 根 Run：`ee7b6185-cf7d-4ab6-94b6-e0b23a6bde0a`，名称为
+  `acceptance.research_mcp_parallel_116`。
+- round 1 先完成 `web_search`。
+- round 2 由真实模型生成两个不同 URL 的 `mcp__fetch`，两个调用均为 `completed`。
+- 执行层没有再返回“同轮包含必须串行执行的工具”，Worker 最终为 `completed`。
+- round 3 再次生成两个同轮 Fetch，其中 GitHub URL 因目标站点 `robots.txt` 被拒绝；这是外部页面策略失败，
+  不是并行安全规则拒绝，不影响 round 2 对本 Bug 的正面验收。
+
+因此 11.6 的验收结论只针对原故障边界：真实模型能够按 Prompt 生成同轮双 Fetch，执行层会并行接受准确名称
+`mcp__fetch`；其他 MCP 仍未被放入并行白名单。
 
 ### 11.7 场景 4：Knowledge Worker 超时只能定位到外层边界
 
@@ -1021,6 +1078,9 @@ if not allow_direct_web:
 
 ### 11.12 根因优先级总结
 
+下面 1～8 项保留的是 2026-08-03 至 2026-08-04 修复前的历史影响排序，不代表 2026-08-09 的剩余问题清单；
+其中第 1、2、4 项后来已经修复，当前结论以 11.12.1 状态表为准。
+
 按对本轮结果的影响范围排序：
 
 1. **确定代码错误：Research Evidence Evaluator 仍读取旧 SubQuestion 字段。**它使所有执行过的 Research Worker 都失去语义 Evidence 评估。
@@ -1034,14 +1094,14 @@ if not allow_direct_web:
 
 #### 11.12.1 当前状态总表（2026-08-09）
 
-本次复核基于当前 HEAD `693c82a` 的真实代码、现有自动化测试内容和本文后续章节保存的真实模型验收证据。
-本轮没有调用真实模型、外部网络或运行历史场景，因此“已修复”只用于已有后续真实验收且当前实现仍保留的
-项目；“仍存在”用于当前代码分支可以直接确认的确定性缺口。
+本次复核基于 HEAD `8349d22` 及当前工作树中的 11.5/11.6 修复、现有自动化测试和本节记录的真实模型验收
+证据。“已修复并通过真实模型验收”表示确定性回归与对应真实故障边界均已通过；“仍存在”表示当前代码分支
+仍可直接确认的确定性缺口。
 
 | 小节 | 当前状态 | 当前判断 |
 |---|---|---|
-| 11.5 | **仍存在** | Evaluator 结论未进入 Research v2 持久化结果；Aggregator 仍允许 `partial` Worker 的形式 Evidence 满足 strict Requirement。 |
-| 11.6 | **仍存在** | Prompt/模型允许并行，但 `mcp__fetch` 批次仍被整批拒绝并消耗预算。 |
+| 11.5 | **已修复并通过真实模型验收** | 真实 partial Worker 的合法 Evidence 未再满足 strict Requirement，TaskPlan 正确失败且未生成伪完整答案。 |
+| 11.6 | **已修复并通过真实模型验收** | 真实模型同轮生成两个 `mcp__fetch`，两个调用均完成；其他 MCP 仍默认串行。 |
 | 11.7 | **仍存在** | 整体 Worker timeout 能正确失败收敛，但 TaskPlan 快照仍不能定位内部等待阶段。 |
 | 11.8 | **部分仍存在** | 不同场景已有固定 ID 隔离；同场景重复运行仍复用 session，Rewriter 误判也没有确定性防线。 |
 | 11.9 | **历史 Bug 已修复，保留风险** | 冻结场景已真实流式通过；同类范围漂移仍依赖 Planner/Reviewer 语义判断。 |
@@ -1051,12 +1111,13 @@ if not allow_direct_web:
 
 #### 11.12.2 剩余问题关联分组
 
-**第一组：Research 执行真实性与终态收敛（11.5 + 11.6，后续应一起修复）**
+**已完成组：Research 执行真实性与终态收敛（11.5 + 11.6，已通过真实模型验收）**
 
 11.6 会因为并行契约冲突浪费预算并制造 `partial/failed` Worker；11.5 又可能把其中带形式合法 Evidence 的
 `partial` 结果提升为 strict Requirement `satisfied`，最终掩盖上游执行失败。只修 11.6 仍不能阻止其他原因
 产生的 partial 被误聚合；只修 11.5 仍会保留无意义的整批拒绝和预算耗尽。因此两项需要作为同一修复组，
-共同验收 Worker 状态、Evaluator 结论、Requirement 状态和 TaskPlan 终态是否一致。
+共同验收 Worker 状态、Evaluator 结论、Requirement 状态和 TaskPlan 终态是否一致。当前确定性回归、场景 3
+完整真实流式链路和双 Fetch 定向真实验收均已通过，因此该组不再属于剩余未修复问题。
 
 **第二组：请求语义、范围与必需来源守恒（11.8 的 Rewriter 部分 + 11.10；11.9 作为回归场景）**
 
@@ -1076,8 +1137,8 @@ Validator 决定来源是否可执行。11.8 可能错误改变当前问题是�
 
 场景 9、10 当前行为符合预期，只保留回归测试；复杂 Web 权限组合统一归入 11.10，不为 11.11 创建重复修复。
 
-按当前影响和因果关系，建议后续顺序为：第一组（11.5 + 11.6）→ 第二组（11.8 Rewriter + 11.10，并回归
-11.9）→ 第三组（11.7）。这只是修复分组和依赖顺序，本轮没有实施任何代码修改。
+按当前影响和因果关系，剩余修复顺序建议为：请求语义、范围与必需来源守恒组（11.8 Rewriter + 11.10，
+并回归 11.9）→ Worker 超时可观测性（11.7）。11.5 + 11.6 已关闭，不再进入后续修复队列。
 
 ## 12. qwen3.7-max Reviewer 与 11.2 专项流式复测（2026-08-03）
 
@@ -1532,13 +1593,17 @@ Evaluator 的实际语义结果：
 
 结论：11.4 的模型契约不兼容错误已经修复。Evaluator 不再因读取不存在的 `sub_question.expected_evidence` 崩溃，而是能够基于 Requirement 契约给出有业务含义的证据充分性判断。
 
-### 16.3 本轮明确没有修复的独立问题
+### 16.3 当时明确没有修复的独立问题
 
-本次真实运行再次证明 11.5 仍存在：SQ1、SQ2 已被 Evaluator 判为 `partial`，但 Requirement Aggregator 仍将 R1～R4 标记为 `satisfied`，并继续完成 Final Synthesis。因此：
+本节记录的是 2026-08-04 修复前的真实运行：当时再次证明 11.5 仍存在，SQ1、SQ2 已被 Evaluator 判为
+`partial`，但 Requirement Aggregator 仍将 R1～R4 标记为 `satisfied`，并继续完成 Final Synthesis。因此当时的结论是：
 
 - 11.3：已修复并通过。
 - 11.4：已修复并通过。
-- 11.5：仍未修复，不能因为 TaskPlan 最终为 `completed` 就判定证据质量通过。
+- 11.5：当时仍未修复，不能因为 TaskPlan 最终为 `completed` 就判定证据质量通过。
+
+后续状态：11.5 已于 2026-08-09 完成代码修复，并通过 11.5.2 记录的确定性回归和真实模型流式验收；本节仅作为
+修复前故障证据保留，不再代表当前状态。
 
 ### 16.4 自动化回归
 
@@ -1982,4 +2047,3 @@ def _rank_sitemap_candidates(entries: list[str], needles: set[str]) -> list[dict
 ## 18、遗留问题修复方案：web sitemap 搜索匹配质量低
 
 [文档技术点讲解](D:\AI_Agent_Project\AI_Python_Project\python-agent-study\scripts\docs\TaskPlan--web搜索质量提升技术方案：.md)
-

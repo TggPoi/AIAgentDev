@@ -193,6 +193,9 @@ class AgentTaskRequirementEvidenceService:
         """按 Requirement 独立计算状态，LLM 无权声明已满足。"""
 
         result_by_id = {item.sub_question_id: item for item in results}
+        result_evidence_ids = {
+            item.sub_question_id: set(item.evidence_ids) for item in results
+        }
         output: list[AgentTaskRequirementEvidenceStatus] = []
         for requirement in requirements:
             covering = [
@@ -200,15 +203,29 @@ class AgentTaskRequirementEvidenceService:
                 for item in sub_questions
                 if requirement.requirement_id in item.covers_requirement_ids
             ]
-            evidence = [
+            # Registry 是追加式事实库；只有当前 Result 明确引用的 Evidence
+            # 才能参与当前状态判断，避免 resume 后复用已经失效的历史证据。
+            current_evidence = [
                 item
                 for item in registry.evidence_by_id.values()
                 if item.sub_question_id in covering
+                and item.evidence_id
+                in result_evidence_ids.get(item.sub_question_id, set())
             ]
-            satisfied_sources = self._satisfied_sources(requirement, evidence)
+            # strict/full satisfaction 只能由 completed Worker 贡献。
+            # partial Evidence 仍保留给 allow_partial 分支。
+            completed_evidence = [
+                item
+                for item in current_evidence
+                if result_by_id[item.sub_question_id].status == "completed"
+            ]
+            satisfied_sources = self._satisfied_sources(
+                requirement,
+                completed_evidence,
+            )
             contract_satisfied = self._contract_satisfied(
                 requirement,
-                evidence,
+                completed_evidence,
                 satisfied_sources,
             )
             unfinished = any(
@@ -227,12 +244,17 @@ class AgentTaskRequirementEvidenceService:
                 status = "pending"
             elif (
                 requirement.completion_policy == "allow_partial"
-                and evidence
+                and current_evidence
                 and not security_blocked
             ):
                 status = "partially_satisfied"
             else:
                 status = "failed"
+            # satisfied Requirement 只向最终综合开放 completed Evidence。
+            # partially_satisfied 则开放当前合法的部分证据，并由最终答案说明限制。
+            accepted_evidence = (
+                completed_evidence if status == "satisfied" else current_evidence
+            )
             missing = [
                 source
                 for source in requirement.source_policy.source_types
@@ -244,7 +266,9 @@ class AgentTaskRequirementEvidenceService:
                     status=status,
                     satisfied_source_types=satisfied_sources,
                     missing_source_types=missing,
-                    evidence_refs=sorted({item.evidence_id for item in evidence}),
+                    evidence_refs=sorted(
+                        {item.evidence_id for item in accepted_evidence}
+                    ),
                     covering_sub_question_ids=covering,
                     reason_codes=(
                         []

@@ -2249,9 +2249,10 @@ web_search
 
 这样可以避免一个批次中安全工具已经执行，另一个危险或未知工具才被发现。
 
-当前普通研究链路显式允许同轮并行的工具只有 `knowledge_retrieval` 和
-`web_search`。单个 MCP 工具可以独立执行；如果一轮同时选择 MCP 和其他工具，
-批次会被拒绝并要求模型按轮次串行重试，不能把 MCP 工具默认当成并行安全工具。
+当前普通 Research 链路显式允许同轮并行的工具是 `knowledge_retrieval`、
+`web_search`、`nl2sql_query` 和 `mcp__fetch`。`mcp__fetch` 是当前唯一被明确认定为
+只读并行安全的 MCP 工具；多个互不依赖的公开 URL 可以同轮抓取。其他 `mcp__*`
+工具仍默认副作用未知；只要多调用批次包含这些工具，批次就会在协程启动前被拒绝。
 
 ### 13.5 asyncio.gather 在这里做什么
 
