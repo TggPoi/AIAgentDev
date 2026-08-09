@@ -876,6 +876,35 @@ TaskPlan 快照。若超时发生在第一次评估事件之前，持久化状�
 因此原小节对证据边界的判断仍成立：当前只能确认整体 Worker 超时，不能稳定区分模型选择、知识库检索、
 Web/MCP Tool、答案生成或 Evaluator 哪一阶段耗尽时间。现有 Agent Research 测试中也没有覆盖超时阶段定位。
 
+#### 11.7.2 代码修复状态（2026-08-10）
+
+**状态：已修复并通过真实模型结构化流式验收。**
+
+Worker 现在会在工具准备、工具选择、Retriever/Tool 执行、答案生成、Evidence Evaluator、纠正准备和完成时，
+向 Executor 报告内部检查点。Executor 是检查点唯一持久化写入者，会把最后阶段、仍在执行的操作、已经结束的
+ToolCall 和尚未提交 Registry 的内部 Evidence 写入 TaskPlan JSON。普通 Worker 和派生综合使用同一个
+`mark_worker_timed_out()`，超时结果的 `attempt_count` 从检查点取得，不再固定为 0。
+
+公开边界只返回安全摘要：阶段、操作名、ToolCall/Evidence 数量和最后工具名；Tool 参数、内部 Evidence 内容及
+完整 `worker_checkpoints` 不进入公开 TaskPlan View。超时前取得的内部 Evidence 也不会进入 Result 或 Registry，
+因此不能被 Requirement 聚合误当成已提交证据。
+
+自动化回归分别模拟了 Evaluator 等待超时和 `information_source_hint=none` 的派生综合超时。随后使用真实
+Qwen 和结构化流式确认接口进行了完整链路验收：
+
+- Query request/trace：`32467a9f2b4e4718954a369efbc79694`；LangSmith 根 Trace：
+  `58e3b2fc-477c-4411-a483-a20466d2aaf8`。
+- Confirm request/trace：`3ab98c3a99724e738e499194c8ed1eaa`；LangSmith 根 Trace：
+  `fb3862f4-6404-4fe4-be9c-5a6d80c533b2`。
+- TaskPlan：`task_plan_20260809171714_60eda284365c`。
+- 验收专用的 2 秒 Worker 超时让 3 个真实 Worker 都在 Tool Selector 远程调用期间超时。SSE 均返回
+  `attempt=1`、`stage=tool_selection`、`active_operations=["tool_selector"]`，而不再只有一个外层
+  `WORKER_TIMEOUT`。
+- 内部 TaskPlan 保留检查点；公开 TaskPlan View 不包含 `worker_checkpoints`，SSE 也没有泄露 Tool
+  参数或内部 Evidence。
+
+因此真实链路已证明 11.7 的原故障边界被修复：超时仍会正确失败收敛，但服务端和前端现在能安全定位最后阶段。
+
 ### 11.8 场景 4：同一 session 中 Rewriter 误判后阻断完整新问题
 
 Pipeline 只在 session 为空或历史为空时跳过 Rewriter；只要固定 session 中已有历史，就会调用模型：
@@ -997,6 +1026,41 @@ Planner/Reviewer 模型判断。因此“Dataset metadata 再次诱导模型增�
 2026-08-09 本轮继续通过 Prompt 守恒自动化回归确认 Planner/Reviewer 都包含“必需来源不能增加用户未要求
 范围”的约束。当前验收进程没有配置 `NL2SQL_DATABASE_URLS_JSON` 的 `game_test` 只读连接，因此没有
 伪造数据库凭据重放场景 7；11.9 仍沿用第 15.5 节已经完成的真实流式验收结论。
+
+#### 11.9.2 确定性范围防线（2026-08-10）
+
+**状态：确定性范围防线已修复并通过真实 Dataset 结构化流式验收。**
+
+服务端现在把两个概念分开：Dataset 白名单表示“后端允许查询哪些字段”，`dataset_scope` 表示“可信 user 文本
+明确提到了哪些字段和聚合操作”。`dataset_scope` 只读取当前原始 user Query 和 Rewriter 实际使用且通过 ID
+校验的历史 user 消息；assistant 文本、模型生成的 `resolved_query` 和 Dataset metadata 都不能扩大范围。
+
+Validator 的处理分三类：
+
+1. 用户没有要求平均、合计、数量、最小或最大，却出现对应聚合字段时，返回
+   `PLAN_DATASET_AGGREGATION_NOT_REQUESTED` error，计划必须修正。
+2. 字段在 Dataset 白名单内，但服务端不能确定性追溯到 user 文本时，返回
+   `PLAN_DATASET_FIELD_SCOPE_INFERRED` warning；确有必要保留时，复用现有 TaskPlan 整体人工确认。
+3. 字段不在白名单，或 SQL Evidence 没有声明 `required_attributes`，继续作为确定性 error 拒绝。
+
+本次使用项目脚本验证真实只读数据库连接后，在同一 session 中重放了场景 7 的完整链路：
+
+- 前置历史 request/trace：`92686a7441b549f682f64b1b67b50370`；LangSmith 根 Trace：
+  `e6de0418-16ea-4118-9ec4-8dd58ab630d2`。
+- 当前 Query request/trace：`9317d1dbca614c4089b07dcd5d209324`；LangSmith 根 Trace：
+  `d2d44343-321d-425d-a3c3-c97aed1c537a`。
+- Confirm request/trace：`040056dd1f5c4607948d0a7b41620250`；LangSmith 根 Trace：
+  `c11af5d1-bd50-4642-bf48-dfb9a26a8742`。
+- TaskPlan：`task_plan_20260809172519_83af1f4cd973`。
+- Rewriter 实际使用了受校验的历史 user 消息；`dataset_scope.explicit_fields` 为
+  `asset_name/cost_yuan/polygon_count`，`aggregation_operations=[]`。
+- SQL Evidence 只请求 `asset_name`、`cost_yuan`、`polygon_count`，没有新增平均费用、平均面数或其他
+  未请求聚合字段。
+- 确认执行期间，SQ1 已完成 3 次真实 NL2SQL 和 1 次知识库调用，随后在 Evidence Evaluator 阶段超时，
+  因此 TaskPlan 终态为 `failed`。这是执行期证据评估超时，不是 Dataset 范围守恒失败；同一次运行也再次
+  验证了 11.7 能定位 `stage=evidence_evaluation`，并保留 4 个 ToolCall 和 13 条内部 Evidence 摘要。
+
+本轮没有伪造数据库凭据，也没有出现 Prompt/Schema 格式违约。
 
 ### 11.10 场景 8：请求策略禁止 direct Web 后发生静默换源
 
@@ -1136,9 +1200,9 @@ if not allow_direct_web:
 |---|---|---|
 | 11.5 | **已修复并通过真实模型验收** | 真实 partial Worker 的合法 Evidence 未再满足 strict Requirement，TaskPlan 正确失败且未生成伪完整答案。 |
 | 11.6 | **已修复并通过真实模型验收** | 真实模型同轮生成两个 `mcp__fetch`，两个调用均完成；其他 MCP 仍默认串行。 |
-| 11.7 | **仍存在** | 整体 Worker timeout 能正确失败收敛，但 TaskPlan 快照仍不能定位内部等待阶段。 |
+| 11.7 | **已修复并通过真实模型验收** | 真实 Worker 超时 SSE 正确返回 Tool Selector 阶段和活动操作；内部检查点保留，公开 View 没有泄露。 |
 | 11.8 | **已修复并通过真实模型验收** | 同一 session 的完整新问题未被旧历史阻断，Rewriter 原样保留当前 Query 并成功创建 Research TaskPlan。 |
-| 11.9 | **历史 Bug 已修复，保留风险** | 冻结场景已真实流式通过；同类范围漂移仍依赖 Planner/Reviewer 语义判断。 |
+| 11.9 | **已修复并通过真实 Dataset 验收** | 真实计划仅保留资产名、费用和面数，聚合范围为空；真实 NL2SQL 未新增平均值等未请求字段。 |
 | 11.10 | **已修复并通过真实模型验收** | 必需 Web 与策略/权限冲突均通过结构化 SSE 在 Planner 前失败；未创建 TaskPlan。 |
 | 11.11 | **无已确认 Bug** | 简单 Web 无权限和 Dataset 无授权仍在 Planner/Provider 前拒绝。 |
 | 11.12 | **已更新** | 原优先级包含已修复的 11.3/11.4；应按下面的剩余故障组重新排序。 |
@@ -1161,18 +1225,20 @@ Validator 决定来源是否可执行。11.8 可能错误改变当前问题是�
 新增服务端约束后重新破坏已通过的范围守恒。该组已完成代码修复、自动化回归和真实模型结构化流式验收；
 手工页保持不变。
 
-**第三组：Worker 超时可观测性（11.7，独立修复）**
+**已完成组：Worker 超时可观测性（11.7，已通过真实模型验收）**
 
 11.7 与第一组都发生在 Research 执行阶段，但当前 timeout 会生成无 Evidence 的明确 failed 结果，未发现它被
 11.5 直接提升为 satisfied。它的根因是内部阶段快照和超时诊断缺失，不是 Evidence 聚合或 Tool 并行策略，
-因此应单独修复和验收，避免把状态语义、并发策略和可观测性一次性混成过大改动。
+因此应单独修复和验收，避免把状态语义、并发策略和可观测性一次性混成过大改动。当前真实 Tool Selector 和 Evidence
+Evaluator 超时都已在结构化 SSE、内部 TaskPlan 检查点和 LangSmith 中得到一致验证。
 
 **无需修复组：11.11**
 
 场景 9、10 当前行为符合预期，只保留回归测试；复杂 Web 权限组合统一归入 11.10，不为 11.11 创建重复修复。
 
-按当前状态，请求语义、范围与必需来源守恒组（11.8 + 11.10，并回归 11.9）已经关闭。剩余下一项是
-Worker 超时可观测性（11.7）。11.5 + 11.6 也已关闭，不再进入后续修复队列。
+按当前状态，11.5–11.10 中需要修复的项均已完成代码回归和对应真实故障边界验收；11.11 无已确认 Bug。
+11.7 的验收边界是超时现场可观测性，11.9 的验收边界是 Dataset 范围守恒；不把同次执行中的 Evidence Evaluator
+超时误记为全部 Research 证据成功。
 
 ## 12. qwen3.7-max Reviewer 与 11.2 专项流式复测（2026-08-03）
 

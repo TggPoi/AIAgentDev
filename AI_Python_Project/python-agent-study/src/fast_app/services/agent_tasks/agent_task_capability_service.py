@@ -80,6 +80,7 @@ class AgentTaskCapabilityService:
         dataset_domain = None
         allowed_views: list[str] = []
         allowed_fields: list[str] = []
+        dataset_field_synonyms: dict[str, list[str]] = {}
         dataset_schema_context = None
         nl2sql_available = False
         if dataset_id:
@@ -110,6 +111,11 @@ class AgentTaskCapabilityService:
             dataset_domain = dataset.domain
             allowed_views = list(dataset.allowed_views)
             allowed_fields = sorted(fields)
+            dataset_field_synonyms = {
+                field: list(dataset.synonyms.get(field, ()))
+                for field in allowed_fields
+                if dataset.synonyms.get(field)
+            }
             nl2sql_available = True
             available_sources.append("nl2sql_query")
 
@@ -133,6 +139,7 @@ class AgentTaskCapabilityService:
             dataset_domain=dataset_domain,
             allowed_dataset_views=allowed_views,
             allowed_dataset_fields=allowed_fields,
+            dataset_field_synonyms=dataset_field_synonyms,
             dataset_schema_context=dataset_schema_context,
             max_requirements=self._settings.agent_research_max_sub_questions * 2,
             max_sub_questions=self._settings.agent_research_max_sub_questions,

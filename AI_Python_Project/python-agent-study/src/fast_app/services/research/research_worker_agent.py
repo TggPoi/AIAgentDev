@@ -16,7 +16,11 @@ from fast_app.domain.agent_task_plan import (
     AgentTaskSubQuestionResult,
     ResearchEvidenceEvaluation,
 )
-from fast_app.domain.research_task_plan import ResearchTaskPlan, ResearchTaskSubQuestion
+from fast_app.domain.research_task_plan import (
+    ResearchTaskPlan,
+    ResearchTaskSubQuestion,
+    ResearchWorkerCheckpointUpdate,
+)
 from fast_app.domain.rag_models import RetrievalFilters
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.graph.research.agentic_research_graph import ResearchExecutionCancelled
@@ -34,6 +38,7 @@ from fast_app.services.research.research_tool_loop import (
 
 LangChainConfigFactory = Callable[[str], RunnableConfig]
 ProgressCallback = Callable[[str, dict[str, Any]], Awaitable[None]]
+CheckpointCallback = Callable[[ResearchWorkerCheckpointUpdate], Awaitable[None]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +52,7 @@ class ResearchWorkerRequest:
     filters: RetrievalFilters
     wave: int
     on_progress: ProgressCallback
+    on_checkpoint: CheckpointCallback
     should_stop: Callable[[], bool]
     langchain_config_factory: LangChainConfigFactory | None = None
     user: CurrentUserContext | None = None
@@ -179,6 +185,7 @@ class ResearchWorkerAgent:
                 state["retry_missing_points"],
             ),
             user=request.user,
+            on_checkpoint=request.on_checkpoint,
         )
         last_result = attempt_outcome.result
         return {
@@ -204,6 +211,14 @@ class ResearchWorkerAgent:
         request: ResearchWorkerRequest = state["request"]
         if request.should_stop():
             raise ResearchExecutionCancelled("TaskPlan 已取消")
+        await request.on_checkpoint(
+            ResearchWorkerCheckpointUpdate(
+                stage="evidence_evaluation",
+                attempt=state["attempt"],
+                operation="evidence_evaluator",
+                operation_status="started",
+            )
+        )
         try:
             requirements = None
             if isinstance(request.plan, ResearchTaskPlan) and isinstance(
@@ -233,6 +248,14 @@ class ResearchWorkerAgent:
         except ResearchExecutionCancelled:
             raise
         except Exception as exc:
+            await request.on_checkpoint(
+                ResearchWorkerCheckpointUpdate(
+                    stage="evidence_evaluation",
+                    attempt=state["attempt"],
+                    operation="evidence_evaluator",
+                    operation_status="failed",
+                )
+            )
             warning = f"Evaluator 不可用: {type(exc).__name__}"
             attempts = [
                 *state["attempts"],
@@ -261,6 +284,14 @@ class ResearchWorkerAgent:
                 "evaluation": None,
             }
 
+        await request.on_checkpoint(
+            ResearchWorkerCheckpointUpdate(
+                stage="evidence_evaluation",
+                attempt=state["attempt"],
+                operation="evidence_evaluator",
+                operation_status="finished",
+            )
+        )
         attempts = [
             *state["attempts"],
             {
@@ -339,6 +370,12 @@ class ResearchWorkerAgent:
             wants_web and request.policy.web_policy == "fallback"
         )
         next_attempt = state["attempt"] + 1
+        await request.on_checkpoint(
+            ResearchWorkerCheckpointUpdate(
+                stage="retry_preparation",
+                attempt=next_attempt,
+            )
+        )
         await request.on_progress(
             "agent_task_sub_question_retrying",
             {
@@ -360,12 +397,26 @@ class ResearchWorkerAgent:
         self,
         state: ResearchWorkerGraphState,
     ) -> dict[str, Any]:
+        request: ResearchWorkerRequest = state["request"]
+        await request.on_checkpoint(
+            ResearchWorkerCheckpointUpdate(
+                stage="completed",
+                attempt=state["attempt"],
+            )
+        )
         return {"final_result": self._build_result(state, status="completed")}
 
     async def _finalize_limited(
         self,
         state: ResearchWorkerGraphState,
     ) -> dict[str, Any]:
+        request: ResearchWorkerRequest = state["request"]
+        await request.on_checkpoint(
+            ResearchWorkerCheckpointUpdate(
+                stage="completed",
+                attempt=state["attempt"],
+            )
+        )
         status = "partial" if state["all_evidence"] else "failed"
         return {
             "final_result": self._build_result(

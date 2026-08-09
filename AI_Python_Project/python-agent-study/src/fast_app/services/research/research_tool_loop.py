@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -26,6 +26,7 @@ from fast_app.core.config import Settings
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.agent_task_plan import AgentTaskPlan, AgentTaskSubQuestion, AgentTaskSubQuestionResult, AgentTaskToolCallTrace
 from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievedDoc
+from fast_app.domain.research_task_plan import ResearchWorkerCheckpointUpdate
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.agent_tasks.agent_task_tool_support import (
     build_mcp_task_tools, coerce_int, doc_to_evidence, extract_first_url,
@@ -47,6 +48,7 @@ from fast_app.services.nl2sql.service import Nl2SqlService
 logger = get_logger(__name__)
 
 LangChainConfigFactory = Callable[[str], RunnableConfig]
+CheckpointCallback = Callable[[ResearchWorkerCheckpointUpdate], Awaitable[None]]
 NL2SQL_QUERY_TOOL_NAME = "nl2sql_query"
 MCP_FETCH_TOOL_NAME = "mcp__fetch"
 PARALLEL_SAFE_TASK_TOOL_NAMES = {
@@ -55,6 +57,30 @@ PARALLEL_SAFE_TASK_TOOL_NAMES = {
     NL2SQL_QUERY_TOOL_NAME,
     MCP_FETCH_TOOL_NAME,
 }
+
+
+async def _emit_checkpoint(
+    callback: CheckpointCallback | None,
+    *,
+    stage: str,
+    attempt: int,
+    operation: str | None = None,
+    operation_status: str | None = None,
+    tool_call: AgentTaskToolCallTrace | None = None,
+    evidence: list[dict[str, Any]] | None = None,
+) -> None:
+    if callback is None:
+        return
+    await callback(
+        ResearchWorkerCheckpointUpdate(
+            stage=stage,
+            attempt=attempt,
+            operation=operation,
+            operation_status=operation_status,
+            tool_call=tool_call,
+            evidence=evidence or [],
+        )
+    )
 
 
 class AgentTaskToolSelectionPayload(BaseModel):
@@ -210,6 +236,7 @@ class ResearchToolLoop:
         prior_context_doc_groups: list[list[RetrievedDoc]] | None = None,
         retry_missing_points: list[str] | None = None,
         user: CurrentUserContext | None = None,
+        on_checkpoint: CheckpointCallback | None = None,
     ) -> ResearchAttemptOutcome:
         """执行一个子问题：让 LLM 进行有限多轮工具选择，再生成子问题答案。
 
@@ -221,6 +248,11 @@ class ResearchToolLoop:
         prior_evidence = list(prior_evidence or [])
         prior_context_doc_groups = list(prior_context_doc_groups or [])
         retry_missing_points = list(retry_missing_points or [])
+        await _emit_checkpoint(
+            on_checkpoint,
+            stage="tool_setup",
+            attempt=attempt,
+        )
         available_tools = await self._build_available_task_tools(
             allow_web_search=allow_web_search,
             plan=plan,
@@ -243,20 +275,45 @@ class ResearchToolLoop:
                 round_index += 1
                 # 让 LLM 基于原始问题、当前子问题、前置子问题答案、当前子问题已调用过的工具，
                 # 判断下一步是否还需要工具；同一轮返回的只读工具可以并行执行。
-                selected = await self._select_tool_for_sub_question(
-                    plan=plan,
-                    sub_question=sub_question,
-                    dependency_results=dependency_results,
-                    default_mode=mode,
-                    default_top_k=top_k,
-                    available_tools=available_tools,
-                    prior_tool_calls=prior_tool_calls,
-                    prior_evidence=prior_evidence,
-                    current_tool_calls=tool_calls,
-                    current_evidence=evidence,
-                    retry_missing_points=retry_missing_points,
-                    langchain_config_factory=langchain_config_factory,
+                await _emit_checkpoint(
+                    on_checkpoint,
+                    stage="tool_selection",
+                    attempt=attempt,
+                    operation="tool_selector",
+                    operation_status="started",
                 )
+                try:
+                    selected = await self._select_tool_for_sub_question(
+                        plan=plan,
+                        sub_question=sub_question,
+                        dependency_results=dependency_results,
+                        default_mode=mode,
+                        default_top_k=top_k,
+                        available_tools=available_tools,
+                        prior_tool_calls=prior_tool_calls,
+                        prior_evidence=prior_evidence,
+                        current_tool_calls=tool_calls,
+                        current_evidence=evidence,
+                        retry_missing_points=retry_missing_points,
+                        langchain_config_factory=langchain_config_factory,
+                    )
+                except Exception:
+                    await _emit_checkpoint(
+                        on_checkpoint,
+                        stage="tool_selection",
+                        attempt=attempt,
+                        operation="tool_selector",
+                        operation_status="failed",
+                    )
+                    raise
+                else:
+                    await _emit_checkpoint(
+                        on_checkpoint,
+                        stage="tool_selection",
+                        attempt=attempt,
+                        operation="tool_selector",
+                        operation_status="finished",
+                    )
                 selections = selected if isinstance(selected, list) else [selected]
                 # 兼容 JSON fallback 的单个字典和原生 Tool Calling 的多个字典；
                 # ``none`` 不是实际调用，过滤后为空即表示本轮不再需要工具。
@@ -333,6 +390,13 @@ class ResearchToolLoop:
                         f"{provider_call_id}"
                     )
                     reason = str(selection.get("reason") or "")
+                    await _emit_checkpoint(
+                        on_checkpoint,
+                        stage="tool_execution",
+                        attempt=attempt,
+                        operation=selected_tool,
+                        operation_status="started",
+                    )
                     try:
                         # 【执行 tool】这里只取得事实和证据；候选答案必须等本 attempt 的工具全部结束后生成。
                         execution = await self._run_task_tool_for_sub_question(
@@ -349,40 +413,60 @@ class ResearchToolLoop:
                             langchain_config_factory=langchain_config_factory,
                             plan=plan,
                             user=user,
+                            attempt=attempt,
+                            on_checkpoint=on_checkpoint,
                         )
                         tagged_evidence = [
                             {**item, "tool_call_id": call_id}
                             for item in execution.evidence
                         ]
-                        return (
-                            AgentTaskToolCallTrace(
-                                call_id=call_id,
-                                round=round_index,
-                                tool_name=selected_tool,
-                                tool_input=tool_input,
-                                tool_output=execution.tool_output,
-                                status="completed",
-                                reason=reason,
-                            ),
-                            tagged_evidence,
-                            execution.context_docs,
+                        trace = AgentTaskToolCallTrace(
+                            call_id=call_id,
+                            round=round_index,
+                            tool_name=selected_tool,
+                            tool_input=tool_input,
+                            tool_output=execution.tool_output,
+                            status="completed",
+                            reason=reason,
                         )
+                        await _emit_checkpoint(
+                            on_checkpoint,
+                            stage="tool_execution",
+                            attempt=attempt,
+                            operation=selected_tool,
+                            operation_status="finished",
+                            tool_call=trace,
+                            evidence=tagged_evidence,
+                        )
+                        return trace, tagged_evidence, execution.context_docs
                     except ToolPermissionDeniedError:
+                        await _emit_checkpoint(
+                            on_checkpoint,
+                            stage="tool_execution",
+                            attempt=attempt,
+                            operation=selected_tool,
+                            operation_status="failed",
+                        )
                         raise
                     except Exception as exc:
-                        return (
-                            AgentTaskToolCallTrace(
-                                call_id=call_id,
-                                round=round_index,
-                                tool_name=selected_tool,
-                                tool_input=tool_input,
-                                status="failed",
-                                error=f"{type(exc).__name__}: {exc}",
-                                reason=reason,
-                            ),
-                            [],
-                            [],
+                        trace = AgentTaskToolCallTrace(
+                            call_id=call_id,
+                            round=round_index,
+                            tool_name=selected_tool,
+                            tool_input=tool_input,
+                            status="failed",
+                            error=f"{type(exc).__name__}: {exc}",
+                            reason=reason,
                         )
+                        await _emit_checkpoint(
+                            on_checkpoint,
+                            stage="tool_execution",
+                            attempt=attempt,
+                            operation=selected_tool,
+                            operation_status="failed",
+                            tool_call=trace,
+                        )
+                        return trace, [], []
 
                 # --------------------------------------------------开始普通任务 并行tool 执行--------------------------------------------------
                 # 校验通过的只读调用同时开始；gather 按输入顺序返回，即使工具完成先后不同，
@@ -411,14 +495,39 @@ class ResearchToolLoop:
             if all_context_docs or dependency_results:
                 # 【所有 tool 执行完成后整合回答】完整正文只存在于当前 Worker 内存，
                 # TaskPlan 只接收 tool_output 与 evidence 摘要。
-                answer = await self._answer_from_tool_calls(
-                    sub_question=sub_question,
-                    dependency_results=dependency_results,
-                    context_docs=all_context_docs,
-                    filters=filters,
-                    retry_missing_points=retry_missing_points,
-                    langchain_config_factory=langchain_config_factory,
+                await _emit_checkpoint(
+                    on_checkpoint,
+                    stage="answer_generation",
+                    attempt=attempt,
+                    operation="answer_generation",
+                    operation_status="started",
                 )
+                try:
+                    answer = await self._answer_from_tool_calls(
+                        sub_question=sub_question,
+                        dependency_results=dependency_results,
+                        context_docs=all_context_docs,
+                        filters=filters,
+                        retry_missing_points=retry_missing_points,
+                        langchain_config_factory=langchain_config_factory,
+                    )
+                except Exception:
+                    await _emit_checkpoint(
+                        on_checkpoint,
+                        stage="answer_generation",
+                        attempt=attempt,
+                        operation="answer_generation",
+                        operation_status="failed",
+                    )
+                    raise
+                else:
+                    await _emit_checkpoint(
+                        on_checkpoint,
+                        stage="answer_generation",
+                        attempt=attempt,
+                        operation="answer_generation",
+                        operation_status="finished",
+                    )
                 last_call = completed_calls[-1] if completed_calls else None
                 return ResearchAttemptOutcome(
                     result=AgentTaskSubQuestionResult(
@@ -454,11 +563,36 @@ class ResearchToolLoop:
 
             # LLM 一开始就判断不需要工具，或者 agent_max_tool_calls=0 时，走纯推理分支。
             # 这个分支只能使用 dependency_results，不会主动检索或访问外部工具。
-            tool_output, answer, evidence = await self._answer_without_tool(
-                sub_question=sub_question,
-                dependency_results=dependency_results,
-                langchain_config_factory=langchain_config_factory,
+            await _emit_checkpoint(
+                on_checkpoint,
+                stage="answer_generation",
+                attempt=attempt,
+                operation="answer_generation",
+                operation_status="started",
             )
+            try:
+                tool_output, answer, evidence = await self._answer_without_tool(
+                    sub_question=sub_question,
+                    dependency_results=dependency_results,
+                    langchain_config_factory=langchain_config_factory,
+                )
+            except Exception:
+                await _emit_checkpoint(
+                    on_checkpoint,
+                    stage="answer_generation",
+                    attempt=attempt,
+                    operation="answer_generation",
+                    operation_status="failed",
+                )
+                raise
+            else:
+                await _emit_checkpoint(
+                    on_checkpoint,
+                    stage="answer_generation",
+                    attempt=attempt,
+                    operation="answer_generation",
+                    operation_status="finished",
+                )
             return ResearchAttemptOutcome(
                 result=AgentTaskSubQuestionResult(
                     sub_question_id=sub_question.sub_question_id,
@@ -815,6 +949,8 @@ class ResearchToolLoop:
         langchain_config_factory: LangChainConfigFactory | None = None,
         plan: AgentTaskPlan | None = None,
         user: CurrentUserContext | None = None,
+        attempt: int = 1,
+        on_checkpoint: CheckpointCallback | None = None,
     ) -> ToolExecutionResult:
         """执行本地工具或 MCP 工具，不在单个工具边界生成答案。"""
 
@@ -829,6 +965,8 @@ class ResearchToolLoop:
                 min_score=min_score,
                 filters=filters,
                 langchain_config_factory=langchain_config_factory,
+                attempt=attempt,
+                on_checkpoint=on_checkpoint,
             )
         if selected_tool == WEB_SEARCH_TOOL_NAME:
             return await self._run_web_search_for_sub_question(
@@ -926,6 +1064,8 @@ class ResearchToolLoop:
         min_score: float,
         filters: RetrievalFilters,
         langchain_config_factory: LangChainConfigFactory | None = None,
+        attempt: int = 1,
+        on_checkpoint: CheckpointCallback | None = None,
     ) -> ToolExecutionResult:
         """执行知识库检索并返回摘要、证据与完整内存文档。"""
 
@@ -935,6 +1075,15 @@ class ResearchToolLoop:
         if selected_mode not in {"vector", "keyword", "hybrid"}:
             selected_mode = mode
         selected_top_k = coerce_int(tool_input.get("top_k"), default=top_k, minimum=1, maximum=20)
+        async def retrieval_progress(operation: str, status: str) -> None:
+            await _emit_checkpoint(
+                on_checkpoint,
+                stage="tool_execution",
+                attempt=attempt,
+                operation=operation,
+                operation_status=status,
+            )
+
         docs = await retrieve_knowledge_docs(
             settings=self._settings,
             vector_retriever=self._vector_retriever,
@@ -946,8 +1095,16 @@ class ResearchToolLoop:
             min_score=min_score,
             filters=filters,
             pipeline_provider="rag_agent_task_sub_question",
+            on_progress=retrieval_progress,
         )
         if self._reranker is not None and docs:
+            await _emit_checkpoint(
+                on_checkpoint,
+                stage="tool_execution",
+                attempt=attempt,
+                operation="rerank",
+                operation_status="started",
+            )
             try:
                 docs = await self._reranker.rerank(
                     query=query,
@@ -955,7 +1112,22 @@ class ResearchToolLoop:
                     top_k=min(selected_top_k, len(docs)),
                 )
             except ExternalServiceError:
+                await _emit_checkpoint(
+                    on_checkpoint,
+                    stage="tool_execution",
+                    attempt=attempt,
+                    operation="rerank",
+                    operation_status="failed",
+                )
                 docs = docs[:selected_top_k]
+            else:
+                await _emit_checkpoint(
+                    on_checkpoint,
+                    stage="tool_execution",
+                    attempt=attempt,
+                    operation="rerank",
+                    operation_status="finished",
+                )
         # 完整 docs 交给 attempt 结束后的统一回答，TaskPlan 只保存下面的摘要。
         return ToolExecutionResult(
             tool_output={

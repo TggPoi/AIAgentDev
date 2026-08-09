@@ -421,6 +421,24 @@ Validator
 没有要求的字段、统计指标、比较对象或业务结论。该字段会冻结到 `ResearchTaskPolicy`，确认或恢复时重新
 校验。
 
+### 5.5 Dataset 白名单和用户范围不是一回事
+
+Dataset 的 `allowed_dataset_fields` 表示“这些逻辑字段可以安全查询”，不能证明用户本轮要求了全部字段。
+服务端另行冻结 `dataset_scope`：
+
+```text
+explicit_fields
+    当前 user Query 和实际参与改写的历史 user 消息明确提到的字段。
+
+aggregation_operations
+    用户明确要求的平均、合计、数量、最小或最大操作。
+```
+
+未请求的聚合字段是必须修复的 error。其他在白名单内、但无法从可信 user 文本确定性追溯的字段会产生
+`PLAN_DATASET_FIELD_SCOPE_INFERRED` warning；若 Planner/Reviewer 认为它确实不可缺少，该 warning 会随
+TaskPlan 进入现有整体人工确认，不新增逐字段确认接口。Dataset metadata、assistant 历史和模型生成的
+`resolved_query` 都不能成为扩大范围的可信依据。
+
 ---
 
 ## 6. 第三阶段：Planner 如何生成 TaskPlan
@@ -803,6 +821,15 @@ TaskPlan 持久化异常
 这就是“局部异常”和“任务级异常”的分界。
 
 如果所有异常都被转换成 Worker failed，权限系统或持久化系统已经失效时，任务仍可能继续运行，这是不安全的。
+
+### 10.6.1 超时现场由谁保存
+
+Worker 和 Tool Loop 只上报阶段变化，`AgenticResearchExecutor` 是 `worker_checkpoints` 的唯一持久化写入者。
+它在同一把快照锁内合并活动操作、已结束 ToolCall 和内部 Evidence，然后原子保存 TaskPlan。超时前尚未提交的
+Evidence 只留在内部检查点，不进入 Result 或 Evidence Registry。
+
+LangSmith 用于观察远端模型、Retriever 或 Tool 子调用，是诊断旁证；本地 TaskPlan checkpoint 才是服务端
+终态诊断事实。公开 API/SSE 只发送阶段、操作名和数量，不发送 Tool 参数、Evidence 内容或完整检查点。
 
 ### 10.7 整体终态如何计算
 

@@ -486,6 +486,8 @@ def _task_plan_progress_events(
             event_key = f"{index}:{event_name}"
             if event_key in seen_research_events or event_name not in {
                 "agent_task_research_wave_started",
+                "agent_task_research_worker_progress",
+                "agent_task_research_worker_timed_out",
                 "agent_task_evidence_evaluated",
                 "agent_task_sub_question_retrying",
             }:

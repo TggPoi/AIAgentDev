@@ -38,6 +38,13 @@ _REVIEWER_PROMPT = """你是 Research TaskPlan 的独立质量 Reviewer，只审
 13. resolved_request.required_source_types 是服务端从真实 user 文本提取的必需来源。
     accepted 或 revised 的最终计划必须完整包含这些来源；不能用当前更容易执行的来源替代。
     该字段只用于来源守恒，不能据此增加用户未要求的统计指标、字段、比较对象或业务结论。
+14. resolved_request.dataset_scope 是服务端冻结的 Dataset 范围。explicit_fields 是可信 user 文本
+    明确要求的字段；aggregation_operations 是明确要求的聚合操作。Reviewer 必须优先删除仅因
+    Dataset metadata 可用而新增的字段。
+15. PLAN_DATASET_AGGREGATION_NOT_REQUESTED 是必须修复的 error，不能 accepted。
+    PLAN_DATASET_FIELD_SCOPE_INFERRED 表示字段合法但无法确定性追溯到用户文本：若不是回答目标
+    不可缺少的字段，应删除；确有必要保留时，warning 必须随 TaskPlan 进入现有整体人工确认，
+    不能描述成用户已经明确要求。
 
 审查顺序必须是：先检查范围守恒，再检查 Requirement 原子性，再检查事实/综合分类，最后检查来源、依赖和可执行性。只要任一项不合格，就不得 accepted；能够在一次修订中修复时必须 revised。
 

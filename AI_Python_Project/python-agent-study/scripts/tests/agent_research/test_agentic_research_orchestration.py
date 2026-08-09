@@ -27,7 +27,9 @@ from fast_app.domain.research_task_plan import (
     ResearchTaskPolicy,
     ResearchTaskProgress,
     ResearchTaskSubQuestion,
+    ResearchWorkerCheckpointUpdate,
     ResearchWorkerProgress,
+    build_research_task_plan_public_view,
 )
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor
@@ -45,6 +47,18 @@ class FakeLLM(BaseLLMClient):
 
     async def stream(self, query: str, context: RagContext):
         yield await self.generate(query, context)
+
+
+class SlowDerivedLLM(FakeLLM):
+    async def generate(
+        self,
+        query: str,
+        context: RagContext,
+        **kwargs: object,
+    ) -> str:
+        if query.startswith("只基于依赖子问题结果完成综合"):
+            await asyncio.Event().wait()
+        return await super().generate(query, context, **kwargs)
 
 
 class ControlledWorker:
@@ -127,6 +141,43 @@ class ControlledWorker:
                 }
             ],
         )
+
+
+class CheckpointingTimeoutWorker:
+    async def run(self, request) -> AgentTaskSubQuestionResult:
+        call = AgentTaskToolCallTrace(
+            call_id="sq_timeout_attempt_1_fetch_a",
+            round=1,
+            tool_name="knowledge_retrieval",
+            status="completed",
+            reason="timeout checkpoint test",
+        )
+        await request.on_checkpoint(
+            ResearchWorkerCheckpointUpdate(
+                stage="tool_execution",
+                attempt=1,
+                operation="knowledge_retrieval",
+                operation_status="finished",
+                tool_call=call,
+                evidence=[
+                    {
+                        "id": "checkpoint_evidence",
+                        "source": "knowledge_retrieval",
+                        "tool_call_id": call.call_id,
+                    }
+                ],
+            )
+        )
+        await request.on_checkpoint(
+            ResearchWorkerCheckpointUpdate(
+                stage="evidence_evaluation",
+                attempt=1,
+                operation="evidence_evaluator",
+                operation_status="started",
+            )
+        )
+        await asyncio.Event().wait()
+        raise AssertionError("timeout worker should have been cancelled")
 
 
 class FakeCapabilityService:
@@ -396,6 +447,126 @@ async def main() -> None:
         assert partial_failed.status == AgentTaskPlanStatus.FAILED
         assert partial_failed.final_output is None
         assert llm.calls == synthesis_calls
+
+        timeout_settings = Settings(
+            _env_file=None,
+            OPENAI_API_KEY="",
+            LANGSMITH_TRACING=False,
+            AGENT_TASK_PLAN_DIR=directory,
+            AGENT_RESEARCH_MAX_PARALLEL_WORKERS=2,
+            AGENT_RESEARCH_WORKER_TIMEOUT_SECONDS=0.2,
+        )
+        timeout_store = AgentTaskPlanStore(timeout_settings)
+        timeout_executor = AgenticResearchExecutor(
+            timeout_settings,
+            FakeLLM(),
+            timeout_store,
+            CheckpointingTimeoutWorker(),
+        )
+        timeout_plan = plan(
+            "task_plan_202608100001_worker_timeout",
+            [requirement("req_timeout", "knowledge_retrieval")],
+            [question("sq_timeout", 1, "knowledge_retrieval", ["req_timeout"])],
+        )
+        timeout_result = await timeout_executor.execute_question_decomposition_plan(
+            plan=timeout_plan,
+            user=user,
+            mode="keyword",
+            top_k=3,
+            candidate_k=None,
+            min_score=0.0,
+            filters=RetrievalFilters(),
+        )
+        timeout_sub_result = timeout_result.sub_question_results[0]
+        timeout_checkpoint = timeout_result.worker_checkpoints["sq_timeout"]
+        assert timeout_sub_result.error_code == "WORKER_TIMEOUT"
+        assert timeout_sub_result.attempt_count == 1
+        assert [item.call_id for item in timeout_sub_result.tool_calls] == [
+            "sq_timeout_attempt_1_fetch_a"
+        ]
+        assert timeout_checkpoint.stage == "evidence_evaluation"
+        assert timeout_checkpoint.active_operations == ["evidence_evaluator"]
+        assert len(timeout_checkpoint.tool_calls) == 1
+        assert len(timeout_checkpoint.evidence) == 1
+        assert timeout_result.evidence_registry.evidence_by_id == {}
+        timeout_public = build_research_task_plan_public_view(timeout_result).model_dump(
+            mode="json"
+        )
+        assert "worker_checkpoints" not in timeout_public
+        timeout_worker_progress = timeout_result.progress.workers["sq_timeout"]
+        assert timeout_worker_progress.stage == "evidence_evaluation"
+        assert timeout_worker_progress.active_operations == ["evidence_evaluator"]
+        assert timeout_worker_progress.tool_call_count == 1
+        assert timeout_worker_progress.evidence_count == 1
+        assert any(
+            event.event == "agent_task_research_worker_timed_out"
+            and event.sub_question_id == "sq_timeout"
+            and event.stage == "evidence_evaluation"
+            for event in timeout_result.progress.events
+        )
+
+        derived_timeout_settings = Settings(
+            _env_file=None,
+            OPENAI_API_KEY="",
+            LANGSMITH_TRACING=False,
+            AGENT_TASK_PLAN_DIR=directory,
+            AGENT_RESEARCH_MAX_PARALLEL_WORKERS=2,
+            AGENT_RESEARCH_WORKER_TIMEOUT_SECONDS=0.2,
+        )
+        derived_timeout_store = AgentTaskPlanStore(derived_timeout_settings)
+        derived_timeout_executor = AgenticResearchExecutor(
+            derived_timeout_settings,
+            SlowDerivedLLM(),
+            derived_timeout_store,
+            ControlledWorker(),
+        )
+        derived_timeout_plan = plan(
+            "task_plan_202608100001_derived_timeout",
+            [
+                requirement("req_source", "knowledge_retrieval"),
+                requirement("req_derived", "none"),
+            ],
+            [
+                question("sq_source", 1, "knowledge_retrieval", ["req_source"]),
+                question(
+                    "sq_derived",
+                    2,
+                    "none",
+                    ["req_derived"],
+                    ["sq_source"],
+                ),
+            ],
+        )
+        derived_timeout_result = (
+            await derived_timeout_executor.execute_question_decomposition_plan(
+                plan=derived_timeout_plan,
+                user=user,
+                mode="keyword",
+                top_k=3,
+                candidate_k=None,
+                min_score=0.0,
+                filters=RetrievalFilters(),
+            )
+        )
+        derived_result_by_id = {
+            item.sub_question_id: item
+            for item in derived_timeout_result.sub_question_results
+        }
+        assert derived_result_by_id["sq_source"].status == "completed"
+        assert derived_result_by_id["sq_derived"].status == "failed"
+        assert derived_result_by_id["sq_derived"].error_code == "WORKER_TIMEOUT"
+        assert derived_result_by_id["sq_derived"].attempt_count == 1
+        derived_checkpoint = derived_timeout_result.worker_checkpoints["sq_derived"]
+        assert derived_checkpoint.stage == "answer_generation"
+        assert derived_checkpoint.active_operations == ["derived_synthesis"]
+        assert any(
+            event.event == "agent_task_research_worker_timed_out"
+            and event.sub_question_id == "sq_derived"
+            and event.stage == "answer_generation"
+            for event in derived_timeout_result.progress.events
+        )
+        assert derived_timeout_result.status == AgentTaskPlanStatus.FAILED
+        assert derived_timeout_result.final_output is None
 
         # waiting_confirmation 在锁内重载后重新解析当前能力，再启动 Worker。
         worker.fail_ids.clear()

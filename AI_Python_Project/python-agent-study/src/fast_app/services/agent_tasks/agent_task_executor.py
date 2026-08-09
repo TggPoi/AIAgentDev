@@ -583,6 +583,7 @@ class AgentTaskExecutor:
             plan.sub_questions,
             capability,
             required_source_types=plan.research_policy.required_source_types,
+            dataset_scope=plan.research_policy.dataset_scope,
         )
         if any(item.severity == "error" for item in issues):
             raise AgentTaskSourceUnavailableError(

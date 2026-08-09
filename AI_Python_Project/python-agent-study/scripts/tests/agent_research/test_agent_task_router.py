@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from fast_app.core.config import Settings
 from fast_app.domain.agent_tool_permissions import PermissionCode
+from fast_app.domain.research_task_plan import AgentTaskCapabilitySnapshot
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.graph.rag_agent.rag_agent_nodes import (
     create_call_direct_web_node,
@@ -97,12 +98,41 @@ class ExplodingPlanner:
 class RecordingResearchPlanner:
     def __init__(self) -> None:
         self.calls = 0
+        self.request = None
 
-    async def plan_question_decomposition(self, **_kwargs):
+    async def plan_question_decomposition(self, **kwargs):
         self.calls += 1
+        self.request = kwargs["request"]
         return SimpleNamespace(
             task_plan_id="source-policy-test-plan",
             task_kind="question_decomposition",
+        )
+
+
+class DatasetScopeCapabilityService:
+    async def resolve_research(self, **_kwargs):
+        return AgentTaskCapabilitySnapshot(
+            available_source_types=[
+                "knowledge_retrieval",
+                "nl2sql_query",
+            ],
+            web_direct_allowed=False,
+            web_fallback_allowed=False,
+            knowledge_retrieval_available=True,
+            nl2sql_query_available=True,
+            dataset_id="game_test",
+            allowed_dataset_fields=[
+                "asset_name",
+                "cost_yuan",
+                "polygon_count",
+                "average_cost_yuan",
+            ],
+            dataset_field_synonyms={
+                "cost_yuan": ["费用"],
+                "polygon_count": ["模型面数"],
+            },
+            max_requirements=10,
+            max_sub_questions=8,
         )
 
 
@@ -395,6 +425,32 @@ async def main() -> None:
     )
     assert local_planner.calls == 1
     assert local_update["route"] == "execute_task_plan"
+
+    dataset_planner = RecordingResearchPlanner()
+    dataset_update = await create_next_action_decision_node(
+        web_settings,
+        task_router=FixedRouter("question_decomposition"),
+        task_planner=dataset_planner,
+        capability_service=DatasetScopeCapabilityService(),
+    )(
+        build_rag_agent_initial_state(
+            RagChatRequest(
+                query="比较角色资产01和角色资产06的费用、模型面数",
+                dataset_id="game_test",
+                nl2sql_action="query",
+                allow_direct_web=False,
+                allow_web_fallback=False,
+            ),
+            operation="stream_events",
+            current_user=web_user,
+        )
+    )
+    assert dataset_update["route"] == "execute_task_plan"
+    assert dataset_planner.calls == 1
+    assert dataset_planner.request.dataset_scope.explicit_fields == [
+        "cost_yuan",
+        "polygon_count",
+    ]
 
     observed_web_calls: list[dict[str, object]] = []
     original_web_search = enhanced_module.search_web_with_bocha

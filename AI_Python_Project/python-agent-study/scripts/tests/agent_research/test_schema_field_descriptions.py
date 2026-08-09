@@ -31,6 +31,7 @@ from fast_app.domain.document_workflow import (
     DocumentWorkflowResult,
 )
 from fast_app.domain.research_task_plan import (
+    AgentTaskDatasetScope,
     AgentTaskEvidencePublicView,
     AgentTaskExpectedEvidence,
     AgentTaskPlannerCandidate,
@@ -41,9 +42,14 @@ from fast_app.domain.research_task_plan import (
     ResolvedPlanningRequest,
     ResearchTaskPolicy,
     ResearchTaskPlanPublicView,
+    ResearchProgressEvent,
+    ResearchTaskProgress,
     ResearchTaskSubQuestion,
     ResearchTaskSubQuestionCandidate,
     ResearchTaskSubQuestionResult,
+    ResearchWorkerCheckpoint,
+    ResearchWorkerCheckpointUpdate,
+    ResearchWorkerProgress,
 )
 from fast_app.services.agent_tasks.agent_task_router import AgentRouteDecision
 from fast_app.services.agent_tasks.deep_document_agent import (
@@ -72,6 +78,7 @@ from fast_app.services.rag.direct_web_search_planner import (
 SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     AgentResearchPolicy,
     AgentRouteDecision,
+    AgentTaskDatasetScope,
     AgentTaskKnowledgeRetrievalToolInput,
     AgentTaskEvidencePublicView,
     AgentTaskExpectedEvidence,
@@ -116,9 +123,14 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     ResolvedPlanningRequest,
     ResearchTaskPolicy,
     ResearchTaskPlanPublicView,
+    ResearchProgressEvent,
+    ResearchTaskProgress,
     ResearchTaskSubQuestion,
     ResearchTaskSubQuestionCandidate,
     ResearchTaskSubQuestionResult,
+    ResearchWorkerCheckpoint,
+    ResearchWorkerCheckpointUpdate,
+    ResearchWorkerProgress,
 )
 
 

@@ -29,6 +29,10 @@ async def main() -> None:
         assert "证据可能不存在不能成为删除来源 Requirement 的理由" in prompt
         assert "required_source_types" in prompt
         assert "不能据此增加用户未要求" in prompt
+        assert "dataset_scope" in prompt
+        assert "explicit_fields" in prompt
+        assert "aggregation_operations" in prompt
+        assert "Dataset metadata" in prompt
 
     planner = AgentTaskPlanner(settings=Settings(_env_file=None, OPENAI_API_KEY=""))
 

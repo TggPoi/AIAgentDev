@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Awaitable, Callable
 from time import perf_counter
 from typing import Literal
 
@@ -27,8 +28,21 @@ from fast_app.services.rag.retrieval_fusion import reciprocal_rank_fusion
 logger = get_logger(__name__)
 
 KnowledgeRetrievalMode = Literal["vector", "keyword", "hybrid"]
+RetrievalProgressCallback = Callable[
+    [str, Literal["started", "finished", "failed"]],
+    Awaitable[None],
+]
 # Agent调用的工具名称
 KNOWLEDGE_RETRIEVAL_TOOL_NAME = "knowledge_retrieval"
+
+
+async def _notify_retrieval_progress(
+    callback: RetrievalProgressCallback | None,
+    operation: str,
+    status: Literal["started", "finished", "failed"],
+) -> None:
+    if callback is not None:
+        await callback(operation, status)
 
 # 文档检索tool调用的结构化 输入对象格式
 class KnowledgeRetrievalToolInput(BaseModel):
@@ -85,6 +99,7 @@ async def retrieve_knowledge_docs(
     min_score: float,
     filters: RetrievalFilters,
     pipeline_provider: str = "langgraph",
+    on_progress: RetrievalProgressCallback | None = None,
 ) -> list[RetrievedDoc]:
     options = build_knowledge_retrieval_options(
         top_k=top_k,
@@ -109,6 +124,7 @@ async def retrieve_knowledge_docs(
         )
 
         start_time = perf_counter()
+        await _notify_retrieval_progress(on_progress, "vector_retrieval", "started")
         try:
             docs = await vector_retriever.retrieve(query, options)
             filtered_docs = filter_docs_by_score(docs, min_score)
@@ -154,8 +170,18 @@ async def retrieve_knowledge_docs(
                     f"没有找到满足 min_score={min_score} 的向量检索结果"
                 )
 
+            await _notify_retrieval_progress(
+                on_progress,
+                "vector_retrieval",
+                "finished",
+            )
             return returned_docs
         except Exception:
+            await _notify_retrieval_progress(
+                on_progress,
+                "vector_retrieval",
+                "failed",
+            )
             latency_ms = (perf_counter() - start_time) * 1000
             logger.exception(
                 "rag_retrieval %s",
@@ -191,6 +217,7 @@ async def retrieve_knowledge_docs(
         )
 
         start_time = perf_counter()
+        await _notify_retrieval_progress(on_progress, "keyword_retrieval", "started")
         try:
             docs = await keyword_retriever.retrieve(query, options)
             filtered_docs = filter_docs_by_mode(docs, mode, min_score)
@@ -236,8 +263,18 @@ async def retrieve_knowledge_docs(
                     f"没有找到满足 min_score={min_score} 的关键词检索结果"
                 )
 
+            await _notify_retrieval_progress(
+                on_progress,
+                "keyword_retrieval",
+                "finished",
+            )
             return returned_docs
         except Exception:
+            await _notify_retrieval_progress(
+                on_progress,
+                "keyword_retrieval",
+                "failed",
+            )
             latency_ms = (perf_counter() - start_time) * 1000
             logger.exception(
                 "rag_retrieval %s",
@@ -274,6 +311,8 @@ async def retrieve_knowledge_docs(
         retriever_name: str,
         retriever: BaseRetriever,
     ) -> list[RetrievedDoc] | Exception:
+        operation = f"{retriever_name}_retrieval"
+        await _notify_retrieval_progress(on_progress, operation, "started")
         source_start_time = perf_counter()
         try:
             docs = await retriever.retrieve(query, options)
@@ -302,8 +341,10 @@ async def retrieve_knowledge_docs(
                     top_doc_ids=build_top_doc_ids(filtered_docs),
                 ),
             )
+            await _notify_retrieval_progress(on_progress, operation, "finished")
             return filtered_docs
         except Exception as exc:
+            await _notify_retrieval_progress(on_progress, operation, "failed")
             latency_ms = (perf_counter() - source_start_time) * 1000
             logger.warning(
                 "rag_retrieval %s",

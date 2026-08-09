@@ -6,6 +6,7 @@ import re
 
 from fast_app.domain.research_task_plan import (
     AgentTaskCapabilitySnapshot,
+    AgentTaskDatasetScope,
     AgentTaskExternalSourceType,
     AgentTaskExpectedEvidence,
     AgentTaskPlannerCandidate,
@@ -30,6 +31,7 @@ class AgentTaskPlanValidator:
         candidate: AgentTaskPlannerCandidate,
         capability: AgentTaskCapabilitySnapshot,
         required_source_types: list[AgentTaskExternalSourceType] | None = None,
+        dataset_scope: AgentTaskDatasetScope | None = None,
     ) -> list[AgentTaskPlanValidationIssue]:
         """校验 Planner/Reviewer Candidate；返回全部可解释问题。"""
 
@@ -113,7 +115,13 @@ class AgentTaskPlanValidator:
 
         issues.extend(_validate_dependency_graph(candidate.sub_questions))
         for requirement in candidate.requirements:
-            issues.extend(_validate_evidence_contract(requirement, capability))
+            issues.extend(
+                _validate_evidence_contract(
+                    requirement,
+                    capability,
+                    dataset_scope,
+                )
+            )
 
         for sub_question in candidate.sub_questions:
             hint = sub_question.information_source_hint
@@ -149,6 +157,7 @@ class AgentTaskPlanValidator:
         sub_questions: list[ResearchTaskSubQuestion],
         capability: AgentTaskCapabilitySnapshot,
         required_source_types: list[AgentTaskExternalSourceType] | None = None,
+        dataset_scope: AgentTaskDatasetScope | None = None,
     ) -> list[AgentTaskPlanValidationIssue]:
         """正式模型转换后复验服务端生成的 WebUsage。"""
 
@@ -156,6 +165,7 @@ class AgentTaskPlanValidator:
             candidate,
             capability,
             required_source_types=required_source_types,
+            dataset_scope=dataset_scope,
         )
         for item in sub_questions:
             if item.information_source_hint == "web_search" and item.web_usage != "direct":
@@ -180,7 +190,11 @@ class AgentTaskPlanValidator:
         return _deduplicate(issues)
 
 
-def _validate_evidence_contract(requirement, capability):
+def _validate_evidence_contract(
+    requirement,
+    capability,
+    dataset_scope: AgentTaskDatasetScope | None,
+):
     issues: list[AgentTaskPlanValidationIssue] = []
     policy = requirement.source_policy
     evidence_sources = {
@@ -222,6 +236,15 @@ def _validate_evidence_contract(requirement, capability):
     for expected in requirement.expected_evidence:
         if expected.evidence_type != "sql_query_result":
             continue
+        if not expected.required_attributes:
+            issues.append(
+                _issue(
+                    "PLAN_DATASET_REQUIRED_ATTRIBUTES_EMPTY",
+                    "sql_query_result 必须声明至少一个 required_attribute",
+                    requirement_ids=[requirement.requirement_id],
+                )
+            )
+            continue
         if not capability.dataset_id or not capability.nl2sql_query_available:
             issues.append(
                 _issue(
@@ -244,7 +267,68 @@ def _validate_evidence_contract(requirement, capability):
                     requirement_ids=[requirement.requirement_id],
                 )
             )
+            continue
+        if dataset_scope is None:
+            continue
+        for field in expected.required_attributes:
+            if field in dataset_scope.explicit_fields:
+                continue
+            aggregation = _dataset_aggregation_kind(
+                field,
+                capability.dataset_field_synonyms,
+            )
+            if (
+                aggregation is not None
+                and aggregation not in dataset_scope.aggregation_operations
+            ):
+                issues.append(
+                    _issue(
+                        "PLAN_DATASET_AGGREGATION_NOT_REQUESTED",
+                        f"计划增加了用户未要求的 Dataset 聚合字段: {field}",
+                        requirement_ids=[requirement.requirement_id],
+                    )
+                )
+                continue
+            issues.append(
+                _issue(
+                    "PLAN_DATASET_FIELD_SCOPE_INFERRED",
+                    (
+                        "Dataset 字段无法从可信 user 文本确定性追溯，"
+                        f"需要通过现有 TaskPlan 整体确认: {field}"
+                    ),
+                    requirement_ids=[requirement.requirement_id],
+                    severity="warning",
+                )
+            )
     return issues
+
+
+def _dataset_aggregation_kind(
+    field: str,
+    synonyms: dict[str, list[str]],
+) -> str | None:
+    lowered = field.lower()
+    if lowered.startswith(("average_", "avg_")):
+        return "average"
+    if lowered.startswith(("total_", "sum_")):
+        return "sum"
+    if lowered.startswith(("minimum_", "min_")):
+        return "minimum"
+    if lowered.startswith(("maximum_", "max_")):
+        return "maximum"
+    if lowered.startswith("count_"):
+        return "count"
+    if lowered.endswith(("_average", "_avg")):
+        return "average"
+    if lowered.endswith(("_total", "_sum")):
+        return "sum"
+    if lowered.endswith(("_minimum", "_min")):
+        return "minimum"
+    if lowered.endswith(("_maximum", "_max")):
+        return "maximum"
+    if lowered.endswith("_count") and field not in synonyms:
+        return "count"
+    return None
 
 
 def _hint_can_cover(hint: str, expected: list[AgentTaskExpectedEvidence]) -> bool:
@@ -293,13 +377,20 @@ def _validate_dependency_graph(sub_questions):
     return issues
 
 
-def _issue(code, message, *, requirement_ids=None, sub_question_ids=None):
+def _issue(
+    code,
+    message,
+    *,
+    requirement_ids=None,
+    sub_question_ids=None,
+    severity="error",
+):
     return AgentTaskPlanValidationIssue(
         code=code,
         message=message,
         requirement_ids=requirement_ids or [],
         sub_question_ids=sub_question_ids or [],
-        severity="error",
+        severity=severity,
     )
 
 

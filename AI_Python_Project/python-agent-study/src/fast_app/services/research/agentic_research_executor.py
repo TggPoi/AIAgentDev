@@ -22,6 +22,8 @@ from fast_app.domain.research_task_plan import (
     ResearchTaskPlan,
     ResearchTaskSubQuestion,
     ResearchTaskSubQuestionResult,
+    ResearchWorkerCheckpoint,
+    ResearchWorkerCheckpointUpdate,
 )
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.graph.research.agentic_research_graph import (
@@ -42,6 +44,7 @@ from fast_app.services.research.research_worker_agent import (
     ResearchWorkerAgent,
     ResearchWorkerRequest,
 )
+from fast_app.services.research.research_tool_loop import merge_evidence
 
 
 LangChainConfigFactory = Callable[[str], RunnableConfig]
@@ -108,6 +111,7 @@ class AgenticResearchExecutor:
         if not resume:
             plan.sub_question_results = []
             plan.evidence_registry.evidence_by_id.clear()
+            plan.worker_checkpoints.clear()
         retained = [item for item in plan.sub_question_results if item.status == "completed"]
         plan.sub_question_results = retained
         plan.final_output = None
@@ -116,25 +120,133 @@ class AgenticResearchExecutor:
         formal_by_id = {item.sub_question_id: item for item in plan.sub_questions}
         merged_results = {item.sub_question_id: item for item in retained}
 
+        def apply_progress_event(event: str, payload: dict[str, object]) -> None:
+            sub_question_id = str(payload.get("sub_question_id") or "") or None
+            raw_active_operations = payload.get("active_operations")
+            active_operations = (
+                [str(item) for item in raw_active_operations if isinstance(item, str)]
+                if isinstance(raw_active_operations, list)
+                else []
+            )
+            plan.progress.events.append(
+                ResearchProgressEvent(
+                    event=event,
+                    sub_question_id=sub_question_id,
+                    wave=_as_int(payload.get("wave")),
+                    status=(str(payload.get("status")) if payload.get("status") else None),
+                    reason_code=(str(payload.get("error")) if payload.get("error") else None),
+                    attempt=_as_int(payload.get("attempt")),
+                    stage=(str(payload.get("stage")) if payload.get("stage") else None),
+                    active_operations=active_operations,
+                    tool_call_count=_as_int(payload.get("tool_call_count")),
+                    evidence_count=_as_int(payload.get("evidence_count")),
+                    last_tool_name=(
+                        str(payload.get("last_tool_name"))
+                        if payload.get("last_tool_name")
+                        else None
+                    ),
+                )
+            )
+            if not sub_question_id or sub_question_id not in plan.progress.workers:
+                return
+            worker = plan.progress.workers[sub_question_id]
+            if payload.get("status") in {
+                "pending",
+                "running",
+                "completed",
+                "partial",
+                "failed",
+                "skipped",
+            }:
+                worker.status = str(payload["status"])
+            worker.wave = _as_int(payload.get("wave")) or worker.wave
+            worker.attempt = _as_int(payload.get("attempt")) or worker.attempt
+            if payload.get("stage"):
+                worker.stage = str(payload["stage"])
+            if isinstance(raw_active_operations, list):
+                worker.active_operations = active_operations
+            tool_call_count = _as_int(payload.get("tool_call_count"))
+            if tool_call_count is not None:
+                worker.tool_call_count = tool_call_count
+            evidence_count = _as_int(payload.get("evidence_count"))
+            if evidence_count is not None:
+                worker.evidence_count = evidence_count
+            if payload.get("last_tool_name"):
+                worker.last_tool_name = str(payload["last_tool_name"])
+            if payload.get("error"):
+                worker.error_code = str(payload["error"])
+
         async def append_progress_event(event: str, payload: dict[str, object]) -> None:
             async with snapshot_lock:
-                sub_question_id = str(payload.get("sub_question_id") or "") or None
-                plan.progress.events.append(
-                    ResearchProgressEvent(
-                        event=event,
-                        sub_question_id=sub_question_id,
-                        wave=_as_int(payload.get("wave")),
-                        status=(str(payload.get("status")) if payload.get("status") else None),
-                        reason_code=(str(payload.get("error")) if payload.get("error") else None),
-                    )
-                )
-                if sub_question_id and sub_question_id in plan.progress.workers:
-                    worker = plan.progress.workers[sub_question_id]
-                    if payload.get("status") in {"pending", "running", "completed", "partial", "failed", "skipped"}:
-                        worker.status = str(payload["status"])
-                    worker.wave = _as_int(payload.get("wave")) or worker.wave
-                    worker.attempt = _as_int(payload.get("attempt")) or worker.attempt
+                apply_progress_event(event, payload)
                 self._save(plan)
+
+        async def save_worker_checkpoint(
+            sub_question: ResearchTaskSubQuestion,
+            wave: int,
+            update: ResearchWorkerCheckpointUpdate,
+        ) -> None:
+            async with snapshot_lock:
+                checkpoint = plan.worker_checkpoints.setdefault(
+                    sub_question.sub_question_id,
+                    ResearchWorkerCheckpoint(),
+                )
+                checkpoint.stage = update.stage
+                checkpoint.attempt = update.attempt
+                if update.operation is not None and update.operation_status == "started":
+                    checkpoint.active_operations.append(update.operation)
+                elif update.operation is not None:
+                    try:
+                        checkpoint.active_operations.remove(update.operation)
+                    except ValueError:
+                        pass
+                if update.tool_call is not None:
+                    calls_by_id = {item.call_id: item for item in checkpoint.tool_calls}
+                    calls_by_id[update.tool_call.call_id] = update.tool_call
+                    checkpoint.tool_calls = list(calls_by_id.values())
+                    checkpoint.last_tool_name = update.tool_call.tool_name
+                checkpoint.evidence = merge_evidence(
+                    checkpoint.evidence,
+                    update.evidence,
+                )
+                apply_progress_event(
+                    "agent_task_research_worker_progress",
+                    {
+                        "sub_question_id": sub_question.sub_question_id,
+                        "wave": wave,
+                        "attempt": checkpoint.attempt,
+                        "status": "running",
+                        "stage": checkpoint.stage,
+                        "active_operations": sorted(set(checkpoint.active_operations)),
+                        "tool_call_count": len(checkpoint.tool_calls),
+                        "evidence_count": len(checkpoint.evidence),
+                        "last_tool_name": checkpoint.last_tool_name,
+                    },
+                )
+                self._save(plan)
+
+        async def mark_worker_timed_out(
+            sub_question: ResearchTaskSubQuestion,
+            wave: int,
+        ) -> None:
+            checkpoint = plan.worker_checkpoints.get(sub_question.sub_question_id)
+            await append_progress_event(
+                "agent_task_research_worker_timed_out",
+                {
+                    "sub_question_id": sub_question.sub_question_id,
+                    "wave": wave,
+                    "attempt": checkpoint.attempt if checkpoint else 1,
+                    "status": "failed",
+                    "error": "WORKER_TIMEOUT",
+                    "stage": checkpoint.stage if checkpoint else "starting",
+                    "active_operations": (
+                        sorted(set(checkpoint.active_operations)) if checkpoint else []
+                    ),
+                    "tool_call_count": len(checkpoint.tool_calls) if checkpoint else 0,
+                    "evidence_count": len(checkpoint.evidence) if checkpoint else 0,
+                    "last_tool_name": checkpoint.last_tool_name if checkpoint else None,
+                },
+            )
 
         async def on_wave_started(wave: int, sub_question_ids: list[str]) -> None:
             async with snapshot_lock:
@@ -196,6 +308,8 @@ class AgenticResearchExecutor:
                     worker.wave = wave
                     worker.attempt = converted.attempt_count
                     worker.error_code = converted.error_code
+                    if converted.error_code != "WORKER_TIMEOUT":
+                        plan.worker_checkpoints.pop(converted.sub_question_id, None)
                 plan.sub_question_results = _sort_results(plan, list(merged_results.values()))
                 plan.requirement_evidence_statuses = self._evidence_service.aggregate(
                     requirements=plan.requirements,
@@ -214,8 +328,18 @@ class AgenticResearchExecutor:
             wave: int,
         ) -> AgentTaskSubQuestionResult:
             if sub_question.information_source_hint == "none":
+                await save_worker_checkpoint(
+                    sub_question,
+                    wave,
+                    ResearchWorkerCheckpointUpdate(
+                        stage="answer_generation",
+                        attempt=1,
+                        operation="derived_synthesis",
+                        operation_status="started",
+                    ),
+                )
                 try:
-                    return await asyncio.wait_for(
+                    result = await asyncio.wait_for(
                         self._run_derived_sub_question(
                             sub_question,
                             dependency_results,
@@ -224,7 +348,22 @@ class AgenticResearchExecutor:
                         timeout=self._settings.agent_research_worker_timeout_seconds,
                     )
                 except TimeoutError:
-                    return _failed_legacy_result(sub_question, "WORKER_TIMEOUT")
+                    await mark_worker_timed_out(sub_question, wave)
+                    return _timeout_legacy_result(
+                        sub_question,
+                        plan.worker_checkpoints.get(sub_question.sub_question_id),
+                    )
+                await save_worker_checkpoint(
+                    sub_question,
+                    wave,
+                    ResearchWorkerCheckpointUpdate(
+                        stage="completed",
+                        attempt=1,
+                        operation="derived_synthesis",
+                        operation_status="finished",
+                    ),
+                )
+                return result
             web_policy = {
                 "direct": "required",
                 "fallback_on_insufficient_evidence": "fallback",
@@ -241,6 +380,9 @@ class AgenticResearchExecutor:
                 dataset_id=plan.research_policy.dataset_id,
                 nl2sql_action=plan.research_policy.nl2sql_action,
             )
+            async def on_checkpoint(update: ResearchWorkerCheckpointUpdate) -> None:
+                await save_worker_checkpoint(sub_question, wave, update)
+
             try:
                 return await asyncio.wait_for(
                     self._worker_agent.run(
@@ -252,6 +394,7 @@ class AgenticResearchExecutor:
                             filters=filters,
                             wave=wave,
                             on_progress=append_progress_event,
+                            on_checkpoint=on_checkpoint,
                             should_stop=should_stop,
                             user=user,
                             langchain_config_factory=langchain_config_factory,
@@ -262,7 +405,11 @@ class AgenticResearchExecutor:
             except (ResearchExecutionCancelled, ToolPermissionDeniedError, _TaskPlanPersistenceError):
                 raise
             except TimeoutError:
-                return _failed_legacy_result(sub_question, "WORKER_TIMEOUT")
+                await mark_worker_timed_out(sub_question, wave)
+                return _timeout_legacy_result(
+                    sub_question,
+                    plan.worker_checkpoints.get(sub_question.sub_question_id),
+                )
             except Exception as exc:
                 return _failed_legacy_result(sub_question, type(exc).__name__)
 
@@ -551,6 +698,28 @@ def _failed_legacy_result(sub_question, error: str) -> AgentTaskSubQuestionResul
         attempt_count=0,
         error=error,
         warnings=["Worker 未产生可验证 Evidence。"],
+    )
+
+
+def _timeout_legacy_result(
+    sub_question: ResearchTaskSubQuestion,
+    checkpoint: ResearchWorkerCheckpoint | None,
+) -> AgentTaskSubQuestionResult:
+    tool_calls = list(checkpoint.tool_calls) if checkpoint else []
+    last_call = tool_calls[-1] if tool_calls else None
+    return AgentTaskSubQuestionResult(
+        sub_question_id=sub_question.sub_question_id,
+        question=sub_question.question,
+        selected_tool=last_call.tool_name if last_call else "none",
+        status="failed",
+        answer="",
+        attempt_count=checkpoint.attempt if checkpoint else 1,
+        tool_calls=tool_calls,
+        evidence=[],
+        error="WORKER_TIMEOUT",
+        warnings=[
+            "Worker 在返回完整结果前超时；内部检查点保留了最后阶段和已完成调用。"
+        ],
     )
 
 

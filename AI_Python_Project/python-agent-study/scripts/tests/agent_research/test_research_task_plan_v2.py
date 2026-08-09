@@ -12,6 +12,7 @@ from fast_app.core.config import Settings
 from fast_app.domain.agent_tool_permissions import PermissionCode
 from fast_app.domain.research_task_plan import (
     AgentTaskCapabilitySnapshot,
+    AgentTaskDatasetScope,
     AgentTaskEvidenceRef,
     AgentTaskEvidenceRegistry,
     AgentTaskExpectedEvidence,
@@ -30,11 +31,15 @@ from fast_app.domain.research_task_plan import (
     ResearchTaskSubQuestion,
     ResearchTaskSubQuestionCandidate,
     ResearchTaskSubQuestionResult,
+    ResearchWorkerCheckpoint,
     ResearchWorkerProgress,
     build_research_task_plan_public_view,
 )
 from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
 from fast_app.services.agent_tasks.agent_task_capability_service import AgentTaskCapabilityService
+from fast_app.services.agent_tasks.agent_task_dataset_scope_policy import (
+    resolve_dataset_field_scope,
+)
 from fast_app.services.agent_tasks.agent_task_plan_validator import AgentTaskPlanValidator
 from fast_app.services.agent_tasks.agent_task_source_policy import (
     resolve_required_source_types,
@@ -173,6 +178,70 @@ def main() -> None:
             resolved_query="不要联网，只根据当前知识库回答。",
         )
     ) == []
+
+    dataset_capability = AgentTaskCapabilitySnapshot(
+        available_source_types=["nl2sql_query"],
+        web_direct_allowed=False,
+        web_fallback_allowed=False,
+        knowledge_retrieval_available=False,
+        nl2sql_query_available=True,
+        dataset_id="game_test",
+        allowed_dataset_fields=[
+            "asset_name",
+            "average_cost_yuan",
+            "cost_yuan",
+            "polygon_count",
+        ],
+        dataset_field_synonyms={
+            "cost_yuan": ["费用"],
+            "polygon_count": ["模型面数"],
+        },
+        max_requirements=10,
+        max_sub_questions=8,
+    )
+    explicit_scope = resolve_dataset_field_scope(
+        ResolvedPlanningRequest(
+            current_query="比较角色资产01和角色资产06的费用、模型面数。",
+            resolved_query="比较角色资产01和角色资产06的费用、模型面数。",
+        ),
+        dataset_capability,
+    )
+    assert explicit_scope is not None
+    assert explicit_scope.explicit_fields == ["cost_yuan", "polygon_count"]
+    assert explicit_scope.aggregation_operations == []
+
+    assistant_ignored_scope = resolve_dataset_field_scope(
+        ResolvedPlanningRequest(
+            current_query="比较两个角色资产。",
+            relevant_history=[
+                AgentTaskPlanningTurn(role="assistant", content="建议比较费用和模型面数。")
+            ],
+            resolved_query="比较两个角色资产。",
+        ),
+        dataset_capability,
+    )
+    assert assistant_ignored_scope is not None
+    assert assistant_ignored_scope.explicit_fields == []
+
+    negated_scope = resolve_dataset_field_scope(
+        ResolvedPlanningRequest(
+            current_query="不要比较费用。只比较模型面数。",
+            resolved_query="不要比较费用。只比较模型面数。",
+        ),
+        dataset_capability,
+    )
+    assert negated_scope is not None
+    assert negated_scope.explicit_fields == ["polygon_count"]
+
+    aggregation_scope = resolve_dataset_field_scope(
+        ResolvedPlanningRequest(
+            current_query="计算费用的平均值和总和，并统计数量。",
+            resolved_query="计算费用的平均值和总和，并统计数量。",
+        ),
+        dataset_capability,
+    )
+    assert aggregation_scope is not None
+    assert aggregation_scope.aggregation_operations == ["average", "sum", "count"]
 
     assert resolve_required_source_types(
         ResolvedPlanningRequest(
@@ -457,7 +526,16 @@ def main() -> None:
         dataset_id="game_test",
         dataset_name="游戏资产",
         dataset_domain="game",
-        allowed_dataset_fields=["cost_yuan", "polygon_count"],
+        allowed_dataset_fields=[
+            "asset_name",
+            "average_cost_yuan",
+            "cost_yuan",
+            "polygon_count",
+        ],
+        dataset_field_synonyms={
+            "cost_yuan": ["费用"],
+            "polygon_count": ["模型面数"],
+        },
         max_requirements=10,
         max_sub_questions=5,
     )
@@ -480,6 +558,84 @@ def main() -> None:
         )
     }
     assert "PLAN_DATASET_FIELD_UNAVAILABLE" in issue_codes
+
+    dataset_scope = AgentTaskDatasetScope(
+        explicit_fields=["cost_yuan", "polygon_count"],
+        aggregation_operations=[],
+    )
+    unrequested_aggregation_candidate = AgentTaskPlannerCandidate(
+        requirements=[
+            requirement(
+                "req_3",
+                "all_of",
+                ["nl2sql_query"],
+                [expected("sql_query_result", attributes=["average_cost_yuan"])],
+            )
+        ],
+        sub_questions=[sq_sql.model_copy(update={"covers_requirement_ids": ["req_3"]})],
+    )
+    aggregation_issues = AgentTaskPlanValidator().validate_candidate(
+        unrequested_aggregation_candidate,
+        capability,
+        dataset_scope=dataset_scope,
+    )
+    assert any(
+        item.code == "PLAN_DATASET_AGGREGATION_NOT_REQUESTED"
+        and item.severity == "error"
+        for item in aggregation_issues
+    )
+
+    inferred_field_candidate = AgentTaskPlannerCandidate(
+        requirements=[
+            requirement(
+                "req_3",
+                "all_of",
+                ["nl2sql_query"],
+                [expected("sql_query_result", attributes=["asset_name"])],
+            )
+        ],
+        sub_questions=[sq_sql.model_copy(update={"covers_requirement_ids": ["req_3"]})],
+    )
+    inferred_issues = AgentTaskPlanValidator().validate_candidate(
+        inferred_field_candidate,
+        capability,
+        dataset_scope=dataset_scope,
+    )
+    assert any(
+        item.code == "PLAN_DATASET_FIELD_SCOPE_INFERRED"
+        and item.severity == "warning"
+        for item in inferred_issues
+    )
+    legacy_scope_issue_codes = {
+        item.code
+        for item in AgentTaskPlanValidator().validate_candidate(
+            inferred_field_candidate,
+            capability,
+            dataset_scope=None,
+        )
+    }
+    assert "PLAN_DATASET_FIELD_SCOPE_INFERRED" not in legacy_scope_issue_codes
+
+    empty_attributes_candidate = AgentTaskPlannerCandidate(
+        requirements=[
+            requirement(
+                "req_3",
+                "all_of",
+                ["nl2sql_query"],
+                [expected("sql_query_result")],
+            )
+        ],
+        sub_questions=[sq_sql.model_copy(update={"covers_requirement_ids": ["req_3"]})],
+    )
+    empty_attribute_codes = {
+        item.code
+        for item in AgentTaskPlanValidator().validate_candidate(
+            empty_attributes_candidate,
+            capability,
+            dataset_scope=dataset_scope,
+        )
+    }
+    assert "PLAN_DATASET_REQUIRED_ATTRIBUTES_EMPTY" in empty_attribute_codes
 
     web_capability = capability.model_copy(
         update={
@@ -565,6 +721,7 @@ def main() -> None:
             dataset_id="game_test",
             nl2sql_action="query",
             required_source_types=["nl2sql_query"],
+            dataset_scope=dataset_scope,
             allow_direct_web=False,
             allow_web_fallback=False,
         ),
@@ -574,11 +731,19 @@ def main() -> None:
         status="waiting_confirmation",
         created_at=now,
         updated_at=now,
+        worker_checkpoints={
+            "sq_3": ResearchWorkerCheckpoint(
+                stage="evidence_evaluation",
+                evidence=[{"id": "internal-only"}],
+            )
+        },
     )
     public = build_research_task_plan_public_view(plan).model_dump(mode="json")
     assert "original_query" not in public
     assert "dataset_id" not in public["capability_snapshot"]
     assert "evidence_registry" not in public
+    assert "worker_checkpoints" not in public
+    assert "dataset_field_synonyms" not in public["capability_snapshot"]
     assert "等待人工确认" in build_task_plan_answer(plan)
 
     with TemporaryDirectory() as directory:
@@ -592,11 +757,21 @@ def main() -> None:
         assert loaded.research_policy.required_source_types == [
             "nl2sql_query"
         ]
+        assert loaded.research_policy.dataset_scope == dataset_scope
+        assert loaded.worker_checkpoints["sq_3"].evidence == [
+            {"id": "internal-only"}
+        ]
 
     legacy_payload = plan.model_dump(mode="json")
     legacy_payload["research_policy"].pop("required_source_types")
+    legacy_payload["research_policy"].pop("dataset_scope")
+    legacy_payload["capability_snapshot"].pop("dataset_field_synonyms")
+    legacy_payload.pop("worker_checkpoints")
     legacy_plan = ResearchTaskPlan.model_validate(legacy_payload)
     assert legacy_plan.research_policy.required_source_types == []
+    assert legacy_plan.research_policy.dataset_scope is None
+    assert legacy_plan.capability_snapshot.dataset_field_synonyms == {}
+    assert legacy_plan.worker_checkpoints == {}
 
     # Typed Evidence 的排他约束在 Schema 层拒绝非法字段组合。
     try:

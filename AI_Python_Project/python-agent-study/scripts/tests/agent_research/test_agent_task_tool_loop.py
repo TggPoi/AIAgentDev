@@ -652,6 +652,9 @@ async def main() -> None:
         async def ignore_progress(*args, **kwargs):
             return None
 
+        async def ignore_checkpoint(_update) -> None:
+            return None
+
         correction_plan = build_plan("task_plan_cross_attempt")
         correction_result = await correction_worker.run(
             ResearchWorkerRequest(
@@ -667,6 +670,7 @@ async def main() -> None:
                 filters=RetrievalFilters(),
                 wave=1,
                 on_progress=ignore_progress,
+                on_checkpoint=ignore_checkpoint,
                 should_stop=lambda: False,
             )
         )
@@ -748,6 +752,11 @@ async def main() -> None:
             llm_client=fetch_llm,
         )
         fetch_plan = build_plan("task_plan_parallel_mcp_fetch")
+        checkpoint_updates = []
+
+        async def record_checkpoint(update) -> None:
+            checkpoint_updates.append(update)
+
         fetch_outcome = await fetch_loop.run_attempt(
             plan=fetch_plan,
             sub_question=fetch_plan.sub_questions[0],
@@ -757,6 +766,7 @@ async def main() -> None:
             candidate_k=None,
             min_score=0.0,
             filters=RetrievalFilters(),
+            on_checkpoint=record_checkpoint,
         )
 
         assert fetch_loop.started == 2
@@ -773,6 +783,11 @@ async def main() -> None:
         fetch_context = fetch_llm.generate_calls[0][1].context_text
         assert "https://example.com/a" in fetch_context
         assert "https://example.com/b" in fetch_context
+        assert {
+            item.tool_call.call_id.rsplit("_attempt_1_", 1)[-1]
+            for item in checkpoint_updates
+            if item.tool_call is not None
+        } == {"fetch_a", "fetch_b"}
 
         # 只剩 1 次预算时不能因为 LLM 返回 2 个候选就整批拒绝；应稳定执行
         # 第一个合法调用，并保证实际 ToolCall 数不突破 Worker 预算。

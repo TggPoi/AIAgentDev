@@ -52,6 +52,24 @@ WebUsage = Literal[
     "fallback_on_insufficient_evidence",
     "not_used",
 ]
+DatasetAggregationOperation = Literal[
+    "average",
+    "sum",
+    "count",
+    "minimum",
+    "maximum",
+]
+ResearchWorkerStage = Literal[
+    "starting",
+    "tool_setup",
+    "tool_selection",
+    "tool_execution",
+    "answer_generation",
+    "evidence_evaluation",
+    "retry_preparation",
+    "completed",
+]
+ResearchWorkerOperationStatus = Literal["started", "finished", "failed"]
 
 
 class FrozenConversationTurn(BaseModel):
@@ -73,6 +91,27 @@ class AgentTaskPlanningTurn(BaseModel):
     content: str = Field(description="解决当前指代所需的有限消息正文。")
 
 
+class AgentTaskDatasetScope(BaseModel):
+    """从可信 user 文本冻结的 Dataset 字段和聚合范围。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    explicit_fields: list[str] = Field(
+        default_factory=list,
+        description=(
+            "当前 user Query 和实际参与改写的历史 user 消息明确提到的 Dataset 逻辑字段；"
+            "不包含 assistant 文本或仅因 Schema 可用而推测的字段。"
+        ),
+    )
+    aggregation_operations: list[DatasetAggregationOperation] = Field(
+        default_factory=list,
+        description=(
+            "用户明确要求的聚合操作；空列表表示不能把平均、合计、数量、最小或最大统计"
+            "静默加入计划。"
+        ),
+    )
+
+
 class ResolvedPlanningRequest(BaseModel):
     """Router、Planner 和 Reviewer 共用的解析后规划请求。"""
 
@@ -89,6 +128,13 @@ class ResolvedPlanningRequest(BaseModel):
         description=(
             "服务端仅根据当前用户文本和已验证的相关 user 历史提取的必需来源；"
             "Planner 和 Reviewer 只能保留，不能新增、删除或替换。"
+        ),
+    )
+    dataset_scope: AgentTaskDatasetScope | None = Field(
+        default=None,
+        description=(
+            "绑定 Dataset 时由服务端从真实 user 文本解析的字段和聚合范围；"
+            "未绑定 Dataset 或加载旧请求时为空。"
         ),
     )
 
@@ -510,6 +556,13 @@ class AgentTaskCapabilitySnapshot(BaseModel):
         default_factory=list,
         description="供 required_attributes 校验使用的白名单逻辑字段。",
     )
+    dataset_field_synonyms: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "服务端可信 Dataset 配置中属于白名单逻辑字段的同义词；"
+            "只供内部范围解析，公开 View 不返回。"
+        ),
+    )
     dataset_schema_context: str | None = Field(
         default=None,
         description="仅非敏感 Dataset 的白名单 Schema、COMMENT 和关系上下文；公开 View 不返回。",
@@ -567,6 +620,10 @@ class ResearchTaskPolicy(BaseModel):
             "创建计划时冻结的用户必需来源；确认或恢复时必须重新验证这些来源仍可用。"
         ),
     )
+    dataset_scope: AgentTaskDatasetScope | None = Field(
+        default=None,
+        description="计划创建时冻结的 Dataset 用户范围；确认和恢复时继续使用同一范围复验。",
+    )
     allow_direct_web: bool = Field(description="用户请求是否允许明确 Web 子任务。")
     allow_web_fallback: bool = Field(description="知识库不足时是否允许升级 Web。")
 
@@ -580,6 +637,28 @@ class ResearchWorkerProgress(BaseModel):
     wave: int = Field(default=0, ge=0, description="Worker 所属依赖波次。")
     attempt: int = Field(default=0, ge=0, description="当前研究尝试次数。")
     error_code: str | None = Field(default=None, description="Worker 当前错误码。")
+    stage: ResearchWorkerStage = Field(
+        default="starting",
+        description="公开安全的 Worker 当前阶段。",
+    )
+    active_operations: list[str] = Field(
+        default_factory=list,
+        description="当前仍在执行的公开安全操作名称，不包含 Tool 参数。",
+    )
+    tool_call_count: int = Field(
+        default=0,
+        ge=0,
+        description="内部检查点已记录的 ToolCall 数量。",
+    )
+    evidence_count: int = Field(
+        default=0,
+        ge=0,
+        description="内部检查点已记录的 Evidence 数量。",
+    )
+    last_tool_name: str | None = Field(
+        default=None,
+        description="最近结束的 Tool 名称；尚无 ToolCall 时为空。",
+    )
 
 
 class ResearchProgressEvent(BaseModel):
@@ -592,6 +671,92 @@ class ResearchProgressEvent(BaseModel):
     wave: int | None = Field(default=None, ge=0, description="相关依赖波次。")
     status: str | None = Field(default=None, description="事件对应的状态。")
     reason_code: str | None = Field(default=None, description="事件对应的稳定原因码。")
+    attempt: int | None = Field(
+        default=None,
+        ge=0,
+        description="事件对应的 Worker attempt。",
+    )
+    stage: ResearchWorkerStage | None = Field(
+        default=None,
+        description="事件对应的 Worker 阶段。",
+    )
+    active_operations: list[str] = Field(
+        default_factory=list,
+        description="事件发生时仍在执行的操作名称。",
+    )
+    tool_call_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="事件发生时已记录的 ToolCall 数量。",
+    )
+    evidence_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="事件发生时已记录的 Evidence 数量。",
+    )
+    last_tool_name: str | None = Field(
+        default=None,
+        description="事件发生时最近结束的 Tool 名称。",
+    )
+
+
+class ResearchWorkerCheckpointUpdate(BaseModel):
+    """Worker 向 Executor 报告的一次内部阶段变化。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    stage: ResearchWorkerStage = Field(description="更新发生时 Worker 所处阶段。")
+    attempt: int = Field(ge=1, description="更新所属的 Worker attempt。")
+    operation: str | None = Field(
+        default=None,
+        description="本次开始、结束或失败的内部操作名称；没有操作变化时为空。",
+    )
+    operation_status: ResearchWorkerOperationStatus | None = Field(
+        default=None,
+        description="operation 的状态；operation 为空时也必须为空。",
+    )
+    tool_call: AgentTaskToolCallTrace | None = Field(
+        default=None,
+        description="刚刚结束的完整内部 ToolCall；没有 ToolCall 结束时为空。",
+    )
+    evidence: list[dict[str, object]] = Field(
+        default_factory=list,
+        description="本次 ToolCall 新产生的内部 Evidence 摘要；不会直接进入公开 API。",
+    )
+
+    @model_validator(mode="after")
+    def validate_operation_pair(self) -> ResearchWorkerCheckpointUpdate:
+        if (self.operation is None) != (self.operation_status is None):
+            raise ValueError("operation 和 operation_status 必须同时为空或同时存在")
+        return self
+
+
+class ResearchWorkerCheckpoint(BaseModel):
+    """一个 Worker 最近成功持久化的内部执行现场。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    stage: ResearchWorkerStage = Field(
+        default="starting",
+        description="最近成功持久化的内部执行阶段。",
+    )
+    attempt: int = Field(default=1, ge=1, description="最近执行的 Worker attempt。")
+    active_operations: list[str] = Field(
+        default_factory=list,
+        description="尚未收到 finished/failed 更新的操作；允许同名并发操作重复出现。",
+    )
+    tool_calls: list[AgentTaskToolCallTrace] = Field(
+        default_factory=list,
+        description="超时前已完成或明确失败的内部 ToolCall。",
+    )
+    evidence: list[dict[str, object]] = Field(
+        default_factory=list,
+        description="超时前已取得但尚未提交 Registry 的内部 Evidence 摘要。",
+    )
+    last_tool_name: str | None = Field(
+        default=None,
+        description="最近结束的 Tool 名称；尚无 ToolCall 时为空。",
+    )
 
 
 class ResearchTaskProgress(BaseModel):
@@ -640,6 +805,13 @@ class ResearchTaskPlan(BaseModel):
     capability_snapshot: AgentTaskCapabilitySnapshot = Field(description="计划创建时的非敏感能力摘要。")
     research_policy: ResearchTaskPolicy = Field(description="服务端冻结的非授权研究参数。")
     progress: ResearchTaskProgress = Field(default_factory=ResearchTaskProgress, description="结构化执行进度。")
+    worker_checkpoints: dict[str, ResearchWorkerCheckpoint] = Field(
+        default_factory=dict,
+        description=(
+            "按 SubQuestion ID 保存的内部 Worker 执行现场；"
+            "公开 TaskPlan View 和 SSE 不返回详细 ToolCall 或 Evidence。"
+        ),
+    )
     sub_question_results: list[ResearchTaskSubQuestionResult] = Field(default_factory=list, description="已原子提交的子问题结果。")
     evidence_registry: AgentTaskEvidenceRegistry = Field(default_factory=AgentTaskEvidenceRegistry, description="完整 Typed Evidence 唯一事实来源。")
     requirement_evidence_statuses: list[AgentTaskRequirementEvidenceStatus] = Field(default_factory=list, description="Aggregator 计算的 Requirement 状态。")

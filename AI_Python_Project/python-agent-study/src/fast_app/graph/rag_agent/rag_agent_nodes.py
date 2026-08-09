@@ -51,6 +51,9 @@ from fast_app.services.agent_tasks.agent_task_capability_service import (
 from fast_app.services.agent_tasks.agent_task_source_policy import (
     resolve_required_source_types,
 )
+from fast_app.services.agent_tasks.agent_task_dataset_scope_policy import (
+    resolve_dataset_field_scope,
+)
 from fast_app.services.agent_tasks.agent_task_router import (
     AgentRouteDecision,
     AgentTaskRouteResult,
@@ -544,15 +547,22 @@ def create_next_action_decision_node(
                 required_source_types = resolve_required_source_types(
                     planning_request
                 )
-                planning_request = planning_request.model_copy(
-                    update={"required_source_types": required_source_types}
-                )
                 capability = await capability_service.resolve_research(
                     user=current_user,
                     dataset_id=(str(state["dataset_id"]) if state.get("dataset_id") else None),
                     allow_direct_web=state.get("allow_direct_web", True),
                     allow_web_fallback=state.get("allow_web_fallback", False),
                     required_source_types=required_source_types,
+                )
+                dataset_scope = resolve_dataset_field_scope(
+                    planning_request,
+                    capability,
+                )
+                planning_request = planning_request.model_copy(
+                    update={
+                        "required_source_types": required_source_types,
+                        "dataset_scope": dataset_scope,
+                    }
                 )
                 task_plan = await task_planner.plan_question_decomposition(
                     request=planning_request,
@@ -574,6 +584,7 @@ def create_next_action_decision_node(
                         dataset_id=(str(state["dataset_id"]) if state.get("dataset_id") else None),
                         nl2sql_action=("query" if state.get("dataset_id") else None),
                         required_source_types=required_source_types,
+                        dataset_scope=dataset_scope,
                         allow_direct_web=state.get("allow_direct_web", True),
                         allow_web_fallback=state.get("allow_web_fallback", False),
                     ),
