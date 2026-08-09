@@ -1,4 +1,47 @@
 from dataclasses import dataclass, field
+from typing import Literal
+
+from fast_app.evaluation.contracts import MetricResult
+
+
+RetrievalStage = Literal["vector", "keyword", "rrf", "rerank"]
+
+
+@dataclass(frozen=True)
+class RetrievalMetricInput:
+    """检索层四项指标共用的单 case 输入快照。
+
+    身份统一使用可跨重建保持稳定的逻辑子块 ID。返回列表保留原始顺序和重复项，
+    由指标实现按契约去重；黄金相关 ID 则必须在数据集入口完成去重。
+    """
+
+    case_id: str
+    retrieval_stage: RetrievalStage
+    requested_k: int
+    retrieved_logical_chunk_ids: list[str]
+    relevant_logical_chunk_ids: list[str]
+    unique_retrieved_count: int = field(init=False)
+    underfilled: bool = field(init=False)
+
+    def __post_init__(self) -> None:
+        if not self.case_id.strip():
+            raise ValueError("retrieval metric case_id 不能为空")
+        if self.requested_k < 1:
+            raise ValueError("retrieval metric requested_k 必须大于等于 1")
+        if len(self.retrieved_logical_chunk_ids) > self.requested_k:
+            raise ValueError("retrieved logical chunk 数量不能超过 requested_k")
+        if any(not item.strip() for item in self.retrieved_logical_chunk_ids):
+            raise ValueError("retrieved logical chunk ID 不能为空")
+        if any(not item.strip() for item in self.relevant_logical_chunk_ids):
+            raise ValueError("relevant logical chunk ID 不能为空")
+        if len(set(self.relevant_logical_chunk_ids)) != len(
+            self.relevant_logical_chunk_ids
+        ):
+            raise ValueError("relevant logical chunk ID 不能重复")
+
+        unique_count = len(dict.fromkeys(self.retrieved_logical_chunk_ids))
+        object.__setattr__(self, "unique_retrieved_count", unique_count)
+        object.__setattr__(self, "underfilled", unique_count < self.requested_k)
 
 
 @dataclass(frozen=True)
@@ -38,6 +81,7 @@ class RetrievalCaseResult:
     first_hit_rank: int | None
     passed: bool
     hits: list[RetrievalHit] = field(default_factory=list)
+    metric_results: list[MetricResult] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -56,3 +100,4 @@ class RetrievalDatasetReport:
     mean_recall_at_k: float
     mean_mrr: float
     results: list[RetrievalCaseResult] = field(default_factory=list)
+    metric_results: list[MetricResult] = field(default_factory=list)

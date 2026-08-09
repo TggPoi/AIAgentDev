@@ -46,6 +46,8 @@ logger = get_logger(__name__)
 # FastAPI 请求模型和LangGraph final_state之间的适配层。
 class LangGraphRagPipeline:
 
+    pipeline_provider = "langgraph"
+
     def __init__(
         self,
         settings: Settings,

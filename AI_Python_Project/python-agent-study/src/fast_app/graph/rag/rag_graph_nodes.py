@@ -12,6 +12,9 @@ from fast_app.core.langsmith import rag_langsmith_state_step_trace
 from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievedDoc
+from fast_app.evaluation.pipeline.snapshot_capture import (
+    record_snapshot_retrieval_stage,
+)
 from fast_app.graph.rag.rag_graph_state import GraphRagRoute, GraphRagState
 from fast_app.services.exceptions import ExternalServiceError
 from fast_app.services.knowledge.knowledge_permission_policy import (
@@ -269,6 +272,11 @@ def create_rerank_node(
                             "top_doc_ids": [],
                         }
                     )
+                record_snapshot_retrieval_stage(
+                    "rerank",
+                    [],
+                    query=state["query"],
+                )
                 return {"docs": []}
 
             start_time = perf_counter()
@@ -323,6 +331,11 @@ def create_rerank_node(
                     top_k=top_k,
                     fallback=False,
                 )
+                record_snapshot_retrieval_stage(
+                    "rerank",
+                    reranked_docs,
+                    query=state["query"],
+                )
                 return {"docs": reranked_docs}
 
             except ExternalServiceError as exc:
@@ -362,6 +375,11 @@ def create_rerank_node(
                     top_k=top_k,
                     fallback=True,
                     error_type=type(exc).__name__,
+                )
+                record_snapshot_retrieval_stage(
+                    "rerank",
+                    fallback_docs,
+                    query=state["query"],
                 )
                 return {"docs": fallback_docs}
 

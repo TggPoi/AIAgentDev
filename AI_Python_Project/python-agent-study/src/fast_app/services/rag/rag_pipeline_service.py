@@ -14,6 +14,10 @@ from fast_app.core.langsmith import (
 from fast_app.core.latency import log_slow_operation
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.rag_models import RagContext, RetrievalOptions, RetrievedDoc, RagMode, RetrievalFilters
+from fast_app.evaluation.pipeline.snapshot_capture import (
+    record_snapshot_retrieval_error,
+    record_snapshot_retrieval_stage,
+)
 from fast_app.graph.rag.rag_state import RagState
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse, RagScoreBreakdown, RagSource
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
@@ -562,6 +566,8 @@ class RagPipeline:
     5. 调用 LLM client 生成普通回答或流式 token。
     """
 
+    pipeline_provider = "classic"
+
     def __init__(
         self,
         settings: Settings,
@@ -702,6 +708,11 @@ class RagPipeline:
                 top_k=rerank_top_k,
                 fallback=False,
             )
+            record_snapshot_retrieval_stage(
+                "rerank",
+                reranked_docs,
+                query=query,
+            )
             return reranked_docs
         except ExternalServiceError as exc:
             fallback_docs = docs[: self.settings.rerank_top_k]
@@ -732,6 +743,11 @@ class RagPipeline:
                 top_k=rerank_top_k,
                 fallback=True,
                 error_type=type(exc).__name__,
+            )
+            record_snapshot_retrieval_stage(
+                "rerank",
+                fallback_docs,
+                query=query,
             )
             return fallback_docs
 
@@ -1154,8 +1170,18 @@ class RagPipeline:
                         f"没有找到满足 min_score={req.min_score} 的向量检索结果"
                     )
 
+                record_snapshot_retrieval_stage(
+                    "vector",
+                    filtered_docs,
+                    query=req.query,
+                )
                 return returned_docs
             except Exception:
+                record_snapshot_retrieval_error(
+                    "vector",
+                    "VECTOR_RETRIEVAL_FAILED",
+                    query=req.query,
+                )
                 latency_ms = (perf_counter() - start_time) * 1000
                 logger.exception(
                     "rag_retrieval %s",
@@ -1232,8 +1258,18 @@ class RagPipeline:
                         f"没有找到满足 min_score={req.min_score} 的关键词检索结果"
                     )
 
+                record_snapshot_retrieval_stage(
+                    "keyword",
+                    filtered_docs,
+                    query=req.query,
+                )
                 return returned_docs
             except Exception:
+                record_snapshot_retrieval_error(
+                    "keyword",
+                    "KEYWORD_RETRIEVAL_FAILED",
+                    query=req.query,
+                )
                 latency_ms = (perf_counter() - start_time) * 1000
                 logger.exception(
                     "rag_retrieval %s",
@@ -1295,8 +1331,18 @@ class RagPipeline:
                         top_doc_ids=build_top_doc_ids(filtered_docs),
                     ),
                 )
+                record_snapshot_retrieval_stage(
+                    "vector" if retriever_name == "vector" else "keyword",
+                    filtered_docs,
+                    query=req.query,
+                )
                 return filtered_docs
             except Exception as exc:
+                record_snapshot_retrieval_error(
+                    "vector" if retriever_name == "vector" else "keyword",
+                    f"{retriever_name.upper()}_RETRIEVAL_FAILED",
+                    query=req.query,
+                )
                 latency_ms = (perf_counter() - source_start_time) * 1000
                 logger.warning(
                     "rag_retrieval %s",
@@ -1397,6 +1443,11 @@ class RagPipeline:
                 f"没有找到满足 min_score={req.min_score} 的混合检索结果"
             )
 
+        record_snapshot_retrieval_stage(
+            "rrf",
+            merged_docs,
+            query=req.query,
+        )
         return merged_docs
 
     # 流式事件接口

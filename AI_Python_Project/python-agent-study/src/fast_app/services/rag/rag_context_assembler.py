@@ -3,6 +3,9 @@ from typing import Any
 
 from fast_app.core.config import Settings
 from fast_app.domain.rag_models import RagContext, RetrievedDoc
+from fast_app.evaluation.pipeline.snapshot_capture import (
+    record_snapshot_final_context,
+)
 from fast_app.services.knowledge.knowledge_permission_policy import (
     build_retrieval_filters_from_mapping,
 )
@@ -33,11 +36,13 @@ async def assemble_rag_context(
         )
     if prompt_guard is not None:
         docs = await prompt_guard.filter_retrieved_docs(docs, source=source)
-    return build_rag_context(
+    context = build_rag_context(
         query,
         docs,
         max_context_tokens=settings.rag_parent_context_max_tokens,
     )
+    record_snapshot_final_context(context)
+    return context
 
 
 def build_context_observation(context: RagContext) -> dict[str, object]:

@@ -15,6 +15,10 @@ from fast_app.domain.rag_models import (
     RetrievalOptions,
     RetrievedDoc,
 )
+from fast_app.evaluation.pipeline.snapshot_capture import (
+    record_snapshot_retrieval_error,
+    record_snapshot_retrieval_stage,
+)
 from fast_app.services.exceptions import ExternalServiceError, NoSearchResultError
 from fast_app.services.rag.rag_pipeline_service import (
     build_content_preview,
@@ -170,6 +174,11 @@ async def retrieve_knowledge_docs(
                     f"没有找到满足 min_score={min_score} 的向量检索结果"
                 )
 
+            record_snapshot_retrieval_stage(
+                "vector",
+                filtered_docs,
+                query=query,
+            )
             await _notify_retrieval_progress(
                 on_progress,
                 "vector_retrieval",
@@ -177,6 +186,11 @@ async def retrieve_knowledge_docs(
             )
             return returned_docs
         except Exception:
+            record_snapshot_retrieval_error(
+                "vector",
+                "VECTOR_RETRIEVAL_FAILED",
+                query=query,
+            )
             await _notify_retrieval_progress(
                 on_progress,
                 "vector_retrieval",
@@ -263,6 +277,11 @@ async def retrieve_knowledge_docs(
                     f"没有找到满足 min_score={min_score} 的关键词检索结果"
                 )
 
+            record_snapshot_retrieval_stage(
+                "keyword",
+                filtered_docs,
+                query=query,
+            )
             await _notify_retrieval_progress(
                 on_progress,
                 "keyword_retrieval",
@@ -270,6 +289,11 @@ async def retrieve_knowledge_docs(
             )
             return returned_docs
         except Exception:
+            record_snapshot_retrieval_error(
+                "keyword",
+                "KEYWORD_RETRIEVAL_FAILED",
+                query=query,
+            )
             await _notify_retrieval_progress(
                 on_progress,
                 "keyword_retrieval",
@@ -341,9 +365,19 @@ async def retrieve_knowledge_docs(
                     top_doc_ids=build_top_doc_ids(filtered_docs),
                 ),
             )
+            record_snapshot_retrieval_stage(
+                "vector" if retriever_name == "vector" else "keyword",
+                filtered_docs,
+                query=query,
+            )
             await _notify_retrieval_progress(on_progress, operation, "finished")
             return filtered_docs
         except Exception as exc:
+            record_snapshot_retrieval_error(
+                "vector" if retriever_name == "vector" else "keyword",
+                f"{retriever_name.upper()}_RETRIEVAL_FAILED",
+                query=query,
+            )
             await _notify_retrieval_progress(on_progress, operation, "failed")
             latency_ms = (perf_counter() - source_start_time) * 1000
             logger.warning(
@@ -445,6 +479,11 @@ async def retrieve_knowledge_docs(
     if len(merged_docs) == 0:
         raise NoSearchResultError(f"没有找到满足 min_score={min_score} 的混合检索结果")
 
+    record_snapshot_retrieval_stage(
+        "rrf",
+        merged_docs,
+        query=query,
+    )
     return merged_docs
 
 # tool调用结果格式化处理

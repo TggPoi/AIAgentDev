@@ -1,6 +1,44 @@
-﻿from dataclasses import dataclass, field
+from dataclasses import dataclass, field
 
+from fast_app.evaluation.contracts import MetricName, get_metric_contract
 from fast_app.evaluation.pipeline.models import OfflineRagEvalReport
+
+
+@dataclass(frozen=True)
+class MetricThreshold:
+    """一个确定指标版本的最低分与硬失败策略。"""
+
+    metric_name: MetricName
+    metric_version: str
+    minimum_score: float
+    hard_failure_blocks: bool = True
+
+    def __post_init__(self) -> None:
+        contract = get_metric_contract(self.metric_name)
+        if self.metric_version != contract.version:
+            raise ValueError(
+                f"metric_version 必须匹配 {self.metric_name} 当前契约 {contract.version}"
+            )
+        if not 0.0 <= self.minimum_score <= 1.0:
+            raise ValueError("metric minimum_score 必须位于 0 到 1")
+
+
+@dataclass(frozen=True)
+class MetricThresholdProfile:
+    """八项指标可版本化、可审计的阈值配置。"""
+
+    profile_id: str
+    version: str
+    thresholds: list[MetricThreshold] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.profile_id.strip():
+            raise ValueError("threshold profile_id 不能为空")
+        if not self.version.strip():
+            raise ValueError("threshold profile version 不能为空")
+        names = [threshold.metric_name for threshold in self.thresholds]
+        if len(set(names)) != len(names):
+            raise ValueError("threshold profile 中同一指标不能重复")
 
 
 @dataclass(frozen=True)
@@ -67,4 +105,3 @@ def check_offline_eval_thresholds(
         passed=all(check.passed for check in checks),
         checks=checks,
     )
-

@@ -92,6 +92,8 @@ def _public_task_plan_payload(plan) -> dict[str, object]:
 class RagAgentPipeline:
     """显式 LangGraph RAG Agent 的 FastAPI pipeline 适配层。"""
 
+    pipeline_provider = "rag_agent"
+
     def __init__(
         self,
         settings: Settings,

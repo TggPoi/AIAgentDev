@@ -1,9 +1,16 @@
+import base64
+import binascii
 from functools import lru_cache
+import json
 import os
+from typing import Literal
 
 from dotenv import dotenv_values
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+_LOCAL_EVAL_SNAPSHOT_ENVS = {"dev", "development", "local", "test", "testing"}
 
 # BaseSettings 读取环境变量
 # 读取 .env 文件
@@ -92,6 +99,35 @@ class Settings(BaseSettings):
     langsmith_include_sensitive_data: bool = Field(
         default=False,
         alias="LANGSMITH_INCLUDE_SENSITIVE_DATA",
+    )
+
+    # Eval snapshot 默认只允许本地开发明文；共享环境必须显式选择脱敏或加密。
+    eval_snapshot_security_mode: Literal["plain", "redacted", "encrypted"] = Field(
+        default="plain",
+        alias="EVAL_SNAPSHOT_SECURITY_MODE",
+        description=(
+            "评测快照的落盘安全模式：plain 保存完整明文，redacted 只保留哈希和非敏感身份，"
+            "encrypted 使用独立 AES-256-GCM key ring 加密敏感值。"
+        ),
+    )
+    eval_snapshot_retention_days: int = Field(
+        default=30,
+        ge=1,
+        alias="EVAL_SNAPSHOT_RETENTION_DAYS",
+        description="评测快照计划保留天数；阶段 11-24 的持久化清理任务使用该服务端配置。",
+    )
+    eval_snapshot_encryption_active_key_id: str = Field(
+        default="",
+        alias="EVAL_SNAPSHOT_ENCRYPTION_ACTIVE_KEY_ID",
+        description="encrypted 模式新快照使用的 key ID；旧快照按自身 key ID 从 key ring 读取。",
+    )
+    eval_snapshot_encryption_keys_json: str = Field(
+        default="{}",
+        alias="EVAL_SNAPSHOT_ENCRYPTION_KEYS_JSON",
+        repr=False,
+        description=(
+            "Eval 专用 AES-256-GCM key ring JSON；key 为轮换 ID，value 为 URL-safe base64 的 32 字节密钥。"
+        ),
     )
 
     cors_allow_origins: str = Field(
@@ -200,6 +236,12 @@ class Settings(BaseSettings):
     
     llm_model_name: str = Field(default="qwen-plus", alias="LLM_MODEL_NAME")
     llm_provider: str = Field(default="mock", alias="LLM_PROVIDER")
+    rag_prompt_version: str = Field(
+        default="rag_prompt.v1",
+        min_length=1,
+        alias="RAG_PROMPT_VERSION",
+        description="当前 RAG 生成 Prompt 的人工维护版本；Prompt 语义改变时必须递增。",
+    )
 
     agent_task_plan_reviewer_model_name: str = Field(
         default="qwen3.7-max",
@@ -785,6 +827,65 @@ class Settings(BaseSettings):
         if self.rag_parent_context_max_tokens < self.markdown_parent_max_tokens:
             raise ValueError("父块上下文总预算至少要容纳一个最大父块")
         return self
+
+    @model_validator(mode="after")
+    def validate_eval_snapshot_settings(self) -> "Settings":
+        """在启动配置加载时拒绝不安全或不可解密的 Eval snapshot 配置。"""
+
+        environment = self.app_env.strip().lower()
+        if not self.rag_prompt_version.strip():
+            raise ValueError("RAG_PROMPT_VERSION 不能为空")
+        if (
+            environment not in _LOCAL_EVAL_SNAPSHOT_ENVS
+            and self.eval_snapshot_security_mode == "plain"
+        ):
+            raise ValueError(
+                "共享环境禁止 EVAL_SNAPSHOT_SECURITY_MODE=plain；"
+                "请使用 redacted 或 encrypted"
+            )
+
+        if self.eval_snapshot_security_mode != "encrypted":
+            return self
+
+        active_key_id = self.eval_snapshot_encryption_active_key_id.strip()
+        if not active_key_id:
+            raise ValueError(
+                "encrypted Eval snapshot 必须配置 EVAL_SNAPSHOT_ENCRYPTION_ACTIVE_KEY_ID"
+            )
+
+        try:
+            raw_key_ring = json.loads(self.eval_snapshot_encryption_keys_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError("EVAL_SNAPSHOT_ENCRYPTION_KEYS_JSON 必须是合法 JSON") from exc
+        if not isinstance(raw_key_ring, dict) or not raw_key_ring:
+            raise ValueError("encrypted Eval snapshot key ring 不能为空")
+        if active_key_id not in raw_key_ring:
+            raise ValueError("Eval snapshot active key ID 必须存在于 key ring")
+
+        for key_id, encoded_key in raw_key_ring.items():
+            if not isinstance(key_id, str) or not key_id.strip():
+                raise ValueError("Eval snapshot key ID 不能为空")
+            if not isinstance(encoded_key, str):
+                raise ValueError("Eval snapshot key 必须是 base64 字符串")
+            try:
+                decoded_key = base64.b64decode(
+                    encoded_key,
+                    altchars=b"-_",
+                    validate=True,
+                )
+            except (ValueError, binascii.Error) as exc:
+                raise ValueError("Eval snapshot key 必须是合法 URL-safe base64") from exc
+            if len(decoded_key) != 32:
+                raise ValueError("Eval snapshot AES-256-GCM key 解码后必须为 32 字节")
+
+        return self
+
+    @field_validator("eval_snapshot_security_mode", mode="before")
+    @classmethod
+    def normalize_eval_snapshot_security_mode(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
 
     @field_validator("calculator_mode", mode="before")
     @classmethod
