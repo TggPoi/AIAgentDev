@@ -96,6 +96,17 @@ from fast_app.services.research.research_tool_loop import (
 )
 from fast_app.agents.tools.rag_agent_tools import retrieve_knowledge_docs
 from fast_app.services.nl2sql.service import Nl2SqlService
+from fast_app.services.rag.direct_web_search_planner import DirectWebSearchPlanner
+from fast_app.services.rag.enhanced_web_search import (
+    build_payload_from_web_search_results,
+    build_web_search_payload,
+    execute_enhanced_web_search,
+)
+
+
+# 返回给 Researcher 的单页正文截断上限：增强链路会抓取真实全文，
+# 过长的正文会挤占 SubAgent 上下文，这里做确定性截断。
+_DEEP_WEB_SEARCH_CONTENT_LIMIT = 8000
 
 
 # ---------------------------------------------------------------------------
@@ -936,6 +947,7 @@ class DeepDocumentAgent:
         self._prompt_guard = prompt_guard
         self._runtime = runtime
         self._nl2sql_service = nl2sql_service
+        self._web_planner = DirectWebSearchPlanner(settings)
 
     async def run(
         self,
@@ -1922,20 +1934,34 @@ class DeepDocumentAgent:
                 public_query = " ".join(
                     [plan.original_query[:200], deliverable.title, *topics]
                 )
-                async with httpx.AsyncClient() as client:
-                    results = await search_web_with_bocha(
+                try:
+                    docs = await execute_enhanced_web_search(
                         settings=self._settings,
-                        http_client=client,
-                        query=public_query,
-                        count=5,
-                        site=site,
+                        planner=self._web_planner,
+                        question=public_query,
+                        top_k=5,
+                        forced_site=site,
+                    )
+                    payload = build_web_search_payload(
+                        docs, content_limit=_DEEP_WEB_SEARCH_CONTENT_LIMIT
+                    )
+                except Exception:
+                    # 增强链路不可用时回退直接搜索引擎调用；fallback 经
+                    # 共享构造器输出，与增强路径保持同一 key 集合契约。
+                    async with httpx.AsyncClient() as client:
+                        results = await search_web_with_bocha(
+                            settings=self._settings,
+                            http_client=client,
+                            query=public_query,
+                            count=5,
+                            site=site,
+                        )
+                    payload = build_payload_from_web_search_results(
+                        results, content_limit=_DEEP_WEB_SEARCH_CONTENT_LIMIT
                     )
                 used_tools.add("web_search")
                 await persist_runtime_facts()
-                return json.dumps(
-                    [item.model_dump(mode="json") for item in results],
-                    ensure_ascii=False,
-                )
+                return json.dumps(payload, ensure_ascii=False)
 
             tools.append(
                 StructuredTool.from_function(

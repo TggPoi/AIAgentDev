@@ -572,3 +572,166 @@ scored.sort(key=lambda item: (-item[0], -item[1], -item[2].count("/"), item[2]))
 | `item[2]`             | URL          | 字典序升序（确定性） |
 
 一句话总结：**这是一个"先看是不是强信号 → 再看匹配质量 → 再看页面具体程度 → 最后字典序兜底"的四级确定性排序**，目的是把最可能回答用户问题的具体文档页推到候选池最前面。
+
+# 2 改造后的代码讲解：
+
+我先查看教学讲解规范，确保讲解格式符合项目约定：
+
+
+## 改造后的统一增强 Web 检索：四条链路的影响与调用方式讲解
+
+### 一、改造前后架构对比
+
+```mermaid
+flowchart TB
+    subgraph BEFORE["改造前：四套独立实现"]
+        B1["RAG 主链路 call_direct_web<br/>完整增强策略（约 180 行内联在节点里）"]
+        B2["Research Worker<br/>裸调 search_web_with_bocha + 隐私重写"]
+        B3["DeepAgent Researcher<br/>裸调 search_web_with_bocha"]
+        B4["direct 文档循环<br/>裸调 search_web_with_bocha（最弱）"]
+    end
+
+    subgraph AFTER["改造后：一个共享服务"]
+        S["enhanced_web_search.py<br/>execute_enhanced_web_search()"]
+        A1["RAG 主链路<br/>委托调用"] --> S
+        A2["Research Worker<br/>增强优先 + 回退"] --> S
+        A3["DeepAgent Researcher<br/>增强优先 + 回退"] --> S
+        A4["direct 文档循环<br/>增强优先 + 回退"] --> S
+        S --> P["Planner 规划"]
+        S --> BO["Bocha 检索"]
+        S --> F["硬约束过滤 / 主题词降级 / sitemap 救援"]
+        S --> G["候选选择 / 正文抓取 / 重定向约束"]
+    end
+```
+
+核心思想：增强策略（Planner LLM 规划查询参数 → 域名/片段硬约束过滤 → 主题词降级 → 官方 sitemap 救援 → 单页候选选择 → 真实正文抓取 → 重定向约束）从 [rag_agent_nodes.py](file:///d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/graph/rag_agent/rag_agent_nodes.py) 中整体迁移到 [enhanced_web_search.py](file:///d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/rag/enhanced_web_search.py)，四条链路全部收敛到同一个入口函数 `execute_enhanced_web_search()`。
+
+---
+
+### 二、共享服务内部做了什么（四条链路现在共享的完整流程）
+
+`execute_enhanced_web_search(settings, planner, question, top_k, forced_site=None, plan_langchain_config=None, select_langchain_config=None) -> list[RetrievedDoc]`：
+
+```mermaid
+flowchart TD
+    Q["调用方已清洗的公开 question"] --> PLAN["1. Planner LLM 规划<br/>query / site / result_strategy / 硬约束片段 / 主题词"]
+    PLAN --> FS["forced_site 补入：<br/>Planner 没规划出 site 时用调用方的 site 兜底"]
+    FS --> BOCHA["2. Bocha 真实检索"]
+    BOCHA --> STRICT["3. 严格过滤：<br/>域名 + URL 片段硬约束 + 全部主题词命中"]
+    STRICT -->|全拒且有 site| RELAX["4. 主题词降级：<br/>硬约束仍生效，主题词变排序信号，最多 3 条"]
+    STRICT -->|single_best_page| POOL["5. 候选池：硬约束保留，<br/>sitemap 救援补召回，exact_url 预验证入池"]
+    POOL --> SELECT["6. Planner LLM 选页"]
+    SELECT --> FETCH["7. GET 选中页 + 重定向约束 + 正文提取"]
+    RELAX --> MULTI["8. multiple_sources：并发抓取前几页全文"]
+    FETCH --> DOCS["list[RetrievedDoc]<br/>全文或摘要回退"]
+    MULTI --> DOCS
+```
+
+这正是改造前只有 RAG 主链路独享的策略。
+
+---
+
+### 三、逐条链路讲解
+
+#### 链路 1：RAG 主链路（`call_direct_web` 节点）
+
+**改造前的调用方式**：图节点 `_execute_direct_web_search` 内联了约 180 行增强逻辑（Planner 调用、过滤、sitemap、正文抓取全部写死在 `rag_agent_nodes.py`）。
+
+**改造后的调用方式**：节点变成薄委托层，只做三件事——从 `RagAgentState` 取 `query`/`top_k`、构造两个 LangSmith 子 run 配置（`search_plan`、`candidate_selection`，run_name 与原来完全一致，trace 不断链）、调用共享服务：
+
+```python
+docs = await execute_enhanced_web_search(
+    settings=settings, planner=planner,
+    question=state["query"], top_k=state["top_k"],
+    plan_langchain_config=..., select_langchain_config=...,
+)
+```
+
+**与之前的区别**：
+- **行为零变化**——这是唯一"原样迁移"的链路，逻辑逐字搬移，`forced_site` 不传（Planner 全权规划）；
+- **失败策略不变**：异常外抛，由节点包裹层 `classify_agent_error` 分类成 `final_answer` 或 `fail_request`，**没有回退降级**（主链路用户直接可见，宁可报可解释错误也不静默降质）；
+- 文件从 1735 行减到约 1490 行，6 个 helper 通过 import re-export 保持既有测试导入兼容。
+
+#### 链路 2：Research Worker 链路（workflow 多 worker）
+
+**改造前**：`ResearchToolLoop._run_web_search_for_sub_question` 直接 `httpx.AsyncClient` + `search_web_with_bocha`，把返回的 title/snippet/summary 拼成 `RetrievedDoc`。唯一的保护措施是上游已把 `tool_input["query"]` 替换成隐私清洗后的 `safe_web_query`，以及 Evaluator 发现证据不足时驱动重试——**用多轮重试弥补单次搜索质量差**。
+
+**改造后**：
+
+```mermaid
+flowchart TD
+    D["Worker 分发 web_search 工具"] --> E{"self._web_planner<br/>是否注入？"}
+    E -->|是| F["execute_enhanced_web_search<br/>question=清洗后 query<br/>top_k=count, forced_site=site<br/>两个 langchain config 由<br/>config factory 生成"]
+    F -->|成功| OK["RetrievedDoc 列表<br/>含真实页面全文"]
+    F -->|异常| W["告警日志<br/>research.web_search.enhanced_fallback"]
+    W --> G["回退裸 Bocha 调用<br/>（原逻辑原样保留）"]
+    E -->|否| G
+    G --> OK2["摘要拼接的 RetrievedDoc"]
+```
+
+**与之前的区别**：
+- **Planner 实例由依赖层注入**：[rag_dependencies.py](file:///d:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/dependencies/rag_dependencies.py) 新建 `DirectWebSearchPlanner(settings)` 传入 `web_planner=`，与 RAG 主链路各自持有独立实例（无状态对象，无共享竞争）；
+- `tool_input` 里的 `site` 现在通过 `forced_site` 进入 Planner——之前 site 只传给 Bocha，Planner 完全感知不到；
+- **质量提升**：真实网络验证显示，同一问题从裸 Bocha 摘要升级为命中 `postgresql.org/docs/16/ddl-rowsecurity.html` 的 15868 字符官方全文；Evaluator 重试压力下降；
+- **可用性保护**：增强链路是"增强"不是"硬依赖"，规划/sitemap/抓取任何环节失败都记结构化告警日志并回退裸 Bocha，Worker 工具循环不会因增强层故障中断；
+- trace 接入：`sub_question.{id}.web_search.plan/candidate_selection` 两个子 run 挂到现有 config factory 体系。
+
+#### 链路 3：DeepAgent Researcher（多 Agent 文档创作）
+
+**改造前**：web_search 闭包内，服务端从 `plan.original_query + deliverable.title + 缺失主题` 拼出 `public_query`（信任边界：私有 Chunk 不外泄），然后裸调 Bocha，`[item.model_dump() for item in results]` 直接序列化返回给模型。
+
+**改造后**：闭包变成双路径：
+
+```python
+try:
+    docs = await execute_enhanced_web_search(
+        settings=self._settings, planner=self._web_planner,
+        question=public_query, top_k=5, forced_site=site)
+    payload = build_web_search_payload(docs, content_limit=8000)
+except Exception:
+    results = await search_web_with_bocha(...)   # 裸 Bocha 回退
+    payload = build_payload_from_web_search_results(results, content_limit=8000)
+return json.dumps(payload, ensure_ascii=False)
+```
+
+**与之前的区别**：
+- **返回契约变了且双路径统一**：原来是 `WebSearchResult` 全字段 `{title, url, snippet, summary, site_name, published_at}`，现在恒为 `{title, url, site_name, content}`——`content` 是真实页面全文（截断 8000），Researcher 拿到的是可引用的正文而非搜索摘要。fallback 也经共享构造器输出，模型侧无 schema 漂移；
+- `site` 参数（模型提交的官方域名）通过 `forced_site` 生效于 Planner；
+- **不传 langchain config**：闭包内没有当前图 RunnableConfig 作用域，Planner LLM 调用由 SDK 级 tracing 覆盖；
+- 不变的部分：`DocumentWebResearchInput` Schema（模型只能提交 deliverable_id + missing_topics）、deliverable 校验、`_validate_public_topic`、`tool_run_limits={"web_search": 2}`、隐私拼接逻辑。
+
+#### 链路 4：direct 文档工具循环（`DocumentTaskExecutor`）
+
+**改造前**：四条链路中最弱——模型在 `WebSearchToolInput` 里自由填 query，闭包裸调 Bocha 后 `model_dump` 返回，服务端零干预。
+
+**改造后**：与 DeepAgent 相同的双路径结构（增强 → `build_web_search_payload` → JSON；异常 → 告警日志 `document.web_search.enhanced_fallback` → 裸 Bocha → `build_payload_from_web_search_results`），Planner 在 `__init__` 自建。
+
+**与之前的区别**：
+- 模型提交的 query 现在先经过 Planner 重新规划（改写 query、补硬约束），再进 Bocha——这是对"模型自由填 query"质量的兜底；
+- 返回契约与 DeepAgent 完全一致（同一对共享构造器，`_DIRECT_WEB_SEARCH_CONTENT_LIMIT = 8000`）；
+- 权限检查位置不变：`bocha_api_key` + `AGENT_TOOL_WEB_SEARCH` 通过后才暴露工具。
+
+---
+
+### 四、横向对比总表
+
+| 维度             | 主链路                          | Research                     | DeepAgent                            | direct                  |
+| ---------------- | ------------------------------- | ---------------------------- | ------------------------------------ | ----------------------- |
+| Planner 实例来源 | 节点工厂自建                    | 依赖层注入                   | `__init__` 自建                      | `__init__` 自建         |
+| question 来源    | `state["query"]`                | 隐私清洗后的 query           | 服务端拼接 `public_query`            | 模型提交的 query        |
+| 失败策略         | **不降级**，异常外抛分类        | 告警日志 + 回退裸 Bocha      | 静默回退裸 Bocha                     | 告警日志 + 回退裸 Bocha |
+| 返回形态         | `list[RetrievedDoc]`            | `list[RetrievedDoc]`（内部） | JSON `{title,url,site_name,content}` | JSON（同左）            |
+| trace 配置       | graph 子 run（保持原 run_name） | config factory 子 run        | SDK 级                               | 无                      |
+
+### 五、边界与不变量
+
+- **隐私边界完全不变**：清洗全部发生在调用服务之前（Research 的 `safe_web_query`、DeepAgent 的 `public_query` 拼接），共享服务只接收公开问题，不读会话或私有数据；
+- **Classic / LangGraph / stream 影响**：本次只动 `rag_agent` graph 的 direct_web 节点内部实现，Classic Pipeline、LangGraph Pipeline、`pipeline.stream()` token-only 协议、`stream_events()` 事件协议均未触碰；
+- **成本变化**：三条 tool 链路每次 web_search 新增 1 次 Planner 规划 LLM 调用（`single_best_page` 时再 +1 次选页），使用轻量 router 模型配置；换来的是搜索结果从"可能离题的摘要"升级为"约束内的官方全文"；
+- **可证明性**：离线回归 8 项脚本 + 真实网络三链路冒烟（[.tmp/real_network_enhanced_web_smoke.py](file:///d:/AI_Agent_Project/AI_Python_Project/python-agent-study/.tmp/real_network_enhanced_web_smoke.py)）全部通过，主链路从图 START 完整走通并产出官方全文引用——这是可以在面试中展示的"共享检索服务 + 多链路复用 + 可验证质量提升"素材。
+
+### 六、当前局限与演进方向
+
+1. Research / DeepAgent / direct 的 fallback 只记日志、无计数指标，后续可在告警日志上加统计观察增强层失败率；
+2. 三条 tool 链路的 `content_limit` 均为硬编码 8000，后续若前端要展示 web 来源或按模型上下文动态预算，可提升到 Settings；
+3. DeepAgent 闭包的真实端到端（Supervisor → Researcher → Writer）尚未用真实网络跑过全流程，当前由"闭包调用序列等价验证 + 离线装配回归"覆盖，如需可补一次完整 TaskPlan 验收。

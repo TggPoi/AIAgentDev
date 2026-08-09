@@ -23,6 +23,7 @@ from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
+from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.agent_task_plan import AgentTaskPlan, AgentTaskSubQuestion, AgentTaskSubQuestionResult, AgentTaskToolCallTrace
 from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievedDoc
 from fast_app.domain.user_context import CurrentUserContext
@@ -37,9 +38,13 @@ from fast_app.services.exceptions import (
 )
 from fast_app.services.rag.rag_pipeline_service import build_content_preview, build_top_doc_ids
 from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
+from fast_app.services.rag.direct_web_search_planner import DirectWebSearchPlanner
+from fast_app.services.rag.enhanced_web_search import execute_enhanced_web_search
 from fast_app.services.rag.prompt_guard_service import PromptGuardService
 from fast_app.services.rag.rag_context_assembler import assemble_rag_context
 from fast_app.services.nl2sql.service import Nl2SqlService
+
+logger = get_logger(__name__)
 
 LangChainConfigFactory = Callable[[str], RunnableConfig]
 NL2SQL_QUERY_TOOL_NAME = "nl2sql_query"
@@ -145,6 +150,7 @@ class ResearchToolLoop:
         prompt_guard: PromptGuardService | None = None,
         parent_expander: MarkdownParentContextExpander | None = None,
         nl2sql_service: Nl2SqlService | None = None,
+        web_planner: DirectWebSearchPlanner | None = None,
     ) -> None:
         self._settings = settings
         self._vector_retriever = vector_retriever
@@ -154,6 +160,7 @@ class ResearchToolLoop:
         self._prompt_guard = prompt_guard
         self._parent_expander = parent_expander
         self._nl2sql_service = nl2sql_service
+        self._web_planner = web_planner
 
     async def _generate_with_trace(
         self,
@@ -821,6 +828,7 @@ class ResearchToolLoop:
             return await self._run_web_search_for_sub_question(
                 sub_question=sub_question,
                 tool_input=tool_input,
+                langchain_config_factory=langchain_config_factory,
             )
         if selected_tool == NL2SQL_QUERY_TOOL_NAME:
             if (
@@ -956,45 +964,90 @@ class ResearchToolLoop:
         self,
         sub_question: AgentTaskSubQuestion,
         tool_input: dict[str, Any],
+        langchain_config_factory: LangChainConfigFactory | None = None,
     ) -> ToolExecutionResult:
-        """执行网页搜索，并把结果转成可统一合并的 RetrievedDoc。"""
+        """执行网页搜索：优先增强链路，不可用时回退裸 Bocha 调用。
+
+        tool_input 中的 query 已由执行分支替换为隐私清洗后的公开查询，
+        增强服务不感知私有内容；site 通过 forced_site 传给 Planner 兜底。
+        """
 
         query = str(tool_input.get("query") or sub_question.question).strip()
         count = coerce_int(tool_input.get("count"), default=5, minimum=1, maximum=10)
         site = str(tool_input.get("site") or "").strip() or None
-        async with httpx.AsyncClient() as http_client:
-            results = await search_web_with_bocha(
-                settings=self._settings,
-                http_client=http_client,
-                query=query,
-                count=count,
-                site=site,
-            )
-        # WebSearch 返回的数据模型与本地检索不同；转成 RetrievedDoc 后可以复用同一 RAG 上下文构造器。
-        docs = [
-            RetrievedDoc(
-                id=(
-                    "web_"
-                    + hashlib.sha256(
-                        (item.url or f"{item.title}:{index}").encode("utf-8")
-                    ).hexdigest()[:16]
-                ),
-                content=" ".join(
-                    part
-                    for part in [item.title, item.snippet, item.summary, item.url]
-                    if part
-                ),
-                score=1.0,
-                source=WEB_SEARCH_TOOL_NAME,
-                title=item.title,
-                metadata={"url": item.url, "site_name": item.site_name},
-            )
-            for index, item in enumerate(results, start=1)
-        ]
+        docs: list[RetrievedDoc] | None = None
+        if self._web_planner is not None:
+            try:
+                docs = await execute_enhanced_web_search(
+                    settings=self._settings,
+                    planner=self._web_planner,
+                    question=query,
+                    top_k=count,
+                    forced_site=site,
+                    plan_langchain_config=(
+                        langchain_config_factory(
+                            f"sub_question.{sub_question.sub_question_id}.web_search.plan"
+                        )
+                        if langchain_config_factory is not None
+                        else None
+                    ),
+                    select_langchain_config=(
+                        langchain_config_factory(
+                            f"sub_question.{sub_question.sub_question_id}.web_search.candidate_selection"
+                        )
+                        if langchain_config_factory is not None
+                        else None
+                    ),
+                )
+            except Exception as exc:
+                # 增强链路是增强不是硬依赖：规划、sitemap 或抓取失败时
+                # 回退直接搜索引擎调用，保证 Worker 工具循环可用性。
+                logger.warning(
+                    "research_web_search_enhanced_fallback %s",
+                    format_log_fields(
+                        event="research.web_search.enhanced_fallback",
+                        sub_question_id=sub_question.sub_question_id,
+                        error_type=type(exc).__name__,
+                    ),
+                )
+                docs = None
+        if docs is None:
+            async with httpx.AsyncClient() as http_client:
+                results = await search_web_with_bocha(
+                    settings=self._settings,
+                    http_client=http_client,
+                    query=query,
+                    count=count,
+                    site=site,
+                )
+            # WebSearch 返回的数据模型与本地检索不同；转成 RetrievedDoc 后可以复用同一 RAG 上下文构造器。
+            docs = [
+                RetrievedDoc(
+                    id=(
+                        "web_"
+                        + hashlib.sha256(
+                            (item.url or f"{item.title}:{index}").encode("utf-8")
+                        ).hexdigest()[:16]
+                    ),
+                    content=" ".join(
+                        part
+                        for part in [item.title, item.snippet, item.summary, item.url]
+                        if part
+                    ),
+                    score=1.0,
+                    source=WEB_SEARCH_TOOL_NAME,
+                    title=item.title,
+                    metadata={"url": item.url, "site_name": item.site_name},
+                )
+                for index, item in enumerate(results, start=1)
+            ]
         return ToolExecutionResult(
             tool_output={
-                "result_count": len(results),
-                "top_urls": [item.url for item in results[:5]],
+                "result_count": len(docs),
+                "top_urls": [
+                    str((doc.metadata or {}).get("url") or doc.title)
+                    for doc in docs[:5]
+                ],
             },
             evidence=[doc_to_evidence(doc) for doc in docs],
             context_docs=docs,

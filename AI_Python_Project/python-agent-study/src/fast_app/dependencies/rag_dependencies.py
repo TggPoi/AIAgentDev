@@ -28,6 +28,7 @@ from fast_app.services.rag.rag_agent_pipeline_service import RagAgentPipeline
 from fast_app.services.rag.rag_pipeline_service import RagPipeline
 from fast_app.services.rag.prompt_guard_service import PromptGuardService
 from fast_app.services.rag.markdown_parent_context import MarkdownParentContextExpander
+from fast_app.services.rag.direct_web_search_planner import DirectWebSearchPlanner
 from fast_app.services.auth.auth_service import AuthService
 from fast_app.services.auth.user_repository import UserRepository
 from fast_app.services.auth.permission_repository import PermissionRepository
@@ -394,6 +395,8 @@ def get_agent_task_executor(
 
     # 两条多 Agent 链路在依赖层显式装配，Facade 只负责按 task_kind 分派：
     # Research 使用父图 + Worker 子图；文档任务使用 Supervisor + Deep Agents。
+    # Research 链路专用增强 Web 检索 Planner（无状态，与 RAG 主链路各自持有独立实例）。
+    direct_web_planner = DirectWebSearchPlanner(settings)
     research_tool_loop = ResearchToolLoop(
         settings=settings,
         vector_retriever=vector_retriever,
@@ -403,6 +406,7 @@ def get_agent_task_executor(
         prompt_guard=prompt_guard,
         parent_expander=parent_expander,
         nl2sql_service=nl2sql_service,
+        web_planner=direct_web_planner,
     )
     research_worker = ResearchWorkerAgent(
         settings=settings,

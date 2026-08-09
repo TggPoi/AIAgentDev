@@ -30,6 +30,7 @@ from fast_app.agents.tools.rag_agent_tools import KNOWLEDGE_RETRIEVAL_TOOL_NAME,
 from fast_app.agents.tools.web_search_tools import WEB_SEARCH_TOOL_NAME, WebSearchToolInput, search_web_with_bocha
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
+from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.agent_task_plan import AgentTaskPlan, AgentTaskPlanStatus, AgentTaskToolCallTrace, AgentToolStep, AgentToolStepStatus
 from fast_app.domain.agent_tool_permissions import (
     AgentToolCallContext,
@@ -65,7 +66,18 @@ from fast_app.services.knowledge.knowledge_document_management_service import Kn
 from fast_app.services.agent_tasks.deep_document_agent import DeepDocumentAgent
 from fast_app.services.agent_tasks.document_supervisor_agent import DocumentSupervisorAgent
 from fast_app.services.research.research_tool_loop import AgentTaskKnowledgeRetrievalToolInput
+from fast_app.services.rag.direct_web_search_planner import DirectWebSearchPlanner
+from fast_app.services.rag.enhanced_web_search import (
+    build_payload_from_web_search_results,
+    build_web_search_payload,
+    execute_enhanced_web_search,
+)
 from fast_app.services.rag.rag_pipeline_service import build_content_preview
+
+logger = get_logger(__name__)
+
+# direct 文档工具循环返回给模型的单页正文截断上限。
+_DIRECT_WEB_SEARCH_CONTENT_LIMIT = 8000
 
 LangChainConfigFactory = Callable[[str], RunnableConfig]
 PARALLEL_SAFE_DOCUMENT_TOOL_NAMES = {KNOWLEDGE_RETRIEVAL_TOOL_NAME, WEB_SEARCH_TOOL_NAME, KNOWLEDGE_DOCUMENT_READ_TOOL_NAME}
@@ -107,6 +119,7 @@ class DocumentTaskExecutor:
         change_plan_service: DocumentChangePlanService | None = None,
     ) -> None:
         self._settings = settings
+        self._web_planner = DirectWebSearchPlanner(settings)
         self._vector_retriever = vector_retriever
         self._keyword_retriever = keyword_retriever
         self._document_management_service = document_management_service
@@ -1195,6 +1208,30 @@ class DocumentTaskExecutor:
                 count: int = 5,
                 site: str | None = None,
             ) -> str:
+                try:
+                    docs = await execute_enhanced_web_search(
+                        settings=self._settings,
+                        planner=self._web_planner,
+                        question=query,
+                        top_k=count,
+                        forced_site=site,
+                    )
+                    return json.dumps(
+                        build_web_search_payload(
+                            docs, content_limit=_DIRECT_WEB_SEARCH_CONTENT_LIMIT
+                        ),
+                        ensure_ascii=False,
+                    )
+                except Exception as exc:
+                    # 增强链路失败时回退裸 Bocha 调用，保持工具可用；
+                    # fallback 经共享构造器输出，与增强路径同一 key 集合。
+                    logger.warning(
+                        "document_web_search_enhanced_fallback %s",
+                        format_log_fields(
+                            event="document.web_search.enhanced_fallback",
+                            error_type=type(exc).__name__,
+                        ),
+                    )
                 async with httpx.AsyncClient() as http_client:
                     results = await search_web_with_bocha(
                         settings=self._settings,
@@ -1204,7 +1241,9 @@ class DocumentTaskExecutor:
                         site=site,
                     )
                 return json.dumps(
-                    [item.model_dump(mode="json") for item in results],
+                    build_payload_from_web_search_results(
+                        results, content_limit=_DIRECT_WEB_SEARCH_CONTENT_LIMIT
+                    ),
                     ensure_ascii=False,
                 )
 

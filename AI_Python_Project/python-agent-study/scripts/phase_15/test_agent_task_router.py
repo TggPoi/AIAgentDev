@@ -13,12 +13,12 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from fast_app.core.config import Settings
 from fast_app.graph.rag_agent.rag_agent_nodes import (
-    _official_sitemap_candidates,
     create_call_direct_web_node,
     create_next_action_decision_node,
     route_after_loop_check,
 )
-from fast_app.graph.rag_agent import rag_agent_nodes as nodes_module
+from fast_app.services.rag.direct_web_sitemap import _official_sitemap_candidates
+import fast_app.services.rag.enhanced_web_search as enhanced_module
 from fast_app.graph.rag_agent.rag_agent_state import build_rag_agent_initial_state
 from fast_app.schemas.rag_chat_schema import RagChatRequest
 from fast_app.services.exceptions import ExternalServiceError
@@ -288,8 +288,10 @@ async def main() -> None:
     assert route_after_loop_check({**initial_state, "route": "direct_web"}) == "direct_web"
 
     observed_web_calls: list[dict[str, object]] = []
-    original_web_search = nodes_module.search_web_with_bocha
-    original_http_client = nodes_module.httpx.AsyncClient
+    original_web_search = enhanced_module.search_web_with_bocha
+    # 增强服务的 httpx.AsyncClient 构造点在 enhanced_web_search 模块内，
+    # 必须 patch enhanced_module.httpx 才能把假客户端注入共享服务层。
+    original_http_client = enhanced_module.httpx.AsyncClient
 
     class FakeDirectWebPlanner:
         def __init__(self, plan: DirectWebSearchPlan) -> None:
@@ -386,8 +388,8 @@ async def main() -> None:
         )({**initial_state, "query": question})
         return update, fake_planner
 
-    nodes_module.search_web_with_bocha = fake_web_search
-    nodes_module.httpx.AsyncClient = FakeHttpClient
+    enhanced_module.search_web_with_bocha = fake_web_search
+    enhanced_module.httpx.AsyncClient = FakeHttpClient
     try:
         official_update, official_planner = await run_direct_web_case(
             "查询 Python 3.13 官方 typing 文档",
@@ -475,8 +477,8 @@ async def main() -> None:
         assert all("16" in url for url in candidate_urls)
         assert len(version_update["docs"]) == 1
     finally:
-        nodes_module.search_web_with_bocha = original_web_search
-        nodes_module.httpx.AsyncClient = original_http_client
+        enhanced_module.search_web_with_bocha = original_web_search
+        enhanced_module.httpx.AsyncClient = original_http_client
 
     assert extract_page_text(
         "<style>hidden</style><h1>Row Security</h1><p>Policy &amp; role</p>"
