@@ -2,7 +2,7 @@
 
 ## Project rules
 
-This project is a Python / FastAPI / LangGraph / RAG Agent backend learning project.
+This project is a Python / FastAPI / LangGraph / RAG Agent enterprise-grade backend project.
 
 The final system must support a React-based web frontend for visual operations. Backend design should therefore expose stable, structured, frontend-friendly APIs and SSE events for RAG chat, document management, tool plan review, human confirmation, permission status, evaluation, and observability. Do not design new control actions only as natural-language chat prompts when they should be buttons, forms, dialogs, or task-status views in React.
 

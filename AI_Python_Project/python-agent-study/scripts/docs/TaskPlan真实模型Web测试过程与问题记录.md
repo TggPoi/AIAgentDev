@@ -676,6 +676,27 @@ TaskPlan: completed
 
 其中 `sq_2`、`sq_4` 的答案明确是“当前知识库中没有足够信息回答这个问题”，仍被标为满足 strict Requirement。根因是服务端只验证 Evidence 的结构和来源，不验证 Evidence 是否语义支持 Requirement，也没有把 Evaluator 的失败或 Worker 的 `partial` 纳入 strict Requirement 的满足条件。
 
+#### 11.5.1 当前代码复核（2026-08-09）
+
+**状态：仍存在，且可以从当前确定性分支直接确认。**
+
+当前 Worker 内部已经把最近一次 `ResearchEvidenceEvaluation` 写入旧执行模型
+`AgentTaskSubQuestionResult.evaluation`，但 Wave 合并时的
+`agentic_research_executor._to_research_result()` 没有把该字段转换到
+`ResearchTaskSubQuestionResult`；后者本身也没有 Evaluator 结论字段。因此进入
+`AgentTaskRequirementEvidenceService.aggregate()` 后，只剩 Worker 的 `status`、错误码和形式合法的
+Evidence，Evaluator 的 `partial/insufficient/conflict` 语义已经丢失。
+
+Aggregator 当前仍先判断 `contract_satisfied`，再判断 covering Worker 是否未结束；而 `partial` 又属于
+`_TERMINAL_SUB_STATUSES`。所以只要 URL、类型、数量或 SQL 属性满足形式契约，即使 covering Worker 为
+`partial`，strict Requirement 仍会直接变成 `satisfied`。现有
+`scripts/tests/agent_research/test_research_task_plan_v2.py` 覆盖了 pending、正常 satisfied 和
+allow_partial，但没有覆盖“partial Worker + 形式完整 Evidence + strict Requirement”这一条回归。
+
+当前根因已经收敛为两层状态契约断裂：Worker 的语义评估没有持久化到 Research v2 结果，Aggregator
+也没有把 Worker/Evaluator 结论作为 strict Requirement 的必要条件。第 16.3 节记录的真实运行现象与
+当前代码一致，因此不能把该问题标记为已修复。
+
 ### 11.6 场景 3、4：Tool 并行提示与执行安全规则互相矛盾
 
 Tool Selector Prompt 告诉模型可以在同一轮选择多个独立只读工具：
@@ -727,6 +748,26 @@ if batch_error:
 
 这是 Prompt、模型绑定参数和后端执行规则之间的代码契约不一致。它会浪费调用预算，并把本来可串行完成的官方页面读取降级成 `partial` 或 `failed`。
 
+#### 11.6.1 当前代码复核（2026-08-09）
+
+**状态：仍存在。**
+
+当前 `ResearchToolLoop` 仍同时保留以下三种行为：
+
+1. Tool Selector Prompt 允许同轮选择多个彼此独立的只读工具。
+2. 非强制单工具路径仍使用 `parallel_tool_calls=True`。
+3. `PARALLEL_SAFE_TASK_TOOL_NAMES` 仍只包含 `knowledge_retrieval`、`web_search` 和
+   `nl2sql_query`，不包含 `mcp__fetch`。
+
+执行循环也仍在调用 `parallel_batch_error()` 之前执行 `call_count += batch_size`。因此模型同轮返回两个
+`mcp__fetch` 时，整个批次会被拒绝、生成失败 trace，并消耗对应预算；后端不会把该批次自动拆成串行调用。
+现有测试验证了并行安全工具确实并发、绑定参数确实为 true，以及安全函数会拒绝非法批次，但没有证明
+“模型能够从 Prompt 得知某个已绑定只读工具必须串行”，也没有消除被拒批次的预算损耗。
+
+根因不是单个模型偶发输出错误，而是模型可见契约只有“只读工具可以并行”，每个 Tool Schema 中没有可见的
+并行安全语义；真正的白名单只存在于执行层。该问题会制造额外的 `partial/failed` Worker，并可继续触发
+11.5 的错误聚合，因此两项属于同一条执行真实性故障链。
+
 ### 11.7 场景 4：Knowledge Worker 超时只能定位到外层边界
 
 场景 4 的 `sq_1` 运行记录为：
@@ -759,6 +800,24 @@ except TimeoutError:
 3. 不能仅凭当前快照继续断言是 Milvus、Elasticsearch、Rerank、LLM 或 Prompt 中的哪一项导致了 120 秒耗尽。
 
 这部分若写成“确定是模型慢”或“确定是检索代码死锁”都超出了现有证据。
+
+#### 11.7.1 当前代码复核（2026-08-09）
+
+**状态：仍存在；外层超时收敛正确，内部定位能力仍未补齐。**
+
+`AgenticResearchExecutor.worker_runner()` 仍用一个
+`asyncio.wait_for(..., agent_research_worker_timeout_seconds)` 包住整个派生子问题或 Worker Graph，超时后
+直接构造新的 `WORKER_TIMEOUT` 失败结果。这个结果的 `attempt_count=0`，也不保留超时时已经完成的内部
+ToolCall、Evidence 或当前节点。
+
+当前 TaskPlan progress 能记录 wave started、Evaluator 完成和 retry 等事件，LangSmith 子调用也有分层名称；
+但 Worker 进入 Tool Selector、具体 Retriever/Tool 或答案生成等待时，没有把“当前内部阶段”写入可恢复的
+TaskPlan 快照。若超时发生在第一次评估事件之前，持久化状态仍只能看到 Worker 正在运行和最终
+`WORKER_TIMEOUT`。LangSmith trace 在已启用且调用成功落库时可提供旁证，但不能替代本地终态快照，也不能
+保证为被取消的未完成调用留下可查询记录。
+
+因此原小节对证据边界的判断仍成立：当前只能确认整体 Worker 超时，不能稳定区分模型选择、知识库检索、
+Web/MCP Tool、答案生成或 Evaluator 哪一阶段耗尽时间。现有 Agent Research 测试中也没有覆盖超时阶段定位。
 
 ### 11.8 场景 4 的旧 session：测试隔离问题叠加 Rewriter 语义误判
 
@@ -795,6 +854,24 @@ Rewriter Prompt 已要求“当前问题已经可以独立检索时原样返回�
 - Rewriter 没有遵守“独立问题原样返回”的 Prompt，属于真实模型语义误判。
 - `rag_agent_pipeline_service.py:383-387` 按 `unresolved` 返回结构化澄清是预期代码行为，不是该问题的根因。
 
+#### 11.8.1 当前代码复核（2026-08-09）
+
+**状态：部分仍存在，需要拆成测试隔离和 Rewriter 语义两项看待。**
+
+测试隔离方面，手工验收页加载场景时已经把不同场景分配为
+`taskplan-v2-e2e-{scenario_id}`，因此场景之间不再全部共用页面初始值
+`manual-agent-session-001`。但是重复加载同一个场景仍会复用同一个确定性 session；页面没有生成一次性
+session、清理历史或提示当前 session 已被使用。第 15.4 节的成功验收依赖人工恢复 Redis 冻结历史，说明
+这是测试流程规避，不是验收页已经自动闭环。对无历史场景重复测试时，旧历史污染仍可复现。
+
+Rewriter 方面，当前 Prompt 已加强“当前问题优先”“独立清楚则原样返回”和“只有上下文确实不足才
+unresolved”等约束，场景 7 也在第 15 节通过过一次真实流式验收；但只要 session 中存在历史，Pipeline
+仍会调用模型，并直接接受一个结构合法的 `unresolved` 决策后返回澄清。服务端只校验消息 ID 和 Schema，
+没有确定性判断模型是否把本来独立的问题误判成历史指代。
+
+所以原来的单次模型误判不能断言仍稳定复现，但对应的代码路径仍然存在；测试隔离缺口则可以从当前页面
+直接确认。该小节应标为“部分修复/部分仍存在”，而不是整体已修复。
+
 ### 11.9 场景 7：Dataset metadata 对 Planner 产生了范围诱导
 
 场景 7 的 `source_query` 已正确解析为：
@@ -827,6 +904,23 @@ dataset_schema_context=dataset_schema_context,
 ```
 
 传入完整字段本身是为了让 SQL 计划可执行；问题在于 Planner 把“可用字段”误当成“用户要求”，Reviewer 的 `semantic_alignment` 又错误返回 pass。这里没有发现服务端硬编码自动增加均值 Requirement 的逻辑，范围扩张来自 Planner 模型输出。
+
+#### 11.9.1 当前代码复核（2026-08-09）
+
+**状态：原冻结场景已经修复并通过真实流式验收；同类语义漂移仍是非确定性残余风险。**
+
+第 15 节已经补充并真实验证以下约束：`resolved_query` 是唯一范围权威，Dataset 字段不是待查询清单，
+历史 assistant 内容不能自动成为新需求，Planner/Reviewer 必须删除无法追溯到用户要求的统计指标。当前
+Planner 和 Reviewer Prompt 仍保留这些规则，Dataset metadata 也继续标记为不可信业务数据。第 15.5 节的
+冻结场景 7 最终计划没有再加入项目均值、应用场景或授权状态，因此原始复现应记为已修复，而不是未修复。
+
+但当前确定性 `AgentTaskPlanValidator` 只验证 SQL `required_attributes` 是否属于 Dataset 字段白名单，无法判断
+某个合法字段是否由用户请求。现有自动化检查主要确认范围守恒规则仍在 Prompt 中；真正的语义对齐仍由
+Planner/Reviewer 模型判断。因此“Dataset metadata 再次诱导模型增加一个合法但未请求字段”仍可能发生，
+只是当前没有新的失败证据证明冻结场景仍失败。
+
+结论应区分为：**11.9 的历史 Bug 已修复并验收；确定性语义防线尚未覆盖这一类问题。**后续修复 11.8、
+11.10 时，应把 11.9 作为同一“请求范围与来源守恒”回归组，而不是重新把它列成已确认故障。
 
 ### 11.10 场景 8：请求策略禁止 direct Web 后发生静默换源
 
@@ -876,6 +970,24 @@ if hint == "web_search" and not capability.web_direct_allowed:
 
 所以场景 8 的根因不是单独的 Router Prompt 错误，而是确定性的链路缺口：请求的必需来源约束没有成为 Planner 前的服务端事实，Capability 只隐藏不可用 Tool，允许模型静默换源，Validator 又只能验证“生成后的来源是否可执行”。
 
+#### 11.10.1 当前代码复核（2026-08-09）
+
+**状态：仍存在。**
+
+简单 `web_research` 路由会调用 `resolve_direct_web()`，因此能够在 Planner 前拒绝
+`allow_direct_web=false`。但场景 8 属于复杂 `question_decomposition`：当前 Router 仍不接收请求 Web 策略，
+节点随后调用 `resolve_research()`；该方法在策略禁止或用户无 Web 权限时只是不把 `web_search` 加入
+`available_source_types`，不会比较 resolved query 是否明确要求联网。
+
+Planner/Reviewer Prompt 虽然已经要求保留用户指定来源，但它们同时看到 Web 不在可用来源中。模型若仍输出
+`web_search`，Validator 会以 `PLAN_SOURCE_UNAVAILABLE/PLAN_DIRECT_WEB_DISABLED` 拒绝；模型若改写成
+`knowledge_retrieval`，当前 Validator 只检查生成后的来源可执行性，仍不会发现来源被替换。现有测试只覆盖
+`resolve_direct_web()` 的简单 Web 策略拒绝，没有覆盖“复杂 Web 请求 + direct Web 禁止”的 Planner 前冲突。
+
+因此根因仍是用户明确要求的来源没有被提升为服务端可信规划约束。相同缺口也适用于“复杂 Web 请求 + 用户
+无 Web Tool 权限”：能力会被隐藏，模型仍可能静默换源；这不影响 11.11 中简单 Web 场景 9 的通过结论，但
+说明该权限组合应纳入 11.10 的后续回归范围。
+
 ### 11.11 场景 9、10：权限负向链路没有发现错误
 
 场景 9 在 Direct Web Capability Resolve 中先检查 Tool 权限：
@@ -893,6 +1005,20 @@ if not allow_direct_web:
 
 场景 10 在绑定 Dataset 的前置鉴权中返回 `NL2SQL_PERMISSION_DENIED`，没有进入普通 Router、Planner 或 Reviewer，也符合预期。本次检查没有发现这两个负向权限场景的代码逻辑错误。
 
+#### 11.11.1 当前代码复核（2026-08-09）
+
+**状态：这两个冻结场景当前仍未发现 Bug。**
+
+场景 9 的简单 Web 路由仍在创建结果或调用 Provider 前执行 `resolve_direct_web()`，并且先检查
+`AGENT_TOOL_WEB_SEARCH` 权限；无权限时返回 `ToolPermissionDeniedError`。场景 10 的简单 Dataset 查询会在
+`call_nl2sql_query` 节点进入 `Nl2SqlService.query()`，并在生成 SQL 或访问 Dataset 数据前通过
+`authorize_action()` 校验功能权限和 Dataset Grant；若是需要 TaskPlan 的复杂 Dataset 研究，
+`resolve_research()` 也会在加载规划 Schema 和进入 Planner 前执行同一授权边界。两条路径缺少
+`data:query:execute` 或 Dataset Grant 时都会返回 `Nl2SqlPermissionDeniedError`。
+
+需要保留一个边界说明：11.11 只证明当前两个具体负向场景正确，不证明所有复杂 Web 权限组合都正确。
+复杂 Web 请求在权限不可用时的静默换源仍属于 11.10，而不是 11.11 的新 Bug。
+
 ### 11.12 根因优先级总结
 
 按对本轮结果的影响范围排序：
@@ -905,6 +1031,53 @@ if not allow_direct_web:
 6. **Direct Web 执行与 Prompt 不匹配：没有官方来源约束，回答仍使用“知识库不足”语义。**场景 2 受影响。
 7. **测试隔离与模型误判：固定 session 保存旧历史，Rewriter 把独立问题判成 unresolved。**场景 4 首次请求受影响。
 8. **尚不能继续细分：Knowledge Worker 的 120 秒超时。**当前快照只能定位外层 timeout，缺少足以判定内部阻塞点的日志。
+
+#### 11.12.1 当前状态总表（2026-08-09）
+
+本次复核基于当前 HEAD `693c82a` 的真实代码、现有自动化测试内容和本文后续章节保存的真实模型验收证据。
+本轮没有调用真实模型、外部网络或运行历史场景，因此“已修复”只用于已有后续真实验收且当前实现仍保留的
+项目；“仍存在”用于当前代码分支可以直接确认的确定性缺口。
+
+| 小节 | 当前状态 | 当前判断 |
+|---|---|---|
+| 11.5 | **仍存在** | Evaluator 结论未进入 Research v2 持久化结果；Aggregator 仍允许 `partial` Worker 的形式 Evidence 满足 strict Requirement。 |
+| 11.6 | **仍存在** | Prompt/模型允许并行，但 `mcp__fetch` 批次仍被整批拒绝并消耗预算。 |
+| 11.7 | **仍存在** | 整体 Worker timeout 能正确失败收敛，但 TaskPlan 快照仍不能定位内部等待阶段。 |
+| 11.8 | **部分仍存在** | 不同场景已有固定 ID 隔离；同场景重复运行仍复用 session，Rewriter 误判也没有确定性防线。 |
+| 11.9 | **历史 Bug 已修复，保留风险** | 冻结场景已真实流式通过；同类范围漂移仍依赖 Planner/Reviewer 语义判断。 |
+| 11.10 | **仍存在** | 复杂任务缺少“用户必需 Web 来源 vs 当前策略/权限”的 Planner 前确定性冲突检查。 |
+| 11.11 | **无已确认 Bug** | 简单 Web 无权限和 Dataset 无授权仍在 Planner/Provider 前拒绝。 |
+| 11.12 | **已更新** | 原优先级包含已修复的 11.3/11.4；应按下面的剩余故障组重新排序。 |
+
+#### 11.12.2 剩余问题关联分组
+
+**第一组：Research 执行真实性与终态收敛（11.5 + 11.6，后续应一起修复）**
+
+11.6 会因为并行契约冲突浪费预算并制造 `partial/failed` Worker；11.5 又可能把其中带形式合法 Evidence 的
+`partial` 结果提升为 strict Requirement `satisfied`，最终掩盖上游执行失败。只修 11.6 仍不能阻止其他原因
+产生的 partial 被误聚合；只修 11.5 仍会保留无意义的整批拒绝和预算耗尽。因此两项需要作为同一修复组，
+共同验收 Worker 状态、Evaluator 结论、Requirement 状态和 TaskPlan 终态是否一致。
+
+**第二组：请求语义、范围与必需来源守恒（11.8 的 Rewriter 部分 + 11.10；11.9 作为回归场景）**
+
+三者位于同一连续边界：Rewriter 决定 `resolved_query`，Planner 在 Dataset metadata 和 Capability 下拆解范围，
+Validator 决定来源是否可执行。11.8 可能错误改变当前问题是否完整，11.9 曾扩大用户范围，11.10 则在能力
+不可用时允许静默替换必需来源。11.9 当前不再是已确认故障，但后续修复 11.8/11.10 时必须一起回归，避免
+新增服务端约束后重新破坏已通过的范围守恒。11.8 的“手工页重复使用同场景 session”是独立的验收基础设施
+小问题，可在该组验收前单独处理，不应和 Rewriter 业务逻辑混成一个补丁。
+
+**第三组：Worker 超时可观测性（11.7，独立修复）**
+
+11.7 与第一组都发生在 Research 执行阶段，但当前 timeout 会生成无 Evidence 的明确 failed 结果，未发现它被
+11.5 直接提升为 satisfied。它的根因是内部阶段快照和超时诊断缺失，不是 Evidence 聚合或 Tool 并行策略，
+因此应单独修复和验收，避免把状态语义、并发策略和可观测性一次性混成过大改动。
+
+**无需修复组：11.11**
+
+场景 9、10 当前行为符合预期，只保留回归测试；复杂 Web 权限组合统一归入 11.10，不为 11.11 创建重复修复。
+
+按当前影响和因果关系，建议后续顺序为：第一组（11.5 + 11.6）→ 第二组（11.8 Rewriter + 11.10，并回归
+11.9）→ 第三组（11.7）。这只是修复分组和依赖顺序，本轮没有实施任何代码修改。
 
 ## 12. qwen3.7-max Reviewer 与 11.2 专项流式复测（2026-08-03）
 
