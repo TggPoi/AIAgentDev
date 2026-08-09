@@ -1916,7 +1916,7 @@ $env:LANGSMITH_TRACING = "false"
 $env:LANGCHAIN_TRACING_V2 = "false"
 
 .\.venv\Scripts\python.exe `
-  scripts\phase_15\test_agentic_research_orchestration.py
+  scripts\tests\agent_research\test_agentic_research_orchestration.py
 ```
 
 建议设置三个断点：
@@ -2934,7 +2934,7 @@ $env:LANGSMITH_TRACING = "false"
 $env:LANGCHAIN_TRACING_V2 = "false"
 
 .\.venv\Scripts\python.exe `
-  scripts\phase_15\test_agentic_research_orchestration.py
+  scripts\tests\agent_research\test_agentic_research_orchestration.py
 ```
 
 预期：
@@ -2947,7 +2947,7 @@ agentic_research_orchestration=passed
 
 测试脚本位于：
 
-[test_agentic_research_orchestration.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/phase_15/test_agentic_research_orchestration.py:204)
+[test_agentic_research_orchestration.py](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/tests/agent_research/test_agentic_research_orchestration.py:204)
 
 重点断言：
 

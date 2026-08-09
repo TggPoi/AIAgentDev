@@ -380,59 +380,12 @@ src/fast_app/ingestion/stores/rag_store_writer.py
 
 ## 3. 当前测试脚本
 
-### 3.1 合同测试脚本
+### 3.1 综合验收脚本
 
 文件：
 
 ```text
-scripts/phase_15/test_department_rag_acl_contract.py
-```
-
-功能：
-
-```text
-只测试 Python 内部权限合同。
-不连接 PostgreSQL。
-不请求 FastAPI。
-不访问 ES / Milvus。
-```
-
-覆盖点：
-
-```text
-普通 development 用户不能 can_read_all
-普通 development 用户会生成 department_codes=["development"]
-ES filter 中包含 allowed_departments
-Milvus filter 中包含 development 和 public 条件
-admin 用户不附加 ES / Milvus 权限 filter
-```
-
-运行：
-
-```powershell
-$env:PYTHONPATH="src"
-.\.venv\Scripts\python.exe scripts\phase_15\test_department_rag_acl_contract.py
-```
-
-预期输出：
-
-```text
-department_acl_policy_and_filter_contract=passed
-```
-
-适合使用场景：
-
-```text
-你刚修改 KnowledgePermissionPolicy / RetrievalFilters / ES filter / Milvus filter 后，先跑这个脚本。
-它是最快的本地回归检查。
-```
-
-### 3.2 综合验收脚本
-
-文件：
-
-```text
-scripts/phase_15/test_department_rag_acl_acceptance.py
+scripts/tests/document_security/test_department_rag_acl_acceptance.py
 ```
 
 功能：
@@ -442,11 +395,18 @@ scripts/phase_15/test_department_rag_acl_acceptance.py
 传入 --base-url 后，会额外执行真实 HTTP 验收。
 ```
 
+只运行 Python 权限合同、不连接 PostgreSQL 时使用：
+
+```powershell
+$env:PYTHONPATH="src"
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_department_rag_acl_acceptance.py --skip-db
+```
+
 默认运行：
 
 ```powershell
 $env:PYTHONPATH="src"
-.\.venv\Scripts\python.exe scripts\phase_15\test_department_rag_acl_acceptance.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_department_rag_acl_acceptance.py
 ```
 
 预期输出：
@@ -494,7 +454,7 @@ HTTP 验收示例：
 
 ```powershell
 $env:PYTHONPATH="src"
-.\.venv\Scripts\python.exe scripts\phase_15\test_department_rag_acl_acceptance.py `
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_department_rag_acl_acceptance.py `
   --base-url "http://127.0.0.1:8000" `
   --dev-username "dev_user" `
   --dev-password "Dev123456!" `
@@ -628,7 +588,7 @@ uvicorn fast_app.main:app --reload
 
 ```powershell
 $env:PYTHONPATH="src"
-.\.venv\Scripts\python.exe scripts\phase_15\test_department_rag_acl_acceptance.py `
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_department_rag_acl_acceptance.py `
   --base-url "http://127.0.0.1:8000" `
   --dev-username "dev_user" `
   --dev-password "Dev123456!" `
@@ -743,7 +703,7 @@ $env:PYTHONPATH="src"
 ## 7.测试结果：
 
 ~~~cpp
-python.exe scripts\phase_15\test_department_rag_acl_acceptance.py `
+python.exe scripts\tests\document_security\test_department_rag_acl_acceptance.py `
 >>   --base-url "http://127.0.0.1:8000" `
 >>   --dev-username "dev_user" `
 >>   --dev-password "Dev123456!" `
@@ -1073,7 +1033,7 @@ curl.exe -N `
 ```powershell
 $env:PYTHONPATH="src"
 
-.\.venv\Scripts\python.exe scripts\phase_15\test_department_rag_acl_acceptance.py `
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_department_rag_acl_acceptance.py `
   --base-url "http://127.0.0.1:8000" `
   --dev-username "dev_user" `
   --dev-password "Dev123456!" `

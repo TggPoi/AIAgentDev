@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from fast_app.api.rag_chat_routes import rag_chat_structured_sse_event_generator

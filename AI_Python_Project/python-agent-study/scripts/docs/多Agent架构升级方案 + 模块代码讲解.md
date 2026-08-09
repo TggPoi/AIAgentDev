@@ -7171,11 +7171,11 @@ $env:PYTHONPATH = "src"
 $env:LANGSMITH_TRACING = "false"
 $env:LANGCHAIN_TRACING_V2 = "false"
 
-.\.venv\Scripts\python.exe scripts\phase_15\test_llm_document_management_task.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_tool_loop.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agentic_research_orchestration.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_llm_document_management_task.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_task_tool_loop.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agentic_research_orchestration.py
 .\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_sub_question_execution.py
-.\.venv\Scripts\python.exe scripts\test_langsmith_tracing.py
+.\.venv\Scripts\python.exe scripts\tests\integrations\test_langsmith_tracing.py
 ```
 
 同时执行：

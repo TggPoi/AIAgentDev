@@ -1513,7 +1513,7 @@ Repository 根目录的 `.permission-rules.json` 只为 `development/`、
 
 ### 29.2 离线回归
 
-`scripts/test_gitlab_enterprise_sync.py` 新增并通过以下断言：
+`scripts/tests/integrations/test_gitlab_enterprise_sync.py` 新增并通过以下断言：
 
 1. create 操作的 Commit path 保持
    `development/gitlab-agent-mr-governance.md`，不会剥离首段。

@@ -862,7 +862,7 @@ failed
 我执行了：
 
 ```
-.\.venv\Scripts\python.exe scripts\phase_15\test_deep_document_agent_workflow.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_deep_document_agent_workflow.py
 ```
 
 结果为：
@@ -873,7 +873,7 @@ deep_document_agent_workflow=passed
 
 对应测试位于：
 
-[test_deep_document_agent_workflow.py (line 733)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/phase_15/test_deep_document_agent_workflow.py:733)
+[test_deep_document_agent_workflow.py (line 733)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/tests/document_security/test_deep_document_agent_workflow.py:733)
 
 最终结论是：四个角色已经完成模型传输层流式改造；它通过尽早并持续接收响应 chunk 缓解长输出读取超时，同时结合角色专用超时、禁用自动重试、工作流总超时和确定性收敛规则解决本次暴露的问题。但它不会提高模型上下文上限，也不能代替多 Agent 控制流的收敛治理。
 

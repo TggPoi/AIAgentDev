@@ -163,7 +163,7 @@ RLS 页命中集 `{16, postgresql, row, rowsecurity, security}` 中，`row ⊂ r
 第1名: https://www.postgresql.org/docs/16/ddl-rowsecurity.html
 ```
 
-四个修复各司其职：**修复 1 解决"匹配不到"，修复 3 解决"混进错的"，修复 4 解决"重复计分"，修复 2 解决"排序被劫持"**。整套机制是纯确定性代码，不依赖任何 LLM 调用，符合项目"可信事实由服务端代码持有"的规则；对应的回归用例都在 [test_direct_web_sitemap.py](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/phase_15/test_direct_web_sitemap.py) 中（复合词变体、复合词优先、去冗余、片段预筛各一例）。
+四个修复各司其职：**修复 1 解决"匹配不到"，修复 3 解决"混进错的"，修复 4 解决"重复计分"，修复 2 解决"排序被劫持"**。整套机制是纯确定性代码，不依赖任何 LLM 调用，符合项目"可信事实由服务端代码持有"的规则；对应的回归用例都在 [test_direct_web_sitemap.py](file://d:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/tests/web_retrieval/test_direct_web_sitemap.py) 中（复合词变体、复合词优先、去冗余、片段预筛各一例）。
 
 # 1.1 技术点讲解：
 

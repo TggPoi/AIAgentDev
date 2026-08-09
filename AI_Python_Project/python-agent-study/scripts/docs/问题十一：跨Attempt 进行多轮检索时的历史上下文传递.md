@@ -620,7 +620,7 @@ assert "attempt_1" in correction_result.tool_calls[0].call_id
 assert "attempt_2" in correction_result.tool_calls[1].call_id
 ```
 
-对应位置：[跨 attempt 回归测试 (line 588)](/D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/phase_15/test_agent_task_tool_loop.py:588)。
+对应位置：[跨 attempt 回归测试 (line 588)](/D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/tests/agent_research/test_agent_task_tool_loop.py:588)。
 
 # worker内存 保存上下文：
 

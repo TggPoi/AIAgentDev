@@ -88,11 +88,11 @@
 
 ```powershell
 $env:PYTHONPATH = "src"
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_conversation_context.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_conversation_context.py
 .\.venv\Scripts\python.exe -m py_compile `
   src\fast_app\graph\rag_agent\rag_agent_state.py `
   src\fast_app\services\rag\rag_agent_pipeline_service.py `
-  scripts\phase_15\test_agent_conversation_context.py
+  scripts\tests\agent_research\test_agent_conversation_context.py
 ```
 
 结果：
@@ -138,8 +138,8 @@ agent_conversation_context=passed
 
 ```powershell
 $env:PYTHONPATH = "src"
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_conversation_context.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_plan_decomposition.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_conversation_context.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_task_plan_decomposition.py
 ```
 
 结果：
@@ -196,8 +196,8 @@ Planner 主链路已删除固定 `history=[]`，改为传入带标签的会话�
 
 ```powershell
 $env:PYTHONPATH = "src"
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_conversation_context.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_guarded_streaming.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_conversation_context.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_guarded_streaming.py
 ```
 
 结果：
@@ -254,7 +254,7 @@ guarded_streaming=passed
 
 ```powershell
 $env:PYTHONPATH = "src"
-.\.venv\Scripts\python.exe scripts\phase_15\test_llm_document_management_task.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_llm_document_management_task.py
 ```
 
 结果：
@@ -310,9 +310,9 @@ llm_document_management_task=passed
 
 ```powershell
 $env:PYTHONPATH = "src"
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_conversation_context.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_tool_permission_policy.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_llm_document_management_task.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_conversation_context.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_agent_tool_permission_policy.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_llm_document_management_task.py
 ```
 
 结果：
@@ -363,8 +363,8 @@ llm_document_management_task=passed
 
 ```powershell
 $env:PYTHONPATH = "src"
-.\.venv\Scripts\python.exe scripts\phase_15\test_llm_document_management_task.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_guarded_streaming.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_llm_document_management_task.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_guarded_streaming.py
 ```
 
 结果：
@@ -415,8 +415,8 @@ guarded_streaming=passed
 
 ```powershell
 $env:PYTHONPATH = "src"
-.\.venv\Scripts\python.exe scripts\phase_15\test_llm_document_management_task.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_guarded_streaming.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_llm_document_management_task.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_guarded_streaming.py
 .\.venv\Scripts\python.exe -m py_compile `
   src\fast_app\domain\agent_task_plan.py `
   src\fast_app\services\agent_tasks\agent_task_executor.py `
@@ -476,15 +476,15 @@ py_compile=passed
 
 ```powershell
 $env:PYTHONPATH = "src"
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_conversation_context.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_plan_decomposition.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_tool_loop.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_conversation_context.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_task_plan_decomposition.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_task_tool_loop.py
 .\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_sub_question_execution.py
 .\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_planning_flow.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_tool_permission_policy.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_llm_document_management_task.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_guarded_streaming.py
-.\.venv\Scripts\python.exe scripts\test_langsmith_tracing.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_agent_tool_permission_policy.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_llm_document_management_task.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_guarded_streaming.py
+.\.venv\Scripts\python.exe scripts\tests\integrations\test_langsmith_tracing.py
 .\.venv\Scripts\python.exe -m compileall -q src\fast_app
 git diff --check
 ```
@@ -804,7 +804,7 @@ risk_level = medium
 
 如果以后把 `PROMPT_GUARD_BLOCK_THRESHOLD` 改成 `medium`，这类结果仍会在 `_apply_block_threshold()` 中重新升级为 block，需要一并评估。
 
-对应测试位于 [test_guarded_streaming.py (line 129)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/phase_15/test_guarded_streaming.py:129)。
+对应测试位于 [test_guarded_streaming.py (line 129)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/tests/document_security/test_guarded_streaming.py:129)。
 
 ## 3. PostgreSQL 会话消息顺序错误
 
@@ -856,7 +856,7 @@ Repository 的消息读取现在统一按 `sequence_no` 排序：
 
 ### 测试为什么有效
 
-[test_conversation_message_order.py (line 22)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/phase_15/test_conversation_message_order.py:22)故意构造：
+[test_conversation_message_order.py (line 22)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/tests/agent_research/test_conversation_message_order.py:22)故意构造：
 
 - 四条消息具有相同 `created_at`；
 - ID 使用 `z-user、a-assistant、y-user、b-assistant`；
@@ -889,7 +889,7 @@ Repository 的消息读取现在统一按 `sequence_no` 排序：
 
 所以此前 401 没有再次出现，属于外部凭据状态恢复，不是 `core/langsmith.py` 的业务修复。
 
-当前共享追踪逻辑仍在 [langsmith.py (line 28)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/core/langsmith.py:28)，本地结构测试在 [test_langsmith_tracing.py (line 18)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/test_langsmith_tracing.py:18)。
+当前共享追踪逻辑仍在 [langsmith.py (line 28)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/core/langsmith.py:28)，本地结构测试在 [test_langsmith_tracing.py (line 18)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/tests/integrations/test_langsmith_tracing.py:18)。
 
 需要区分两种测试：
 
@@ -1011,7 +1011,7 @@ site:fastapi.tiangolo.com FastAPI official documentation
 - question decomposition：[agent_task_executor.py (line 726)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:726)
 - document Agent：[agent_task_executor.py (line 1773)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/src/fast_app/services/agent_tasks/agent_task_executor.py:1773)
 
-测试位于 [test_web_search_tool.py (line 17)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/phase_15/test_web_search_tool.py:17)。
+测试位于 [test_web_search_tool.py (line 17)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/tests/web_retrieval/test_web_search_tool.py:17)。
 
 ### 这里不是绝对安全保证
 
@@ -1070,10 +1070,10 @@ site:fastapi.tiangolo.com FastAPI official documentation
 ```
 $env:PYTHONPATH = "src"
 
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_plan_decomposition.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_guarded_streaming.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_web_search_tool.py
-.\.venv\Scripts\python.exe scripts\test_langsmith_tracing.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_task_plan_decomposition.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_guarded_streaming.py
+.\.venv\Scripts\python.exe scripts\tests\web_retrieval\test_web_search_tool.py
+.\.venv\Scripts\python.exe scripts\tests\integrations\test_langsmith_tracing.py
 ```
 
 再运行真实环境验证：
@@ -1082,8 +1082,8 @@ $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe -m alembic current
 .\.venv\Scripts\python.exe -m alembic check
 
-.\.venv\Scripts\python.exe scripts\phase_15\test_conversation_message_order.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_web_search_tool.py --real
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_conversation_message_order.py
+.\.venv\Scripts\python.exe scripts\tests\web_retrieval\test_web_search_tool.py --real
 .\.venv\Scripts\python.exe scripts\phase_15\test_fetch_mcp_real_llm.py
 ```
 
@@ -1940,15 +1940,15 @@ history_text = "\n\n".join(
 
 ```
 $env:PYTHONPATH="src"
-python scripts\phase_15\test_agent_task_router.py
-python scripts\phase_15\test_agent_router_clarification_flow.py
+python scripts\tests\agent_research\test_agent_task_router.py
+python scripts\tests\agent_research\test_agent_router_clarification_flow.py
 ```
 
 真实模型验收则使用：
 
 ```
 $env:PYTHONPATH="src"
-python scripts\phase_15\test_agent_task_router_real_llm.py
+python scripts\tests\agent_research\test_agent_task_router_real_llm.py
 ```
 
 ## 8. 使用 asyncio.wait_for 包裹LLM调用的原因：
@@ -2413,7 +2413,7 @@ Router 返回澄清
 
 ```
 $env:PYTHONPATH="src"
-python scripts\phase_15\test_agent_router_clarification_flow.py
+python scripts\tests\agent_research\test_agent_router_clarification_flow.py
 ```
 
 # 流式接口如何触发Router机制？

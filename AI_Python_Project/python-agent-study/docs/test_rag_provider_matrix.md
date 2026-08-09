@@ -1,6 +1,6 @@
 # test_rag_provider_matrix.py 使用说明
 
-这个文档解释 `scripts/test_rag_provider_matrix.py` 的用途、运行方式、覆盖的测试场景，以及每个测试用例内部做了什么。
+这个文档解释 `scripts/tests/rag_memory/test_rag_provider_matrix.py` 的用途、运行方式、覆盖的测试场景，以及每个测试用例内部做了什么。
 
 ## 脚本用途
 
@@ -55,7 +55,7 @@ pipeline.stream(req)
 在项目根目录运行：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --list-scenarios
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --list-scenarios
 ```
 
 只列出所有 provider 组合，不执行测试。
@@ -63,25 +63,25 @@ python scripts/test_rag_provider_matrix.py --list-scenarios
 运行 mock-only 场景：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --mock-only
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --mock-only
 ```
 
 运行所有 provider 组合，默认只测试请求 mode=`hybrid`：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py
+python scripts/tests/rag_memory/test_rag_provider_matrix.py
 ```
 
 运行所有 provider 组合，并测试三种请求 mode：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --all-modes
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --all-modes
 ```
 
 同时测试非流式和流式 pipeline：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --all-modes --include-stream
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --all-modes --include-stream
 ```
 
 ## 场景分类
@@ -160,7 +160,7 @@ hybrid
 如果使用：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --all-modes
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --all-modes
 ```
 
 那么每个 provider 组合都会分别测试：
@@ -246,7 +246,7 @@ mode=hybrid
 只打印 provider 组合，不执行测试：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --list-scenarios
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --list-scenarios
 ```
 
 ### --mock-only
@@ -254,7 +254,7 @@ python scripts/test_rag_provider_matrix.py --list-scenarios
 只运行 mock-safe 组合：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --mock-only
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --mock-only
 ```
 
 适合快速验证 pipeline 代码结构，不依赖外部服务。
@@ -264,7 +264,7 @@ python scripts/test_rag_provider_matrix.py --mock-only
 只运行至少包含真实外部服务的组合：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --real-only
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --real-only
 ```
 
 适合在 Milvus、Elasticsearch、Qwen 都准备好之后测试真实链路。
@@ -274,7 +274,7 @@ python scripts/test_rag_provider_matrix.py --real-only
 指定要测试的请求 mode：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --modes vector keyword
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --modes vector keyword
 ```
 
 ### --all-modes
@@ -282,7 +282,7 @@ python scripts/test_rag_provider_matrix.py --modes vector keyword
 测试全部请求 mode：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --all-modes
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --all-modes
 ```
 
 ### --include-stream
@@ -290,7 +290,7 @@ python scripts/test_rag_provider_matrix.py --all-modes
 同时测试 `pipeline.stream(req)`：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --include-stream
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --include-stream
 ```
 
 ### --stream-char-limit
@@ -298,13 +298,13 @@ python scripts/test_rag_provider_matrix.py --include-stream
 限制流式测试最多消费多少字符：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --include-stream --stream-char-limit 100
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --include-stream --stream-char-limit 100
 ```
 
 如果设置为 `0`，表示完整消费流：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --include-stream --stream-char-limit 0
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --include-stream --stream-char-limit 0
 ```
 
 ### --timeout
@@ -312,7 +312,7 @@ python scripts/test_rag_provider_matrix.py --include-stream --stream-char-limit 
 设置单个 `run` 或 `stream` 操作的超时时间：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --timeout 120
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --timeout 120
 ```
 
 ### --stop-on-failure
@@ -320,7 +320,7 @@ python scripts/test_rag_provider_matrix.py --timeout 120
 遇到第一个失败用例后停止：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --stop-on-failure
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --stop-on-failure
 ```
 
 ### --query / --top-k / --min-score
@@ -328,7 +328,7 @@ python scripts/test_rag_provider_matrix.py --stop-on-failure
 自定义 RAG 请求参数：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --query "RAG 是什么？" --top-k 5 --min-score 0.0
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --query "RAG 是什么？" --top-k 5 --min-score 0.0
 ```
 
 ## 推荐测试顺序
@@ -336,31 +336,31 @@ python scripts/test_rag_provider_matrix.py --query "RAG 是什么？" --top-k 5 
 第一步，只看组合：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --list-scenarios
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --list-scenarios
 ```
 
 第二步，跑离线 mock 组合：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --mock-only
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --mock-only
 ```
 
 第三步，跑 mock 组合的三种请求 mode：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --mock-only --all-modes
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --mock-only --all-modes
 ```
 
 第四步，如果真实服务已经准备好，再跑真实组合：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --real-only --all-modes
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --real-only --all-modes
 ```
 
 第五步，最后再加流式测试：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --real-only --all-modes --include-stream
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --real-only --all-modes --include-stream
 ```
 
 ## 真实服务测试前置条件

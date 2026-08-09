@@ -8242,10 +8242,10 @@ $env:NL2SQL_GAME_READER_PASSWORD = "<本地测试密码>"
 ```powershell
 $env:PYTHONPATH = "src"
 
-.\.venv\Scripts\python.exe scripts\nl2sql\test_nl2sql_module.py
-.\.venv\Scripts\python.exe scripts\nl2sql\test_dataset_authorization.py
-.\.venv\Scripts\python.exe scripts\nl2sql\test_nl2sql_api_contract.py
-.\.venv\Scripts\python.exe scripts\nl2sql\test_nl2sql_rag_routing.py
+.\.venv\Scripts\python.exe scripts\tests\nl2sql\test_nl2sql_module.py
+.\.venv\Scripts\python.exe scripts\tests\nl2sql\test_dataset_authorization.py
+.\.venv\Scripts\python.exe scripts\tests\nl2sql\test_nl2sql_api_contract.py
+.\.venv\Scripts\python.exe scripts\tests\nl2sql\test_nl2sql_rag_routing.py
 ```
 
 分别证明：

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from sqlalchemy import text
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from fast_app.core.config import get_settings

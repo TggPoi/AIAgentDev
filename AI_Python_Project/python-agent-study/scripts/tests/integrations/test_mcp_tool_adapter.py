@@ -2,7 +2,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from fast_app.agents import (
@@ -13,7 +13,7 @@ from fast_app.agents import (
 
 
 async def main() -> None:
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[3]
     server_path = repo_root / "scripts" / "mcp_demo_server.py"
 
     client = McpStdioClientBoundary(

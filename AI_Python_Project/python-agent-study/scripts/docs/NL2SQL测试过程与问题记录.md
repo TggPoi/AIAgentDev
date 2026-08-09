@@ -52,7 +52,7 @@
 ```powershell
 $env:PYTHONPATH = "src"
 $env:NL2SQL_DATABASE_URLS_JSON = Get-Content Env:NL2SQL_DATABASE_URLS_JSON
-.\.venv\Scripts\python.exe scripts\nl2sql\test_real_databases.py
+.\.venv\Scripts\python.exe scripts\tests\nl2sql\test_real_databases.py
 ```
 
 结果：`NL2SQL real database checks passed`。覆盖无 Scope 零行、不同用户连接池 Scope 不串线、跨项目隔离、COMMENT、角色属性、DDL 拒绝和 `business` Schema 直接访问拒绝。
@@ -62,15 +62,15 @@ $env:NL2SQL_DATABASE_URLS_JSON = Get-Content Env:NL2SQL_DATABASE_URLS_JSON
 ```powershell
 $env:PYTHONPATH = "src"
 
-.\.venv\Scripts\python.exe scripts\nl2sql\test_nl2sql_module.py
-.\.venv\Scripts\python.exe scripts\nl2sql\test_dataset_authorization.py
-.\.venv\Scripts\python.exe scripts\nl2sql\test_nl2sql_rag_routing.py
-.\.venv\Scripts\python.exe scripts\nl2sql\test_nl2sql_api_contract.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_schema_field_descriptions.py
-.\.venv\Scripts\python.exe scripts\test_langsmith_tracing.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_router.py
+.\.venv\Scripts\python.exe scripts\tests\nl2sql\test_nl2sql_module.py
+.\.venv\Scripts\python.exe scripts\tests\nl2sql\test_dataset_authorization.py
+.\.venv\Scripts\python.exe scripts\tests\nl2sql\test_nl2sql_rag_routing.py
+.\.venv\Scripts\python.exe scripts\tests\nl2sql\test_nl2sql_api_contract.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_schema_field_descriptions.py
+.\.venv\Scripts\python.exe scripts\tests\integrations\test_langsmith_tracing.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_task_router.py
 .\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_planning_flow.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_deep_document_agent_workflow.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_deep_document_agent_workflow.py
 .\.venv\Scripts\python.exe -m compileall -q src\fast_app scripts\nl2sql
 ```
 

@@ -791,12 +791,12 @@ tracing 会让 SDK 采集模型 Prompt/输出，应只在确认数据策略后�
 以下检查通过：
 
 ```text
-scripts/phase_15/test_deep_document_agent_workflow.py
-scripts/phase_15/test_agent_task_plan_decomposition.py
-scripts/phase_15/test_prompt_guard_document_parallelism.py
-scripts/phase_15/test_agent_task_tool_loop.py
-scripts/phase_15/test_schema_field_descriptions.py
-scripts/test_langsmith_tracing.py
+scripts/tests/document_security/test_deep_document_agent_workflow.py
+scripts/tests/agent_research/test_agent_task_plan_decomposition.py
+scripts/tests/document_security/test_prompt_guard_document_parallelism.py
+scripts/tests/agent_research/test_agent_task_tool_loop.py
+scripts/tests/agent_research/test_schema_field_descriptions.py
+scripts/tests/integrations/test_langsmith_tracing.py
 python -m compileall -q src/fast_app scripts/phase_15
 git diff --check
 ```
@@ -1148,7 +1148,7 @@ for doc, result in zip(docs, results, strict=True):
 
 并发行为由以下脚本验证：
 
-[test_prompt_guard_document_parallelism.py (line 20)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/phase_15/test_prompt_guard_document_parallelism.py:20)
+[test_prompt_guard_document_parallelism.py (line 20)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/tests/document_security/test_prompt_guard_document_parallelism.py:20)
 
 测试创建 10 个文档，并记录同时运行的分类任务数量，最终断言：
 
@@ -1577,7 +1577,7 @@ development/c.md
 
 对应测试位于：
 
-[test_deep_document_agent_workflow.py (line 379)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/phase_15/test_deep_document_agent_workflow.py:379)
+[test_deep_document_agent_workflow.py (line 379)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/tests/document_security/test_deep_document_agent_workflow.py:379)
 
 测试手工构造错误结果：
 
@@ -1839,7 +1839,7 @@ fast_app.core.langsmith.langsmith_trace()
 
 回归测试在：
 
-[test_langsmith_tracing.py (line 56)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/test_langsmith_tracing.py:56)
+[test_langsmith_tracing.py (line 56)](D:/AI_Agent_Project/AI_Python_Project/python-agent-study/scripts/tests/integrations/test_langsmith_tracing.py:56)
 
 测试会拦截工程传给 `langsmith.trace()` 的参数，并断言：
 

@@ -52,7 +52,7 @@
 回归命令：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\test_office_ingestion.py
+.\.venv\Scripts\python.exe scripts\tests\ingestion\test_office_ingestion.py
 ```
 
 结果：通过，输出 `office ingestion checks passed`。该轮覆盖 Loader、专属 Builder、OOXML 拒绝、Middleware、API 合同、Worker heartbeat、幂等模拟和新增修复断言；真实数据库/存储开关将在服务启动后另行执行。
@@ -72,7 +72,7 @@
 隔离资源真实回归命令：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\test_office_ingestion.py --real-db --real-stores --real-worker
+.\.venv\Scripts\python.exe scripts\tests\ingestion\test_office_ingestion.py --real-db --real-stores --real-worker
 ```
 
 结果：通过。真实 PostgreSQL 并发领取/租约回收、真实 ES/Milvus 增量收敛、真实 Worker 创建和插页更新均通过；该脚本的 Worker 使用 3 维 Mock Embedding，只证明本地基础设施和增量协议，不替代后续真实 Qwen 验收。
@@ -267,7 +267,7 @@ Record 模式那样把单条命中的精确行号/字段坐标作为独立 sourc
 
 ```powershell
 $env:LANGSMITH_TRACING='false'
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_router_real_llm.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_task_router_real_llm.py
 ```
 
 结果：20/20，通过。
@@ -315,7 +315,7 @@ $env:LANGSMITH_TRACING='false'
 执行命令：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\test_office_ingestion.py --real-db --real-stores --real-worker
+.\.venv\Scripts\python.exe scripts\tests\ingestion\test_office_ingestion.py --real-db --real-stores --real-worker
 ```
 
 结果：通过，输出 `office ingestion checks passed`。新增断言覆盖：

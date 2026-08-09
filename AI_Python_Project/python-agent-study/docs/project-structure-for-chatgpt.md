@@ -766,7 +766,7 @@ created_at date
 文件：
 
 ```text
-scripts/test_rag_chat_api.py
+scripts/tests/rag_memory/test_rag_chat_api.py
 ```
 
 运行前先启动 FastAPI：
@@ -779,7 +779,7 @@ python -m uvicorn fast_app.main:app --reload
 另开终端执行：
 
 ```powershell
-python scripts/test_rag_chat_api.py
+python scripts/tests/rag_memory/test_rag_chat_api.py
 ```
 
 默认测试：
@@ -792,9 +792,9 @@ python scripts/test_rag_chat_api.py
 常用参数：
 
 ```powershell
-python scripts/test_rag_chat_api.py --query "RAG 是什么？" --mode hybrid --top-k 3 --min-score 0.0
-python scripts/test_rag_chat_api.py --stream-only
-python scripts/test_rag_chat_api.py --skip-errors
+python scripts/tests/rag_memory/test_rag_chat_api.py --query "RAG 是什么？" --mode hybrid --top-k 3 --min-score 0.0
+python scripts/tests/rag_memory/test_rag_chat_api.py --stream-only
+python scripts/tests/rag_memory/test_rag_chat_api.py --skip-errors
 ```
 
 请求 payload 结构：
@@ -861,7 +861,7 @@ python -m uvicorn fast_app.main:app --reload
 运行 API 测试：
 
 ```powershell
-python scripts/test_rag_chat_api.py
+python scripts/tests/rag_memory/test_rag_chat_api.py
 ```
 
 ### 使用真实 Milvus + Elasticsearch + Qwen
@@ -896,7 +896,7 @@ RAG_PIPELINE_PROVIDER=classic
 ```powershell
 $env:PYTHONPATH="src"
 python -m uvicorn fast_app.main:app --reload
-python scripts/test_rag_chat_api.py
+python scripts/tests/rag_memory/test_rag_chat_api.py
 ```
 
 ## 当前工程的关键设计点

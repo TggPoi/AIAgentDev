@@ -193,17 +193,15 @@ MEMORY_STORE_PROVIDER=redis
 QUERY_REWRITE_ENABLED=true
 ```
 
-交互式测试：
+自动回归：
 
 ```powershell
 $env:PYTHONPATH="src"
-
-.\.venv\Scripts\python.exe scripts\test_multiturn_rag_agent_terminal.py `
-  --base-url "http://127.0.0.1:8000" `
-  --session-id "demo-session-14-11" `
-  --mode "hybrid" `
-  --top-k 3
+.\.venv\Scripts\python.exe scripts\tests\rag_memory\test_multiturn_rag_agent.py
 ```
+
+完整登录、多轮对话、TaskPlan 和结构化 SSE 的人工验收使用
+`scripts/phase_15/rag_agent_manual_acceptance.html`。
 
 Redis Insight 如果是桌面版，连接当前工程 Redis：
 
@@ -353,25 +351,25 @@ $env:PYTHONPATH="src"
 API 冒烟测试：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\test_rag_chat_api.py
+.\.venv\Scripts\python.exe scripts\tests\rag_memory\test_rag_chat_api.py
 ```
 
 RAG Agent 专用测试：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\test_rag_chat_api.py --rag-agent-suite
+.\.venv\Scripts\python.exe scripts\tests\rag_memory\test_rag_chat_api.py --rag-agent-suite
 ```
 
 结构化流测试：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\test_rag_chat_api.py --structured-stream-only
+.\.venv\Scripts\python.exe scripts\tests\rag_memory\test_rag_chat_api.py --structured-stream-only
 ```
 
 MCP tool adapter 测试：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\test_mcp_tool_adapter.py
+.\.venv\Scripts\python.exe scripts\tests\integrations\test_mcp_tool_adapter.py
 ```
 
 离线 RAG 评测：

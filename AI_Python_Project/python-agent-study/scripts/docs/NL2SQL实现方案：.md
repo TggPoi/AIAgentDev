@@ -1,4 +1,4 @@
-﻿# 自由 NL2SQL 模块设计方案（修订版）
+# 自由 NL2SQL 模块设计方案（修订版）
 
 ## 1. 目标（Goal）
 
@@ -232,8 +232,8 @@ Researcher 得到真实游戏资产结果、参数化 SQL、`query_id` 和后端
   - 跨 Dataset、跨项目和伪造 Scope。
   - RLS 缺失上下文默认零行。
   - 连接池连续服务两个用户时 Scope 不串线。
-- 所有新增 Schema 通过 `scripts/phase_15/test_schema_field_descriptions.py`。
-- LangSmith 改动通过 `scripts/test_langsmith_tracing.py`，SQL、parameters、rows 和房地产原始问题不进入远程 trace。
+- 所有新增 Schema 通过 `scripts/tests/agent_research/test_schema_field_descriptions.py`。
+- LangSmith 改动通过 `scripts/tests/integrations/test_langsmith_tracing.py`，SQL、parameters、rows 和房地产原始问题不进入远程 trace。
 - 现有 RAG、Agent Task、Deep Document、权限、GitLab 和 structured SSE 回归测试全部通过。
 
 ### 真实数据库和模型验收

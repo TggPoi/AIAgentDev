@@ -257,12 +257,11 @@ $env:PYTHONPATH = "src"
 $env:LANGSMITH_TRACING = "false"
 $env:LANGCHAIN_TRACING_V2 = "false"
 
-.\.venv\Scripts\python.exe scripts\phase_15\test_deep_document_agent_workflow.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_deep_document_checkpoint_runtime.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_llm_document_management_task.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agentic_research_orchestration.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_sub_question_execution.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_tool_loop.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_deep_document_agent_workflow.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_deep_document_checkpoint_runtime.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_llm_document_management_task.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agentic_research_orchestration.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_task_tool_loop.py
 ```
 
 真实 Qwen + Deep Agents 测试会把测试文档发送到外部模型：
@@ -270,7 +269,7 @@ $env:LANGCHAIN_TRACING_V2 = "false"
 ```powershell
 $env:RUN_REAL_LLM = "1"
 $env:REAL_LLM_WORKER_TIMEOUT_SECONDS = "360"
-.\.venv\Scripts\python.exe scripts\phase_15\test_deep_document_agent_workflow.py
+.\.venv\Scripts\python.exe scripts\tests\document_security\test_deep_document_agent_workflow.py
 ```
 
 测试使用临时 TaskPlan 目录，结束后不在 `runtime` 留下 smoke 产物。

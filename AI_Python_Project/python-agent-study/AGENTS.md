@@ -62,7 +62,7 @@ Before file-level modifications, read the real code and dependency files. If doc
 1. Every public field in a Pydantic model that generates JSON Schema for LLM structured output, `response_format`, Tool `args_schema`, or FastAPI/OpenAPI requests and responses must declare `Field(description="...")`.
 2. A field description must state the field's business meaning and, when relevant, its source, allowed status or enum semantics, identity inheritance, null/default meaning, and trust boundary. Keep it concise, but do not rely on the field name alone to convey these rules.
 3. Class docstrings, Python comments, prompts, and validators do not replace field-level descriptions. Descriptions guide the model or API consumer; Pydantic validators and deterministic service checks must still enforce the rules.
-4. When adding or changing a Schema-bound Pydantic model, extend and run `scripts/phase_15/test_schema_field_descriptions.py` so missing field descriptions fail regression checks.
+4. When adding or changing a Schema-bound Pydantic model, extend and run `scripts/tests/agent_research/test_schema_field_descriptions.py` so missing field descriptions fail regression checks.
 
 ## Conversation context and Agent state rules
 
@@ -86,7 +86,7 @@ Use the pattern "centralized tracing policy, distributed business instrumentatio
 3. Keep the actual trace context and `add_outputs()` calls next to the business operation or LangGraph node whose boundary and safe output they describe. Do not hide all instrumentation behind middleware, decorators, a `LangSmithManager`, or speculative abstraction.
 4. Domain-specific trace fields belong to the domain module. If the same trace assembly appears twice, extract the smallest local helper or extend an existing core helper instead of creating another tracing layer.
 5. Custom LangSmith inputs, metadata, and outputs must pass through the shared sensitive-field policy before including query text, retrieval filters, or user IDs. `LANGSMITH_INCLUDE_SENSITIVE_DATA=true` may enable those custom fields only in a controlled environment. SDK-instrumented LangChain calls can still upload prompts and model outputs when tracing is enabled, so do not enable LangSmith against sensitive production traffic without an explicit platform-level redaction policy.
-6. Any change to shared LangSmith builders or naming conventions must update and run `scripts/test_langsmith_tracing.py`.
+6. Any change to shared LangSmith builders or naming conventions must update and run `scripts/tests/integrations/test_langsmith_tracing.py`.
 
 ## Agent intent routing rules
 

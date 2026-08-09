@@ -2499,7 +2499,7 @@ Invoke-RestMethod `
 
 ```powershell
 $env:PYTHONPATH = "src"
-.\.venv\Scripts\python.exe scripts\test_gitlab_enterprise_sync.py
+.\.venv\Scripts\python.exe scripts\tests\integrations\test_gitlab_enterprise_sync.py
 ```
 
 预期：

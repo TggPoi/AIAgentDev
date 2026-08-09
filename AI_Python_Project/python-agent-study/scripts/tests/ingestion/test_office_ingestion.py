@@ -22,7 +22,7 @@ from pymilvus import MilvusClient
 from xlsxwriter import Workbook as XlsxWriterWorkbook
 from sqlalchemy import delete, select, update
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = Path(__file__).resolve().parents[3]
 SRC_DIR = ROOT_DIR / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))

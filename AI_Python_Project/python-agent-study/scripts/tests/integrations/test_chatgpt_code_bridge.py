@@ -9,6 +9,9 @@ from fastapi.testclient import TestClient
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "scripts"))
+
 from chatgpt_code_bridge import (
     BridgeAccessError,
     ReadOnlyCodeBridge,
@@ -28,7 +31,7 @@ def expect_denied(action) -> None:
 async def check_stdio_server(root: Path) -> None:
     parameters = StdioServerParameters(
         command=sys.executable,
-        args=[str(Path(__file__).with_name("chatgpt_code_bridge.py")), "--root", str(root)],
+        args=[str(ROOT / "scripts" / "chatgpt_code_bridge.py"), "--root", str(root)],
     )
     async with stdio_client(parameters) as (reader, writer):
         async with ClientSession(reader, writer) as session:

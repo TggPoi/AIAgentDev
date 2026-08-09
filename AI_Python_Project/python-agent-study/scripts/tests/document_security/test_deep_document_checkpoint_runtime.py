@@ -30,7 +30,7 @@ from fast_app.services.exceptions import (
     DocumentAgentCheckpointConflictError,
     DocumentAgentCheckpointUnavailableError,
 )
-from scripts.phase_15.test_deep_document_agent_workflow import (
+from test_deep_document_agent_workflow import (
     FakeManagementService,
     FakeRetriever,
     build_decision,

@@ -188,10 +188,10 @@ curl.exe -N `
 ```powershell
 $env:PYTHONPATH = "src"
 .\scripts\nl2sql\Test-Nl2SqlDatabases.ps1
-.\.venv\Scripts\python.exe scripts\nl2sql\test_nl2sql_module.py
-.\.venv\Scripts\python.exe scripts\nl2sql\test_dataset_authorization.py
-.\.venv\Scripts\python.exe scripts\nl2sql\test_nl2sql_rag_routing.py
-.\.venv\Scripts\python.exe scripts\nl2sql\test_nl2sql_api_contract.py
+.\.venv\Scripts\python.exe scripts\tests\nl2sql\test_nl2sql_module.py
+.\.venv\Scripts\python.exe scripts\tests\nl2sql\test_dataset_authorization.py
+.\.venv\Scripts\python.exe scripts\tests\nl2sql\test_nl2sql_rag_routing.py
+.\.venv\Scripts\python.exe scripts\tests\nl2sql\test_nl2sql_api_contract.py
 ```
 
 真实模型基准：

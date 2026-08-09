@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from langchain_core.messages import AIMessage

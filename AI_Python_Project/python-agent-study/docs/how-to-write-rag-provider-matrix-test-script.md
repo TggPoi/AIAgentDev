@@ -1,6 +1,6 @@
 # 如何编写 RAG Provider 矩阵测试脚本
 
-这篇文档用 `scripts/test_rag_provider_matrix.py` 作为例子，讲清楚这种测试脚本是怎么写出来的。
+这篇文档用 `scripts/tests/rag_memory/test_rag_provider_matrix.py` 作为例子，讲清楚这种测试脚本是怎么写出来的。
 
 你不需要一开始就看懂所有 Python 语法。先记住这个脚本的核心目的：
 
@@ -71,12 +71,12 @@ for scenario in 所有_provider组合:
 
 ## 第一步：让脚本能导入 src 里的项目代码
 
-脚本文件在 `scripts` 目录下，项目代码在 `src` 目录下。
+脚本文件在 `scripts/tests/rag_memory` 目录下，项目代码在 `src` 目录下。
 
 所以脚本开头有这段：
 
 ```python
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SRC_DIR = PROJECT_ROOT / "src"
 
 if str(SRC_DIR) not in sys.path:
@@ -98,19 +98,21 @@ Path(__file__)
 把路径转成绝对路径。
 
 ```python
-.parents[1]
+.parents[3]
 ```
 
-取当前文件的上两级目录。当前文件是：
+取当前文件的上四级目录。当前文件是：
 
 ```text
-python-agent-study/scripts/test_rag_provider_matrix.py
+python-agent-study/scripts/tests/rag_memory/test_rag_provider_matrix.py
 ```
 
 它的：
 
-- `parents[0]` 是 `scripts`
-- `parents[1]` 是项目根目录 `python-agent-study`
+- `parents[0]` 是 `rag_memory`
+- `parents[1]` 是 `tests`
+- `parents[2]` 是 `scripts`
+- `parents[3]` 是项目根目录 `python-agent-study`
 
 所以：
 
@@ -824,7 +826,7 @@ parser.add_argument(
 例如运行：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --mock-only
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --mock-only
 ```
 
 脚本里就可以这样判断：
@@ -850,7 +852,7 @@ parser.add_argument(
 例如：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --modes vector keyword
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --modes vector keyword
 ```
 
 得到：
@@ -880,7 +882,7 @@ scenarios = filter_scenarios(build_provider_scenarios(), args)
 如果你运行：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --mock-only
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --mock-only
 ```
 
 就只保留：
@@ -896,7 +898,7 @@ and scenario.keyword_retriever_provider == "mock"
 如果你运行：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --real-only
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --real-only
 ```
 
 就只保留至少依赖一个外部服务的场景。
@@ -1149,7 +1151,7 @@ finally:
 真实 provider 依赖密钥、服务连接和测试数据。建议先跑：
 
 ```powershell
-python scripts/test_rag_provider_matrix.py --mock-only
+python scripts/tests/rag_memory/test_rag_provider_matrix.py --mock-only
 ```
 
 确认脚本和依赖装配逻辑没问题后，再跑真实 provider。
@@ -1169,4 +1171,3 @@ await run(...)
 ```
 
 否则你拿到的不是结果，而是一个还没执行完成的 coroutine。
-

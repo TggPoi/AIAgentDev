@@ -1845,7 +1845,7 @@ src/fast_app/services/agent_tasks/agent_task_planner.py
 src/fast_app/services/agent_tasks/agent_task_plan_reviewer.py
 src/fast_app/services/agent_tasks/agent_task_plan_validator.py
 src/fast_app/services/research/agentic_research_executor.py
-scripts/test_langsmith_tracing.py
+scripts/tests/integrations/test_langsmith_tracing.py
 ```
 
 记录：
@@ -1880,19 +1880,19 @@ scripts/test_langsmith_tracing.py
 测试 Relative Path：
 
 ```text
-scripts/phase_15/test_agent_task_router.py
-scripts/phase_15/test_agent_task_router_real_llm.py
-scripts/phase_15/test_agent_task_plan_decomposition.py
+scripts/tests/agent_research/test_agent_task_router.py
+scripts/tests/agent_research/test_agent_task_router_real_llm.py
+scripts/tests/agent_research/test_agent_task_plan_decomposition.py
 scripts/phase_15/test_agent_task_plan_decomposition_llm.py
 scripts/phase_15/test_agent_task_planning_flow.py
 scripts/phase_15/test_agent_task_sub_question_execution.py
-scripts/phase_15/test_agent_task_tool_loop.py
-scripts/phase_15/test_agent_conversation_context.py
-scripts/phase_15/test_conversation_message_order.py
-scripts/phase_15/test_agentic_research_orchestration.py
-scripts/phase_15/test_prompt_guard_document_parallelism.py
-scripts/phase_15/test_schema_field_descriptions.py
-scripts/test_langsmith_tracing.py
+scripts/tests/agent_research/test_agent_task_tool_loop.py
+scripts/tests/agent_research/test_agent_conversation_context.py
+scripts/tests/agent_research/test_conversation_message_order.py
+scripts/tests/agent_research/test_agentic_research_orchestration.py
+scripts/tests/document_security/test_prompt_guard_document_parallelism.py
+scripts/tests/agent_research/test_schema_field_descriptions.py
+scripts/tests/integrations/test_langsmith_tracing.py
 ```
 
 ### Research 独立模型
@@ -2787,19 +2787,19 @@ Relative Path：
 src/fast_app/services/exceptions.py
 src/fast_app/core/error_responses.py
 scripts/phase_15/rag_agent_manual_acceptance.html
-scripts/phase_15/test_agent_task_router.py
-scripts/phase_15/test_agent_task_router_real_llm.py
-scripts/phase_15/test_agent_task_plan_decomposition.py
+scripts/tests/agent_research/test_agent_task_router.py
+scripts/tests/agent_research/test_agent_task_router_real_llm.py
+scripts/tests/agent_research/test_agent_task_plan_decomposition.py
 scripts/phase_15/test_agent_task_plan_decomposition_llm.py
 scripts/phase_15/test_agent_task_planning_flow.py
 scripts/phase_15/test_agent_task_sub_question_execution.py
-scripts/phase_15/test_agent_task_tool_loop.py
-scripts/phase_15/test_agent_conversation_context.py
-scripts/phase_15/test_conversation_message_order.py
-scripts/phase_15/test_agentic_research_orchestration.py
-scripts/phase_15/test_prompt_guard_document_parallelism.py
-scripts/phase_15/test_schema_field_descriptions.py
-scripts/test_langsmith_tracing.py
+scripts/tests/agent_research/test_agent_task_tool_loop.py
+scripts/tests/agent_research/test_agent_conversation_context.py
+scripts/tests/agent_research/test_conversation_message_order.py
+scripts/tests/agent_research/test_agentic_research_orchestration.py
+scripts/tests/document_security/test_prompt_guard_document_parallelism.py
+scripts/tests/agent_research/test_schema_field_descriptions.py
+scripts/tests/integrations/test_langsmith_tracing.py
 scripts/docs/TaskPlan 生成质量修复与 Planner 质量门禁重构方案.md
 scripts/docs/NL2SQL自然语言转SQL实现教程.md
 ```

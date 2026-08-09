@@ -25,18 +25,18 @@
 ```powershell
 $env:PYTHONPATH = "src"
 
-.\.venv\Scripts\python.exe scripts\phase_15\test_research_task_plan_v2.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agentic_research_orchestration.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_plan_decomposition.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_research_task_plan_v2.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agentic_research_orchestration.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_task_plan_decomposition.py
 .\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_planning_flow.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_router.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_router_clarification_flow.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_tool_loop.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_conversation_context.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_structured_output_transport.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_schema_field_descriptions.py
-.\.venv\Scripts\python.exe scripts\test_langsmith_tracing.py
-.\.venv\Scripts\python.exe scripts\nl2sql\test_nl2sql_rag_routing.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_task_router.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_router_clarification_flow.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_task_tool_loop.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_conversation_context.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_structured_output_transport.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_schema_field_descriptions.py
+.\.venv\Scripts\python.exe scripts\tests\integrations\test_langsmith_tracing.py
+.\.venv\Scripts\python.exe scripts\tests\nl2sql\test_nl2sql_rag_routing.py
 ```
 
 结果：全部通过。测试进程所在受限网络不能上传 LangSmith 数据，出现连接警告，但本地 tracing 契约断言通过。
@@ -1014,8 +1014,8 @@ Rewriter 现在被明确要求：解析“这些、继续、上述”等指代�
 
 ```text
 python -m py_compile agent_task_planner.py agent_task_plan_reviewer.py query_rewrite.py
-scripts/phase_15/test_agent_task_plan_decomposition.py
-scripts/phase_15/test_agent_conversation_context.py
+scripts/tests/agent_research/test_agent_task_plan_decomposition.py
+scripts/tests/agent_research/test_agent_conversation_context.py
 git diff --check
 ```
 
@@ -1096,7 +1096,7 @@ REVISED_SUBQUESTIONS=4
 - `src/fast_app/domain/research_task_plan.py`
   - `AgentTaskPlanReviewDecision.validate_decision_state()`：`accepted/revised` 只要存在任一 `fail` check，就直接产生 Pydantic `ValidationError`。
   - `AgentTaskPlanQualityReview.validate_persisted_review()`：最终有效 TaskPlan 的 checks 也必须全部为 `pass`，阻止其他调用方绕过 Planner 构造无效持久化计划。
-- `scripts/phase_15/test_research_task_plan_v2.py`
+- `scripts/tests/agent_research/test_research_task_plan_v2.py`
   - 固化旧故障形状：`verdict=revised + semantic_alignment=fail` 必须解析失败。
   - 固化持久化边界：`verdict=accepted + semantic_alignment=fail` 也必须解析失败。
 
@@ -1113,14 +1113,14 @@ AssertionError: revised 不应接受失败的最终质量检查
 以下检查全部通过：
 
 ```text
-scripts/phase_15/test_research_task_plan_v2.py
-scripts/phase_15/test_agent_task_plan_decomposition.py
+scripts/tests/agent_research/test_research_task_plan_v2.py
+scripts/tests/agent_research/test_agent_task_plan_decomposition.py
 scripts/phase_15/test_agent_task_planning_flow.py
-scripts/phase_15/test_agent_conversation_context.py
-scripts/phase_15/test_schema_field_descriptions.py
-scripts/phase_15/test_structured_output_transport.py
-scripts/test_langsmith_tracing.py
-python -m py_compile src/fast_app/domain/research_task_plan.py scripts/phase_15/test_research_task_plan_v2.py
+scripts/tests/agent_research/test_agent_conversation_context.py
+scripts/tests/agent_research/test_schema_field_descriptions.py
+scripts/tests/agent_research/test_structured_output_transport.py
+scripts/tests/integrations/test_langsmith_tracing.py
+python -m py_compile src/fast_app/domain/research_task_plan.py scripts/tests/agent_research/test_research_task_plan_v2.py
 git diff --check
 ```
 
@@ -1211,7 +1211,7 @@ Pydantic 正确拒绝了这两份矛盾响应；由于第二次调用只是原�
 修复位置：
 
 - `src/fast_app/core/structured_output.py:21-81`
-- `scripts/phase_15/test_structured_output_transport.py:97-123`
+- `scripts/tests/agent_research/test_structured_output_transport.py:97-123`
 
 第一次 `ValidationError` 后，第二次调用仍使用同一个已确认支持的 transport，但会追加一条精简的
 Schema 纠错消息。纠错消息只包含字段路径和 Pydantic 错误说明，不包含上一份原始模型输出，也不改变
@@ -1226,11 +1226,11 @@ Planner/Reviewer 的任务语义。最大调用次数、transport 缓存和 fail
 以下检查通过：
 
 ```text
-scripts/phase_15/test_structured_output_transport.py
-scripts/phase_15/test_research_task_plan_v2.py
-scripts/phase_15/test_agent_task_plan_decomposition.py
+scripts/tests/agent_research/test_structured_output_transport.py
+scripts/tests/agent_research/test_research_task_plan_v2.py
+scripts/tests/agent_research/test_agent_task_plan_decomposition.py
 scripts/phase_15/test_agent_task_planning_flow.py
-scripts/phase_15/test_schema_field_descriptions.py
+scripts/tests/agent_research/test_schema_field_descriptions.py
 ```
 
 新增断言同时验证：第二次调用收到了字段级纠错信息，但没有收到上一份非法值正文。
@@ -1375,13 +1375,13 @@ Evaluator 的实际语义结果：
 $env:PYTHONPATH = "src"
 $env:LANGSMITH_TRACING = "false"
 
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_router.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_research_task_plan_v2.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agentic_research_orchestration.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_task_tool_loop.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_agent_conversation_context.py
-.\.venv\Scripts\python.exe scripts\phase_15\test_schema_field_descriptions.py
-.\.venv\Scripts\python.exe scripts\test_langsmith_tracing.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_task_router.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_research_task_plan_v2.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agentic_research_orchestration.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_task_tool_loop.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_agent_conversation_context.py
+.\.venv\Scripts\python.exe scripts\tests\agent_research\test_schema_field_descriptions.py
+.\.venv\Scripts\python.exe scripts\tests\integrations\test_langsmith_tracing.py
 ```
 
 ## 17、Direct Web 修复的遗留问题（2026-8-6）
@@ -1792,7 +1792,7 @@ def _rank_sitemap_candidates(entries: list[str], needles: set[str]) -> list[dict
 
 ### 六、测试方案
 
-新增 `scripts/phase_15/test_direct_web_sitemap.py`（离线、不发网络请求）：
+新增 `scripts/tests/web_retrieval/test_direct_web_sitemap.py`（离线、不发网络请求）：
 
 1. **urlset 正常解析**：构造小型 XML，断言候选 URL 与命中词
 2. **sitemapindex 展开**：索引 XML + mock 子 sitemap，断言不返回 `.xml` 地址
