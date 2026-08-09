@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from fast_app.core.config import Settings
+from fast_app.domain.agent_tool_permissions import PermissionCode
+from fast_app.domain.user_context import CurrentUserContext
 from fast_app.graph.rag_agent.rag_agent_nodes import (
     create_call_direct_web_node,
     create_next_action_decision_node,
@@ -21,7 +23,14 @@ from fast_app.services.rag.direct_web_sitemap import _official_sitemap_candidate
 import fast_app.services.rag.enhanced_web_search as enhanced_module
 from fast_app.graph.rag_agent.rag_agent_state import build_rag_agent_initial_state
 from fast_app.schemas.rag_chat_schema import RagChatRequest
-from fast_app.services.exceptions import ExternalServiceError
+from fast_app.services.agent_tasks.agent_task_capability_service import (
+    AgentTaskCapabilityService,
+)
+from fast_app.services.exceptions import (
+    AgentTaskSourceUnavailableError,
+    ExternalServiceError,
+    ToolPermissionDeniedError,
+)
 from fast_app.services.rag.direct_web_page_text import extract_page_text
 from fast_app.services.rag.direct_web_search_planner import (
     DIRECT_WEB_CANDIDATE_SELECTOR_PROMPT,
@@ -83,6 +92,18 @@ class FixedRouter:
 class ExplodingPlanner:
     async def plan_question_decomposition(self, **_kwargs):
         raise AssertionError("simple_rag 不得调用 Planner")
+
+
+class RecordingResearchPlanner:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def plan_question_decomposition(self, **_kwargs):
+        self.calls += 1
+        return SimpleNamespace(
+            task_plan_id="source-policy-test-plan",
+            task_kind="question_decomposition",
+        )
 
 
 def build_settings(**overrides) -> Settings:
@@ -286,6 +307,94 @@ async def main() -> None:
     assert document_update["route"] == "execute_task_plan"
     assert document_update["agent_task_plan"].steps == []
     assert route_after_loop_check({**initial_state, "route": "direct_web"}) == "direct_web"
+
+    web_settings = build_settings(BOCHA_API_KEY="configured")
+    capability_service = AgentTaskCapabilityService(
+        settings=web_settings,
+        dataset_registry=None,
+        nl2sql_authorization=object(),
+    )
+    web_user = CurrentUserContext(
+        user_id="web-user",
+        is_authenticated=True,
+        auth_source="jwt",
+        global_permission_codes=[
+            PermissionCode.AGENT_TOOL_WEB_SEARCH.value
+        ],
+    )
+
+    blocked_planner = RecordingResearchPlanner()
+    blocked_state = build_rag_agent_initial_state(
+        RagChatRequest(
+            query=(
+                "请联网比较 PostgreSQL 16 的 RLS 与 "
+                "security_invoker，并综合两份网页证据。"
+            ),
+            allow_direct_web=False,
+            allow_web_fallback=False,
+        ),
+        operation="stream_events",
+        current_user=web_user,
+    )
+    try:
+        await create_next_action_decision_node(
+            web_settings,
+            task_router=FixedRouter("question_decomposition"),
+            task_planner=blocked_planner,
+            capability_service=capability_service,
+        )(blocked_state)
+    except AgentTaskSourceUnavailableError:
+        pass
+    else:
+        raise AssertionError("必需 Web 与请求策略冲突时必须在 Planner 前失败")
+    assert blocked_planner.calls == 0
+
+    denied_planner = RecordingResearchPlanner()
+    denied_state = build_rag_agent_initial_state(
+        RagChatRequest(
+            query="请联网比较 RLS 与 security_invoker。",
+            allow_direct_web=True,
+            allow_web_fallback=False,
+        ),
+        operation="stream_events",
+        current_user=CurrentUserContext(
+            user_id="reader",
+            is_authenticated=True,
+            auth_source="jwt",
+        ),
+    )
+    try:
+        await create_next_action_decision_node(
+            web_settings,
+            task_router=FixedRouter("question_decomposition"),
+            task_planner=denied_planner,
+            capability_service=capability_service,
+        )(denied_state)
+    except ToolPermissionDeniedError:
+        pass
+    else:
+        raise AssertionError("复杂 Web 请求无权限时必须在 Planner 前返回 403")
+    assert denied_planner.calls == 0
+
+    local_planner = RecordingResearchPlanner()
+    local_update = await create_next_action_decision_node(
+        web_settings,
+        task_router=FixedRouter("question_decomposition"),
+        task_planner=local_planner,
+        capability_service=capability_service,
+    )(
+        build_rag_agent_initial_state(
+            RagChatRequest(
+                query="比较混合检索与 rerank 的职责。",
+                allow_direct_web=False,
+                allow_web_fallback=False,
+            ),
+            operation="stream_events",
+            current_user=web_user,
+        )
+    )
+    assert local_planner.calls == 1
+    assert local_update["route"] == "execute_task_plan"
 
     observed_web_calls: list[dict[str, object]] = []
     original_web_search = enhanced_module.search_web_with_bocha

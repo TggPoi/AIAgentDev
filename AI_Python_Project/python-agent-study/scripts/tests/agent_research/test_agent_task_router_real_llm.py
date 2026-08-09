@@ -18,7 +18,6 @@ from fast_app.services.agent_tasks.agent_task_router import AgentTaskRouter
 class RouteCase:
     query: str
     expected: frozenset[str]
-    history: tuple[str, ...] = ()
 
 
 CASES = [
@@ -33,14 +32,12 @@ CASES = [
     RouteCase("请删除知识库中的旧部署文档。", frozenset({"knowledge_document_management"})),
     RouteCase("生成部署报告并保存为知识库文档 deployment-report.md。", frozenset({"knowledge_document_management"})),
     RouteCase(
-        "删除它",
+        "删除刚才找到的知识库旧部署文档",
         frozenset({"knowledge_document_management", "clarification_required"}),
-        ("刚才找到的是知识库中的旧部署文档。",),
     ),
     RouteCase(
-        "修改刚才找到的内容",
+        "修改刚才找到的权限设计文档内容",
         frozenset({"knowledge_document_management", "clarification_required"}),
-        ("上一轮检索到一篇权限设计文档。",),
     ),
     RouteCase("请联网搜索 FastAPI 最新部署建议。", frozenset({"web_research"})),
     RouteCase("使用 web_search 查询 PostgreSQL 版本发布信息。", frozenset({"web_research"})),
@@ -63,7 +60,7 @@ async def main() -> None:
         batch = CASES[start : start + 4]
         routed = await asyncio.gather(
             *(
-                router.route(query=case.query, history=list(case.history))
+                router.route(query=case.query)
                 for case in batch
             )
         )

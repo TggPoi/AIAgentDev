@@ -48,6 +48,9 @@ from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 from fast_app.services.agent_tasks.agent_task_capability_service import (
     AgentTaskCapabilityService,
 )
+from fast_app.services.agent_tasks.agent_task_source_policy import (
+    resolve_required_source_types,
+)
 from fast_app.services.agent_tasks.agent_task_router import (
     AgentRouteDecision,
     AgentTaskRouteResult,
@@ -439,24 +442,6 @@ def create_next_action_decision_node(
                     ),
                 )
 
-            # 组装历史对话的上下文
-            history = [
-                item
-                for item in (
-                    (
-                        "【会话摘要】\n" + state["summary_text"]
-                        if state.get("summary_text")
-                        else None
-                    ),
-                    (
-                        "【最近对话】\n" + state["history_window_text"]
-                        if state.get("history_window_text")
-                        else None
-                    ),
-                )
-                if item is not None
-            ]
-            # Router 仅消费冻结的摘要和最近窗口，不能自行读取会话存储。
             if task_router is None:
                 raise RuntimeError("AgentTaskRouter 未配置")
 
@@ -473,7 +458,6 @@ def create_next_action_decision_node(
             else:
                 route_result = await task_router.route(
                     query=state["query"],
-                    history=history,
                     langchain_config_factory=build_child_config,
                     dataset_query_bound=bool(
                         state.get("dataset_id")
@@ -552,18 +536,26 @@ def create_next_action_decision_node(
             if decision.intent == "question_decomposition":
                 if task_planner is None or capability_service is None or current_user is None:
                     raise RuntimeError("Research Planner 或 Capability Service 未配置")
+                planning_request = ResolvedPlanningRequest(
+                    current_query=state["original_query"],
+                    relevant_history=state.get("planning_history", []),
+                    resolved_query=state["query"],
+                )
+                required_source_types = resolve_required_source_types(
+                    planning_request
+                )
+                planning_request = planning_request.model_copy(
+                    update={"required_source_types": required_source_types}
+                )
                 capability = await capability_service.resolve_research(
                     user=current_user,
                     dataset_id=(str(state["dataset_id"]) if state.get("dataset_id") else None),
                     allow_direct_web=state.get("allow_direct_web", True),
                     allow_web_fallback=state.get("allow_web_fallback", False),
+                    required_source_types=required_source_types,
                 )
                 task_plan = await task_planner.plan_question_decomposition(
-                    request=ResolvedPlanningRequest(
-                        current_query=state["original_query"],
-                        relevant_history=state.get("planning_history", []),
-                        resolved_query=state["query"],
-                    ),
+                    request=planning_request,
                     user_id=current_user.user_id,
                     capability_snapshot=capability,
                     research_policy=ResearchTaskPolicy(
@@ -581,6 +573,7 @@ def create_next_action_decision_node(
                         ],
                         dataset_id=(str(state["dataset_id"]) if state.get("dataset_id") else None),
                         nl2sql_action=("query" if state.get("dataset_id") else None),
+                        required_source_types=required_source_types,
                         allow_direct_web=state.get("allow_direct_web", True),
                         allow_web_fallback=state.get("allow_web_fallback", False),
                     ),

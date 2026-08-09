@@ -56,6 +56,10 @@ _PLANNER_PROMPT = """你是 Research TaskPlan Planner，只生成 Requirements �
 - 数据库 Evidence 使用 Dataset 逻辑字段名。一个 SQL 子问题可以覆盖多个数据库 Requirement，但必须能返回各自 required_attributes。
 - web_search 只表示用户明确需要公开网络证据，不表示知识库不足后的 fallback。
 - 用户明确指定的每一种外部来源都必须保留，并分别由对应 SourcePolicy 和 ExpectedEvidence 覆盖；“结合 A 和 B”不能只规划其中一种来源。
+- resolved_request.required_source_types 是服务端从真实用户文本提取的必需来源约束。
+  列表中的每一种来源都必须出现在至少一个 Requirement 的 SourcePolicy 中，
+  不得删除、替换或降级；该列表只约束证据来源，不能据此增加用户未要求的统计指标、
+  字段、比较对象或业务结论。
 - 证据可能不存在不能成为删除来源 Requirement 的理由；证据是否充足由 Worker 和 Aggregator 在执行阶段判断，Planner 不能预先假定某个用户指定来源无结果。
 - 每个 Requirement 至少被一个子问题覆盖，每个子问题至少覆盖一个 Requirement。
 - 比较、适用性判断、流程先后关系、协作边界和待核实项等输出，如果需要组合前置事实才能得到，必须建模为 mode=none 的独立综合 Requirement，并由 information_source_hint=none 的子问题依赖其所需事实子问题；不能伪装成一次新的外部事实检索。
@@ -104,6 +108,11 @@ class AgentTaskPlanner:
 
         if not self._settings.openai_api_key:
             raise AgentTaskPlannerUnavailableError("TaskPlan Planner 模型未配置")
+        research_policy = research_policy.model_copy(
+            update={
+                "required_source_types": list(request.required_source_types)
+            }
+        )
         model_context = ModelPlanningContext(
             available_source_types=capability_snapshot.available_source_types,
             dataset_name=capability_snapshot.dataset_name,
@@ -131,6 +140,7 @@ class AgentTaskPlanner:
             candidate,
             capability_snapshot,
             stage="candidate",
+            required_source_types=request.required_source_types,
         )
         decision = await self._reviewer.review(
             request=request,
@@ -163,6 +173,7 @@ class AgentTaskPlanner:
             candidate,
             capability_snapshot,
             stage="reviewed_candidate",
+            required_source_types=request.required_source_types,
         )
         if any(item.severity == "error" for item in final_issues):
             logger.warning(
@@ -192,6 +203,7 @@ class AgentTaskPlanner:
             candidate,
             formal_sub_questions,
             capability_snapshot,
+            required_source_types=request.required_source_types,
         )
         if any(item.severity == "error" for item in formal_issues):
             logger.warning(
@@ -248,7 +260,14 @@ class AgentTaskPlanner:
             updated_at=now,
         )
 
-    async def _validate_with_trace(self, candidate, capability, *, stage: str):
+    async def _validate_with_trace(
+        self,
+        candidate,
+        capability,
+        *,
+        stage: str,
+        required_source_types,
+    ):
         async with langsmith_trace(
             settings=self._settings,
             name="task_planner.validate",
@@ -263,6 +282,7 @@ class AgentTaskPlanner:
                 schema_version=2,
                 stage=stage,
                 source_distribution=sorted(capability.available_source_types),
+                required_source_types=sorted(required_source_types),
             ),
             tags=build_langsmith_tags(
                 self._settings,
@@ -271,7 +291,11 @@ class AgentTaskPlanner:
                 "operation:validate",
             ),
         ) as trace_run:
-            issues = self._validator.validate_candidate(candidate, capability)
+            issues = self._validator.validate_candidate(
+                candidate,
+                capability,
+                required_source_types=required_source_types,
+            )
             if trace_run is not None:
                 trace_run.add_outputs(
                     {

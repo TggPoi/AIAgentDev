@@ -84,6 +84,13 @@ class ResolvedPlanningRequest(BaseModel):
         description="只包含解决当前指代所需的有限历史，不含内部消息 ID。",
     )
     resolved_query: str = Field(description="指代解析后的完整任务语义。")
+    required_source_types: list[AgentTaskExternalSourceType] = Field(
+        default_factory=list,
+        description=(
+            "服务端仅根据当前用户文本和已验证的相关 user 历史提取的必需来源；"
+            "Planner 和 Reviewer 只能保留，不能新增、删除或替换。"
+        ),
+    )
 
 
 class RequirementSourcePolicy(BaseModel):
@@ -554,6 +561,12 @@ class ResearchTaskPolicy(BaseModel):
     section_path: list[str] = Field(default_factory=list, description="限定章节路径；空列表表示不限定。")
     dataset_id: str | None = Field(default=None, description="服务端绑定 Dataset ID。")
     nl2sql_action: Literal["query"] | None = Field(default=None, description="Research 允许的 NL2SQL 动作。")
+    required_source_types: list[AgentTaskExternalSourceType] = Field(
+        default_factory=list,
+        description=(
+            "创建计划时冻结的用户必需来源；确认或恢复时必须重新验证这些来源仍可用。"
+        ),
+    )
     allow_direct_web: bool = Field(description="用户请求是否允许明确 Web 子任务。")
     allow_web_fallback: bool = Field(description="知识库不足时是否允许升级 Web。")
 

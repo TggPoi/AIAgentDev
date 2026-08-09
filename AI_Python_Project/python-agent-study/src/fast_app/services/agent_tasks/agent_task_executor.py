@@ -567,6 +567,7 @@ class AgentTaskExecutor:
             dataset_id=plan.research_policy.dataset_id,
             allow_direct_web=plan.research_policy.allow_direct_web,
             allow_web_fallback=plan.research_policy.allow_web_fallback,
+            required_source_types=plan.research_policy.required_source_types,
         )
         candidate = AgentTaskPlannerCandidate(
             requirements=plan.requirements,
@@ -581,6 +582,7 @@ class AgentTaskExecutor:
             candidate,
             plan.sub_questions,
             capability,
+            required_source_types=plan.research_policy.required_source_types,
         )
         if any(item.severity == "error" for item in issues):
             raise AgentTaskSourceUnavailableError(

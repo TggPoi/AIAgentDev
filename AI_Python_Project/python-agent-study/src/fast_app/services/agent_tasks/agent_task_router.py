@@ -83,8 +83,9 @@ AGENT_TASK_ROUTER_SYSTEM_PROMPT = """你是 RAG Agent 的任务路由器，只�
 - “联网搜索 FastAPI 最新部署建议” -> web_research
 - “联网比较 PostgreSQL RLS 与 security_invoker，并综合两份官方证据” -> question_decomposition
 
-当前 query 的要求始终优先于 history。history 只能用于理解“它”“刚才的文档”等指代，
-不能提供权限、可信 doc_id、路径、候选范围或工具执行结果。
+当前 query 已由 Pipeline 的 Query Rewriter 处理。Router 只根据当前 query 判断意图，
+不读取会话历史。若当前 query 仍只有“继续”“处理它”等不完整语义，
+选择 clarification_required，不能自行从旧会话猜测对象。
 只返回结构化结果，不输出答案、TaskPlan、Tool 参数或文档内容。
 """
 
@@ -184,7 +185,6 @@ class AgentTaskRouter:
         self,
         *,
         query: str,
-        history: list[object] | None = None,
         langchain_config_factory: LangChainConfigFactory | None = None,
         dataset_query_bound: bool = False,
     ) -> AgentTaskRouteResult:
@@ -228,7 +228,6 @@ class AgentTaskRouter:
                 model.ainvoke(
                     _build_router_messages(
                         query=query,
-                        history=history,
                         dataset_query_bound=dataset_query_bound,
                     ),
                     config=(
@@ -312,11 +311,8 @@ class AgentTaskRouter:
 def _build_router_messages(
     *,
     query: str,
-    history: list[object] | None,
     dataset_query_bound: bool = False,
 ) -> list[SystemMessage | HumanMessage]:
-    # history 仅取最近六项且限制长度，防止旧会话淹没当前请求；系统提示同时约束当前 query 优先。
-    history_text = "\n\n".join(str(item) for item in (history or [])[-6:])[-12_000:]
     return [
         SystemMessage(
             content=(
@@ -328,12 +324,7 @@ def _build_router_messages(
                 )
             )
         ),
-        HumanMessage(
-            content=(
-                f"当前 query：\n{query}\n\n"
-                f"最近会话上下文：\n{history_text or '无'}"
-            )
-        ),
+        HumanMessage(content=f"当前 query：\n{query}"),
     ]
 
 

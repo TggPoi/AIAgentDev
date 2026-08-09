@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from fast_app.core.config import Settings
 from fast_app.domain.agent_tool_permissions import PermissionCode
-from fast_app.domain.research_task_plan import AgentTaskCapabilitySnapshot
+from fast_app.domain.research_task_plan import (
+    AgentTaskCapabilitySnapshot,
+    AgentTaskExternalSourceType,
+)
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.exceptions import (
     AgentTaskSourceUnavailableError,
@@ -52,8 +55,16 @@ class AgentTaskCapabilityService:
         dataset_id: str | None,
         allow_direct_web: bool,
         allow_web_fallback: bool,
+        required_source_types: list[AgentTaskExternalSourceType] | None = None,
     ) -> AgentTaskCapabilitySnapshot:
         """构造 Planner 可用的当前能力摘要；确认时必须重新调用。"""
+
+        required_sources = set(required_source_types or [])
+        if "web_search" in required_sources:
+            self.resolve_direct_web(
+                user=user,
+                allow_direct_web=allow_direct_web,
+            )
 
         web_permission = user.has_global_permission(
             PermissionCode.AGENT_TOOL_WEB_SEARCH.value
@@ -101,6 +112,13 @@ class AgentTaskCapabilityService:
             allowed_fields = sorted(fields)
             nl2sql_available = True
             available_sources.append("nl2sql_query")
+
+        missing_required_sources = required_sources - set(available_sources)
+        if missing_required_sources:
+            missing_text = ", ".join(sorted(missing_required_sources))
+            raise AgentTaskSourceUnavailableError(
+                f"当前请求无法提供用户必需来源: {missing_text}"
+            )
 
         return AgentTaskCapabilitySnapshot(
             available_source_types=available_sources,

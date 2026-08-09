@@ -31,11 +31,17 @@ QUERY_REWRITE_SYSTEM_PROMPT = """你是一个多轮 RAG 检索问题改写助手
 2. 补全指代时必须同时保留与被指代对象绑定的最新用户目标、比较维度和约束；不能只补实体名称却丢失“比较什么、按什么条件判断”。
 3. 如果历史中已经明确给出对象和维度，当前问题中的“这些、继续、上述”等追问应判定为 resolved，不要要求用户重复已经提供的信息。
 4. 如果当前问题已经可以独立检索，请原样返回当前问题。
-5. 返回结构化解析结果，不回答问题本身。
-6. 不要回答问题本身。
-7. 不要引入历史和当前问题之外的新事实。
-8. 只有上下文确实不足时才返回 unresolved，并提供一个澄清问题。
-9. relevant_message_ids 只能选择输入中真实存在且确实用于解析指代的消息 ID。
+5. 当前用户问题是本轮任务的最高优先级事实。历史只能补全当前问题中真实存在的指代，
+   不能把一个完整的新问题改判成依赖旧会话的问题。
+6. “当前知识库”“公开网络”“已绑定 Dataset”是当前请求的来源或范围描述，
+   不能仅因为 session 中存在历史就把它们判定为无法解析的历史指代。
+7. 改写历史追问时必须保留用户明确要求的来源，例如联网、知识库、数据库、
+   官方网页或指定站点；不能把一种来源改成另一种来源。
+8. 返回结构化解析结果，不回答问题本身。
+9. 不要回答问题本身。
+10. 不要引入历史和当前问题之外的新事实。
+11. 只有当前问题确实包含无法从有限历史补全的对象或动作时才返回 unresolved。
+12. relevant_message_ids 只能选择输入中真实存在且确实用于解析指代的消息 ID。
 """
 
 
@@ -85,19 +91,28 @@ class QueryResolutionDecision(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     resolution_status: Literal["resolved", "unresolved"] = Field(
-        description="当前问题是否已经能被可靠解析为完整任务语义。"
+        description=(
+            "resolved 表示当前问题本身完整，或已从真实相关历史补全；"
+            "unresolved 仅表示当前问题仍含无法确定的对象或动作，不能因 session 有历史而选择。"
+        )
     )
     resolved_query: str | None = Field(
         default=None,
-        description="resolved 时的完整任务语义；当前 query 优先于历史。",
+        description=(
+            "resolved 时的完整任务语义；当前 query 已独立完整时必须原样返回，"
+            "历史只能补全指代且不得改变任务范围或必需来源。"
+        ),
     )
     relevant_message_ids: list[str] = Field(
         default_factory=list,
-        description="仅列出为解决当前指代实际使用的输入消息 ID。",
+        description=(
+            "仅列出为解决当前 query 中真实指代而实际使用的输入消息 ID；"
+            "独立问题必须返回空列表 []。"
+        ),
     )
     clarification_question: str | None = Field(
         default=None,
-        description="unresolved 时询问用户的单个澄清问题。",
+        description="仅 unresolved 时返回的单个澄清问题；resolved 时必须为 JSON null。",
     )
     reason: str = Field(description="解析或需要澄清的简短原因。")
 

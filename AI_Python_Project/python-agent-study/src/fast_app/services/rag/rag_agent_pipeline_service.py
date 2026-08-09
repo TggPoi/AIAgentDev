@@ -58,7 +58,6 @@ from fast_app.services.conversation.conversation_scope import (
 )
 from fast_app.services.conversation.conversation_summary import ConversationSummaryService
 from fast_app.services.exceptions import (
-    AgentTaskPlanningContextUnresolvedError,
     ExternalServiceError,
     PromptInjectionBlockedError,
 )
@@ -357,6 +356,14 @@ class RagAgentPipeline:
                 fail_on_error=True,
             )
 
+            unresolved_fallback = rewrite_result.resolution_status == "unresolved"
+            effective_query = (
+                req.query if unresolved_fallback else rewrite_result.rewritten_query
+            )
+            effective_used_history = (
+                rewrite_result.used_history and not unresolved_fallback
+            )
+
             state["history_window_text"] = history_window.formatted_text
             state["summary_text"] = memory_context.summary_text
             state["summary_used"] = memory_context.summary_text is not None
@@ -367,24 +374,27 @@ class RagAgentPipeline:
             state["summary_source_message_ids"] = (
                 memory_context.summary_source_message_ids
             )
-            state["rewritten_query"] = rewrite_result.rewritten_query
-            state["query_rewrite_reason"] = rewrite_result.reason
-            state["query"] = rewrite_result.rewritten_query
+            state["rewritten_query"] = effective_query
+            state["query_rewrite_reason"] = (
+                "rewriter_unresolved_current_query_preserved"
+                if unresolved_fallback
+                else rewrite_result.reason
+            )
+            state["query"] = effective_query
             message_by_id = {item.id: item for item in history_window.messages}
             state["planning_history"] = [
                 AgentTaskPlanningTurn(
                     role=message_by_id[item_id].role.value,
                     content=message_by_id[item_id].content,
                 )
-                for item_id in rewrite_result.relevant_message_ids
+                for item_id in (
+                    rewrite_result.relevant_message_ids
+                    if effective_used_history
+                    else []
+                )
                 if item_id in message_by_id
                 and message_by_id[item_id].role.value in {"user", "assistant"}
             ]
-            if rewrite_result.resolution_status == "unresolved":
-                raise AgentTaskPlanningContextUnresolvedError(
-                    rewrite_result.clarification_question
-                    or "当前会话上下文不足，请补充需要继续分析的对象。"
-                )
 
             # Rewriter 输出只做本地轻量 Guard，避免一次请求重复调用外部安全模型。
             if self.prompt_guard is not None:
@@ -407,10 +417,12 @@ class RagAgentPipeline:
                         self.settings,
                         {
                             "original_query": rewrite_result.original_query,
-                            "rewritten_query": rewrite_result.rewritten_query,
+                            "rewritten_query": effective_query,
                             "effective_query": state["query"],
-                            "used_history": rewrite_result.used_history,
-                            "query_rewrite_reason": rewrite_result.reason,
+                            "used_history": effective_used_history,
+                            "query_rewrite_reason": state["query_rewrite_reason"],
+                            "resolution_status": rewrite_result.resolution_status,
+                            "unresolved_fallback_applied": unresolved_fallback,
                             "history_message_count": len(history_window.messages),
                             "history_window_chars": len(history_window.formatted_text),
                             "summary_used": state["summary_used"],
@@ -428,11 +440,13 @@ class RagAgentPipeline:
                     event="rag_agent.query_rewrite.applied",
                     session_id=req.session_id,
                     original_query=rewrite_result.original_query,
-                    rewritten_query=rewrite_result.rewritten_query,
-                    used_history=rewrite_result.used_history,
+                    rewritten_query=effective_query,
+                    used_history=effective_used_history,
                     used_summary=state["summary_used"],
                     summary_version=state["summary_version"],
-                    reason=rewrite_result.reason,
+                    reason=state["query_rewrite_reason"],
+                    resolution_status=rewrite_result.resolution_status,
+                    unresolved_fallback_applied=unresolved_fallback,
                     history_message_count=len(history_window.messages),
                 ),
             )

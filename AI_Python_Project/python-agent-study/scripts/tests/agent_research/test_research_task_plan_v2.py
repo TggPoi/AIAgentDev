@@ -15,6 +15,7 @@ from fast_app.domain.research_task_plan import (
     AgentTaskEvidenceRef,
     AgentTaskEvidenceRegistry,
     AgentTaskExpectedEvidence,
+    AgentTaskPlanningTurn,
     AgentTaskPlannerCandidate,
     AgentTaskPlanReviewDecision,
     AgentTaskPlanQualityChecks,
@@ -22,6 +23,7 @@ from fast_app.domain.research_task_plan import (
     AgentTaskRequirement,
     AgentTaskSubQuestionEvidenceValidation,
     RequirementSourcePolicy,
+    ResolvedPlanningRequest,
     ResearchTaskPlan,
     ResearchTaskPolicy,
     ResearchTaskProgress,
@@ -34,6 +36,9 @@ from fast_app.domain.research_task_plan import (
 from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
 from fast_app.services.agent_tasks.agent_task_capability_service import AgentTaskCapabilityService
 from fast_app.services.agent_tasks.agent_task_plan_validator import AgentTaskPlanValidator
+from fast_app.services.agent_tasks.agent_task_source_policy import (
+    resolve_required_source_types,
+)
 from fast_app.services.exceptions import AgentTaskSourceUnavailableError, ToolPermissionDeniedError
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.graph.rag_agent.rag_agent_nodes import build_task_plan_answer
@@ -154,6 +159,50 @@ def quality_review():
 
 def main() -> None:
     service = AgentTaskRequirementEvidenceService()
+
+    assert resolve_required_source_types(
+        ResolvedPlanningRequest(
+            current_query="请联网比较 RLS 与 security_invoker。",
+            resolved_query="请联网比较 RLS 与 security_invoker。",
+        )
+    ) == ["web_search"]
+
+    assert resolve_required_source_types(
+        ResolvedPlanningRequest(
+            current_query="不要联网，只根据当前知识库回答。",
+            resolved_query="不要联网，只根据当前知识库回答。",
+        )
+    ) == []
+
+    assert resolve_required_source_types(
+        ResolvedPlanningRequest(
+            current_query="继续比较这些方案。",
+            relevant_history=[
+                AgentTaskPlanningTurn(
+                    role="user",
+                    content="请联网查询两种方案的官方网页证据。",
+                ),
+                AgentTaskPlanningTurn(
+                    role="assistant",
+                    content="已完成第一轮比较。",
+                ),
+            ],
+            resolved_query="继续联网比较两种方案。",
+        )
+    ) == ["web_search"]
+
+    assert resolve_required_source_types(
+        ResolvedPlanningRequest(
+            current_query="比较当前知识库中的检索方案。",
+            relevant_history=[
+                AgentTaskPlanningTurn(
+                    role="assistant",
+                    content="建议联网补充网页资料。",
+                )
+            ],
+            resolved_query="比较当前知识库中的检索方案。",
+        )
+    ) == []
 
     # Planner/Reviewer Candidate 明确不拥有服务端 web_usage。
     candidate = ResearchTaskSubQuestionCandidate(
@@ -432,6 +481,71 @@ def main() -> None:
     }
     assert "PLAN_DATASET_FIELD_UNAVAILABLE" in issue_codes
 
+    web_capability = capability.model_copy(
+        update={
+            "available_source_types": [
+                "knowledge_retrieval",
+                "web_search",
+                "nl2sql_query",
+            ],
+            "web_direct_allowed": True,
+        }
+    )
+    knowledge_only_candidate = AgentTaskPlannerCandidate(
+        requirements=[
+            requirement(
+                "req_source_guard",
+                "all_of",
+                ["knowledge_retrieval"],
+                [expected("knowledge_chunk")],
+            )
+        ],
+        sub_questions=[
+            sub_question(
+                "sq_6",
+                "knowledge_retrieval",
+                ["req_source_guard"],
+            )
+        ],
+    )
+    required_source_issue_codes = {
+        item.code
+        for item in AgentTaskPlanValidator().validate_candidate(
+            knowledge_only_candidate,
+            web_capability,
+            required_source_types=["web_search"],
+        )
+    }
+    assert "PLAN_REQUIRED_SOURCE_DROPPED" in required_source_issue_codes
+
+    web_candidate = AgentTaskPlannerCandidate(
+        requirements=[
+            requirement(
+                "req_required_web",
+                "all_of",
+                ["web_search"],
+                [expected("web_citation")],
+            )
+        ],
+        sub_questions=[
+            sub_question(
+                "sq_7",
+                "web_search",
+                ["req_required_web"],
+                web_usage="direct",
+            )
+        ],
+    )
+    preserved_source_issue_codes = {
+        item.code
+        for item in AgentTaskPlanValidator().validate_candidate(
+            web_candidate,
+            web_capability,
+            required_source_types=["web_search"],
+        )
+    }
+    assert "PLAN_REQUIRED_SOURCE_DROPPED" not in preserved_source_issue_codes
+
     now = datetime.now(UTC)
     plan = ResearchTaskPlan(
         task_plan_id="task_plan_20260802000000_public",
@@ -450,6 +564,7 @@ def main() -> None:
             min_score=0.0,
             dataset_id="game_test",
             nl2sql_action="query",
+            required_source_types=["nl2sql_query"],
             allow_direct_web=False,
             allow_web_fallback=False,
         ),
@@ -474,6 +589,14 @@ def main() -> None:
         loaded = store.load(plan.task_plan_id)
         assert isinstance(loaded, ResearchTaskPlan)
         assert loaded.schema_version == 2
+        assert loaded.research_policy.required_source_types == [
+            "nl2sql_query"
+        ]
+
+    legacy_payload = plan.model_dump(mode="json")
+    legacy_payload["research_policy"].pop("required_source_types")
+    legacy_plan = ResearchTaskPlan.model_validate(legacy_payload)
+    assert legacy_plan.research_policy.required_source_types == []
 
     # Typed Evidence 的排他约束在 Schema 层拒绝非法字段组合。
     try:

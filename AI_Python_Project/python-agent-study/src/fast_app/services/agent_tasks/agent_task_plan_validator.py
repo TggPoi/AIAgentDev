@@ -6,6 +6,7 @@ import re
 
 from fast_app.domain.research_task_plan import (
     AgentTaskCapabilitySnapshot,
+    AgentTaskExternalSourceType,
     AgentTaskExpectedEvidence,
     AgentTaskPlannerCandidate,
     AgentTaskPlanValidationIssue,
@@ -28,12 +29,31 @@ class AgentTaskPlanValidator:
         self,
         candidate: AgentTaskPlannerCandidate,
         capability: AgentTaskCapabilitySnapshot,
+        required_source_types: list[AgentTaskExternalSourceType] | None = None,
     ) -> list[AgentTaskPlanValidationIssue]:
         """校验 Planner/Reviewer Candidate；返回全部可解释问题。"""
 
         issues: list[AgentTaskPlanValidationIssue] = []
         requirements = {item.requirement_id: item for item in candidate.requirements}
         sub_questions = {item.sub_question_id: item for item in candidate.sub_questions}
+        planned_source_types = {
+            source_type
+            for requirement in candidate.requirements
+            for source_type in requirement.source_policy.source_types
+        }
+        missing_required_sources = (
+            set(required_source_types or []) - planned_source_types
+        )
+        if missing_required_sources:
+            issues.append(
+                _issue(
+                    "PLAN_REQUIRED_SOURCE_DROPPED",
+                    (
+                        "计划遗漏用户必需来源: "
+                        + ", ".join(sorted(missing_required_sources))
+                    ),
+                )
+            )
 
         if len(requirements) != len(candidate.requirements):
             issues.append(_issue("PLAN_REQUIREMENT_ID_DUPLICATED", "Requirement ID 重复"))
@@ -128,10 +148,15 @@ class AgentTaskPlanValidator:
         candidate: AgentTaskPlannerCandidate,
         sub_questions: list[ResearchTaskSubQuestion],
         capability: AgentTaskCapabilitySnapshot,
+        required_source_types: list[AgentTaskExternalSourceType] | None = None,
     ) -> list[AgentTaskPlanValidationIssue]:
         """正式模型转换后复验服务端生成的 WebUsage。"""
 
-        issues = self.validate_candidate(candidate, capability)
+        issues = self.validate_candidate(
+            candidate,
+            capability,
+            required_source_types=required_source_types,
+        )
         for item in sub_questions:
             if item.information_source_hint == "web_search" and item.web_usage != "direct":
                 issues.append(

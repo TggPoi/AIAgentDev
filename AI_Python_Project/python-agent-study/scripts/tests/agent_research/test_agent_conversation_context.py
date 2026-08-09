@@ -47,6 +47,23 @@ class RecordingRewriter:
         )
 
 
+class WrongUnresolvedRewriter:
+    async def rewrite(
+        self,
+        query: str,
+        **_kwargs,
+    ) -> QueryRewriteResult:
+        return QueryRewriteResult(
+            original_query=query,
+            rewritten_query=query,
+            used_history=False,
+            reason="model_misclassified_complete_query",
+            resolution_status="unresolved",
+            relevant_message_ids=[],
+            clarification_question="请说明你指的是哪个知识库。",
+        )
+
+
 class FixedSummaryService:
     def __init__(self, summary: ConversationSummary) -> None:
         self.summary = summary
@@ -83,6 +100,21 @@ class QuestionRouter:
             ),
             source="model",
             latency_ms=1.0,
+        )
+
+
+class ClarificationRouter:
+    async def route(self, **_kwargs):
+        return AgentTaskRouteResult(
+            decision=AgentRouteDecision(
+                intent="clarification_required",
+                confidence=0.95,
+                reason="current_query_still_incomplete",
+                clarification_question="请说明需要继续处理哪个对象。",
+            ),
+            source="model",
+            latency_ms=1.0,
+            clarification_code="ambiguous_intent",
         )
 
 
@@ -244,6 +276,65 @@ async def main() -> None:
     )(empty_state)
     assert empty_planner.history == []
     assert build_rag_agent_answer_query(empty_state) == empty_state["query"]
+
+    independent_pipeline = RagAgentPipeline(
+        settings=settings,
+        vector_retriever=MockVectorRetriever(),
+        keyword_retriever=MockKeywordRetriever(),
+        llm_client=MockLLMClient(settings=settings),
+        reranker=MockReranker(),
+        conversation_memory_store=store,
+        query_rewriter=cast(Any, WrongUnresolvedRewriter()),
+        current_user=CurrentUserContext(
+            user_id="u1",
+            is_authenticated=True,
+            auth_source="jwt",
+        ),
+    )
+    independent_query = "请分析当前知识库中混合检索与 rerank 的职责差异。"
+    independent_state = await independent_pipeline._prepare_initial_state(
+        RagChatRequest(
+            session_id=conversation_id,
+            query=independent_query,
+            mode="hybrid",
+            top_k=3,
+        ),
+        operation="stream_events",
+    )
+    assert independent_state["query"] == independent_query
+    assert independent_state["rewritten_query"] == independent_query
+    assert (
+        independent_state["query_rewrite_reason"]
+        == "rewriter_unresolved_current_query_preserved"
+    )
+    assert independent_state["planning_history"] == []
+
+    independent_planner = RecordingPlanner()
+    independent_update = await create_next_action_decision_node(
+        settings,
+        task_router=cast(Any, QuestionRouter()),
+        task_planner=cast(Any, independent_planner),
+        capability_service=cast(Any, RecordingCapabilityService()),
+    )(independent_state)
+    assert independent_planner.query == independent_query
+    assert independent_update["route_intent"] == "question_decomposition"
+
+    ambiguous_state = await independent_pipeline._prepare_initial_state(
+        RagChatRequest(
+            session_id=conversation_id,
+            query="继续处理它",
+            mode="hybrid",
+            top_k=3,
+        ),
+        operation="stream_events",
+    )
+    clarification_update = await create_next_action_decision_node(
+        settings,
+        task_router=cast(Any, ClarificationRouter()),
+    )(ambiguous_state)
+    assert clarification_update["route"] == "clarification_required"
+    assert clarification_update["clarification_required"] is True
+    assert clarification_update["clarification_code"] == "ambiguous_intent"
 
     external_req = RagChatRequest(
         session_id="same-session",

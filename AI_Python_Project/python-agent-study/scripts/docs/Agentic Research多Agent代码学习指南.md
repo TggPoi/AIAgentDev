@@ -249,7 +249,29 @@ ACL
 
 因此 Router 不可用时不会随机选择一个高风险意图，而是要求用户补充说明。
 
-### 4.4 Router 结果如何进入 RagAgentState
+### 4.4 Query Rewriter 与 Router 的澄清边界
+
+同一个 session 可以连续包含历史追问和完全独立的新问题，因此历史不能自动成为 Router 的输入。
+当前链路先由 Query Rewriter 处理指代，再把一个当前 Query 交给 Router：
+
+```text
+当前 user Query + 有限会话历史
+→ Query Rewriter 尝试补全真实指代
+→ resolved：使用补全后的完整 Query
+→ unresolved：保留当前 user Query，不在 Rewriter 阶段终止
+→ Router 只读取当前 Query
+→ 当前 Query 仍不完整时返回 clarification_required
+```
+
+这条边界解决两个容易混淆的问题：
+
+- Rewriter 可以补全“这些方案”“继续比较”等指代，但不能因为 session 有历史就阻断一个完整的新问题。
+- Router 是最终澄清责任方，但不能绕过 Rewriter 自行从旧摘要或历史窗口猜测对象。
+
+只有 Rewriter 明确使用且消息 ID 通过服务端校验的有限历史，才会进入 Planner。若 Rewriter 返回
+`unresolved`，本轮 `planning_history` 为空，避免未被可靠解析的旧内容继续影响任务范围。
+
+### 4.5 Router 结果如何进入 RagAgentState
 
 连接 Router 和 Planner 的节点位于：
 
@@ -367,6 +389,37 @@ required
 Router 判定 web_research
 → required
 ```
+
+### 5.4 复杂 Research 的必需来源如何守恒
+
+`WebPolicy` 描述 Worker 是否允许访问公网，不能单独证明“用户是否明确要求 Web”。复杂 Research 还需要
+一份独立的服务端事实：
+
+```text
+required_source_types
+```
+
+它只从两类真实 user 文本提取：
+
+```text
+本轮原始 user Query
++ Rewriter 实际使用且已通过消息 ID 校验的历史 user 消息
+```
+
+assistant 历史、Dataset metadata 和模型生成的 `resolved_query` 都不是可信来源。当前链路分两层检查：
+
+```text
+Capability
+    在 Planner 前检查必需来源的权限、请求策略和 Provider 是否可用。
+
+Validator
+    在 Planner/Reviewer 后检查最终 Requirements 是否完整保留必需来源。
+```
+
+因此，用户明确要求 Web 时不能静默改成知识库；Web 不可执行就返回结构化错误，Web 可执行但计划丢源就
+返回 `PLAN_REQUIRED_SOURCE_DROPPED`。`required_source_types` 只约束证据从哪里取得，不能据此增加用户
+没有要求的字段、统计指标、比较对象或业务结论。该字段会冻结到 `ResearchTaskPolicy`，确认或恢复时重新
+校验。
 
 ---
 

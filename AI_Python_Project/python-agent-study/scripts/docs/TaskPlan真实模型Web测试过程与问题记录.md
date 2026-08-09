@@ -876,7 +876,7 @@ TaskPlan 快照。若超时发生在第一次评估事件之前，持久化状�
 因此原小节对证据边界的判断仍成立：当前只能确认整体 Worker 超时，不能稳定区分模型选择、知识库检索、
 Web/MCP Tool、答案生成或 Evaluator 哪一阶段耗尽时间。现有 Agent Research 测试中也没有覆盖超时阶段定位。
 
-### 11.8 场景 4 的旧 session：测试隔离问题叠加 Rewriter 语义误判
+### 11.8 场景 4：同一 session 中 Rewriter 误判后阻断完整新问题
 
 Pipeline 只在 session 为空或历史为空时跳过 Rewriter；只要固定 session 中已有历史，就会调用模型：
 
@@ -905,29 +905,44 @@ Rewriter Prompt 已要求“当前问题已经可以独立检索时原样返回�
 6. 只有上下文确实不足时才返回 unresolved，并提供一个澄清问题。
 ```
 
-旧固定 session 中，模型仍把“当前知识库”误判成无法解析的历史指代并返回 `unresolved`；更换隔离 session 后，相同 query 正常生成计划。因此准确归因是：
+旧固定 session 中，模型把“当前知识库”误判成无法解析的历史指代并返回 `unresolved`；更换 session 后，
+相同 query 正常生成计划。但正常产品本来就需要长期复用同一个 session，因此“每次创建新 session”只能
+得到干净测试基准，不能修复生产问题。
 
-- 验收页面重复使用固定 session，造成测试输入不再是干净基准，属于测试隔离问题。
-- Rewriter 没有遵守“独立问题原样返回”的 Prompt，属于真实模型语义误判。
-- `rag_agent_pipeline_service.py:383-387` 按 `unresolved` 返回结构化澄清是预期代码行为，不是该问题的根因。
+真正的故障链路是：只要存在历史，Pipeline 就调用 Rewriter；Rewriter 的 `unresolved` 虽然只通过了结构
+校验，没有经过“当前问题是否真的不完整”的确定性判断，却拥有直接终止请求的权力。结果是一个本来完整的
+新问题会被旧历史干扰，并在 Router 判断意图之前被阻断。
 
 #### 11.8.1 当前代码复核（2026-08-09）
 
-**状态：部分仍存在，需要拆成测试隔离和 Rewriter 语义两项看待。**
+**状态：已修复并通过真实模型结构化流式验收。**
 
-测试隔离方面，手工验收页加载场景时已经把不同场景分配为
-`taskplan-v2-e2e-{scenario_id}`，因此场景之间不再全部共用页面初始值
-`manual-agent-session-001`。但是重复加载同一个场景仍会复用同一个确定性 session；页面没有生成一次性
-session、清理历史或提示当前 session 已被使用。第 15.4 节的成功验收依赖人工恢复 Redis 冻结历史，说明
-这是测试流程规避，不是验收页已经自动闭环。对无历史场景重复测试时，旧历史污染仍可复现。
+修复后的职责变为：
 
-Rewriter 方面，当前 Prompt 已加强“当前问题优先”“独立清楚则原样返回”和“只有上下文确实不足才
-unresolved”等约束，场景 7 也在第 15 节通过过一次真实流式验收；但只要 session 中存在历史，Pipeline
-仍会调用模型，并直接接受一个结构合法的 `unresolved` 决策后返回澄清。服务端只校验消息 ID 和 Schema，
-没有确定性判断模型是否把本来独立的问题误判成历史指代。
+1. Rewriter 返回 `resolved` 时，Pipeline 使用改写后的完整 Query。
+2. Rewriter 返回 `unresolved` 时，Pipeline 不再终止请求，而是保留本轮原始 Query，清空本次规划历史，并
+   记录稳定原因 `rewriter_unresolved_current_query_preserved`。
+3. Router 只读取当前 Query，不再直接读取旧摘要和历史窗口。若当前 Query 仍只有“继续”“处理它”等不完整
+   语义，由 Router 返回 `clarification_required`。
+4. 只有 Rewriter 明确使用、消息 ID 又通过服务端校验的历史，才会进入 Planner；来源提取只信任其中的
+   `user` 消息。
+5. LangSmith outputs 与本地 `rag_agent_query_rewrite` 日志都记录真正生效的 Query、历史使用状态和 fallback
+   标记，不再出现观测值与运行状态相反的问题。
 
-所以原来的单次模型误判不能断言仍稳定复现，但对应的代码路径仍然存在；测试隔离缺口则可以从当前页面
-直接确认。该小节应标为“部分修复/部分仍存在”，而不是整体已修复。
+自动化回归已覆盖：同一 session 存在旧历史、Rewriter 错误返回 `unresolved` 时，完整独立问题仍进入
+`question_decomposition`；真正不完整的“继续处理它”则由 Router 返回结构化澄清。手工验收页没有修改，
+复用同一个 session 仍是正常产品行为。
+
+真实验收开启 LangSmith，使用 `POST /rag/chat/stream/events` 和真实 Qwen/Rewriter/Router/Planner/Reviewer：
+
+- 同一 session 前置历史 request/trace：`3f4691f9b7c64d07a73f2372665deaf6`。
+- 完整独立问题 request/trace：`5acb01902d5e4e00a6e31cd5f9c31314`。
+- Rewriter：`resolved`，当前 Query 原样保留，`used_history=false`，没有被旧历史阻断。
+- TaskPlan：`task_plan_20260809144447_9299c7ac39dd`，状态为 `waiting_confirmation`。
+- TaskPlan 只包含混合检索、Rerank、差异和协作四项用户要求，没有从旧历史新增任务范围。
+
+本轮没有为验证 fallback 人为诱导模型输出错误 `unresolved`；该分支由自动化回归确定性覆盖，真实链路则验证
+正常模型在同一 session 下能够稳定识别完整新问题。
 
 ### 11.9 场景 7：Dataset metadata 对 Planner 产生了范围诱导
 
@@ -979,6 +994,10 @@ Planner/Reviewer 模型判断。因此“Dataset metadata 再次诱导模型增�
 结论应区分为：**11.9 的历史 Bug 已修复并验收；确定性语义防线尚未覆盖这一类问题。**后续修复 11.8、
 11.10 时，应把 11.9 作为同一“请求范围与来源守恒”回归组，而不是重新把它列成已确认故障。
 
+2026-08-09 本轮继续通过 Prompt 守恒自动化回归确认 Planner/Reviewer 都包含“必需来源不能增加用户未要求
+范围”的约束。当前验收进程没有配置 `NL2SQL_DATABASE_URLS_JSON` 的 `game_test` 只读连接，因此没有
+伪造数据库凭据重放场景 7；11.9 仍沿用第 15.5 节已经完成的真实流式验收结论。
+
 ### 11.10 场景 8：请求策略禁止 direct Web 后发生静默换源
 
 Router 的模型输入只有 query、有限 history 和 Dataset 是否绑定，不包含 `allow_direct_web`：
@@ -1029,21 +1048,36 @@ if hint == "web_search" and not capability.web_direct_allowed:
 
 #### 11.10.1 当前代码复核（2026-08-09）
 
-**状态：仍存在。**
+**状态：已修复并通过真实模型结构化流式验收。**
 
-简单 `web_research` 路由会调用 `resolve_direct_web()`，因此能够在 Planner 前拒绝
-`allow_direct_web=false`。但场景 8 属于复杂 `question_decomposition`：当前 Router 仍不接收请求 Web 策略，
-节点随后调用 `resolve_research()`；该方法在策略禁止或用户无 Web 权限时只是不把 `web_search` 加入
-`available_source_types`，不会比较 resolved query 是否明确要求联网。
+服务端新增内部约束 `required_source_types`，只从本轮原始 user Query 和 Rewriter 实际使用、已经过消息 ID
+校验的历史 `user` 消息中提取。assistant 历史、Dataset metadata 和模型生成的 `resolved_query` 都不能
+自行创建必需来源。
 
-Planner/Reviewer Prompt 虽然已经要求保留用户指定来源，但它们同时看到 Web 不在可用来源中。模型若仍输出
-`web_search`，Validator 会以 `PLAN_SOURCE_UNAVAILABLE/PLAN_DIRECT_WEB_DISABLED` 拒绝；模型若改写成
-`knowledge_retrieval`，当前 Validator 只检查生成后的来源可执行性，仍不会发现来源被替换。现有测试只覆盖
-`resolve_direct_web()` 的简单 Web 策略拒绝，没有覆盖“复杂 Web 请求 + direct Web 禁止”的 Planner 前冲突。
+修复后的两道确定性门禁是：
 
-因此根因仍是用户明确要求的来源没有被提升为服务端可信规划约束。相同缺口也适用于“复杂 Web 请求 + 用户
-无 Web Tool 权限”：能力会被隐藏，模型仍可能静默换源；这不影响 11.11 中简单 Web 场景 9 的通过结论，但
-说明该权限组合应纳入 11.10 的后续回归范围。
+1. Planner 前：若用户明确要求 Web，`resolve_research()` 复用 Direct Web 的权限、请求策略和 Provider
+   检查。direct Web 被关闭时返回 `AGENT_TASK_SOURCE_UNAVAILABLE`，没有 Web Tool 权限时返回
+   `TOOL_PERMISSION_DENIED`，Planner 不会被调用。
+2. Planner 后：即使能力可用，Planner/Reviewer 最终计划若没有任何 Requirement 保留必需 Web，Validator
+   返回 `PLAN_REQUIRED_SOURCE_DROPPED`，不能保存静默换源的 TaskPlan。
+
+该约束会冻结到 `ResearchTaskPolicy`，确认或恢复时再次校验；旧 TaskPlan v2 缺少字段时按空列表加载，
+不升级 Schema。Planner 与 Reviewer Prompt 同时明确：该字段只约束证据来源，不能据此增加用户未要求的
+统计指标、字段、比较对象或业务结论，因此 11.9 的范围守恒仍作为共同回归。
+
+自动化回归已覆盖 direct/fallback 均关闭、用户无 Web 权限、普通知识库复杂问题、Planner 丢弃必需来源、
+来源保留、旧 JSON 兼容和 Prompt 措辞守恒。
+
+真实验收开启 LangSmith，并通过 `POST /rag/chat/stream/events` 执行：
+
+- direct/fallback 均关闭：request/trace `b26564ab2002475cafed3986d4453efa`，SSE 返回
+  `AGENT_TASK_SOURCE_UNAVAILABLE`，消息为“当前请求策略禁止 direct Web”，没有 TaskPlan。
+- 无 Web Tool 权限：request/trace `bb89e56543ea4219ae46cb5e240f4ecd`，SSE 返回
+  `TOOL_PERMISSION_DENIED`，没有 TaskPlan。
+- 两个 request 的服务端日志都只有 Guard/Router 前置模型调用，没有 `task_planner`、Reviewer 或
+  TaskPlan 保存记录，证明拒绝发生在 Planner 前。
+- 本轮没有发生 Planner/Rewriter/Router Prompt 或 Schema 格式违约。
 
 ### 11.11 场景 9、10：权限负向链路没有发现错误
 
@@ -1094,7 +1128,7 @@ if not allow_direct_web:
 
 #### 11.12.1 当前状态总表（2026-08-09）
 
-本次复核基于 HEAD `8349d22` 及当前工作树中的 11.5/11.6 修复、现有自动化测试和本节记录的真实模型验收
+本次复核基于 HEAD `c4f912f` 及当前工作树中的 11.8/11.10 修复、现有自动化测试和本节记录的真实模型验收
 证据。“已修复并通过真实模型验收”表示确定性回归与对应真实故障边界均已通过；“仍存在”表示当前代码分支
 仍可直接确认的确定性缺口。
 
@@ -1103,9 +1137,9 @@ if not allow_direct_web:
 | 11.5 | **已修复并通过真实模型验收** | 真实 partial Worker 的合法 Evidence 未再满足 strict Requirement，TaskPlan 正确失败且未生成伪完整答案。 |
 | 11.6 | **已修复并通过真实模型验收** | 真实模型同轮生成两个 `mcp__fetch`，两个调用均完成；其他 MCP 仍默认串行。 |
 | 11.7 | **仍存在** | 整体 Worker timeout 能正确失败收敛，但 TaskPlan 快照仍不能定位内部等待阶段。 |
-| 11.8 | **部分仍存在** | 不同场景已有固定 ID 隔离；同场景重复运行仍复用 session，Rewriter 误判也没有确定性防线。 |
+| 11.8 | **已修复并通过真实模型验收** | 同一 session 的完整新问题未被旧历史阻断，Rewriter 原样保留当前 Query 并成功创建 Research TaskPlan。 |
 | 11.9 | **历史 Bug 已修复，保留风险** | 冻结场景已真实流式通过；同类范围漂移仍依赖 Planner/Reviewer 语义判断。 |
-| 11.10 | **仍存在** | 复杂任务缺少“用户必需 Web 来源 vs 当前策略/权限”的 Planner 前确定性冲突检查。 |
+| 11.10 | **已修复并通过真实模型验收** | 必需 Web 与策略/权限冲突均通过结构化 SSE 在 Planner 前失败；未创建 TaskPlan。 |
 | 11.11 | **无已确认 Bug** | 简单 Web 无权限和 Dataset 无授权仍在 Planner/Provider 前拒绝。 |
 | 11.12 | **已更新** | 原优先级包含已修复的 11.3/11.4；应按下面的剩余故障组重新排序。 |
 
@@ -1119,13 +1153,13 @@ if not allow_direct_web:
 共同验收 Worker 状态、Evaluator 结论、Requirement 状态和 TaskPlan 终态是否一致。当前确定性回归、场景 3
 完整真实流式链路和双 Fetch 定向真实验收均已通过，因此该组不再属于剩余未修复问题。
 
-**第二组：请求语义、范围与必需来源守恒（11.8 的 Rewriter 部分 + 11.10；11.9 作为回归场景）**
+**第二组：请求语义、范围与必需来源守恒（11.8 + 11.10；11.9 作为回归场景）**
 
 三者位于同一连续边界：Rewriter 决定 `resolved_query`，Planner 在 Dataset metadata 和 Capability 下拆解范围，
 Validator 决定来源是否可执行。11.8 可能错误改变当前问题是否完整，11.9 曾扩大用户范围，11.10 则在能力
 不可用时允许静默替换必需来源。11.9 当前不再是已确认故障，但后续修复 11.8/11.10 时必须一起回归，避免
-新增服务端约束后重新破坏已通过的范围守恒。11.8 的“手工页重复使用同场景 session”是独立的验收基础设施
-小问题，可在该组验收前单独处理，不应和 Rewriter 业务逻辑混成一个补丁。
+新增服务端约束后重新破坏已通过的范围守恒。该组已完成代码修复、自动化回归和真实模型结构化流式验收；
+手工页保持不变。
 
 **第三组：Worker 超时可观测性（11.7，独立修复）**
 
@@ -1137,8 +1171,8 @@ Validator 决定来源是否可执行。11.8 可能错误改变当前问题是�
 
 场景 9、10 当前行为符合预期，只保留回归测试；复杂 Web 权限组合统一归入 11.10，不为 11.11 创建重复修复。
 
-按当前影响和因果关系，剩余修复顺序建议为：请求语义、范围与必需来源守恒组（11.8 Rewriter + 11.10，
-并回归 11.9）→ Worker 超时可观测性（11.7）。11.5 + 11.6 已关闭，不再进入后续修复队列。
+按当前状态，请求语义、范围与必需来源守恒组（11.8 + 11.10，并回归 11.9）已经关闭。剩余下一项是
+Worker 超时可观测性（11.7）。11.5 + 11.6 也已关闭，不再进入后续修复队列。
 
 ## 12. qwen3.7-max Reviewer 与 11.2 专项流式复测（2026-08-03）
 

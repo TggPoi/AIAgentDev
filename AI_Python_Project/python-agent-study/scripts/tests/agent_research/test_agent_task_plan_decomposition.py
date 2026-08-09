@@ -27,6 +27,8 @@ async def main() -> None:
         assert "Dataset 可用字段不是待查询清单" in prompt
         assert "用户明确指定的每一种外部来源都必须保留" in prompt
         assert "证据可能不存在不能成为删除来源 Requirement 的理由" in prompt
+        assert "required_source_types" in prompt
+        assert "不能据此增加用户未要求" in prompt
 
     planner = AgentTaskPlanner(settings=Settings(_env_file=None, OPENAI_API_KEY=""))
 
