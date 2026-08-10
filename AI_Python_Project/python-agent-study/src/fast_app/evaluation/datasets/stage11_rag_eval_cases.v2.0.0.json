@@ -1,0 +1,551 @@
+{
+  "schema_version": "2.0",
+  "dataset_id": "stage11_acl_rag_eval",
+  "dataset_version": "2.0.0",
+  "lifecycle": "golden",
+  "content_sha256": "f34ea2898e88f931f46ae895b478310ab13ba05e45c79523167a99a38f4a28b2",
+  "name": "stage11_acl_rag_eval_v2",
+  "description": "阶段 11-13 基于 ACL 验收语料、当前知识版本 6、真实 GitLab 修订和 ES 逻辑身份完成人工审核的首个 V2 Golden 基线。",
+  "knowledge_base_dir": "docs/knowledge-base-acl-test",
+  "source_revision": "knowledge-version:6",
+  "created_at": "2026-08-10T00:00:00+08:00",
+  "cases": [
+    {
+      "case_id": "public_acl_model_parent_expansion",
+      "dataset_version": "2.0.0",
+      "metric_profile": "rag",
+      "question": "RBAC、ACL、ABAC 在这个项目中分别负责什么？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "eval-user:rbac_reader",
+      "knowledge_version": 6,
+      "source_revision": "knowledge-version:6",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_87fff9e4db81f40d"
+      ],
+      "relevant_doc_ids": [
+        "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+          "source_revision": "1a8a7b29380a74132dddd63819757fb05e281ca5",
+          "logical_chunk_ids": [
+            "chunk_87fff9e4db81f40d"
+          ],
+          "logical_parent_id": "parent_ee80071ebf6cd988",
+          "matched_logical_child_ids": [
+            "chunk_87fff9e4db81f40d"
+          ],
+          "source_path": "public/project-overview.md",
+          "section_keywords": [
+            "权限模型说明",
+            "RBAC",
+            "ACL",
+            "ABAC"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "rbac_role",
+          "text": "RBAC 判断用户是否拥有使用知识库功能的角色或权限，例如 knowledge:read。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "acl_role",
+          "text": "ACL 记录文档允许访问的用户或部门，例如 allowed_departments 和 allowed_users。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "abac_role",
+          "text": "ABAC 根据当前用户属性和文档属性动态判断某个文档块是否可以召回。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "解释项目中 RBAC、ACL、ABAC 三层权限模型的职责边界。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答",
+        "必须分别解释 RBAC、ACL 和 ABAC"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "parent_expansion",
+        "underfilled_k"
+      ],
+      "expected_answer_keywords": [
+        "RBAC",
+        "ACL",
+        "ABAC"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:stage-11-13",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-10T03:37:03+08:00",
+      "review_note": "人工批准全部 7 条候选标注晋升 Golden；已复核问题、身份范围、逻辑来源、事实权重和场景覆盖。",
+      "note": "同时验证公共文档、父块回溯和结果不足 K 时的黄金相关身份。"
+    },
+    {
+      "case_id": "development_backend_services",
+      "dataset_version": "2.0.0",
+      "metric_profile": "rag",
+      "question": "RAG 后端部署至少包含哪些核心服务，它们分别负责什么？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "eval-user:rbac_reader",
+      "knowledge_version": 6,
+      "source_revision": "knowledge-version:6",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_bcd74f8708e42df4"
+      ],
+      "relevant_doc_ids": [
+        "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_revision": "0a114b3177018cd00dc87b50f26fa980da73cf0e",
+          "logical_chunk_ids": [
+            "chunk_bcd74f8708e42df4"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "development/rag-backend-deployment.md",
+          "section_keywords": [
+            "服务组成",
+            "FastAPI Backend",
+            "PostgreSQL",
+            "Milvus",
+            "Elasticsearch"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "api_and_metadata",
+          "text": "FastAPI Backend 提供认证、文档导入和 RAG 查询接口，PostgreSQL 保存用户、权限和文档元数据。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "retrieval_stores",
+          "text": "Milvus 保存向量索引用于语义检索，Elasticsearch 保存文本索引用于关键词检索。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "model_services",
+          "text": "LLM、Embedding 和 Rerank Provider 分别承担生成、向量化和候选重排。",
+          "weight": 0.75,
+          "critical": false
+        }
+      ],
+      "question_intent": "概括 RAG 后端部署依赖的服务组成及职责。",
+      "constraints": [
+        "只根据 development 身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [],
+      "scenario_tags": [
+        "answerable",
+        "permission_filter"
+      ],
+      "expected_answer_keywords": [
+        "FastAPI",
+        "PostgreSQL",
+        "Milvus",
+        "Elasticsearch"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:stage-11-13",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-10T03:37:03+08:00",
+      "review_note": "人工批准全部 7 条候选标注晋升 Golden；已复核问题、身份范围、逻辑来源、事实权重和场景覆盖。",
+      "note": "正向权限样例；身份只能由 Worker 解析，case 不携带部门 ACL。"
+    },
+    {
+      "case_id": "development_cannot_read_art_internal_terms",
+      "dataset_version": "2.0.0",
+      "metric_profile": "rag",
+      "question": "月光披风规则和暖色肤色检查分别是什么？",
+      "answerable": false,
+      "expected_route": "rag_no_answer",
+      "eval_principal_id": "eval-user:rbac_reader",
+      "knowledge_version": 6,
+      "source_revision": "knowledge-version:6",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [],
+      "relevant_doc_ids": [],
+      "forbidden_logical_chunk_ids": [
+        "chunk_0aa1bbea341cfb4d"
+      ],
+      "expected_sources": [],
+      "required_key_facts": [],
+      "question_intent": "验证 development 身份不能访问 art 部门内部测试内容。",
+      "constraints": [
+        "不得泄露 art 部门私有文档内容",
+        "证据不可见时必须保守拒答"
+      ],
+      "hard_gate_labels": [
+        "acl_no_leak"
+      ],
+      "scenario_tags": [
+        "unanswerable",
+        "permission_filter",
+        "no_result"
+      ],
+      "expected_answer_keywords": [],
+      "forbidden_answer_keywords": [
+        "女巫帽轮廓标准",
+        "像素色块清理",
+        "玫瑰色暗部测试"
+      ],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:stage-11-13",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-10T03:37:03+08:00",
+      "review_note": "人工批准全部 7 条候选标注晋升 Golden；已复核问题、身份范围、逻辑来源、事实权重和场景覆盖。",
+      "note": "语料中存在答案，但在指定 principal 的授权视图中不可回答。"
+    },
+    {
+      "case_id": "art_character_style_principles",
+      "dataset_version": "2.0.0",
+      "metric_profile": "rag",
+      "question": "项目的角色美术整体方向和核心设计原则是什么？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "eval-user:rbac_operator",
+      "knowledge_version": 6,
+      "source_revision": "knowledge-version:6",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_2b46de783426d416"
+      ],
+      "relevant_doc_ids": [
+        "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+          "source_revision": "039569a030fe133500fe89a85ac7e3347a389ed7",
+          "logical_chunk_ids": [
+            "chunk_2b46de783426d416"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "art/character-art-style.md",
+          "section_keywords": [
+            "整体美术方向",
+            "轻幻想冒险风格",
+            "轮廓清晰",
+            "颜色温暖"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "style_direction",
+          "text": "整体采用轻幻想冒险风格，不追求完全写实。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "visual_priorities",
+          "text": "角色应优先保持轮廓清晰、情绪表达明确、颜色温暖并在小尺寸下可读。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "avoid_overdetail",
+          "text": "设计应避免过度写实、灰暗配色和细节噪声，辨识度优先于细节堆叠。",
+          "weight": 0.75,
+          "critical": false
+        }
+      ],
+      "question_intent": "总结 art 部门角色美术方向和优先级。",
+      "constraints": [
+        "只根据 art 身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [],
+      "scenario_tags": [
+        "answerable",
+        "permission_filter"
+      ],
+      "expected_answer_keywords": [
+        "轻幻想",
+        "轮廓",
+        "温暖",
+        "可读"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:stage-11-13",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-10T03:37:03+08:00",
+      "review_note": "人工批准全部 7 条候选标注晋升 Golden；已复核问题、身份范围、逻辑来源、事实权重和场景覆盖。",
+      "note": "验证 art 部门私有知识的正向授权读取。"
+    },
+    {
+      "case_id": "hybrid_acl_and_prompt_defense",
+      "dataset_version": "2.0.0",
+      "metric_profile": "rag",
+      "question": "企业 RAG 为什么既要让 Milvus 和 Elasticsearch 使用一致的权限过滤，又要在 Prompt 前做最终兜底校验？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "eval-user:rbac_reader",
+      "knowledge_version": 6,
+      "source_revision": "knowledge-version:6",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_85a68501227a30f5",
+        "chunk_e4b6a1fa8961ad36"
+      ],
+      "relevant_doc_ids": [
+        "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+        "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+          "source_revision": "1a8a7b29380a74132dddd63819757fb05e281ca5",
+          "logical_chunk_ids": [
+            "chunk_85a68501227a30f5"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "public/project-overview.md",
+          "section_keywords": [
+            "项目核心目标",
+            "Milvus",
+            "Elasticsearch",
+            "最终兜底校验"
+          ]
+        },
+        {
+          "logical_doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_revision": "0a114b3177018cd00dc87b50f26fa980da73cf0e",
+          "logical_chunk_ids": [
+            "chunk_e4b6a1fa8961ad36"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "development/rag-backend-deployment.md",
+          "section_keywords": [
+            "Prompt 前兜底校验",
+            "metadata 可能滞后",
+            "权限字段可能同步失败"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "dual_store_consistency",
+          "text": "Milvus 和 Elasticsearch 必须使用同一份服务端权限范围，否则 Hybrid 合并可能重新引入另一条召回链路中的越权结果。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "prompt_boundary",
+          "text": "进入 Prompt 前还要执行最终权限校验，确保只有授权文档进入模型上下文。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "defense_reasons",
+          "text": "最终兜底用于防御索引 metadata 滞后、权限同步失败、混合合并异常或调试绕过过滤等情况。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "解释混合检索权限一致性和 Prompt 前纵深防御的必要性。",
+      "constraints": [
+        "只使用 development 身份可见的公共和开发文档证据",
+        "必须同时解释双检索源一致性与 Prompt 前兜底"
+      ],
+      "hard_gate_labels": [
+        "acl_no_leak",
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "permission_filter",
+        "multiple_relevant_sources"
+      ],
+      "expected_answer_keywords": [
+        "Milvus",
+        "Elasticsearch",
+        "Prompt",
+        "权限"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:stage-11-13",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-10T03:37:03+08:00",
+      "review_note": "人工批准全部 7 条候选标注晋升 Golden；已复核问题、身份范围、逻辑来源、事实权重和场景覆盖。",
+      "note": "跨公共与 development 两份文档验证多相关来源。"
+    },
+    {
+      "case_id": "no_answer_realtime_weather",
+      "dataset_version": "2.0.0",
+      "metric_profile": "rag",
+      "question": "明天北京天气怎么样？",
+      "answerable": false,
+      "expected_route": "rag_no_answer",
+      "eval_principal_id": "eval-user:rbac_reader",
+      "knowledge_version": 6,
+      "source_revision": "knowledge-version:6",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [],
+      "relevant_doc_ids": [],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [],
+      "required_key_facts": [],
+      "question_intent": "验证知识库没有实时天气证据时是否拒绝编造。",
+      "constraints": [
+        "不得使用知识库外的实时信息猜测天气"
+      ],
+      "hard_gate_labels": [
+        "hallucination_free"
+      ],
+      "scenario_tags": [
+        "unanswerable",
+        "no_result"
+      ],
+      "expected_answer_keywords": [],
+      "forbidden_answer_keywords": [
+        "晴天",
+        "下雨",
+        "温度",
+        "摄氏度"
+      ],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:stage-11-13",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-10T03:37:03+08:00",
+      "review_note": "人工批准全部 7 条候选标注晋升 Golden；已复核问题、身份范围、逻辑来源、事实权重和场景覆盖。",
+      "note": "知识库范围外的无结果样例。"
+    },
+    {
+      "case_id": "public_visibility_underfilled",
+      "dataset_version": "2.0.0",
+      "metric_profile": "rag",
+      "question": "public 文档和部门私有文档的可见性规则有什么区别？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "eval-user:rbac_reader",
+      "knowledge_version": 6,
+      "source_revision": "knowledge-version:6",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_45e1ce019f9bef64"
+      ],
+      "relevant_doc_ids": [
+        "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+          "source_revision": "1a8a7b29380a74132dddd63819757fb05e281ca5",
+          "logical_chunk_ids": [
+            "chunk_45e1ce019f9bef64"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "public/project-overview.md",
+          "section_keywords": [
+            "部门私有文档与公开文档的区别",
+            "visibility",
+            "allowed_departments"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "department_visibility",
+          "text": "部门私有文档使用 department 可见性并通过 allowed_departments 限定对应部门。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "public_visibility",
+          "text": "public 文档使用 public 可见性，应对所有拥有 knowledge:read 的认证用户可见。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "比较 public 与 department 文档的 ACL 可见范围。",
+      "constraints": [
+        "必须区分 visibility 和 allowed_departments 的作用"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "underfilled_k"
+      ],
+      "expected_answer_keywords": [
+        "public",
+        "department",
+        "allowed_departments"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:stage-11-13",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-10T03:37:03+08:00",
+      "review_note": "人工批准全部 7 条候选标注晋升 Golden；已复核问题、身份范围、逻辑来源、事实权重和场景覆盖。",
+      "note": "只有一个黄金相关子块但 top_k=5，用于 underfilled 场景。"
+    }
+  ]
+}

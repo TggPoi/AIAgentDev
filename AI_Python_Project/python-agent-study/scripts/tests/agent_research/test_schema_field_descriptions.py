@@ -51,6 +51,13 @@ from fast_app.domain.research_task_plan import (
     ResearchWorkerCheckpointUpdate,
     ResearchWorkerProgress,
 )
+from fast_app.evaluation.cases.models import (
+    EvalRetrievalFilters,
+    ExpectedSource,
+    RagEvalCase,
+    RagEvalDataset,
+    RequiredKeyFact,
+)
 from fast_app.services.agent_tasks.agent_task_router import AgentRouteDecision
 from fast_app.services.agent_tasks.deep_document_agent import (
     DocumentNl2SqlInput,
@@ -106,11 +113,15 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     ExcelProfileConfirmRequest,
     ExcelProfileResponse,
     ExcelSheetProfile,
+    EvalRetrievalFilters,
+    ExpectedSource,
     KnowledgeDocumentReplacement,
     KnowledgeImportJobListResponse,
     KnowledgeImportJobResponse,
     QueryRewriteResult,
     QueryResolutionDecision,
+    RagEvalCase,
+    RagEvalDataset,
     RagChatRequest,
     RagChatResponse,
     ResearchEvidenceEvaluation,
@@ -131,6 +142,7 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     ResearchWorkerCheckpoint,
     ResearchWorkerCheckpointUpdate,
     ResearchWorkerProgress,
+    RequiredKeyFact,
 )
 
 

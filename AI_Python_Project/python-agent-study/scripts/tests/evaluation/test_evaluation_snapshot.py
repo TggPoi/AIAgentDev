@@ -26,6 +26,7 @@ from fast_app.evaluation.cases.models import (
     ExpectedSource,
     RagEvalCase,
     RagEvalDataset,
+    RequiredKeyFact,
 )
 from fast_app.evaluation.pipeline.runner import run_offline_rag_eval
 from fast_app.evaluation.pipeline.models import EvaluationError
@@ -369,21 +370,53 @@ async def run_classic_capture_check() -> None:
 
     report = await run_offline_rag_eval(
         dataset=RagEvalDataset(
+            schema_version="2.0",
+            dataset_id="snapshot-runner",
+            dataset_version="2.0.0-test",
+            lifecycle="candidate",
+            content_sha256="0" * 64,
             name="snapshot-runner",
             description="验证 runner 使用完整快照而不是 content_preview。",
             knowledge_base_dir="unused",
+            source_revision="test:snapshot-runner",
+            created_at=datetime(2026, 8, 10, 0, 0, 0).astimezone(),
             cases=[
                 RagEvalCase(
-                    id="runner-case",
-                    case_type="answerable",
+                    case_id="runner-case",
+                    dataset_version="2.0.0-test",
+                    metric_profile="rag",
                     question=req.query,
+                    answerable=True,
+                    expected_route="rag_answer",
+                    eval_principal_id="eval:test-runner",
+                    knowledge_version=1,
+                    source_revision="test:snapshot-runner",
                     mode="hybrid",
                     top_k=2,
                     candidate_k=4,
+                    relevant_logical_chunk_ids=["keyword-1"],
+                    relevant_doc_ids=["doc-keyword-1"],
                     expected_sources=[
-                        ExpectedSource(chunk_ids=["keyword-1"]),
+                        ExpectedSource(
+                            logical_doc_id="doc-keyword-1",
+                            source_revision="test:snapshot-runner",
+                            logical_chunk_ids=["keyword-1"],
+                            source_path="test/keyword.md",
+                        ),
                     ],
+                    required_key_facts=[
+                        RequiredKeyFact(
+                            fact_id="answer",
+                            text="回答包含 answer。",
+                            weight=1.0,
+                        ),
+                    ],
+                    question_intent="验证离线 runner 使用完整上下文。",
+                    scenario_tags=["answerable"],
                     expected_answer_keywords=["answer"],
+                    annotation_method="human",
+                    annotated_by="test-fixture",
+                    review_status="pending_review",
                 )
             ],
         ),

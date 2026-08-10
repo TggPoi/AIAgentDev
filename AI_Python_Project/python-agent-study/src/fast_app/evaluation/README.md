@@ -42,11 +42,21 @@ thresholds/
 
 ```text
 datasets/stage11_rag_eval_cases.json
+datasets/stage11_rag_eval_cases.v2.candidate.json
+datasets/stage11_rag_eval_cases.v2.0.0.json
 ```
 
-阶段 11 使用的小型 RAG 问答评测集。
+第一个文件是只读兼容用的 legacy fixture；第二个文件保留阶段 11-13 的模型辅助候选标注；第三个文件是经过人工批准、可进入正式质量门禁的不可变 V2 Golden 基线。
 
-## 字段说明
+## V2 数据集契约
+
+V2 用 `case_id`、`dataset_version`、`knowledge_version` 和 `source_revision` 固定一次可重放评测。检索相关性使用稳定的 `logical_chunk_ids` 与 `logical_doc_id`，父块来源必须记录 `matched_logical_child_ids`。答案完整性标注使用带 `weight` 和 `critical` 的 `required_key_facts`。
+
+`eval_principal_id` 只引用服务端评测身份，不能在数据集 `filters` 中注入部门或用户 ACL。`candidate` 可以包含待审核标注；`golden` 要求所有 case 都由人工批准，并覆盖可回答、不可回答、权限过滤、父块扩展、多来源、无结果和结果不足 K 场景。
+
+旧数据由 loader 显式迁移为 `legacy_migration` candidate，不能直接冒充 Golden。正式执行应使用 `load_golden_eval_dataset()`；内容哈希、版本、身份、事实权重和跨字段约束不合法时会拒绝加载。
+
+## Legacy 字段说明
 
 `case_type` 表示样例类型：
 
@@ -344,7 +354,7 @@ $env:PYTHONPATH="src"
 
 ```powershell
 $env:PYTHONPATH="src"
-.\.venv\Scripts\python.exe -c "from fast_app.evaluation.cases.loader import load_eval_dataset; dataset = load_eval_dataset('src/fast_app/evaluation/datasets/stage11_rag_eval_cases.json'); print(dataset.name, len(dataset.cases))"
+.\.venv\Scripts\python.exe -c "from fast_app.evaluation.cases.loader import load_golden_eval_dataset; dataset = load_golden_eval_dataset('src/fast_app/evaluation/datasets/stage11_rag_eval_cases.v2.0.0.json'); print(dataset.name, dataset.dataset_version, len(dataset.cases))"
 ```
 
 检索指标纯函数校验：
