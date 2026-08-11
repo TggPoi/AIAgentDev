@@ -1,4 +1,5 @@
 .venv/
+.venv-rag-eval/
 __pycache__/
 *.pyc
 .env
@@ -10,3 +11,7 @@ learning-docs/
 .tmp/tunnel-client-v*/
 .tmp/tunnel-client-v*-windows-amd64.zip
 .tmp/chatgpt-action-bridge/
+
+# Local RAG eval launcher containing judge/auth secrets
+run_rag_eval_local.ps1
+.tmp/rag_eval_api_keys.json

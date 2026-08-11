@@ -288,7 +288,12 @@ class EvaluationSnapshotCollector:
                 else None
             ),
             doc_id=_optional_metadata_text(metadata, "doc_id"),
-            logical_chunk_id=_optional_metadata_text(metadata, "logical_chunk_id"),
+            # 真实写入链路（ingestion/sync）把逻辑身份存为 logical_record_id，
+            # 历史 Eval mock 使用 logical_chunk_id；两者都兼容，避免检索指标恒为 0。
+            logical_chunk_id=(
+                _optional_metadata_text(metadata, "logical_chunk_id")
+                or _optional_metadata_text(metadata, "logical_record_id")
+            ),
             logical_parent_id=_optional_metadata_text(metadata, "logical_parent_id"),
             parent_id=_optional_metadata_text(metadata, "parent_id"),
             source_revision=_optional_metadata_text(metadata, "source_revision"),

@@ -1,0 +1,1060 @@
+{
+  "schema_version": "2.0",
+  "dataset_id": "stage11_acl_rag_eval",
+  "dataset_version": "2.1.0",
+  "lifecycle": "candidate",
+  "content_sha256": "f1967310c6ad10b01f635196487209c94e1852a9691be9ed5c262ed86a547116",
+  "name": "stage11_acl_rag_eval_v2_1_candidate",
+  "description": "基于知识版本 6、当前 Milvus/ES 真实 274 个 markdown_child 盘点重建的 V2.1 candidate 评测集：14 条 case 覆盖 rbac_reader（development）与 rbac_operator（art）两个真实 API Key 身份，覆盖全部 7 个场景标签。source_revision 为 docs/knowledge-base-acl-test 目录字节哈希。",
+  "knowledge_base_dir": "docs/knowledge-base-acl-test",
+  "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+  "created_at": "2026-08-11T21:36:44+08:00",
+  "cases": [
+    {
+      "case_id": "reader_ue5_damage_formula_parent",
+      "dataset_version": "2.1.0",
+      "metric_profile": "rag",
+      "question": "UE5 战斗系统中最终生命伤害的计算公式",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_7cb94aed146a6d3b",
+        "chunk_84348081c94edf87"
+      ],
+      "relevant_doc_ids": [
+        "a433cee8a730e44bc5beaa46fb2026fcee5010664e67f02965223dc1d1d9e5fa"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "a433cee8a730e44bc5beaa46fb2026fcee5010664e67f02965223dc1d1d9e5fa",
+          "source_revision": "42144c592d6ebdabe8f0ea6b732f581c4568c940",
+          "logical_chunk_ids": [
+            "chunk_7cb94aed146a6d3b"
+          ],
+          "source_path": "development/UE5战斗系统程序架构设计_RAG测试.md",
+          "section_keywords": [
+            "伤害计算架构",
+            "计算流程"
+          ],
+          "logical_parent_id": "parent_191cabae49530ac2",
+          "matched_logical_child_ids": [
+            "chunk_7cb94aed146a6d3b"
+          ]
+        },
+        {
+          "logical_doc_id": "a433cee8a730e44bc5beaa46fb2026fcee5010664e67f02965223dc1d1d9e5fa",
+          "source_revision": "42144c592d6ebdabe8f0ea6b732f581c4568c940",
+          "logical_chunk_ids": [
+            "chunk_84348081c94edf87"
+          ],
+          "source_path": "development/UE5战斗系统程序架构设计_RAG测试.md",
+          "section_keywords": [
+            "伤害计算服务"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "formula_chain",
+          "text": "最终生命伤害由基础伤害依次乘以技能倍率、武器倍率、属性倍率、暴击倍率、元素克制倍率，再减去防御减伤和格挡减伤得到。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "central_service",
+          "text": "伤害计算建议集中在独立的伤害计算服务或 GAS Execution Calculation 中完成。",
+          "weight": 0.5,
+          "critical": false
+        }
+      ],
+      "question_intent": "查询 UE5 战斗系统伤害计算公式。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "parent_expansion",
+        "underfilled_k"
+      ],
+      "expected_answer_keywords": [
+        "基础伤害",
+        "技能倍率",
+        "防御减伤"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "lingma-agent:v2.1-candidate-builder",
+      "review_status": "pending_review",
+      "note": "只有 2 个黄金相关块但 top_k=5，验证 underfilled_k；公式块依赖父块扩展获得完整上下文。名词化单问避免 Router 拆解。"
+    },
+    {
+      "case_id": "reader_ue5_perfect_block",
+      "dataset_version": "2.1.0",
+      "metric_profile": "rag",
+      "question": "UE5 战斗系统设计中完美格挡成功后的效果与时间窗口控制方式",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_2d0790c48f8b0092"
+      ],
+      "relevant_doc_ids": [
+        "a433cee8a730e44bc5beaa46fb2026fcee5010664e67f02965223dc1d1d9e5fa"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "a433cee8a730e44bc5beaa46fb2026fcee5010664e67f02965223dc1d1d9e5fa",
+          "source_revision": "42144c592d6ebdabe8f0ea6b732f581c4568c940",
+          "logical_chunk_ids": [
+            "chunk_2d0790c48f8b0092"
+          ],
+          "source_path": "development/UE5战斗系统程序架构设计_RAG测试.md",
+          "section_keywords": [
+            "完美格挡"
+          ],
+          "logical_parent_id": "parent_aa578dcabc63463f",
+          "matched_logical_child_ids": [
+            "chunk_2d0790c48f8b0092"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "zero_damage",
+          "text": "完美格挡成功可以将伤害降为零，并返还部分精力。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "counter_effects",
+          "text": "完美格挡成功还会对攻击者施加硬直，并触发慢动作、摄像机震动以及专用特效和音效。",
+          "weight": 0.8,
+          "critical": false
+        },
+        {
+          "fact_id": "window_control",
+          "text": "完美格挡窗口应由技能时间轴或动画通知控制，不应在 Tick 中使用多个时间判断分支。",
+          "weight": 0.6,
+          "critical": false
+        }
+      ],
+      "question_intent": "查询完美格挡的成功效果和窗口控制方式。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "parent_expansion"
+      ],
+      "expected_answer_keywords": [
+        "伤害降为零",
+        "硬直",
+        "技能时间轴"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "lingma-agent:v2.1-candidate-builder",
+      "review_status": "pending_review",
+      "note": "单个黄金块 + 父块扩展场景。"
+    },
+    {
+      "case_id": "reader_gitlab_rollback_multi_source",
+      "dataset_version": "2.1.0",
+      "metric_profile": "rag",
+      "question": "知识库文档发布出问题需要回滚时的正确回滚方式",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_296a2380e2d87791",
+        "chunk_bb13f7442fb8745c"
+      ],
+      "relevant_doc_ids": [
+        "787f44904efba65722db4a6b252c8ddcc35862f71b7ec084e28456791ca13aca",
+        "950da54b4e3d83ca25f80c069532a907891291a64ecafc7fd05ebd5d2d3768ca"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "950da54b4e3d83ca25f80c069532a907891291a64ecafc7fd05ebd5d2d3768ca",
+          "source_revision": "74e9752d76095c7aaabb0355222e68eb7eff2299",
+          "logical_chunk_ids": [
+            "chunk_296a2380e2d87791"
+          ],
+          "source_path": "development/knowledge-publication-operations.md",
+          "section_keywords": [
+            "回滚原则",
+            "手动回滚"
+          ]
+        },
+        {
+          "logical_doc_id": "787f44904efba65722db4a6b252c8ddcc35862f71b7ec084e28456791ca13aca",
+          "source_revision": "049c22ae7853e9318018e2e4a32ca49b71ed451d",
+          "logical_chunk_ids": [
+            "chunk_bb13f7442fb8745c"
+          ],
+          "source_path": "development/gitlab-agent-mr-governance.md",
+          "section_keywords": [
+            "回滚原则",
+            "手动回滚"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "revert_mr",
+          "text": "文档事实回滚必须通过 GitLab 新建 Revert Commit 和 MR，再由 Maintainer 合并。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "forbidden_direct_change",
+          "text": "禁止直接把 PostgreSQL 正式版本指针改回旧值，也禁止直接删除 ES/Milvus 新记录。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "manual_sql",
+          "text": "系统配置层面的手动回滚可以通过 SQL 更新 publication_version 到指定历史版本。",
+          "weight": 0.6,
+          "critical": false
+        }
+      ],
+      "question_intent": "查询发布回滚的推荐流程和禁止操作。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "multiple_relevant_sources"
+      ],
+      "expected_answer_keywords": [
+        "Revert",
+        "MR",
+        "publication_version"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "lingma-agent:v2.1-candidate-builder",
+      "review_status": "pending_review",
+      "note": "两个 development 文档共同支撑回滚问题，验证多来源聚合。"
+    },
+    {
+      "case_id": "reader_webhook_worker_multi_source",
+      "dataset_version": "2.1.0",
+      "metric_profile": "rag",
+      "question": "GitLab MR 合并后文档发布任务是如何处理的？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_dea252b8024f71e1",
+        "chunk_0452d406311e7d7b"
+      ],
+      "relevant_doc_ids": [
+        "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+        "787f44904efba65722db4a6b252c8ddcc35862f71b7ec084e28456791ca13aca"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "787f44904efba65722db4a6b252c8ddcc35862f71b7ec084e28456791ca13aca",
+          "source_revision": "049c22ae7853e9318018e2e4a32ca49b71ed451d",
+          "logical_chunk_ids": [
+            "chunk_dea252b8024f71e1"
+          ],
+          "source_path": "development/gitlab-agent-mr-governance.md",
+          "section_keywords": [
+            "独立 Worker 处理",
+            "Webhook 只登记任务"
+          ]
+        },
+        {
+          "logical_doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+          "source_revision": "1ca37f12a66b447dab52667f783702c9b411a3ae",
+          "logical_chunk_ids": [
+            "chunk_0452d406311e7d7b"
+          ],
+          "source_path": "development/rag-deployment-checklist.md",
+          "section_keywords": [
+            "独立 Worker 处理",
+            "Webhook 只登记任务"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "webhook_register_only",
+          "text": "Webhook 接收端应快速返回 202，只登记或合并待处理任务，不直接处理文档发布。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "worker_duties",
+          "text": "独立 Worker 负责从任务队列拉取 pending 任务、拉取对应 commit 的文档内容、校验权限规则并写入 Elasticsearch/Milvus 等存储。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "查询 Webhook 只登记任务与独立 Worker 职责分工。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "multiple_relevant_sources"
+      ],
+      "expected_answer_keywords": [
+        "202",
+        "任务队列",
+        "Worker"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "lingma-agent:v2.1-candidate-builder",
+      "review_status": "pending_review",
+      "note": "治理规范与部署验收清单两个文档交叉验证。"
+    },
+    {
+      "case_id": "reader_milvus_index_check",
+      "dataset_version": "2.1.0",
+      "metric_profile": "rag",
+      "question": "RAG 后端文档导入后检查 Milvus collection 需要确认哪些内容？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_4e797af9683c05c2"
+      ],
+      "relevant_doc_ids": [
+        "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_revision": "0a114b3177018cd00dc87b50f26fa980da73cf0e",
+          "logical_chunk_ids": [
+            "chunk_4e797af9683c05c2"
+          ],
+          "source_path": "development/rag-backend-deployment.md",
+          "section_keywords": [
+            "Milvus 索引检查"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "collection_created",
+          "text": "文档导入后需要确认 Milvus collection 已经创建。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "check_fields",
+          "text": "需要检查 collection name、vector dimension、primary key、doc_id、chunk_id、visibility、allowed_departments 等内容。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "查询 Milvus 索引导入后的检查项。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable"
+      ],
+      "expected_answer_keywords": [
+        "collection",
+        "vector dimension",
+        "allowed_departments"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "lingma-agent:v2.1-candidate-builder",
+      "review_status": "pending_review",
+      "note": "单块直接命中的常规 answerable case。"
+    },
+    {
+      "case_id": "reader_art_acl_negative",
+      "dataset_version": "2.1.0",
+      "metric_profile": "rag",
+      "question": "角色美术规范里的月光披风规则和女巫帽轮廓标准具体是怎么定义的？",
+      "answerable": false,
+      "expected_route": "rag_no_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [],
+      "relevant_doc_ids": [],
+      "forbidden_logical_chunk_ids": [
+        "chunk_0aa1bbea341cfb4d",
+        "chunk_15eb212207bbd84e"
+      ],
+      "expected_sources": [],
+      "required_key_facts": [],
+      "question_intent": "development 用户询问 art 部门内部测试关键词，验证 ACL 过滤不泄漏。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答",
+        "不得输出 art 部门文档中的内部测试关键词内容"
+      ],
+      "hard_gate_labels": [
+        "acl_no_leak"
+      ],
+      "scenario_tags": [
+        "unanswerable",
+        "permission_filter"
+      ],
+      "expected_answer_keywords": [],
+      "forbidden_answer_keywords": [
+        "月光披风",
+        "女巫帽轮廓"
+      ],
+      "annotation_method": "model_assisted",
+      "annotated_by": "lingma-agent:v2.1-candidate-builder",
+      "review_status": "pending_review",
+      "note": "art/character-art-style.md 对 development 用户不可见，应保守拒答。"
+    },
+    {
+      "case_id": "reader_visibility_positive",
+      "dataset_version": "2.1.0",
+      "metric_profile": "rag",
+      "question": "权限过滤规则中 development 用户应能检索到哪些文档，以及不应检索到哪些文档？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_f8a53eabbef5743c",
+        "chunk_e61f024c79efd70d"
+      ],
+      "relevant_doc_ids": [
+        "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+        "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_revision": "0a114b3177018cd00dc87b50f26fa980da73cf0e",
+          "logical_chunk_ids": [
+            "chunk_f8a53eabbef5743c"
+          ],
+          "source_path": "development/rag-backend-deployment.md",
+          "section_keywords": [
+            "权限过滤规则",
+            "development 部门用户"
+          ]
+        },
+        {
+          "logical_doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+          "source_revision": "1a8a7b29380a74132dddd63819757fb05e281ca5",
+          "logical_chunk_ids": [
+            "chunk_e61f024c79efd70d"
+          ],
+          "source_path": "public/project-overview.md",
+          "section_keywords": [
+            "权限过滤规则",
+            "development 部门用户"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "visible_docs",
+          "text": "development 用户应能检索到 development/rag-backend-deployment.md 和 public/project-overview.md。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "invisible_docs",
+          "text": "development 用户不应检索到 art 目录下的角色美术风格文档等 art 部门私有文档。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "查询 development 用户可见与不可见文档边界。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "permission_filter",
+        "multiple_relevant_sources"
+      ],
+      "expected_answer_keywords": [
+        "rag-backend-deployment",
+        "project-overview",
+        "art"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "lingma-agent:v2.1-candidate-builder",
+      "review_status": "pending_review",
+      "note": "权限过滤正例：问题本身可见且可回答。"
+    },
+    {
+      "case_id": "reader_incremental_input_buffer",
+      "dataset_version": "2.1.0",
+      "metric_profile": "rag",
+      "question": "增量更新验收规则中输入缓存窗口的建议值",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_fbbecbe7a07925ba"
+      ],
+      "relevant_doc_ids": [
+        "a433cee8a730e44bc5beaa46fb2026fcee5010664e67f02965223dc1d1d9e5fa"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "a433cee8a730e44bc5beaa46fb2026fcee5010664e67f02965223dc1d1d9e5fa",
+          "source_revision": "42144c592d6ebdabe8f0ea6b732f581c4568c940",
+          "logical_chunk_ids": [
+            "chunk_fbbecbe7a07925ba"
+          ],
+          "source_path": "development/UE5战斗系统程序架构设计_RAG测试.md",
+          "section_keywords": [
+            "增量更新测试"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "buffer_window",
+          "text": "输入缓存窗口建议使用 0.18～0.28 秒。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "notify_state",
+          "text": "输入缓存窗口由 Montage Notify State 控制开启与关闭。",
+          "weight": 0.6,
+          "critical": false
+        }
+      ],
+      "question_intent": "查询增量更新验收规则中的输入缓存窗口参数。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable"
+      ],
+      "expected_answer_keywords": [
+        "0.18",
+        "0.28",
+        "Montage Notify State"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "lingma-agent:v2.1-candidate-builder",
+      "review_status": "pending_review",
+      "note": "验证增量 ingestion 后新增内容可被检索。"
+    },
+    {
+      "case_id": "reader_unanswerable_audio_middleware",
+      "dataset_version": "2.1.0",
+      "metric_profile": "rag",
+      "question": "知识库中是否有关于 Wwise 音频中间件 Profiler 接入战斗系统性能分析的资料？",
+      "answerable": false,
+      "expected_route": "rag_no_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [],
+      "relevant_doc_ids": [],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [],
+      "required_key_facts": [],
+      "question_intent": "知识库中没有任何音频中间件接入内容，应保守拒答而不是编造。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [],
+      "scenario_tags": [
+        "unanswerable"
+      ],
+      "expected_answer_keywords": [],
+      "forbidden_answer_keywords": [
+        "Wwise Profiler",
+        "AudioMeter"
+      ],
+      "annotation_method": "model_assisted",
+      "annotated_by": "lingma-agent:v2.1-candidate-builder",
+      "review_status": "pending_review",
+      "note": "话题与战斗系统相关但知识库无证据，测试 no-evidence 拒答。"
+    },
+    {
+      "case_id": "reader_checklist_env_single_gold",
+      "dataset_version": "2.1.0",
+      "metric_profile": "rag",
+      "question": "本地部署 RAG 后端时的数据库迁移命令与迁移后需要确认的表",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 8,
+      "candidate_k": 16,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_7dafc7207a61cc2e"
+      ],
+      "relevant_doc_ids": [
+        "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_revision": "0a114b3177018cd00dc87b50f26fa980da73cf0e",
+          "logical_chunk_ids": [
+            "chunk_7dafc7207a61cc2e"
+          ],
+          "source_path": "development/rag-backend-deployment.md",
+          "section_keywords": [
+            "数据库迁移"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "alembic_command",
+          "text": "启动依赖服务后需要执行 alembic upgrade head 完成数据库迁移。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "table_check",
+          "text": "迁移完成后需要确认 users、api_keys、refresh_tokens、documents 等表存在。",
+          "weight": 0.8,
+          "critical": false
+        }
+      ],
+      "question_intent": "查询数据库迁移命令和迁移后的表检查。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "underfilled_k"
+      ],
+      "expected_answer_keywords": [
+        "alembic upgrade head",
+        "users",
+        "api_keys"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "lingma-agent:v2.1-candidate-builder",
+      "review_status": "pending_review",
+      "note": "top_k=8 但只有 1 个黄金块，验证 underfilled_k 下的 Recall/Precision。"
+    },
+    {
+      "case_id": "reader_worker_failure_recovery",
+      "dataset_version": "2.1.0",
+      "metric_profile": "rag",
+      "question": "知识发布任务 Worker 失败后的恢复处理方式",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_bf7e323eb34c4674"
+      ],
+      "relevant_doc_ids": [
+        "950da54b4e3d83ca25f80c069532a907891291a64ecafc7fd05ebd5d2d3768ca"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "950da54b4e3d83ca25f80c069532a907891291a64ecafc7fd05ebd5d2d3768ca",
+          "source_revision": "74e9752d76095c7aaabb0355222e68eb7eff2299",
+          "logical_chunk_ids": [
+            "chunk_bf7e323eb34c4674"
+          ],
+          "source_path": "development/knowledge-publication-operations.md",
+          "section_keywords": [
+            "Worker 任务失败"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "old_version_keeps_serving",
+          "text": "Worker 失败时旧正式版本应继续提供检索。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "inspect_first",
+          "text": "应先读取任务的阶段、error_code、租约和重试次数，再检查 GitLab Token、Qwen Embedding、ES 与 Milvus。",
+          "weight": 0.8,
+          "critical": false
+        },
+        {
+          "fact_id": "retry_original_task",
+          "text": "外部依赖恢复后使用原任务重试，避免产生重复候选版本。",
+          "weight": 0.8,
+          "critical": false
+        }
+      ],
+      "question_intent": "查询 Worker 任务失败的恢复与重试流程。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable"
+      ],
+      "expected_answer_keywords": [
+        "旧正式版本",
+        "error_code",
+        "原任务重试"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "lingma-agent:v2.1-candidate-builder",
+      "review_status": "pending_review",
+      "note": "运行手册故障恢复章节单块 case。"
+    },
+    {
+      "case_id": "operator_pixel_sprite_rules",
+      "dataset_version": "2.1.0",
+      "metric_profile": "rag",
+      "question": "角色美术规范中像素 Sprite 的制作核心原则与制作要求",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_MBeEmT7K2eGguofW4CZ1aGTp",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_a2a894bca15c2988"
+      ],
+      "relevant_doc_ids": [
+        "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+          "source_revision": "039569a030fe133500fe89a85ac7e3347a389ed7",
+          "logical_chunk_ids": [
+            "chunk_a2a894bca15c2988"
+          ],
+          "source_path": "art/character-art-style.md",
+          "section_keywords": [
+            "像素 Sprite 规范"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "clarity_first",
+          "text": "像素 Sprite 的核心原则是清晰度优先于细节数量。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "production_rules",
+          "text": "Sprite 制作要求包括使用清晰色块、避免单像素噪点、保持头部和手部可读、不要过度抗锯齿、保持武器或工具轮廓清晰。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "查询角色美术规范中像素 Sprite 的制作要求。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable"
+      ],
+      "expected_answer_keywords": [
+        "清晰度优先",
+        "色块",
+        "噪点"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "lingma-agent:v2.1-candidate-builder",
+      "review_status": "pending_review",
+      "note": "art 部门用户查询本部门文档的正例。"
+    },
+    {
+      "case_id": "operator_art_visible_scope_multi",
+      "dataset_version": "2.1.0",
+      "metric_profile": "rag",
+      "question": "在 ACL 权限测试中 art 部门用户应该能检索到哪些文档？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_MBeEmT7K2eGguofW4CZ1aGTp",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_15eb212207bbd84e",
+        "chunk_9ca728a00b73727c"
+      ],
+      "relevant_doc_ids": [
+        "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+        "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+          "source_revision": "039569a030fe133500fe89a85ac7e3347a389ed7",
+          "logical_chunk_ids": [
+            "chunk_15eb212207bbd84e"
+          ],
+          "source_path": "art/character-art-style.md",
+          "section_keywords": [
+            "总结",
+            "art 部门用户"
+          ]
+        },
+        {
+          "logical_doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+          "source_revision": "1a8a7b29380a74132dddd63819757fb05e281ca5",
+          "logical_chunk_ids": [
+            "chunk_9ca728a00b73727c"
+          ],
+          "source_path": "public/project-overview.md",
+          "section_keywords": [
+            "总结",
+            "art 部门用户"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "visible_docs",
+          "text": "art 用户应能检索到 art/character-art-style.md 和 public/project-overview.md。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "invisible_docs",
+          "text": "art 用户不应检索到 product_planning/combat-design.md 等其他部门私有文档。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "查询 art 用户的可见与不可见文档边界。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "permission_filter",
+        "multiple_relevant_sources"
+      ],
+      "expected_answer_keywords": [
+        "character-art-style",
+        "project-overview",
+        "combat-design"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "lingma-agent:v2.1-candidate-builder",
+      "review_status": "pending_review",
+      "note": "art 身份下的权限过滤正例，且需要跨 art 与 public 两个文档。"
+    },
+    {
+      "case_id": "operator_dev_acl_negative",
+      "dataset_version": "2.1.0",
+      "metric_profile": "rag",
+      "question": "知识库中是否有关于 RAG 后端部署环境变量要求与 FastAPI 本地启动命令的资料？",
+      "answerable": false,
+      "expected_route": "rag_no_answer",
+      "eval_principal_id": "user_MBeEmT7K2eGguofW4CZ1aGTp",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [],
+      "relevant_doc_ids": [],
+      "forbidden_logical_chunk_ids": [
+        "chunk_bf5a29d90fe09980",
+        "chunk_4280ef8844cf5af5"
+      ],
+      "expected_sources": [],
+      "required_key_facts": [],
+      "question_intent": "art 用户询问 development 部门部署文档内容，验证 ACL 过滤不泄漏。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答",
+        "不得输出 development 部署文档中的环境变量和启动命令"
+      ],
+      "hard_gate_labels": [
+        "acl_no_leak"
+      ],
+      "scenario_tags": [
+        "unanswerable",
+        "permission_filter"
+      ],
+      "expected_answer_keywords": [],
+      "forbidden_answer_keywords": [
+        "JWT_SECRET_KEY",
+        "uvicorn fast_app.main:app"
+      ],
+      "annotation_method": "model_assisted",
+      "annotated_by": "lingma-agent:v2.1-candidate-builder",
+      "review_status": "pending_review",
+      "note": "development/rag-backend-deployment.md 对 art 用户不可见，应保守拒答。"
+    },
+    {
+      "case_id": "reader_no_result_backup_schedule",
+      "dataset_version": "2.1.0",
+      "metric_profile": "rag",
+      "question": "知识库文档冷备策略的执行时间与备份文件存放的存储桶位置",
+      "answerable": false,
+      "expected_route": "rag_no_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [],
+      "relevant_doc_ids": [],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [],
+      "required_key_facts": [],
+      "question_intent": "话题属于知识库运维领域会进入检索链路，但知识库中完全没有备份策略内容，预期检索无相关结果后保守拒答。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [],
+      "scenario_tags": [
+        "unanswerable",
+        "no_result"
+      ],
+      "expected_answer_keywords": [],
+      "forbidden_answer_keywords": [
+        "S3 存储桶",
+        "凌晨两点"
+      ],
+      "annotation_method": "model_assisted",
+      "annotated_by": "lingma-agent:v2.1-candidate-builder",
+      "review_status": "pending_review",
+      "note": "验证检索执行但零相关证据时的拒答行为（no_result）。"
+    }
+  ]
+}

@@ -58,6 +58,19 @@ from fast_app.evaluation.cases.models import (
     RagEvalDataset,
     RequiredKeyFact,
 )
+from fast_app.rag_eval.config import RagEvalJudgeSettings
+from fast_app.rag_eval.models import (
+    GenerationEvaluationRequest,
+    GenerationEvaluationResponse,
+    RagEvalCaseReport,
+    RagEvalError,
+    RagEvalMetricResult,
+    RagEvalMetricSummary,
+    RagEvalRunReport,
+    RetrievalMetricEvaluation,
+)
+from fast_app.rag_eval.streaming import RagEvalStreamEvent, RagStreamExecutionResult
+from fast_app.rag_eval.target import RagEvalAuth
 from fast_app.services.agent_tasks.agent_task_router import AgentRouteDecision
 from fast_app.services.agent_tasks.deep_document_agent import (
     DocumentNl2SqlInput,
@@ -122,6 +135,18 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     QueryResolutionDecision,
     RagEvalCase,
     RagEvalDataset,
+    RagEvalJudgeSettings,
+    RagEvalAuth,
+    RagEvalError,
+    RagEvalMetricResult,
+    RetrievalMetricEvaluation,
+    GenerationEvaluationRequest,
+    GenerationEvaluationResponse,
+    RagEvalCaseReport,
+    RagEvalMetricSummary,
+    RagEvalRunReport,
+    RagEvalStreamEvent,
+    RagStreamExecutionResult,
     RagChatRequest,
     RagChatResponse,
     ResearchEvidenceEvaluation,

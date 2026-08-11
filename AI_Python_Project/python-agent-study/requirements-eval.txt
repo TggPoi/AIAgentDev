@@ -1,0 +1,7 @@
+# Optional dependencies for the standalone lightweight RAG Eval module.
+# Production deployments continue to install requirements.txt only.
+deepeval==4.1.3
+langchain-core==1.4.0
+langchain-openai==1.2.2
+openai==2.38.0
+pydantic==2.13.4

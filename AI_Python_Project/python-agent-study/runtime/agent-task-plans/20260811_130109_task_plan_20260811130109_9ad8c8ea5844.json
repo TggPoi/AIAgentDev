@@ -1,0 +1,194 @@
+{
+  "schema_version": 2,
+  "task_plan_id": "task_plan_20260811130109_9ad8c8ea5844",
+  "task_kind": "question_decomposition",
+  "task_type": "analysis",
+  "user_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+  "original_query": "在 UE5 战斗系统设计里，完美格挡成功后会触发哪些效果？这个时间窗口应该由什么控制？",
+  "source_query": "在 UE5 战斗系统设计里，完美格挡成功后会触发哪些效果？这个时间窗口应该由什么控制？",
+  "objective": "在 UE5 战斗系统设计里，完美格挡成功后会触发哪些效果？这个时间窗口应该由什么控制？",
+  "final_synthesis_instruction": "基于所有已满足 Requirements 和对应合法证据回答 resolved query；明确区分事实、推导和未解决项，不得使用未获得 Evidence ID 支撑的结论。",
+  "requirements": [
+    {
+      "requirement_id": "req_1",
+      "description": "明确 UE5 战斗系统设计中完美格挡成功后触发的具体效果（如伤害减免、硬直、反击机会、资源恢复等）",
+      "source_policy": {
+        "mode": "all_of",
+        "source_types": [
+          "knowledge_retrieval"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "req_2",
+      "description": "明确完美格挡的时间窗口应由什么机制或参数控制（如输入缓冲、帧窗口、动画通知等）",
+      "source_policy": {
+        "mode": "all_of",
+        "source_types": [
+          "knowledge_retrieval"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    }
+  ],
+  "sub_questions": [
+    {
+      "sub_question_id": "sq_1",
+      "order": 1,
+      "question": "在 UE5 战斗系统设计中，完美格挡成功后会触发哪些具体效果？",
+      "purpose": "获取完美格挡成功后触发的效果列表，覆盖 req_1",
+      "depends_on": [],
+      "information_source_hint": "knowledge_retrieval",
+      "covers_requirement_ids": [
+        "req_1"
+      ],
+      "reason": "用户明确询问完美格挡成功后触发的效果，需从知识库检索相关设计文档或实现说明",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "sq_2",
+      "order": 2,
+      "question": "在 UE5 战斗系统设计中，完美格挡的时间窗口应该由什么机制或参数控制？",
+      "purpose": "获取完美格挡时间窗口的控制机制，覆盖 req_2",
+      "depends_on": [],
+      "information_source_hint": "knowledge_retrieval",
+      "covers_requirement_ids": [
+        "req_2"
+      ],
+      "reason": "用户明确询问时间窗口的控制方式，需从知识库检索相关设计文档或实现说明",
+      "web_usage": "not_used"
+    }
+  ],
+  "quality_review": {
+    "verdict": "accepted",
+    "checks": {
+      "requirement_coverage": "pass",
+      "source_alignment": "pass",
+      "semantic_alignment": "pass",
+      "dependency_quality": "pass",
+      "executability": "pass",
+      "completion_policy_alignment": "pass"
+    },
+    "reviewer_findings": [],
+    "revision_summary": null,
+    "revision_count": 0,
+    "initial_validation_findings": []
+  },
+  "validation_issues": [],
+  "capability_snapshot": {
+    "available_source_types": [
+      "knowledge_retrieval"
+    ],
+    "web_direct_allowed": false,
+    "web_fallback_allowed": false,
+    "knowledge_retrieval_available": true,
+    "nl2sql_query_available": false,
+    "dataset_id": null,
+    "dataset_name": null,
+    "dataset_domain": null,
+    "allowed_dataset_views": [],
+    "allowed_dataset_fields": [],
+    "dataset_field_synonyms": {},
+    "dataset_schema_context": null,
+    "max_requirements": 16,
+    "max_sub_questions": 8
+  },
+  "research_policy": {
+    "mode": "hybrid",
+    "top_k": 5,
+    "candidate_k": 10,
+    "min_score": 0.0,
+    "source_path": null,
+    "section_path": [],
+    "dataset_id": null,
+    "nl2sql_action": null,
+    "required_source_types": [],
+    "dataset_scope": null,
+    "allow_direct_web": false,
+    "allow_web_fallback": false
+  },
+  "progress": {
+    "current_wave": 0,
+    "workers": {
+      "sq_1": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null,
+        "stage": "starting",
+        "active_operations": [],
+        "tool_call_count": 0,
+        "evidence_count": 0,
+        "last_tool_name": null
+      },
+      "sq_2": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null,
+        "stage": "starting",
+        "active_operations": [],
+        "tool_call_count": 0,
+        "evidence_count": 0,
+        "last_tool_name": null
+      }
+    },
+    "events": []
+  },
+  "worker_checkpoints": {},
+  "sub_question_results": [],
+  "evidence_registry": {
+    "evidence_by_id": {}
+  },
+  "requirement_evidence_statuses": [
+    {
+      "requirement_id": "req_1",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "sq_1"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "req_2",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "sq_2"
+      ],
+      "reason_codes": []
+    }
+  ],
+  "status": "waiting_confirmation",
+  "final_output": null,
+  "created_at": "2026-08-11T13:01:09.835208Z",
+  "updated_at": "2026-08-11T13:01:09.836804Z",
+  "error_code": null,
+  "error_message": null
+}

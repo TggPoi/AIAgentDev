@@ -1,0 +1,162 @@
+{
+  "baseline_report": null,
+  "case_count": 3,
+  "cases": [
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": true,
+      "case_id": "operator_pixel_sprite_rules",
+      "error": null,
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 66312.95619999946,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": false,
+          "score": 0.2,
+          "short_reason": "score=0.2000 < threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        }
+      },
+      "request_id": "7cff05f4e4574bd2a15775ee4d950653",
+      "skipped_reason": null,
+      "snapshot_hash": "9ef82294865a9ddda87c516f79759f6e4a777685a1ff5956110410e4df5253fd",
+      "snapshot_id": "15f60d1c4814483fa516c59a5bb4cb76",
+      "status": "evaluated",
+      "trace_id": "7cff05f4e4574bd2a15775ee4d950653"
+    },
+    {
+      "actual_route": "question_decomposition -> no_knowledge_retrieval",
+      "answerable": true,
+      "case_id": "operator_art_visible_scope_multi",
+      "error": {
+        "code": "route_mismatch",
+        "message": "Golden 要求普通 RAG，但实际未进入顶层 knowledge_retrieval 路径",
+        "retryable": false
+      },
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": false,
+      "knowledge_version": 6,
+      "latency_ms": 43867.387999998755,
+      "metrics": {},
+      "request_id": "b450a6de42ec44298cc4847f44577c79",
+      "skipped_reason": null,
+      "snapshot_hash": "fa6af0c74df981ec7fd160a929913ec75f4ac4a8a8e921916ba6313f1dd71559",
+      "snapshot_id": "b0215d30106640f09556c91501473964",
+      "status": "failed",
+      "trace_id": "b450a6de42ec44298cc4847f44577c79"
+    },
+    {
+      "actual_route": "question_decomposition -> no_knowledge_retrieval",
+      "answerable": false,
+      "case_id": "operator_dev_acl_negative",
+      "error": {
+        "code": "route_mismatch",
+        "message": "Golden 要求普通 RAG，但实际未进入顶层 knowledge_retrieval 路径",
+        "retryable": false
+      },
+      "expected_route": "rag_no_answer",
+      "knowledge_retrieval_performed": false,
+      "knowledge_version": 6,
+      "latency_ms": 46235.75979999805,
+      "metrics": {},
+      "request_id": "05fa783a69ee40229471e7df1c16a868",
+      "skipped_reason": null,
+      "snapshot_hash": "f7a24459142f1db2f11c25d1e674de4b2b20b280f8ed98a0b0950a5adadbfcc4",
+      "snapshot_id": "3bcd770770924e939ff2834600f47e63",
+      "status": "failed",
+      "trace_id": "05fa783a69ee40229471e7df1c16a868"
+    }
+  ],
+  "created_at": "2026-08-11T12:59:56.613641Z",
+  "dataset_hash": "c22ed299ae73150bb2ff51b6b674388dbce2b5111513a8e0ece975e7ec34de47",
+  "dataset_id": "stage11_acl_rag_eval",
+  "dataset_version": "2.1.0",
+  "duration_ms": 156419.1847999973,
+  "evaluated_case_count": 1,
+  "failed_case_count": 2,
+  "judge_model": null,
+  "metric_summaries": {
+    "retrieval_hit_rate_at_k": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 1.0,
+      "metric_name": "retrieval_hit_rate_at_k",
+      "passed_count": 1,
+      "skipped_count": 0
+    },
+    "retrieval_mrr": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 1.0,
+      "metric_name": "retrieval_mrr",
+      "passed_count": 1,
+      "skipped_count": 0
+    },
+    "retrieval_precision_at_k": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 0.2,
+      "metric_name": "retrieval_precision_at_k",
+      "passed_count": 0,
+      "skipped_count": 0
+    },
+    "retrieval_recall_at_k": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 1.0,
+      "metric_name": "retrieval_recall_at_k",
+      "passed_count": 1,
+      "skipped_count": 0
+    }
+  },
+  "mode": "retrieval",
+  "pipeline_provider": "rag_agent",
+  "run_id": "7295c234-8dd2-4df4-a078-d949b5d64789",
+  "schema_version": "1.0",
+  "selected_metrics": [
+    "retrieval_recall_at_k",
+    "retrieval_precision_at_k",
+    "retrieval_hit_rate_at_k",
+    "retrieval_mrr"
+  ],
+  "skipped_case_count": 0,
+  "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+  "status": "partial",
+  "tested_model": "qwen:qwen3.7-plus"
+}
