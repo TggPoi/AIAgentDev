@@ -1,0 +1,250 @@
+{
+  "schema_version": 2,
+  "task_plan_id": "task_plan_20260812124743_165b3dc220ba",
+  "task_kind": "question_decomposition",
+  "task_type": "analysis",
+  "user_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+  "original_query": "部署验收中 ES 父子块和 Milvus 子块分别如何存储并校验关联完整性？",
+  "source_query": "部署验收中 ES 父子块和 Milvus 子块分别如何存储并校验关联完整性？",
+  "objective": "部署验收中 ES 父子块和 Milvus 子块分别如何存储并校验关联完整性？",
+  "final_synthesis_instruction": "基于所有已满足 Requirements 和对应合法证据回答 resolved query；明确区分事实、推导和未解决项，不得使用未获得 Evidence ID 支撑的结论。",
+  "requirements": [
+    {
+      "requirement_id": "R1",
+      "description": "ES 父子块的存储方式",
+      "source_policy": {
+        "mode": "all_of",
+        "source_types": [
+          "knowledge_retrieval"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R2",
+      "description": "Milvus 子块的存储方式",
+      "source_policy": {
+        "mode": "all_of",
+        "source_types": [
+          "knowledge_retrieval"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    },
+    {
+      "requirement_id": "R3",
+      "description": "ES 父子块与 Milvus 子块之间的关联完整性校验方法",
+      "source_policy": {
+        "mode": "all_of",
+        "source_types": [
+          "knowledge_retrieval"
+        ]
+      },
+      "expected_evidence": [
+        {
+          "evidence_type": "knowledge_chunk",
+          "minimum_count": 1,
+          "requires_query_id": false,
+          "required_attributes": []
+        }
+      ],
+      "completion_policy": "strict"
+    }
+  ],
+  "sub_questions": [
+    {
+      "sub_question_id": "SQ1",
+      "order": 1,
+      "question": "在部署验收中，ES 父子块是如何存储的？",
+      "purpose": "获取 ES 父子块的存储方式",
+      "depends_on": [],
+      "information_source_hint": "knowledge_retrieval",
+      "covers_requirement_ids": [
+        "R1"
+      ],
+      "reason": "用户明确要求了解 ES 父子块的存储方式，需从知识库检索相关文档",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "SQ2",
+      "order": 2,
+      "question": "在部署验收中，Milvus 子块是如何存储的？",
+      "purpose": "获取 Milvus 子块的存储方式",
+      "depends_on": [],
+      "information_source_hint": "knowledge_retrieval",
+      "covers_requirement_ids": [
+        "R2"
+      ],
+      "reason": "用户明确要求了解 Milvus 子块的存储方式，需从知识库检索相关文档",
+      "web_usage": "not_used"
+    },
+    {
+      "sub_question_id": "SQ3",
+      "order": 3,
+      "question": "在部署验收中，如何校验 ES 父子块与 Milvus 子块之间的关联完整性？",
+      "purpose": "获取关联完整性校验方法",
+      "depends_on": [],
+      "information_source_hint": "knowledge_retrieval",
+      "covers_requirement_ids": [
+        "R3"
+      ],
+      "reason": "用户明确要求了解关联完整性校验方法，需从知识库检索相关文档",
+      "web_usage": "not_used"
+    }
+  ],
+  "quality_review": {
+    "verdict": "accepted",
+    "checks": {
+      "requirement_coverage": "pass",
+      "source_alignment": "pass",
+      "semantic_alignment": "pass",
+      "dependency_quality": "pass",
+      "executability": "pass",
+      "completion_policy_alignment": "pass"
+    },
+    "reviewer_findings": [],
+    "revision_summary": null,
+    "revision_count": 0,
+    "initial_validation_findings": []
+  },
+  "validation_issues": [],
+  "capability_snapshot": {
+    "available_source_types": [
+      "knowledge_retrieval"
+    ],
+    "web_direct_allowed": false,
+    "web_fallback_allowed": false,
+    "knowledge_retrieval_available": true,
+    "nl2sql_query_available": false,
+    "dataset_id": null,
+    "dataset_name": null,
+    "dataset_domain": null,
+    "allowed_dataset_views": [],
+    "allowed_dataset_fields": [],
+    "dataset_field_synonyms": {},
+    "dataset_schema_context": null,
+    "max_requirements": 16,
+    "max_sub_questions": 8
+  },
+  "research_policy": {
+    "mode": "hybrid",
+    "top_k": 5,
+    "candidate_k": 10,
+    "min_score": 0.0,
+    "source_path": null,
+    "section_path": [],
+    "dataset_id": null,
+    "nl2sql_action": null,
+    "required_source_types": [],
+    "dataset_scope": null,
+    "allow_direct_web": false,
+    "allow_web_fallback": false
+  },
+  "progress": {
+    "current_wave": 0,
+    "workers": {
+      "SQ1": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null,
+        "stage": "starting",
+        "active_operations": [],
+        "tool_call_count": 0,
+        "evidence_count": 0,
+        "last_tool_name": null
+      },
+      "SQ2": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null,
+        "stage": "starting",
+        "active_operations": [],
+        "tool_call_count": 0,
+        "evidence_count": 0,
+        "last_tool_name": null
+      },
+      "SQ3": {
+        "status": "pending",
+        "wave": 0,
+        "attempt": 0,
+        "error_code": null,
+        "stage": "starting",
+        "active_operations": [],
+        "tool_call_count": 0,
+        "evidence_count": 0,
+        "last_tool_name": null
+      }
+    },
+    "events": []
+  },
+  "worker_checkpoints": {},
+  "sub_question_results": [],
+  "evidence_registry": {
+    "evidence_by_id": {}
+  },
+  "requirement_evidence_statuses": [
+    {
+      "requirement_id": "R1",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ1"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R2",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ2"
+      ],
+      "reason_codes": []
+    },
+    {
+      "requirement_id": "R3",
+      "status": "pending",
+      "satisfied_source_types": [],
+      "missing_source_types": [
+        "knowledge_retrieval"
+      ],
+      "evidence_refs": [],
+      "covering_sub_question_ids": [
+        "SQ3"
+      ],
+      "reason_codes": []
+    }
+  ],
+  "status": "waiting_confirmation",
+  "final_output": null,
+  "created_at": "2026-08-12T12:47:43.783933Z",
+  "updated_at": "2026-08-12T12:47:43.786573Z",
+  "error_code": null,
+  "error_message": null
+}

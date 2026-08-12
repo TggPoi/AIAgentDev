@@ -1,0 +1,196 @@
+{
+  "baseline_report": null,
+  "case_count": 1,
+  "cases": [
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": true,
+      "case_id": "operator_documented_art_scope_multi",
+      "error": null,
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 103402.77119999882,
+      "metrics": {
+        "generation_answer_completeness": {
+          "error": null,
+          "metric_name": "generation_answer_completeness",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "generation_answer_relevance": {
+          "error": null,
+          "metric_name": "generation_answer_relevance",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "generation_context_utilization": {
+          "error": null,
+          "metric_name": "generation_context_utilization",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "generation_faithfulness": {
+          "error": null,
+          "metric_name": "generation_faithfulness",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": false,
+          "score": 0.0,
+          "short_reason": "score=0.0000 < threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": false,
+          "score": 0.0,
+          "short_reason": "score=0.0000 < threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": false,
+          "score": 0.0,
+          "short_reason": "score=0.0000 < threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": false,
+          "score": 0.0,
+          "short_reason": "score=0.0000 < threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        }
+      },
+      "request_id": "66c0d51735bb41a28fc4854c297e28b8",
+      "skipped_reason": null,
+      "snapshot_hash": "19f74163ab5b44ca4b30ab3a9ca87cdbfb1da20e7cc28188bf66460e63c395a9",
+      "snapshot_id": "4f4d8c607a504efbab2f68823cd6faef",
+      "status": "evaluated",
+      "trace_id": "66c0d51735bb41a28fc4854c297e28b8"
+    }
+  ],
+  "created_at": "2026-08-12T12:46:24.618483Z",
+  "dataset_hash": "97d772feacf2e4f2e624a5aea344e85a38c543f2985896e250d26038030e1b33",
+  "dataset_id": "stage11_acl_rag_eval",
+  "dataset_version": "2.1.1",
+  "duration_ms": 331343.67669999844,
+  "evaluated_case_count": 1,
+  "failed_case_count": 0,
+  "judge_model": "qwen3.7-max",
+  "metric_summaries": {
+    "generation_answer_completeness": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 1.0,
+      "metric_name": "generation_answer_completeness",
+      "passed_count": 1,
+      "skipped_count": 0
+    },
+    "generation_answer_relevance": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 1.0,
+      "metric_name": "generation_answer_relevance",
+      "passed_count": 1,
+      "skipped_count": 0
+    },
+    "generation_context_utilization": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 1.0,
+      "metric_name": "generation_context_utilization",
+      "passed_count": 1,
+      "skipped_count": 0
+    },
+    "generation_faithfulness": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 1.0,
+      "metric_name": "generation_faithfulness",
+      "passed_count": 1,
+      "skipped_count": 0
+    },
+    "retrieval_hit_rate_at_k": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 0.0,
+      "metric_name": "retrieval_hit_rate_at_k",
+      "passed_count": 0,
+      "skipped_count": 0
+    },
+    "retrieval_mrr": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 0.0,
+      "metric_name": "retrieval_mrr",
+      "passed_count": 0,
+      "skipped_count": 0
+    },
+    "retrieval_precision_at_k": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 0.0,
+      "metric_name": "retrieval_precision_at_k",
+      "passed_count": 0,
+      "skipped_count": 0
+    },
+    "retrieval_recall_at_k": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 0.0,
+      "metric_name": "retrieval_recall_at_k",
+      "passed_count": 0,
+      "skipped_count": 0
+    }
+  },
+  "mode": "all",
+  "pipeline_provider": "rag_agent",
+  "run_id": "c779b5c7-2d23-4f34-aadd-8dbd5e7f58fa",
+  "schema_version": "1.0",
+  "selected_metrics": [
+    "retrieval_recall_at_k",
+    "retrieval_precision_at_k",
+    "retrieval_hit_rate_at_k",
+    "retrieval_mrr",
+    "generation_faithfulness",
+    "generation_answer_relevance",
+    "generation_answer_completeness",
+    "generation_context_utilization"
+  ],
+  "skipped_case_count": 0,
+  "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+  "status": "completed",
+  "tested_model": "qwen:qwen3.7-plus"
+}

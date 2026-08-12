@@ -27,6 +27,29 @@ class GenerationWorkerError(RuntimeError):
     """隔离 Worker 启动、超时或协议失败。"""
 
 
+def _decode_worker_response(stdout: bytes) -> GenerationEvaluationResponse:
+    """从第三方提示文本中提取唯一可通过业务 Schema 的 Worker JSON。"""
+
+    # DeepEval/Windows 依赖偶尔会按本地代码页输出进度文本；替换这些诊断字节，
+    # 后续仍只接受能完整通过 GenerationEvaluationResponse 的 UTF-8 JSON object。
+    text = stdout.decode("utf-8", errors="replace")
+    try:
+        return GenerationEvaluationResponse.model_validate(json.loads(text))
+    except Exception as direct_error:
+        decoder = json.JSONDecoder()
+        for index, character in enumerate(text):
+            if character != "{":
+                continue
+            try:
+                data, _ = decoder.raw_decode(text[index:])
+                return GenerationEvaluationResponse.model_validate(data)
+            except Exception:
+                continue
+        raise GenerationWorkerError(
+            "DeepEval Worker 返回了非法 JSON 协议"
+        ) from direct_error
+
+
 class SubprocessGenerationEvaluator:
     """使用独立 Python 环境运行 DeepEval，避免污染生产依赖。"""
 
@@ -98,11 +121,7 @@ class SubprocessGenerationEvaluator:
                 "DeepEval Worker 执行失败"
                 + (f": {diagnostic[-1000:]}" if diagnostic else "")
             )
-        try:
-            data = json.loads(stdout.decode("utf-8"))
-            response = GenerationEvaluationResponse.model_validate(data)
-        except Exception as exc:
-            raise GenerationWorkerError("DeepEval Worker 返回了非法 JSON 协议") from exc
+        response = _decode_worker_response(stdout)
         if response.case_id != request.case_id:
             raise GenerationWorkerError("DeepEval Worker case_id 与请求不一致")
         if set(response.metrics) != set(request.metrics):

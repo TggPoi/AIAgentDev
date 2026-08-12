@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
+from contextlib import redirect_stdout
 import json
 import sys
 from typing import Any
@@ -29,13 +31,13 @@ DEFAULT_GENERATION_THRESHOLDS: dict[RagEvalMetricName, float] = {
 COMPLETENESS_STEPS = [
     "逐条读取 expected output 中编号的 required key facts。",
     "判断 actual output 是否明确表达了每条事实的核心语义，不要求逐字相同。",
-    "仅按覆盖比例给出 0 到 1 的分数；不要因文风、长度或额外正确信息加分。",
+    "仅按覆盖比例给出 0 到 10 的整数分数；不要因文风、长度或额外正确信息加分。",
 ]
 CONTEXT_UTILIZATION_STEPS = [
     "识别 actual output 中用于回答 input 的主要信息点。",
     "逐项检查这些信息点是否由 retrieval context 支撑或合理归纳。",
     "同时判断 retrieval context 中与问题直接相关的证据是否被答案有效使用。",
-    "综合有效使用与无依据内容比例给出 0 到 1 的分数。",
+    "综合有效使用与无依据内容比例给出 0 到 10 的整数分数。",
 ]
 
 
@@ -122,6 +124,20 @@ async def evaluate_request(
         model=model,
         judge_model=settings.model_name,
     )
+
+
+async def _evaluate_without_stdout_noise(
+    request: GenerationEvaluationRequest,
+    *,
+    evaluator: Callable[
+        [GenerationEvaluationRequest],
+        Awaitable[GenerationEvaluationResponse],
+    ] = evaluate_request,
+) -> GenerationEvaluationResponse:
+    """把 DeepEval 的提示和进度输出隔离到 stderr，保留 stdout JSON 协议。"""
+
+    with redirect_stdout(sys.stderr):
+        return await evaluator(request)
 
 
 async def evaluate_with_model(
@@ -224,7 +240,7 @@ async def _main() -> int:
     try:
         payload = json.loads(sys.stdin.buffer.read().decode("utf-8"))
         request = GenerationEvaluationRequest.model_validate(payload)
-        response = await evaluate_request(request)
+        response = await _evaluate_without_stdout_noise(request)
         sys.stdout.write(response.model_dump_json())
         return 0
     except Exception as exc:

@@ -90,6 +90,27 @@ class FailingJudge(DeepEvalBaseLLM):
         raise self.failure
 
 
+class RecordingJudge(DeepEvalBaseLLM):
+    """记录 DeepEval 最终 Judge Prompt，并返回合法的 0-10 原始分。"""
+
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+
+    def load_model(self):
+        return self
+
+    def get_model_name(self) -> str:
+        return "recording-judge"
+
+    def generate(self, prompt: str, schema=None):
+        self.prompts.append(prompt)
+        return schema(score=8.0, reason="覆盖充分")
+
+    async def a_generate(self, prompt: str, schema=None):
+        self.prompts.append(prompt)
+        return schema(score=8.0, reason="覆盖充分")
+
+
 def build_adapter() -> QwenDeepEvalModel:
     settings = RagEvalJudgeSettings(
         api_key="test-only-key",
@@ -241,6 +262,36 @@ async def judge_failure_isolation_test() -> None:
         assert result.error.code == expected_code
 
 
+async def geval_score_scale_contract_test() -> None:
+    """自定义步骤必须与 DeepEval GEval 的 0-10 原始分契约一致。"""
+
+    judge = RecordingJudge()
+    request = GenerationEvaluationRequest(
+        case_id="geval-score-scale",
+        question="问题",
+        answer="答案",
+        retrieval_context=["上下文"],
+        required_key_facts=["事实"],
+        metrics=[
+            "generation_answer_completeness",
+            "generation_context_utilization",
+        ],
+    )
+
+    response = await evaluate_with_model(
+        request,
+        model=judge,
+        judge_model="recording-judge",
+    )
+
+    assert len(judge.prompts) == 2
+    assert all("给出 0 到 10" in prompt for prompt in judge.prompts)
+    assert all("给出 0 到 1 的分数" not in prompt for prompt in judge.prompts)
+    assert {
+        result.score for result in response.metrics.values()
+    } == {0.8}
+
+
 if __name__ == "__main__":
     test_offline_environment_is_forced_before_deepeval_use()
     test_confident_cloud_key_is_rejected()
@@ -249,4 +300,5 @@ if __name__ == "__main__":
     asyncio.run(builtin_metrics_compatibility_test())
     asyncio.run(no_answer_generation_semantics_test())
     asyncio.run(judge_failure_isolation_test())
+    asyncio.run(geval_score_scale_contract_test())
     print("rag_eval DeepEval adapter tests passed")
