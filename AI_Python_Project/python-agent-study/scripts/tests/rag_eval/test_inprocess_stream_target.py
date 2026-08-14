@@ -21,7 +21,12 @@ from fast_app.rag_eval.models import (
     RagEvalMetricResult,
 )
 from fast_app.rag_eval.runner import ALL_METRIC_NAMES, LightweightRagEvalRunner
-from fast_app.rag_eval.reporting import apply_baseline, load_report, write_reports
+from fast_app.rag_eval.reporting import (
+    apply_baseline,
+    load_report,
+    render_markdown,
+    write_reports,
+)
 from fast_app.schemas.rag_chat_schema import RagChatRequest
 
 
@@ -64,6 +69,56 @@ def build_test_app(logical_chunk_id: str, *, route_intent: str | None = None) ->
                 "done",
                 {"status": "done", "knowledge_version": 6},
             )
+
+        return StreamingResponse(events(), media_type="text/event-stream")
+
+    return app
+
+
+def build_parent_test_app(parent_id: str) -> FastAPI:
+    app = FastAPI()
+
+    @app.post("/rag/chat/stream/events")
+    async def stream_endpoint(req: RagChatRequest) -> StreamingResponse:
+        child = RetrievedDoc(
+            id="physical-trigger-child",
+            content="只有章节标题的触发子块",
+            score=0.9,
+            source="milvus",
+            metadata={
+                "logical_chunk_id": "trigger-child",
+                "parent_id": parent_id,
+                "doc_id": "doc-parent",
+            },
+            retrieval_sources=["vector"],
+            scores=ScoreBreakdown(rerank_score=0.9),
+        )
+        parent = RetrievedDoc(
+            id=parent_id,
+            content="模型最终收到的完整父块正文",
+            score=0.9,
+            source="elasticsearch",
+            metadata={
+                "logical_parent_id": parent_id,
+                "parent_id": parent_id,
+                "doc_id": "doc-parent",
+            },
+            retrieval_sources=["vector", "keyword"],
+            scores=ScoreBreakdown(rerank_score=0.9),
+        )
+        record_snapshot_retrieval_stage("rerank", [child], query=req.query)
+        record_snapshot_final_context(
+            RagContext(query=req.query, docs=[parent], context_text=parent.content)
+        )
+
+        async def events():
+            yield sse(
+                "agent_route_selected",
+                {"intent": "simple_rag", "source": "router"},
+            )
+            yield sse("sources", {"sources": []})
+            yield sse("answer_delta", {"text": "父块回答"})
+            yield sse("done", {"status": "done", "knowledge_version": 6})
 
         return StreamingResponse(events(), media_type="text/event-stream")
 
@@ -313,6 +368,51 @@ async def target_test() -> None:
         json_path, markdown_path = write_reports(compared, directory)
         assert load_report(json_path).run_id == report.run_id
         assert "轻量流式 RAG Eval 报告" in markdown_path.read_text(encoding="utf-8")
+
+    parent_case = case.model_copy(
+        update={
+            "case_id": "parent-expansion-contract",
+            "retrieval_relevance_unit": "logical_parent",
+            "relevant_logical_parent_ids": ["parent-expected"],
+            "authoritative_logical_parent_ids": ["parent-expected"],
+        }
+    )
+    parent_runner = LightweightRagEvalRunner(
+        target=InProcessStructuredStreamTarget(
+            app=build_parent_test_app("parent-expected"),
+            settings=settings,
+            pipeline_provider="rag_agent",
+            auth=RagEvalAuth(mode="demo"),
+        ),
+        settings=settings,
+        pipeline_provider="rag_agent",
+        mode="retrieval",
+        selected_metrics=ALL_METRIC_NAMES[:4],
+    )
+    parent_report = await parent_runner.run(
+        dataset.model_copy(update={"cases": [parent_case]})
+    )
+    parent_result = parent_report.cases[0]
+    assert parent_result.metrics["retrieval_mrr"].score == 1.0
+    assert parent_result.retrieval_source_policy is not None
+    assert parent_result.retrieval_source_policy.passed is True
+    assert parent_result.retrieval_source_policy.matched_authoritative_logical_ids == [
+        "parent-expected"
+    ]
+    parent_markdown = render_markdown(parent_report)
+    assert "检索来源策略" in parent_markdown
+    assert "parent-expected" in parent_markdown
+
+    missing_authority_case = parent_case.model_copy(
+        update={"authoritative_logical_parent_ids": ["parent-missing"]}
+    )
+    missing_authority_report = await parent_runner.run(
+        dataset.model_copy(update={"cases": [missing_authority_case]})
+    )
+    assert missing_authority_report.status == "partial"
+    assert missing_authority_report.cases[0].status == "evaluated"
+    assert missing_authority_report.cases[0].retrieval_source_policy is not None
+    assert missing_authority_report.cases[0].retrieval_source_policy.passed is False
 
 
 if __name__ == "__main__":

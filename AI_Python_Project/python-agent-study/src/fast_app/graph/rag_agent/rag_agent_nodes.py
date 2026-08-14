@@ -912,6 +912,10 @@ def create_call_knowledge_retrieval_node(
             ),
         ) as trace_run:
             try:
+                candidate_pool_k = max(
+                    state.get("candidate_k") or state["top_k"],
+                    state["top_k"],
+                )
                 # pipeline_provider 写成 rag_agent，方便日志和 trace 区分来自哪条执行路线。
                 docs = await retrieve_knowledge_docs(
                     settings=settings,
@@ -919,7 +923,9 @@ def create_call_knowledge_retrieval_node(
                     keyword_retriever=keyword_retriever,
                     query=state["query"],
                     mode=state["mode"],
-                    top_k=state["top_k"],
+                    # RagAgent 后面还有独立 rerank 节点；这里保留完整候选池，
+                    # 最终返回数量由 rerank 节点按请求 top_k 截断。
+                    top_k=candidate_pool_k,
                     candidate_k=state.get("candidate_k"),
                     min_score=state["min_score"],
                     filters=build_rag_agent_retrieval_filters(state),
@@ -1175,7 +1181,7 @@ def create_agent_rerank_node(
                 return {"docs": []}
 
             start_time = perf_counter()
-            top_k = min(rerank_top_k, len(docs))
+            top_k = min(state["top_k"], rerank_top_k, len(docs))
             try:
                 reranked_docs = await reranker.rerank(
                     query=state["query"],
@@ -1224,7 +1230,7 @@ def create_agent_rerank_node(
                 return {"docs": reranked_docs}
 
             except ExternalServiceError as exc:
-                fallback_docs = docs[:rerank_top_k]
+                fallback_docs = docs[:top_k]
                 # classify_agent_error(error_node="rerank") 会把错误标记成可恢复的 rerank_error。
                 decision = classify_agent_error(exc, error_node="rerank")
                 latency_ms = (perf_counter() - start_time) * 1000

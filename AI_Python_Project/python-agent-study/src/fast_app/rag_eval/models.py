@@ -84,6 +84,28 @@ class RagEvalMetricResult(BaseModel):
         return self
 
 
+class RetrievalSourcePolicyResult(BaseModel):
+    """检索结果对权威来源和禁止来源规则的独立判定。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    passed: bool = Field(
+        description="是否命中全部指定权威来源且没有返回任何禁止来源。",
+    )
+    matched_authoritative_logical_ids: list[str] = Field(
+        default_factory=list,
+        description="Top K 中命中的指定权威逻辑来源 ID。",
+    )
+    missing_authoritative_logical_ids: list[str] = Field(
+        default_factory=list,
+        description="Top K 中缺失的指定权威逻辑来源 ID。",
+    )
+    forbidden_retrieved_logical_ids: list[str] = Field(
+        default_factory=list,
+        description="Top K 中实际出现、不可用于回答的禁止逻辑来源 ID。",
+    )
+
+
 class RetrievalMetricEvaluation(BaseModel):
     """单条 case 的四个检索指标和诊断信息。"""
 
@@ -115,6 +137,10 @@ class RetrievalMetricEvaluation(BaseModel):
     false_positive_logical_chunk_ids: list[str] = Field(
         default_factory=list,
         description="Top K 中未被标注为相关的逻辑 Chunk ID。",
+    )
+    source_policy: RetrievalSourcePolicyResult | None = Field(
+        default=None,
+        description="权威和禁止来源的独立判定；case 未声明来源策略时为空。",
     )
     metrics: dict[RagEvalMetricName, RagEvalMetricResult] = Field(
         description="以稳定机器名索引的四个检索指标。",
@@ -226,6 +252,13 @@ class RagEvalCaseReport(BaseModel):
         default_factory=dict,
         description="该 case 已选择的八项指标结果。",
     )
+    retrieval_source_policy: RetrievalSourcePolicyResult | None = Field(
+        default=None,
+        description=(
+            "检索结果对指定权威来源和禁止来源的独立判定；未执行检索指标或"
+            "case 未声明来源策略时为空。"
+        ),
+    )
     error: RagEvalError | None = Field(
         default=None,
         description="case 路由或流执行失败；成功和跳过时为空。",
@@ -281,7 +314,9 @@ class RagEvalRunReport(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["1.0"] = Field(description="轻量报告 Schema 版本。")
+    schema_version: Literal["1.0", "1.1"] = Field(
+        description="轻量报告 Schema 版本；1.1 增加独立检索来源策略判定。",
+    )
     run_id: str = Field(min_length=1, description="本次运行的唯一 ID。")
     created_at: datetime = Field(description="带时区的报告生成时间。")
     status: RagEvalRunStatus = Field(description="completed、partial 或 failed。")
@@ -361,4 +396,5 @@ __all__ = [
     "GenerationEvaluationRequest",
     "GenerationEvaluationResponse",
     "RetrievalMetricEvaluation",
+    "RetrievalSourcePolicyResult",
 ]

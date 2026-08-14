@@ -11,6 +11,7 @@ EVAL_DATASET_SCHEMA_VERSION = "2.0"
 EvalCaseType = Literal["answerable", "no_answer"]
 EvalMetricProfile = Literal["rag"]
 EvalExpectedRoute = Literal["rag_answer", "rag_no_answer"]
+EvalRetrievalRelevanceUnit = Literal["logical_chunk", "logical_parent"]
 EvalScenarioTag = Literal[
     "answerable",
     "unanswerable",
@@ -214,17 +215,51 @@ class RagEvalCase(BaseModel):
         default_factory=EvalRetrievalFilters,
         description="非安全性的内容过滤条件；ACL 必须由 eval_principal_id 在服务端重建。",
     )
+    retrieval_relevance_unit: EvalRetrievalRelevanceUnit = Field(
+        default="logical_chunk",
+        description=(
+            "检索指标使用的逻辑身份层级：普通 case 按 logical_chunk，父块扩展 case "
+            "按模型最终收到的 logical_parent。"
+        ),
+    )
     relevant_logical_chunk_ids: list[str] = Field(
         default_factory=list,
-        description="Precision/Recall 使用的去重逻辑相关子块全集。",
+        description=(
+            "与问题语义相关的去重逻辑子块全集；父块评测时用于追溯触发和正文子块，"
+            "不直接作为 Precision/Recall 的身份集合。"
+        ),
+    )
+    relevant_logical_parent_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "父块扩展 case 中与问题相关、实际进入最终上下文的逻辑父块全集；"
+            "仅 retrieval_relevance_unit=logical_parent 时用于检索指标。"
+        ),
     )
     relevant_doc_ids: list[str] = Field(
         default_factory=list,
         description="与问题相关的去重逻辑文档 ID，用于来源覆盖和诊断。",
     )
+    authoritative_logical_chunk_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "必须由检索结果命中的权威逻辑子块 ID；它是语义相关全集的可信子集，"
+            "用于独立来源策略判定而不参与 Precision 分母。"
+        ),
+    )
+    authoritative_logical_parent_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "父块扩展 case 必须命中的权威逻辑父块 ID；必须属于相关父块全集，"
+            "只用于独立来源策略判定。"
+        ),
+    )
     forbidden_logical_chunk_ids: list[str] = Field(
         default_factory=list,
-        description="当前身份绝不能看到的逻辑子块 ID；用于 ACL 泄漏 hard gate，不会注入检索过滤器。",
+        description=(
+            "当前身份绝不能看到或答案绝不能采用的逻辑子块 ID；可表示 ACL 泄漏或"
+            "语义相关但过期冲突的证据，不会注入检索过滤器。"
+        ),
     )
     expected_sources: list[ExpectedSource] = Field(
         default_factory=list,
@@ -306,7 +341,10 @@ class RagEvalCase(BaseModel):
 
     @field_validator(
         "relevant_logical_chunk_ids",
+        "relevant_logical_parent_ids",
         "relevant_doc_ids",
+        "authoritative_logical_chunk_ids",
+        "authoritative_logical_parent_ids",
         "forbidden_logical_chunk_ids",
         "constraints",
         "hard_gate_labels",
@@ -334,12 +372,27 @@ class RagEvalCase(BaseModel):
             for logical_id in source.logical_chunk_ids
         }
         expected_doc_ids = {source.logical_doc_id for source in self.expected_sources}
+        expected_parent_ids = {
+            source.logical_parent_id
+            for source in self.expected_sources
+            if source.logical_parent_id is not None
+        }
         if expected_logical_ids != set(self.relevant_logical_chunk_ids):
             raise ValueError(
                 "expected_sources 的逻辑子块并集必须等于 relevant_logical_chunk_ids"
             )
         if expected_doc_ids != set(self.relevant_doc_ids):
             raise ValueError("expected_sources 的逻辑文档集合必须等于 relevant_doc_ids")
+        if self.retrieval_relevance_unit == "logical_parent":
+            if expected_parent_ids != set(self.relevant_logical_parent_ids):
+                raise ValueError(
+                    "父块评测的 expected_sources 父块集合必须等于 relevant_logical_parent_ids"
+                )
+            if self.authoritative_logical_chunk_ids:
+                raise ValueError("父块评测不能同时声明权威逻辑子块")
+        else:
+            if self.relevant_logical_parent_ids or self.authoritative_logical_parent_ids:
+                raise ValueError("子块评测不能声明父块相关性或父块权威来源")
 
         if self.answerable:
             if self.expected_route != "rag_answer":
@@ -375,10 +428,18 @@ class RagEvalCase(BaseModel):
             self.forbidden_logical_chunk_ids or self.answerable
         ):
             raise ValueError("权限过滤负例必须声明禁止出现的逻辑子块")
-        if set(self.relevant_logical_chunk_ids) & set(
+        if not set(self.authoritative_logical_chunk_ids).issubset(
+            self.relevant_logical_chunk_ids
+        ):
+            raise ValueError("权威逻辑子块必须属于语义相关逻辑子块全集")
+        if not set(self.authoritative_logical_parent_ids).issubset(
+            self.relevant_logical_parent_ids
+        ):
+            raise ValueError("权威逻辑父块必须属于语义相关逻辑父块全集")
+        if set(self.authoritative_logical_chunk_ids) & set(
             self.forbidden_logical_chunk_ids
         ):
-            raise ValueError("相关逻辑子块和禁止逻辑子块不能重叠")
+            raise ValueError("权威逻辑子块和禁止逻辑子块不能重叠")
 
         fact_ids = [fact.fact_id for fact in self.required_key_facts]
         if len(set(fact_ids)) != len(fact_ids):

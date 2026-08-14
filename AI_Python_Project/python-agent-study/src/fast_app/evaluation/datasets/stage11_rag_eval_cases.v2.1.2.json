@@ -1,0 +1,1326 @@
+{
+  "schema_version": "2.0",
+  "dataset_id": "stage11_acl_rag_eval",
+  "dataset_version": "2.1.2",
+  "lifecycle": "golden",
+  "content_sha256": "71bb897a278b6501067d33e6e7aff933e56d4aa3ece8567d5f3343d0bb34ec7d",
+  "name": "stage11_acl_rag_eval_v2_1_2_golden",
+  "description": "V2.1.2 Golden：按人工批准的 V2.1.1 派生，修正父块相关性身份，补充只读调查确认的语义相关 Chunk，并把语义相关性与权威/禁止来源判定拆开。全部语义变化已经 human:TGG 人工审核通过。",
+  "knowledge_base_dir": "docs/knowledge-base-acl-test",
+  "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+  "created_at": "2026-08-13T12:00:00+08:00",
+  "cases": [
+    {
+      "case_id": "reader_es_milvus_parent_child_expansion",
+      "dataset_version": "2.1.2",
+      "metric_profile": "rag",
+      "question": "部署验收文档中的“ES 父子块与 Milvus 子块校验”章节规定了哪些检查要求？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_d26c5a41d92d12dd",
+        "chunk_7f03bd18244ce719",
+        "chunk_315425934f0cd8b4"
+      ],
+      "relevant_doc_ids": [
+        "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+          "source_revision": "1ca37f12a66b447dab52667f783702c9b411a3ae",
+          "logical_chunk_ids": [
+            "chunk_d26c5a41d92d12dd",
+            "chunk_7f03bd18244ce719",
+            "chunk_315425934f0cd8b4"
+          ],
+          "logical_parent_id": "parent_19d48d66c7b9141e",
+          "matched_logical_child_ids": [
+            "chunk_d26c5a41d92d12dd",
+            "chunk_7f03bd18244ce719",
+            "chunk_315425934f0cd8b4"
+          ],
+          "source_path": "development/rag-deployment-checklist.md",
+          "section_keywords": [
+            "12.7 ES 父子块与 Milvus 子块校验"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "es_parent_child",
+          "text": "Elasticsearch 中父块保存文档元信息和完整内容摘要，子块保存切分后的内容，并通过 parent_id 关联。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "milvus_children",
+          "text": "Milvus 只保存子块级向量记录，每条记录通过 parent_id 指向 Elasticsearch 父块。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "integrity_checks",
+          "text": "发布后需要确认每个 ES 子块在 Milvus 中都有对应向量记录，并且所有 parent_id 引用有效、没有孤儿记录。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "查询 ES 父子块、Milvus 子块的存储职责和关联完整性校验。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "parent_expansion"
+      ],
+      "expected_answer_keywords": [
+        "parent_id",
+        "Elasticsearch",
+        "Milvus",
+        "孤儿记录"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:v2.1.2-relevance-authority-corrector",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-13T01:10:36+08:00",
+      "review_note": "人工确认 V2.1.2 的父块身份、语义相关全集、权威来源、禁止来源及冲突知识替换方案；批准用于知识版本 6 的正式评测。",
+      "note": "命中子块只有章节标题，完整检查项来自更长的 ES 父块，用于真实验证 parent_expansion。",
+      "retrieval_relevance_unit": "logical_parent",
+      "relevant_logical_parent_ids": [
+        "parent_19d48d66c7b9141e"
+      ],
+      "authoritative_logical_chunk_ids": [],
+      "authoritative_logical_parent_ids": [
+        "parent_19d48d66c7b9141e"
+      ]
+    },
+    {
+      "case_id": "reader_ue5_perfect_block",
+      "dataset_version": "2.1.2",
+      "metric_profile": "rag",
+      "question": "UE5 战斗系统设计中完美格挡成功后的效果与时间窗口控制方式",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_2d0790c48f8b0092"
+      ],
+      "relevant_doc_ids": [
+        "a433cee8a730e44bc5beaa46fb2026fcee5010664e67f02965223dc1d1d9e5fa"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "a433cee8a730e44bc5beaa46fb2026fcee5010664e67f02965223dc1d1d9e5fa",
+          "source_revision": "42144c592d6ebdabe8f0ea6b732f581c4568c940",
+          "logical_chunk_ids": [
+            "chunk_2d0790c48f8b0092"
+          ],
+          "source_path": "development/UE5战斗系统程序架构设计_RAG测试.md",
+          "section_keywords": [
+            "完美格挡"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "zero_damage",
+          "text": "完美格挡成功可以将伤害降为零，并返还部分精力。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "counter_effects",
+          "text": "完美格挡成功还会对攻击者施加硬直，并触发慢动作、摄像机震动以及专用特效和音效。",
+          "weight": 0.8,
+          "critical": false
+        },
+        {
+          "fact_id": "window_control",
+          "text": "完美格挡窗口应由技能时间轴或动画通知控制，不应在 Tick 中使用多个时间判断分支。",
+          "weight": 0.6,
+          "critical": false
+        }
+      ],
+      "question_intent": "查询完美格挡的成功效果和窗口控制方式。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable"
+      ],
+      "expected_answer_keywords": [
+        "伤害降为零",
+        "硬直",
+        "技能时间轴"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:v2.1.2-relevance-authority-corrector",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-13T01:10:36+08:00",
+      "review_note": "人工确认 V2.1.2 的父块身份、语义相关全集、权威来源、禁止来源及冲突知识替换方案；批准用于知识版本 6 的正式评测。",
+      "note": "单个黄金块直接包含完整效果和时间窗口控制方式。",
+      "retrieval_relevance_unit": "logical_chunk",
+      "relevant_logical_parent_ids": [],
+      "authoritative_logical_chunk_ids": [
+        "chunk_2d0790c48f8b0092"
+      ],
+      "authoritative_logical_parent_ids": []
+    },
+    {
+      "case_id": "reader_gitlab_rollback_authoritative",
+      "dataset_version": "2.1.2",
+      "metric_profile": "rag",
+      "question": "知识库文档发布出问题需要回滚时的正确回滚方式",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_296a2380e2d87791",
+        "chunk_bb13f7442fb8745c",
+        "chunk_58906be3fa1f61ce"
+      ],
+      "relevant_doc_ids": [
+        "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+        "787f44904efba65722db4a6b252c8ddcc35862f71b7ec084e28456791ca13aca",
+        "950da54b4e3d83ca25f80c069532a907891291a64ecafc7fd05ebd5d2d3768ca"
+      ],
+      "forbidden_logical_chunk_ids": [
+        "chunk_bb13f7442fb8745c",
+        "chunk_58906be3fa1f61ce"
+      ],
+      "expected_sources": [
+        {
+          "logical_doc_id": "950da54b4e3d83ca25f80c069532a907891291a64ecafc7fd05ebd5d2d3768ca",
+          "source_revision": "74e9752d76095c7aaabb0355222e68eb7eff2299",
+          "logical_chunk_ids": [
+            "chunk_296a2380e2d87791"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "development/knowledge-publication-operations.md",
+          "section_keywords": [
+            "6. 回滚原则"
+          ]
+        },
+        {
+          "logical_doc_id": "787f44904efba65722db4a6b252c8ddcc35862f71b7ec084e28456791ca13aca",
+          "source_revision": "049c22ae7853e9318018e2e4a32ca49b71ed451d",
+          "logical_chunk_ids": [
+            "chunk_bb13f7442fb8745c"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "development/gitlab-agent-mr-governance.md",
+          "section_keywords": [
+            "手动回滚"
+          ]
+        },
+        {
+          "logical_doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+          "source_revision": "1ca37f12a66b447dab52667f783702c9b411a3ae",
+          "logical_chunk_ids": [
+            "chunk_58906be3fa1f61ce"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "development/rag-deployment-checklist.md",
+          "section_keywords": [
+            "12.10 回滚机制"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "revert_mr",
+          "text": "文档事实回滚必须通过 GitLab 新建 Revert Commit 和 MR，再由 Maintainer 合并。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "forbidden_direct_change",
+          "text": "禁止直接把 PostgreSQL 正式版本指针改回旧值，也禁止直接删除 ES/Milvus 新记录。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "查询发布回滚的推荐流程和禁止操作。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答",
+        "只能采用 GitLab Revert Commit 与 MR 的权威回滚流程，不得采用直接修改数据库版本指针的旧方案。"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing",
+        "authoritative_source_required",
+        "forbidden_source_retrieved"
+      ],
+      "scenario_tags": [
+        "answerable"
+      ],
+      "expected_answer_keywords": [
+        "Revert",
+        "MR",
+        "禁止直接"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:v2.1.2-relevance-authority-corrector",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-13T01:10:36+08:00",
+      "review_note": "人工确认 V2.1.2 的父块身份、语义相关全集、权威来源、禁止来源及冲突知识替换方案；批准用于知识版本 6 的正式评测。",
+      "note": "只采用与当前发布状态表和审计流程一致的运行手册作为权威来源。",
+      "retrieval_relevance_unit": "logical_chunk",
+      "relevant_logical_parent_ids": [],
+      "authoritative_logical_chunk_ids": [
+        "chunk_296a2380e2d87791"
+      ],
+      "authoritative_logical_parent_ids": []
+    },
+    {
+      "case_id": "reader_webhook_worker_multi_source",
+      "dataset_version": "2.1.2",
+      "metric_profile": "rag",
+      "question": "GitLab MR 合并后文档发布任务是如何处理的？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_dea252b8024f71e1",
+        "chunk_0452d406311e7d7b",
+        "chunk_1bad0a3f3f2ac852",
+        "chunk_cb80f57b1ca93ed4",
+        "chunk_6a62985afb908b63"
+      ],
+      "relevant_doc_ids": [
+        "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+        "787f44904efba65722db4a6b252c8ddcc35862f71b7ec084e28456791ca13aca",
+        "950da54b4e3d83ca25f80c069532a907891291a64ecafc7fd05ebd5d2d3768ca",
+        "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "787f44904efba65722db4a6b252c8ddcc35862f71b7ec084e28456791ca13aca",
+          "source_revision": "049c22ae7853e9318018e2e4a32ca49b71ed451d",
+          "logical_chunk_ids": [
+            "chunk_dea252b8024f71e1",
+            "chunk_6a62985afb908b63"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "development/gitlab-agent-mr-governance.md",
+          "section_keywords": [
+            "独立 Worker 处理",
+            "Webhook 配置"
+          ]
+        },
+        {
+          "logical_doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+          "source_revision": "1ca37f12a66b447dab52667f783702c9b411a3ae",
+          "logical_chunk_ids": [
+            "chunk_0452d406311e7d7b"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "development/rag-deployment-checklist.md",
+          "section_keywords": [
+            "12.4 Webhook 只登记任务（不直接处理）"
+          ]
+        },
+        {
+          "logical_doc_id": "950da54b4e3d83ca25f80c069532a907891291a64ecafc7fd05ebd5d2d3768ca",
+          "source_revision": "74e9752d76095c7aaabb0355222e68eb7eff2299",
+          "logical_chunk_ids": [
+            "chunk_1bad0a3f3f2ac852"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "development/knowledge-publication-operations.md",
+          "section_keywords": [
+            "4. 日常发布检查"
+          ]
+        },
+        {
+          "logical_doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_revision": "0a114b3177018cd00dc87b50f26fa980da73cf0e",
+          "logical_chunk_ids": [
+            "chunk_cb80f57b1ca93ed4"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "development/rag-backend-deployment.md",
+          "section_keywords": [
+            "21.2 合并后检查"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "webhook_register_only",
+          "text": "Webhook 接收端应快速返回 202，只登记或合并待处理任务，不直接处理文档发布。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "worker_duties",
+          "text": "独立 Worker 负责从任务队列拉取 pending 任务、拉取对应 commit 的文档内容、校验权限规则并写入 Elasticsearch/Milvus 等存储。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "查询 Webhook 只登记任务与独立 Worker 职责分工。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "multiple_relevant_sources"
+      ],
+      "expected_answer_keywords": [
+        "202",
+        "任务队列",
+        "Worker"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:v2.1.2-relevance-authority-corrector",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-13T01:10:36+08:00",
+      "review_note": "人工确认 V2.1.2 的父块身份、语义相关全集、权威来源、禁止来源及冲突知识替换方案；批准用于知识版本 6 的正式评测。",
+      "note": "治理规范与部署验收清单两个文档交叉验证。",
+      "retrieval_relevance_unit": "logical_chunk",
+      "relevant_logical_parent_ids": [],
+      "authoritative_logical_chunk_ids": [
+        "chunk_dea252b8024f71e1",
+        "chunk_0452d406311e7d7b"
+      ],
+      "authoritative_logical_parent_ids": []
+    },
+    {
+      "case_id": "reader_milvus_index_check",
+      "dataset_version": "2.1.2",
+      "metric_profile": "rag",
+      "question": "RAG 后端文档导入后检查 Milvus collection 需要确认哪些内容？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_4e797af9683c05c2",
+        "chunk_550d5fb338ceb75a"
+      ],
+      "relevant_doc_ids": [
+        "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+        "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_revision": "0a114b3177018cd00dc87b50f26fa980da73cf0e",
+          "logical_chunk_ids": [
+            "chunk_4e797af9683c05c2"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "development/rag-backend-deployment.md",
+          "section_keywords": [
+            "11. Milvus 索引检查"
+          ]
+        },
+        {
+          "logical_doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+          "source_revision": "1ca37f12a66b447dab52667f783702c9b411a3ae",
+          "logical_chunk_ids": [
+            "chunk_550d5fb338ceb75a"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "development/rag-deployment-checklist.md",
+          "section_keywords": [
+            "六、Milvus 索引检查"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "collection_created",
+          "text": "文档导入后需要确认 Milvus collection 已经创建。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "check_fields",
+          "text": "需要检查 collection name、vector dimension、primary key、doc_id、chunk_id、visibility、allowed_departments 等内容。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "查询 Milvus 索引导入后的检查项。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable"
+      ],
+      "expected_answer_keywords": [
+        "collection",
+        "vector dimension",
+        "allowed_departments"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:v2.1.2-relevance-authority-corrector",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-13T01:10:36+08:00",
+      "review_note": "人工确认 V2.1.2 的父块身份、语义相关全集、权威来源、禁止来源及冲突知识替换方案；批准用于知识版本 6 的正式评测。",
+      "note": "单块直接命中的常规 answerable case。",
+      "retrieval_relevance_unit": "logical_chunk",
+      "relevant_logical_parent_ids": [],
+      "authoritative_logical_chunk_ids": [
+        "chunk_4e797af9683c05c2"
+      ],
+      "authoritative_logical_parent_ids": []
+    },
+    {
+      "case_id": "reader_art_acl_negative",
+      "dataset_version": "2.1.2",
+      "metric_profile": "rag",
+      "question": "角色美术规范是否包含“月光披风规则”和“女巫帽轮廓标准”这两个内部测试关键词？",
+      "answerable": false,
+      "expected_route": "rag_no_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [],
+      "relevant_doc_ids": [],
+      "forbidden_logical_chunk_ids": [
+        "chunk_0aa1bbea341cfb4d"
+      ],
+      "expected_sources": [],
+      "required_key_facts": [],
+      "question_intent": "development 用户询问 art 部门文档真实包含的内部测试关键词，验证 ACL 过滤不泄漏。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答",
+        "不得输出 art 部门文档中的内部测试关键词内容"
+      ],
+      "hard_gate_labels": [
+        "acl_no_leak"
+      ],
+      "scenario_tags": [
+        "unanswerable",
+        "permission_filter"
+      ],
+      "expected_answer_keywords": [],
+      "forbidden_answer_keywords": [
+        "月光披风",
+        "女巫帽轮廓"
+      ],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:v2.1.2-relevance-authority-corrector",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-13T01:10:36+08:00",
+      "review_note": "人工确认 V2.1.2 的父块身份、语义相关全集、权威来源、禁止来源及冲突知识替换方案；批准用于知识版本 6 的正式评测。",
+      "note": "隐藏 Chunk 明确包含这两个关键词，但 art 文档对 development 用户不可见，因而应保守拒答。",
+      "retrieval_relevance_unit": "logical_chunk",
+      "relevant_logical_parent_ids": [],
+      "authoritative_logical_chunk_ids": [],
+      "authoritative_logical_parent_ids": []
+    },
+    {
+      "case_id": "reader_visibility_positive",
+      "dataset_version": "2.1.2",
+      "metric_profile": "rag",
+      "question": "权限过滤规则中 development 用户应能检索到哪些文档，以及不应检索到哪些文档？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_f8a53eabbef5743c",
+        "chunk_e61f024c79efd70d",
+        "chunk_ef414e98d607ed62",
+        "chunk_0516c4cb2db53ade"
+      ],
+      "relevant_doc_ids": [
+        "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+        "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+        "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_revision": "0a114b3177018cd00dc87b50f26fa980da73cf0e",
+          "logical_chunk_ids": [
+            "chunk_f8a53eabbef5743c"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "development/rag-backend-deployment.md",
+          "section_keywords": [
+            "13. 权限过滤规则"
+          ]
+        },
+        {
+          "logical_doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+          "source_revision": "1a8a7b29380a74132dddd63819757fb05e281ca5",
+          "logical_chunk_ids": [
+            "chunk_e61f024c79efd70d",
+            "chunk_ef414e98d607ed62"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "public/project-overview.md",
+          "section_keywords": [
+            "3. 测试知识库目录",
+            "6.3 development 部门用户"
+          ]
+        },
+        {
+          "logical_doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+          "source_revision": "1ca37f12a66b447dab52667f783702c9b411a3ae",
+          "logical_chunk_ids": [
+            "chunk_0516c4cb2db53ade"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "development/rag-deployment-checklist.md",
+          "section_keywords": [
+            "8.4 部门隔离测试（以 development 用户为例）"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "visible_docs",
+          "text": "development 用户应能检索到 development/rag-backend-deployment.md 和 public/project-overview.md。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "invisible_docs",
+          "text": "development 用户不应检索到 art 目录下的角色美术风格文档等 art 部门私有文档。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "查询 development 用户可见与不可见文档边界。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "permission_filter",
+        "multiple_relevant_sources"
+      ],
+      "expected_answer_keywords": [
+        "rag-backend-deployment",
+        "project-overview",
+        "art"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:v2.1.2-relevance-authority-corrector",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-13T01:10:36+08:00",
+      "review_note": "人工确认 V2.1.2 的父块身份、语义相关全集、权威来源、禁止来源及冲突知识替换方案；批准用于知识版本 6 的正式评测。",
+      "note": "权限过滤正例：问题本身可见且可回答。",
+      "retrieval_relevance_unit": "logical_chunk",
+      "relevant_logical_parent_ids": [],
+      "authoritative_logical_chunk_ids": [
+        "chunk_f8a53eabbef5743c",
+        "chunk_e61f024c79efd70d"
+      ],
+      "authoritative_logical_parent_ids": []
+    },
+    {
+      "case_id": "reader_incremental_input_buffer",
+      "dataset_version": "2.1.2",
+      "metric_profile": "rag",
+      "question": "增量更新验收规则中输入缓存窗口的建议值",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_fbbecbe7a07925ba"
+      ],
+      "relevant_doc_ids": [
+        "a433cee8a730e44bc5beaa46fb2026fcee5010664e67f02965223dc1d1d9e5fa"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "a433cee8a730e44bc5beaa46fb2026fcee5010664e67f02965223dc1d1d9e5fa",
+          "source_revision": "42144c592d6ebdabe8f0ea6b732f581c4568c940",
+          "logical_chunk_ids": [
+            "chunk_fbbecbe7a07925ba"
+          ],
+          "source_path": "development/UE5战斗系统程序架构设计_RAG测试.md",
+          "section_keywords": [
+            "增量更新测试"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "buffer_window",
+          "text": "输入缓存窗口建议使用 0.18～0.28 秒。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "notify_state",
+          "text": "输入缓存窗口由 Montage Notify State 控制开启与关闭。",
+          "weight": 0.6,
+          "critical": false
+        }
+      ],
+      "question_intent": "查询增量更新验收规则中的输入缓存窗口参数。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable"
+      ],
+      "expected_answer_keywords": [
+        "0.18",
+        "0.28",
+        "Montage Notify State"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:v2.1.2-relevance-authority-corrector",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-13T01:10:36+08:00",
+      "review_note": "人工确认 V2.1.2 的父块身份、语义相关全集、权威来源、禁止来源及冲突知识替换方案；批准用于知识版本 6 的正式评测。",
+      "note": "验证增量 ingestion 后新增内容可被检索。",
+      "retrieval_relevance_unit": "logical_chunk",
+      "relevant_logical_parent_ids": [],
+      "authoritative_logical_chunk_ids": [
+        "chunk_fbbecbe7a07925ba"
+      ],
+      "authoritative_logical_parent_ids": []
+    },
+    {
+      "case_id": "reader_unanswerable_audio_middleware",
+      "dataset_version": "2.1.2",
+      "metric_profile": "rag",
+      "question": "知识库中是否有关于 Wwise 音频中间件 Profiler 接入战斗系统性能分析的资料？",
+      "answerable": false,
+      "expected_route": "rag_no_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [],
+      "relevant_doc_ids": [],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [],
+      "required_key_facts": [],
+      "question_intent": "知识库中没有任何音频中间件接入内容，应保守拒答而不是编造。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [],
+      "scenario_tags": [
+        "unanswerable"
+      ],
+      "expected_answer_keywords": [],
+      "forbidden_answer_keywords": [
+        "Wwise Profiler",
+        "AudioMeter"
+      ],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:v2.1.2-relevance-authority-corrector",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-13T01:10:36+08:00",
+      "review_note": "人工确认 V2.1.2 的父块身份、语义相关全集、权威来源、禁止来源及冲突知识替换方案；批准用于知识版本 6 的正式评测。",
+      "note": "话题与战斗系统相关但知识库无证据，测试 no-evidence 拒答。",
+      "retrieval_relevance_unit": "logical_chunk",
+      "relevant_logical_parent_ids": [],
+      "authoritative_logical_chunk_ids": [],
+      "authoritative_logical_parent_ids": []
+    },
+    {
+      "case_id": "reader_agent_tool_acceptance_underfilled",
+      "dataset_version": "2.1.2",
+      "metric_profile": "rag",
+      "question": "Agent Tool Acceptance 文档用于哪个阶段的 HTTP 验收？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 8,
+      "candidate_k": 16,
+      "min_score": 0.0,
+      "filters": {
+        "source_path": "development/agent-tool-acceptance.md"
+      },
+      "relevant_logical_chunk_ids": [
+        "chunk_321a5c310d96c5a9"
+      ],
+      "relevant_doc_ids": [
+        "c6b54b82eeb977fdfe02b84ee9dbe652ed84828dd206890a22580236aee0bf35"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "c6b54b82eeb977fdfe02b84ee9dbe652ed84828dd206890a22580236aee0bf35",
+          "source_revision": "42144c592d6ebdabe8f0ea6b732f581c4568c940",
+          "logical_chunk_ids": [
+            "chunk_321a5c310d96c5a9"
+          ],
+          "source_path": "development/agent-tool-acceptance.md",
+          "section_keywords": [
+            "Agent Tool Acceptance"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "acceptance_stage",
+          "text": "Agent Tool Acceptance 文档用于阶段 15-7 的 HTTP 验收。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "查询 Agent Tool Acceptance 文档对应的 HTTP 验收阶段。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "underfilled_k"
+      ],
+      "expected_answer_keywords": [
+        "15-7",
+        "HTTP 验收"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:v2.1.2-relevance-authority-corrector",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-13T01:10:36+08:00",
+      "review_note": "人工确认 V2.1.2 的父块身份、语义相关全集、权威来源、禁止来源及冲突知识替换方案；批准用于知识版本 6 的正式评测。",
+      "note": "source_path 限定的文档在知识版本 6 中只有 1 个有效子块，因此 top_k=8 时返回数量必然不足 K。",
+      "retrieval_relevance_unit": "logical_chunk",
+      "relevant_logical_parent_ids": [],
+      "authoritative_logical_chunk_ids": [
+        "chunk_321a5c310d96c5a9"
+      ],
+      "authoritative_logical_parent_ids": []
+    },
+    {
+      "case_id": "reader_worker_failure_recovery",
+      "dataset_version": "2.1.2",
+      "metric_profile": "rag",
+      "question": "知识发布任务 Worker 失败后的恢复处理方式",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_bf7e323eb34c4674",
+        "chunk_31f6a030be67925c"
+      ],
+      "relevant_doc_ids": [
+        "950da54b4e3d83ca25f80c069532a907891291a64ecafc7fd05ebd5d2d3768ca",
+        "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "950da54b4e3d83ca25f80c069532a907891291a64ecafc7fd05ebd5d2d3768ca",
+          "source_revision": "74e9752d76095c7aaabb0355222e68eb7eff2299",
+          "logical_chunk_ids": [
+            "chunk_bf7e323eb34c4674"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "development/knowledge-publication-operations.md",
+          "section_keywords": [
+            "5.2 Worker 任务失败"
+          ]
+        },
+        {
+          "logical_doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_revision": "0a114b3177018cd00dc87b50f26fa980da73cf0e",
+          "logical_chunk_ids": [
+            "chunk_31f6a030be67925c"
+          ],
+          "logical_parent_id": null,
+          "matched_logical_child_ids": [],
+          "source_path": "development/rag-backend-deployment.md",
+          "section_keywords": [
+            "21.3 失败处理"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "old_version_keeps_serving",
+          "text": "Worker 失败时旧正式版本应继续提供检索。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "inspect_first",
+          "text": "应先读取任务的阶段、error_code、租约和重试次数，再检查 GitLab Token、Qwen Embedding、ES 与 Milvus。",
+          "weight": 0.8,
+          "critical": false
+        },
+        {
+          "fact_id": "retry_original_task",
+          "text": "外部依赖恢复后使用原任务重试，避免产生重复候选版本。",
+          "weight": 0.8,
+          "critical": false
+        }
+      ],
+      "question_intent": "查询 Worker 任务失败的恢复与重试流程。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable"
+      ],
+      "expected_answer_keywords": [
+        "旧正式版本",
+        "error_code",
+        "原任务重试"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:v2.1.2-relevance-authority-corrector",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-13T01:10:36+08:00",
+      "review_note": "人工确认 V2.1.2 的父块身份、语义相关全集、权威来源、禁止来源及冲突知识替换方案；批准用于知识版本 6 的正式评测。",
+      "note": "运行手册故障恢复章节单块 case。",
+      "retrieval_relevance_unit": "logical_chunk",
+      "relevant_logical_parent_ids": [],
+      "authoritative_logical_chunk_ids": [
+        "chunk_bf7e323eb34c4674"
+      ],
+      "authoritative_logical_parent_ids": []
+    },
+    {
+      "case_id": "operator_pixel_sprite_rules",
+      "dataset_version": "2.1.2",
+      "metric_profile": "rag",
+      "question": "角色美术规范中像素 Sprite 的制作核心原则与制作要求",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_MBeEmT7K2eGguofW4CZ1aGTp",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_a2a894bca15c2988"
+      ],
+      "relevant_doc_ids": [
+        "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+          "source_revision": "039569a030fe133500fe89a85ac7e3347a389ed7",
+          "logical_chunk_ids": [
+            "chunk_a2a894bca15c2988"
+          ],
+          "source_path": "art/character-art-style.md",
+          "section_keywords": [
+            "像素 Sprite 规范"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "clarity_first",
+          "text": "像素 Sprite 的核心原则是清晰度优先于细节数量。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "production_rules",
+          "text": "Sprite 制作要求包括使用清晰色块、避免单像素噪点、保持头部和手部可读、不要过度抗锯齿、保持武器或工具轮廓清晰。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "查询角色美术规范中像素 Sprite 的制作要求。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable"
+      ],
+      "expected_answer_keywords": [
+        "清晰度优先",
+        "色块",
+        "噪点"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:v2.1.2-relevance-authority-corrector",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-13T01:10:36+08:00",
+      "review_note": "人工确认 V2.1.2 的父块身份、语义相关全集、权威来源、禁止来源及冲突知识替换方案；批准用于知识版本 6 的正式评测。",
+      "note": "art 部门用户查询本部门文档的正例。",
+      "retrieval_relevance_unit": "logical_chunk",
+      "relevant_logical_parent_ids": [],
+      "authoritative_logical_chunk_ids": [
+        "chunk_a2a894bca15c2988"
+      ],
+      "authoritative_logical_parent_ids": []
+    },
+    {
+      "case_id": "operator_documented_art_scope_multi",
+      "dataset_version": "2.1.2",
+      "metric_profile": "rag",
+      "question": "ACL 规则文档如何描述普通 art 部门用户可见和不可见的文档范围？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_MBeEmT7K2eGguofW4CZ1aGTp",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_15eb212207bbd84e",
+        "chunk_9ca728a00b73727c"
+      ],
+      "relevant_doc_ids": [
+        "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+        "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+          "source_revision": "039569a030fe133500fe89a85ac7e3347a389ed7",
+          "logical_chunk_ids": [
+            "chunk_15eb212207bbd84e"
+          ],
+          "source_path": "art/character-art-style.md",
+          "section_keywords": [
+            "总结",
+            "art 部门用户"
+          ]
+        },
+        {
+          "logical_doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+          "source_revision": "1a8a7b29380a74132dddd63819757fb05e281ca5",
+          "logical_chunk_ids": [
+            "chunk_9ca728a00b73727c"
+          ],
+          "source_path": "public/project-overview.md",
+          "section_keywords": [
+            "总结",
+            "art 部门用户"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "visible_docs",
+          "text": "art 用户应能检索到 art/character-art-style.md 和 public/project-overview.md。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "invisible_docs",
+          "text": "art 用户不应检索到 product_planning/combat-design.md 等其他部门私有文档。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "查询知识文档中记录的普通 art 用户可见与不可见文档边界。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "multiple_relevant_sources"
+      ],
+      "expected_answer_keywords": [
+        "character-art-style",
+        "project-overview",
+        "combat-design"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:v2.1.2-relevance-authority-corrector",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-13T01:10:36+08:00",
+      "review_note": "人工确认 V2.1.2 的父块身份、语义相关全集、权威来源、禁止来源及冲突知识替换方案；批准用于知识版本 6 的正式评测。",
+      "note": "评测身份具有 knowledge:read:all；本 case 只评测两份文档对普通 art 用户边界的描述，不作为该身份的 ACL 执行断言。",
+      "retrieval_relevance_unit": "logical_chunk",
+      "relevant_logical_parent_ids": [],
+      "authoritative_logical_chunk_ids": [
+        "chunk_15eb212207bbd84e",
+        "chunk_9ca728a00b73727c"
+      ],
+      "authoritative_logical_parent_ids": []
+    },
+    {
+      "case_id": "operator_global_reader_dev_positive",
+      "dataset_version": "2.1.2",
+      "metric_profile": "rag",
+      "question": "知识库中是否有关于 RAG 后端部署环境变量要求与 FastAPI 本地启动命令的资料？",
+      "answerable": true,
+      "expected_route": "rag_answer",
+      "eval_principal_id": "user_MBeEmT7K2eGguofW4CZ1aGTp",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [
+        "chunk_bf5a29d90fe09980",
+        "chunk_4280ef8844cf5af5"
+      ],
+      "relevant_doc_ids": [
+        "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16"
+      ],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [
+        {
+          "logical_doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_revision": "0a114b3177018cd00dc87b50f26fa980da73cf0e",
+          "logical_chunk_ids": [
+            "chunk_bf5a29d90fe09980"
+          ],
+          "source_path": "development/rag-backend-deployment.md",
+          "section_keywords": [
+            "环境变量配置"
+          ]
+        },
+        {
+          "logical_doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_revision": "0a114b3177018cd00dc87b50f26fa980da73cf0e",
+          "logical_chunk_ids": [
+            "chunk_4280ef8844cf5af5"
+          ],
+          "source_path": "development/rag-backend-deployment.md",
+          "section_keywords": [
+            "FastAPI 服务启动"
+          ]
+        }
+      ],
+      "required_key_facts": [
+        {
+          "fact_id": "environment_groups",
+          "text": "部署前的 .env 建议包含应用、认证与 JWT、数据库、Milvus、Elasticsearch 以及模型 Provider 等配置。",
+          "weight": 1.0,
+          "critical": true
+        },
+        {
+          "fact_id": "startup_command",
+          "text": "FastAPI 本地启动命令是 uvicorn fast_app.main:app --reload。",
+          "weight": 1.0,
+          "critical": true
+        }
+      ],
+      "question_intent": "全库读者跨部门查询 development 部署文档中的环境变量类别和启动命令。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [
+        "critical_fact_missing"
+      ],
+      "scenario_tags": [
+        "answerable",
+        "permission_filter"
+      ],
+      "expected_answer_keywords": [
+        "JWT",
+        "Milvus",
+        "Elasticsearch",
+        "uvicorn fast_app.main:app"
+      ],
+      "forbidden_answer_keywords": [],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:v2.1.2-relevance-authority-corrector",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-13T01:10:36+08:00",
+      "review_note": "人工确认 V2.1.2 的父块身份、语义相关全集、权威来源、禁止来源及冲突知识替换方案；批准用于知识版本 6 的正式评测。",
+      "note": "rbac_operator 具有 knowledge:read:all，能够合法跨部门读取 development 文档；用于验证全库读取权限正例。",
+      "retrieval_relevance_unit": "logical_chunk",
+      "relevant_logical_parent_ids": [],
+      "authoritative_logical_chunk_ids": [
+        "chunk_bf5a29d90fe09980",
+        "chunk_4280ef8844cf5af5"
+      ],
+      "authoritative_logical_parent_ids": []
+    },
+    {
+      "case_id": "reader_no_result_backup_schedule",
+      "dataset_version": "2.1.2",
+      "metric_profile": "rag",
+      "question": "知识库文档冷备策略的执行时间与备份文件存放的存储桶位置",
+      "answerable": false,
+      "expected_route": "rag_no_answer",
+      "eval_principal_id": "user_rp-iYI84UD1vMXH039AGHYQz",
+      "knowledge_version": 6,
+      "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+      "mode": "hybrid",
+      "top_k": 5,
+      "candidate_k": 10,
+      "min_score": 0.0,
+      "filters": {},
+      "relevant_logical_chunk_ids": [],
+      "relevant_doc_ids": [],
+      "forbidden_logical_chunk_ids": [],
+      "expected_sources": [],
+      "required_key_facts": [],
+      "question_intent": "话题属于知识库运维领域会进入检索链路，但知识库中完全没有备份策略内容，预期检索无相关结果后保守拒答。",
+      "constraints": [
+        "只根据当前身份可见的知识库证据回答"
+      ],
+      "hard_gate_labels": [],
+      "scenario_tags": [
+        "unanswerable",
+        "no_result"
+      ],
+      "expected_answer_keywords": [],
+      "forbidden_answer_keywords": [
+        "S3 存储桶",
+        "凌晨两点"
+      ],
+      "annotation_method": "model_assisted",
+      "annotated_by": "codex:v2.1.2-relevance-authority-corrector",
+      "review_status": "approved",
+      "reviewed_by": "human:TGG",
+      "reviewed_at": "2026-08-13T01:10:36+08:00",
+      "review_note": "人工确认 V2.1.2 的父块身份、语义相关全集、权威来源、禁止来源及冲突知识替换方案；批准用于知识版本 6 的正式评测。",
+      "note": "验证检索执行但零相关证据时的拒答行为（no_result）。",
+      "retrieval_relevance_unit": "logical_chunk",
+      "relevant_logical_parent_ids": [],
+      "authoritative_logical_chunk_ids": [],
+      "authoritative_logical_parent_ids": []
+    }
+  ]
+}

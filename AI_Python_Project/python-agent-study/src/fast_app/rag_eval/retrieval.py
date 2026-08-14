@@ -8,6 +8,7 @@ from fast_app.rag_eval.models import (
     RagEvalMetricName,
     RagEvalMetricResult,
     RetrievalMetricEvaluation,
+    RetrievalSourcePolicyResult,
 )
 
 
@@ -67,6 +68,9 @@ def evaluate_retrieval_metrics(
     ranked_logical_chunk_ids: Iterable[str],
     k: int,
     answerable: bool,
+    authoritative_logical_ids: Iterable[str] = (),
+    forbidden_logical_ids: Iterable[str] = (),
+    ranked_forbidden_logical_ids: Iterable[str] | None = None,
     thresholds: Mapping[RagEvalMetricName, float] | None = None,
 ) -> RetrievalMetricEvaluation:
     """按去重逻辑 Chunk 身份计算单 case 的四个检索指标。"""
@@ -76,12 +80,36 @@ def evaluate_retrieval_metrics(
 
     gold = {value.strip() for value in relevant_logical_chunk_ids if value.strip()}
     ranked = _unique_top_k(ranked_logical_chunk_ids, k)
+    authoritative = {
+        value.strip() for value in authoritative_logical_ids if value.strip()
+    }
+    forbidden = {value.strip() for value in forbidden_logical_ids if value.strip()}
+    policy_ranked = (
+        ranked
+        if ranked_forbidden_logical_ids is None
+        else _unique_top_k(ranked_forbidden_logical_ids, k)
+    )
     matched = [value for value in ranked if value in gold]
     false_positives = [value for value in ranked if value not in gold]
     first_rank = next(
         (rank for rank, value in enumerate(ranked, start=1) if value in gold),
         None,
     )
+    source_policy = None
+    if authoritative or forbidden:
+        matched_authoritative = [
+            value for value in ranked if value in authoritative
+        ]
+        missing_authoritative = sorted(authoritative - set(matched_authoritative))
+        forbidden_retrieved = [
+            value for value in policy_ranked if value in forbidden
+        ]
+        source_policy = RetrievalSourcePolicyResult(
+            passed=not missing_authoritative and not forbidden_retrieved,
+            matched_authoritative_logical_ids=matched_authoritative,
+            missing_authoritative_logical_ids=missing_authoritative,
+            forbidden_retrieved_logical_ids=forbidden_retrieved,
+        )
 
     if not answerable or not gold:
         metrics = {
@@ -120,6 +148,7 @@ def evaluate_retrieval_metrics(
         first_relevant_rank=first_rank,
         matched_logical_chunk_ids=matched,
         false_positive_logical_chunk_ids=false_positives,
+        source_policy=source_policy,
         metrics=metrics,
     )
 

@@ -103,15 +103,20 @@ class LightweightRagEvalRunner:
             for case in case_reports
             for result in case.metrics.values()
         )
+        source_policy_failures = sum(
+            case.retrieval_source_policy is not None
+            and not case.retrieval_source_policy.passed
+            for case in case_reports
+        )
         if failed == len(case_reports) and case_reports:
             status = "failed"
-        elif failed or skipped or metric_errors:
+        elif failed or skipped or metric_errors or source_policy_failures:
             status = "partial"
         else:
             status = "completed"
 
         return RagEvalRunReport(
-            schema_version="1.0",
+            schema_version="1.1",
             run_id=str(uuid4()),
             created_at=datetime.now(timezone.utc),
             status=status,
@@ -142,12 +147,14 @@ class LightweightRagEvalRunner:
     ) -> tuple[RagEvalCaseReport, str | None]:
         metrics: dict[RagEvalMetricName, RagEvalMetricResult] = {}
         judge_model: str | None = None
+        retrieval_source_policy = None
         if execution.status == "evaluated":
             retrieval_names = [
                 name for name in self.selected_metrics if name in RETRIEVAL_METRIC_NAMES
             ]
             if retrieval_names:
                 retrieval = _evaluate_retrieval(case, execution, self.thresholds)
+                retrieval_source_policy = retrieval.source_policy
                 metrics.update(
                     (name, retrieval.metrics[name]) for name in retrieval_names
                 )
@@ -210,6 +217,7 @@ class LightweightRagEvalRunner:
                 snapshot_hash=execution.snapshot.payload_hash,
                 latency_ms=payload.latency_ms,
                 metrics=metrics,
+                retrieval_source_policy=retrieval_source_policy,
                 error=execution.error,
             ),
             judge_model,
@@ -237,15 +245,33 @@ def _evaluate_retrieval(
     thresholds: Mapping[RagEvalMetricName, float],
 ):
     rerank = execution.snapshot.payload.retrieval_stages["rerank"]
-    ranked_ids = [
+    ranked_chunk_ids = [
         document.logical_chunk_id or f"__missing_logical_id__:{document.id}"
         for document in rerank.documents
     ]
+    if case.retrieval_relevance_unit == "logical_parent":
+        context = execution.snapshot.payload.final_context
+        context_documents = context.documents if context is not None else []
+        ranked_ids = [
+            document.logical_parent_id
+            or document.parent_id
+            or f"__missing_logical_parent_id__:{document.id}"
+            for document in context_documents
+        ]
+        relevant_ids = case.relevant_logical_parent_ids
+        authoritative_ids = case.authoritative_logical_parent_ids
+    else:
+        ranked_ids = ranked_chunk_ids
+        relevant_ids = case.relevant_logical_chunk_ids
+        authoritative_ids = case.authoritative_logical_chunk_ids
     return evaluate_retrieval_metrics(
-        relevant_logical_chunk_ids=case.relevant_logical_chunk_ids,
+        relevant_logical_chunk_ids=relevant_ids,
         ranked_logical_chunk_ids=ranked_ids,
         k=case.top_k,
         answerable=case.answerable,
+        authoritative_logical_ids=authoritative_ids,
+        forbidden_logical_ids=case.forbidden_logical_chunk_ids,
+        ranked_forbidden_logical_ids=ranked_chunk_ids,
         thresholds=thresholds,
     )
 

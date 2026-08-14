@@ -153,6 +153,30 @@ def render_markdown(report: RagEvalRunReport) -> str:
                 f"| `{case.case_id}` | `{name}` | {result.status} | "
                 f"{score} | {passed} | {detail} |"
             )
+    policies = [
+        (case.case_id, case.retrieval_source_policy)
+        for case in report.cases
+        if case.retrieval_source_policy is not None
+    ]
+    if policies:
+        lines.extend(
+            [
+                "",
+                "## 检索来源策略",
+                "",
+                "| Case | Passed | Matched authoritative | Missing authoritative | Forbidden retrieved |",
+                "|---|---|---|---|---|",
+            ]
+        )
+        for case_id, policy in policies:
+            assert policy is not None
+            matched = ", ".join(policy.matched_authoritative_logical_ids) or "N/A"
+            missing = ", ".join(policy.missing_authoritative_logical_ids) or "N/A"
+            forbidden = ", ".join(policy.forbidden_retrieved_logical_ids) or "N/A"
+            lines.append(
+                f"| `{case_id}` | {str(policy.passed).lower()} | "
+                f"{matched} | {missing} | {forbidden} |"
+            )
     lines.append("")
     return "\n".join(lines)
 

@@ -1,0 +1,3381 @@
+{
+  "generated_at": "2026-08-12T18:26:07.403207+00:00",
+  "dataset_version": "2.1.2",
+  "dataset_hash": "71bb897a278b6501067d33e6e7aff933e56d4aa3ece8567d5f3343d0bb34ec7d",
+  "knowledge_version": 6,
+  "pipeline_provider": "rag_agent",
+  "principal_id": "user_MBeEmT7K2eGguofW4CZ1aGTp",
+  "permission_scope": {
+    "can_read_all": true,
+    "user_id": "user_MBeEmT7K2eGguofW4CZ1aGTp",
+    "department_codes": [],
+    "allow_public": true
+  },
+  "target": {
+    "vector": "milvus:text-embedding-v4",
+    "keyword": "elasticsearch:python_agent_demo_chunks",
+    "reranker": "dashscope:qwen3-rerank"
+  },
+  "cases": [
+    {
+      "case_id": "operator_pixel_sprite_rules",
+      "question": "角色美术规范中像素 Sprite 的制作核心原则与制作要求",
+      "top_k": 5,
+      "candidate_k": 10,
+      "semantic_relevant_ids": [
+        "chunk_a2a894bca15c2988"
+      ],
+      "authoritative_ids": [
+        "chunk_a2a894bca15c2988"
+      ],
+      "forbidden_ids": [],
+      "stages": {
+        "vector": [
+          {
+            "rank": 1,
+            "logical_chunk_id": "chunk_a2a894bca15c2988",
+            "physical_id": "cddc8904521854cb7be3785958f3e5a9014ebd4e6777a7e560d1f2025ed61c3e",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "8. 像素 Sprite 规范",
+            "section_path": [
+              "角色美术风格规范",
+              "8. 像素 Sprite 规范"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_bfa7d957f0fc1e76",
+            "parent_id": "04afe55ee87c06049820770bab2ab8356a6717aa35708b082d10ca719e5cdece",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.8527635335922241,
+              "vector_score": 0.8527635335922241,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "semantic_relevant",
+              "authoritative"
+            ],
+            "content_preview": "## 8. 像素 Sprite 规范 像素 Sprite 的核心原则是： > 清晰度优先于细节数量。 Sprite 制作要求： * 使用清晰色块 * 避免单像素噪点 * 保持头部和手部可读 * 不要过度抗锯齿 * 保持武器或工具轮廓清晰 * 不要在不同动画帧中改变角色核心轮廓 Sprite 中最重要的区域： 1. 头部 2. 手部 3. 武器或工具 4. 脚部接地点 5. 头发和披风的运动 动画中需要体现二级运动： ```text 身体先动 头发随后动 披风略微延迟 饰品最后跟随 ``` 这样可以让角色动作更自然，也更有重量感。 ---"
+          },
+          {
+            "rank": 2,
+            "logical_chunk_id": "chunk_84a050a71d304e3c",
+            "physical_id": "6882f07e3dcf29c59a56575a52aeed527207cb2c52331b3b9a984ccbfbca4f03",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "3. 面部与表情规范",
+            "section_path": [
+              "角色美术风格规范",
+              "3. 面部与表情规范"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_6fb8e032eb6a9626",
+            "parent_id": "7bbe749b65c1153f709141653b2af3f52f91931c8955fa493e14f3c001416143",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.676822304725647,
+              "vector_score": 0.676822304725647,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 3. 面部与表情规范 角色面部需要在小尺寸下保持可读。 眼睛区域是表情表达的核心。即使是像素风格，也需要通过眼睛、眉毛、嘴角表达清楚情绪。 常用表情处理方式如下： | 情绪 | 表现方式 | | -- | -------------- | | 平静 | 眉毛放松，眼神稳定，嘴角自然 | | 好奇 | 眉毛略微抬起，眼睛更圆 | | 自信 | 眉毛略有角度，嘴角轻微上扬 | | 疲惫 | 上眼睑下压，嘴部放松 | | 生气 | 眉毛向内压，嘴部收紧 | | 惊讶 | 眼睛放大，嘴部变小或微张 |"
+          },
+          {
+            "rank": 3,
+            "logical_chunk_id": "chunk_15eb212207bbd84e",
+            "physical_id": "08ca9094a1ffbb74eac2f17b76930eae7f84a8dfb4cffacdec4a9be67614b353",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "14. 总结",
+            "section_path": [
+              "角色美术风格规范",
+              "14. 总结"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_258443bba6ba99c6",
+            "parent_id": "6b33827d0ee3bd2a79930cccd0bf670139c9d2953f4606c08ad1aa2a7058856d",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.6749974489212036,
+              "vector_score": 0.6749974489212036,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 14. 总结 本文档定义了项目角色美术风格的基础规范。 核心原则是： > 角色首先要有清晰轮廓，其次要有明确性格，最后才是细节丰富度。 在知识库 ACL 权限测试中，本文档应自动获得以下权限 metadata： ```text allowed_departments = [\"art\"] visibility = department 或默认部门可见 ``` 因此，该文档应该只对 art 部门用户可见，不应该被 development 或 product_planning 部门用户检索到。"
+          },
+          {
+            "rank": 4,
+            "logical_chunk_id": "chunk_e298eadb2224345f",
+            "physical_id": "eca08f20770cd685ceae21092edd95959dd4ce0c8fce6dc9a008707346063eef",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "3. 面部与表情规范",
+            "section_path": [
+              "角色美术风格规范",
+              "3. 面部与表情规范"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_6fb8e032eb6a9626",
+            "parent_id": "7bbe749b65c1153f709141653b2af3f52f91931c8955fa493e14f3c001416143",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.6701566576957703,
+              "vector_score": 0.6701566576957703,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "面部细节不应过度复杂。 需要避免： * 牙齿细节过多 * 鼻梁渲染过重 * 法令纹过强 * 阴影让表情变得阴沉 * 小尺寸下眼睛无法识别 ---"
+          },
+          {
+            "rank": 5,
+            "logical_chunk_id": "chunk_2b46de783426d416",
+            "physical_id": "c88ddd52addc72996be38890c4951fba8a2dce6ed4ab68ea1eb5b99d203ee5a4",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "1. 整体美术方向",
+            "section_path": [
+              "角色美术风格规范",
+              "1. 整体美术方向"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_f9b0e5c3e940d21b",
+            "parent_id": "7e47926b847f3ebbcb6562f35628cb8e76f0bf54e72b275c8a5e2fb93332068e",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.6527453064918518,
+              "vector_score": 0.6527453064918518,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 1. 整体美术方向 项目采用 **轻幻想冒险风格**。 角色不追求完全写实，而是更强调： * 轮廓清晰 * 情绪表达明确 * 颜色温暖 * 装备和服装具有辨识度 * 小尺寸下仍然可读 * 适合在 UI、像素 Sprite、立绘之间保持统一 推荐的视觉关键词： ```text 温暖 柔和 清晰 轻幻想 手绘感 角色性格明确 细节克制 轮廓优先 ``` 需要避免的方向： ```text 过度写实 颜色灰暗 盔甲细节过多 面部阴影过重 恐怖风格渲染 赛博朋克高对比霓虹光 头部和手部附近出现过多视觉噪声 ``` 角色设计的首要目标不是“细节最多”，而是“玩家第一眼能记住”。 ---"
+          },
+          {
+            "rank": 6,
+            "logical_chunk_id": "chunk_1970ee43c01da9d0",
+            "physical_id": "3ae82058518448abdc3448d414d7bb21d6ff80d5eec902d5ec2dad8e0c60d251",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "角色美术风格规范",
+            "section_path": [
+              "角色美术风格规范"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_2310585c0625b3e2",
+            "parent_id": "d796f59af05c3b49c1010890d5b2acdb53db28804bc3109b41a8353164f3d0f2",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.651367723941803,
+              "vector_score": 0.651367723941803,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "# 角色美术风格规范"
+          },
+          {
+            "rank": 7,
+            "logical_chunk_id": "chunk_f81cc00923a8b5fe",
+            "physical_id": "dd7f95e3435de6850bfe9a8d351bf14d949356238bc464700bf137d74675d798",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "6. 服装设计规范",
+            "section_path": [
+              "角色美术风格规范",
+              "6. 服装设计规范"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_d00696a7acc9faad",
+            "parent_id": "93158429360c6c6b9c81641944d74fe3e6253ef8274e7bf14ae3ffeccde1d092",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.65006422996521,
+              "vector_score": 0.65006422996521,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "服装设计要避免无意义堆叠。 好的角色服装通常来自： ```text 清晰轮廓 + 统一主题 + 少量高质量细节 ``` 细节应集中在视觉焦点区域： * 面部附近 * 胸口饰品 * 手部动作 * 武器或工具 * 腰部关键装饰 大面积留白是允许的。留白可以提升角色可读性。 ---"
+          },
+          {
+            "rank": 8,
+            "logical_chunk_id": "chunk_8590007d404f6dc1",
+            "physical_id": "11443944d1f9b51428d98706e41487417cb6e4128121657c397f4973980e2fea",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "文档目的",
+            "section_path": [
+              "角色美术风格规范",
+              "文档目的"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_48283932deb6a742",
+            "parent_id": "2924fd0042a8689fa78ebb20912f96b73a9cdaac018a0aa40ef0f5d143834449",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.6199073195457458,
+              "vector_score": 0.6199073195457458,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 文档目的 本文档用于定义当前 Agent RAG 测试项目中的角色美术风格规范，主要面向 **美术部门 art** 使用。 该文档适用于以下内容的设计与评审： * 角色概念设计 * 像素角色 Sprite * 角色立绘 * 战斗演出图 * UI 头像 * 动画参考图 * 技能展示中的角色姿态 本项目的角色美术目标是： > 角色需要具有清晰的轮廓、温暖的色彩、明确的性格表达，并且符合轻幻想冒险题材。 本文档属于美术部门内部知识库内容。非 art 部门用户在权限过滤正确的情况下，不应该检索到本文档内容。 ---"
+          },
+          {
+            "rank": 9,
+            "logical_chunk_id": "chunk_88e26d0181d91b64",
+            "physical_id": "6db2e1055a5a5a71827d940fcf2c417bf04dce1904c8f0f5a63a6f5d5d806398",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "12. 角色评审清单",
+            "section_path": [
+              "角色美术风格规范",
+              "12. 角色评审清单"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_4460c2ee4d55ce81",
+            "parent_id": "95c7873278b725eb43d677a360da116703add38049b4f931a059709dda2fc9ed",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.610429584980011,
+              "vector_score": 0.610429584980011,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 12. 角色评审清单 角色设计提交前，需要检查以下问题： * 角色剪影是否清晰？ * 小尺寸下是否能看清脸？ * 主色是否明确？ * 细节是否集中在重点区域？ * 服装是否表达了角色身份？ * 手部和关键道具是否清楚？ * 是否符合轻幻想冒险风格？ * Sprite 和立绘是否保持同一角色识别？ * 肤色是否有足够暖色？ * 暗部是否避免发灰？ * 是否存在无意义的视觉噪声？ 如果以上问题中有三项以上不通过，角色设计应退回修改。 ---"
+          },
+          {
+            "rank": 10,
+            "logical_chunk_id": "chunk_46f91d2821cdd77b",
+            "physical_id": "b9466e091e3057ace93fa5c87ff407f60d8911c64cbc3ee312c6edc709f682f7",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "5. 发型设计规范",
+            "section_path": [
+              "角色美术风格规范",
+              "5. 发型设计规范"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_82b4373a39317f4f",
+            "parent_id": "8ab9f73bb80d57ac6bd66bbe9333d20ffbfec85c4bbc5a85a8b84f6f24c53480",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.6084581613540649,
+              "vector_score": 0.6084581613540649,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 5. 发型设计规范 发型应服务于角色识别。 发型设计优先考虑大形状，而不是一开始就画大量发丝。 推荐流程： 1. 先确定发型整体轮廓。 2. 再划分主要发束。 3. 添加有限数量的高光组。 4. 最后只在必要位置补少量发丝。 需要避免： ```text 发丝过密 高光过碎 头部轮廓不清 头发遮挡表情 小尺寸下发型变成噪声 ``` 如果角色具有魔法属性，头发可以有轻微漂浮感，但不能影响面部识别。 ---"
+          }
+        ],
+        "keyword": [
+          {
+            "rank": 1,
+            "logical_chunk_id": "chunk_a2a894bca15c2988",
+            "physical_id": "cddc8904521854cb7be3785958f3e5a9014ebd4e6777a7e560d1f2025ed61c3e",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "8. 像素 Sprite 规范",
+            "section_path": [
+              "角色美术风格规范",
+              "8. 像素 Sprite 规范"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_bfa7d957f0fc1e76",
+            "parent_id": "04afe55ee87c06049820770bab2ab8356a6717aa35708b082d10ca719e5cdece",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 116.666245,
+              "vector_score": null,
+              "keyword_score": 116.666245,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "semantic_relevant",
+              "authoritative"
+            ],
+            "content_preview": "## 8. 像素 Sprite 规范 像素 Sprite 的核心原则是： > 清晰度优先于细节数量。 Sprite 制作要求： * 使用清晰色块 * 避免单像素噪点 * 保持头部和手部可读 * 不要过度抗锯齿 * 保持武器或工具轮廓清晰 * 不要在不同动画帧中改变角色核心轮廓 Sprite 中最重要的区域： 1. 头部 2. 手部 3. 武器或工具 4. 脚部接地点 5. 头发和披风的运动 动画中需要体现二级运动： ```text 身体先动 头发随后动 披风略微延迟 饰品最后跟随 ``` 这样可以让角色动作更自然，也更有重量感。 ---"
+          },
+          {
+            "rank": 2,
+            "logical_chunk_id": "chunk_8590007d404f6dc1",
+            "physical_id": "11443944d1f9b51428d98706e41487417cb6e4128121657c397f4973980e2fea",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "文档目的",
+            "section_path": [
+              "角色美术风格规范",
+              "文档目的"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_48283932deb6a742",
+            "parent_id": "2924fd0042a8689fa78ebb20912f96b73a9cdaac018a0aa40ef0f5d143834449",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 64.32572,
+              "vector_score": null,
+              "keyword_score": 64.32572,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 文档目的 本文档用于定义当前 Agent RAG 测试项目中的角色美术风格规范，主要面向 **美术部门 art** 使用。 该文档适用于以下内容的设计与评审： * 角色概念设计 * 像素角色 Sprite * 角色立绘 * 战斗演出图 * UI 头像 * 动画参考图 * 技能展示中的角色姿态 本项目的角色美术目标是： > 角色需要具有清晰的轮廓、温暖的色彩、明确的性格表达，并且符合轻幻想冒险题材。 本文档属于美术部门内部知识库内容。非 art 部门用户在权限过滤正确的情况下，不应该检索到本文档内容。 ---"
+          },
+          {
+            "rank": 3,
+            "logical_chunk_id": "chunk_15eb212207bbd84e",
+            "physical_id": "08ca9094a1ffbb74eac2f17b76930eae7f84a8dfb4cffacdec4a9be67614b353",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "14. 总结",
+            "section_path": [
+              "角色美术风格规范",
+              "14. 总结"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_258443bba6ba99c6",
+            "parent_id": "6b33827d0ee3bd2a79930cccd0bf670139c9d2953f4606c08ad1aa2a7058856d",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 51.48491,
+              "vector_score": null,
+              "keyword_score": 51.48491,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 14. 总结 本文档定义了项目角色美术风格的基础规范。 核心原则是： > 角色首先要有清晰轮廓，其次要有明确性格，最后才是细节丰富度。 在知识库 ACL 权限测试中，本文档应自动获得以下权限 metadata： ```text allowed_departments = [\"art\"] visibility = department 或默认部门可见 ``` 因此，该文档应该只对 art 部门用户可见，不应该被 development 或 product_planning 部门用户检索到。"
+          },
+          {
+            "rank": 4,
+            "logical_chunk_id": "chunk_84a050a71d304e3c",
+            "physical_id": "6882f07e3dcf29c59a56575a52aeed527207cb2c52331b3b9a984ccbfbca4f03",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "3. 面部与表情规范",
+            "section_path": [
+              "角色美术风格规范",
+              "3. 面部与表情规范"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_6fb8e032eb6a9626",
+            "parent_id": "7bbe749b65c1153f709141653b2af3f52f91931c8955fa493e14f3c001416143",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 49.4537,
+              "vector_score": null,
+              "keyword_score": 49.4537,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 3. 面部与表情规范 角色面部需要在小尺寸下保持可读。 眼睛区域是表情表达的核心。即使是像素风格，也需要通过眼睛、眉毛、嘴角表达清楚情绪。 常用表情处理方式如下： | 情绪 | 表现方式 | | -- | -------------- | | 平静 | 眉毛放松，眼神稳定，嘴角自然 | | 好奇 | 眉毛略微抬起，眼睛更圆 | | 自信 | 眉毛略有角度，嘴角轻微上扬 | | 疲惫 | 上眼睑下压，嘴部放松 | | 生气 | 眉毛向内压，嘴部收紧 | | 惊讶 | 眼睛放大，嘴部变小或微张 |"
+          },
+          {
+            "rank": 5,
+            "logical_chunk_id": "chunk_2b46de783426d416",
+            "physical_id": "c88ddd52addc72996be38890c4951fba8a2dce6ed4ab68ea1eb5b99d203ee5a4",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "1. 整体美术方向",
+            "section_path": [
+              "角色美术风格规范",
+              "1. 整体美术方向"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_f9b0e5c3e940d21b",
+            "parent_id": "7e47926b847f3ebbcb6562f35628cb8e76f0bf54e72b275c8a5e2fb93332068e",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 48.774826,
+              "vector_score": null,
+              "keyword_score": 48.774826,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 1. 整体美术方向 项目采用 **轻幻想冒险风格**。 角色不追求完全写实，而是更强调： * 轮廓清晰 * 情绪表达明确 * 颜色温暖 * 装备和服装具有辨识度 * 小尺寸下仍然可读 * 适合在 UI、像素 Sprite、立绘之间保持统一 推荐的视觉关键词： ```text 温暖 柔和 清晰 轻幻想 手绘感 角色性格明确 细节克制 轮廓优先 ``` 需要避免的方向： ```text 过度写实 颜色灰暗 盔甲细节过多 面部阴影过重 恐怖风格渲染 赛博朋克高对比霓虹光 头部和手部附近出现过多视觉噪声 ``` 角色设计的首要目标不是“细节最多”，而是“玩家第一眼能记住”。 ---"
+          },
+          {
+            "rank": 6,
+            "logical_chunk_id": "chunk_fd4df6e86678422c",
+            "physical_id": "252a0960ba7e1e4e5ee8c701ecd32630c37219d0397bbb20be9f4b23697625e0",
+            "doc_id": "a9ea8da230cc2f5483959b55fddf1dda6621f95c4d7f0b159c7dac36c69f89c4",
+            "source_path": "development/游戏开发资产列表_RAG测试.xlsx",
+            "title": "Sheet 资产清单 / Rows 1-2",
+            "section_path": [
+              "Sheet: 资产清单",
+              "Rows 1-2"
+            ],
+            "record_type": null,
+            "logical_parent_id": null,
+            "parent_id": null,
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 44.640076,
+              "vector_score": null,
+              "keyword_score": 44.640076,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "Sheet: 资产清单 | Row | A | B | C | D | E | F | G | H | I | J | K | L | M | N | O | P | Q | R | S | T | U | V | W | X | | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | | 1 | 资产ID | 资产名称（中文） | Asset Name | 一级分类 | 二级分类 | 适用系统/场景 | UE5资源路径 | 文件格式 | 来源类型 | 许可证 | 负责人 | 审核人 | 制作状态 | 优先级 | 版本 | 文件大小(MB) | 三角面数 | 纹理分辨率 | 关键标签 | 用途与设计说明 | 技术备注/风险 | 创建日期 | 最后更新 | 是否核心资产 | | 2 | AST-0001 | 主角近战战士 | Hero_Mele"
+          },
+          {
+            "rank": 7,
+            "logical_chunk_id": "chunk_7beec1d7634fedc3",
+            "physical_id": "b15b44dae47ea4546e9b9ebf74449ef445cb464f42efe388ba4b63bdb5b24a6c",
+            "doc_id": "a9ea8da230cc2f5483959b55fddf1dda6621f95c4d7f0b159c7dac36c69f89c4",
+            "source_path": "development/游戏开发资产列表_RAG测试.xlsx",
+            "title": "Sheet 资产清单 / Rows 12-12",
+            "section_path": [
+              "Sheet: 资产清单",
+              "Rows 12-12"
+            ],
+            "record_type": null,
+            "logical_parent_id": null,
+            "parent_id": null,
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 38.46578,
+              "vector_score": null,
+              "keyword_score": 38.46578,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "Sheet: 资产清单 | Row | A | B | C | D | E | F | G | H | I | J | K | L | M | N | O | P | Q | R | S | T | U | V | W | X | | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | | 12 | AST-0011 | 遗迹大剑 | Ruins_Greatsword | 武器与装备 | 近战武器 | 重武器/蓄力攻击 | /Game/Items/Weapons/Greatsword/SM_Ruins_Greatsword | FBX + uasset | 自研 | 项目内部使用 | 林溪 | 技术美术复核组 | 制作中 | P2 | v3.0 | 51.8 | 24640 | 2K | 装备,插槽,碰撞,物品系统 | 遗迹大剑用于重武器/蓄"
+          },
+          {
+            "rank": 8,
+            "logical_chunk_id": "chunk_abf77390016e3dca",
+            "physical_id": "2ddd37b75d8a986369908ed6d656dabb32dca6dc89ff7be9c82e68bad7d72be6",
+            "doc_id": "d7531fc88968ce8f715424063b97499204a409ba01d0ede25d4a1d6b8b5d36b3",
+            "source_path": "product_planning/星港远征资产选型报告.md",
+            "title": "数据结构说明",
+            "section_path": [
+              "星港远征资产选型报告",
+              "已授权3D模型费用分析",
+              "数据结构说明"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_b7a7af27c2e55513",
+            "parent_id": "daab95311a291fdff2664911c4d43fb7f137aaa6fe50d1db62384f45048ac445",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 38.45288,
+              "vector_score": null,
+              "keyword_score": 38.45288,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "### 数据结构说明 知识库中的资产清单工作表包含以下关键字段： - 基础信息：资产ID、资产名称（中文/英文）、一级分类、二级分类 - 技术信息：UE5资源路径、文件格式、三角面数、纹理分辨率 - 管理信息：许可证、负责人、审核人、制作状态、优先级、版本 - 其他：文件大小、关键标签、用途与设计说明、技术备注/风险、创建日期、最后更新、是否核心资产"
+          },
+          {
+            "rank": 9,
+            "logical_chunk_id": "chunk_42fba113904bee7a",
+            "physical_id": "63da4797f1e4b20b892d84b46649662083562d4fa3eb0b584cae53e497a50042",
+            "doc_id": "a433cee8a730e44bc5beaa46fb2026fcee5010664e67f02965223dc1d1d9e5fa",
+            "source_path": "development/UE5战斗系统程序架构设计_RAG测试.md",
+            "title": "1. 文档目标",
+            "section_path": [
+              "1. 文档目标"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_f180774160ef4af2",
+            "parent_id": "5262498e5b657fc7641c47836c0962f8510db53b1610c60d66c5d42f7cf82887",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 38.00474,
+              "vector_score": null,
+              "keyword_score": 38.00474,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 1. 文档目标 本文档描述一套适用于 Unreal Engine 5 的中型动作角色扮演游戏战斗系统程序架构。 系统需要支持以下能力： - 玩家与敌人的基础属性管理。 - 普通攻击、连招、蓄力攻击和空中攻击。 - 闪避、格挡、完美格挡和受击硬直。 - 主动技能、被动技能和状态效果。 - 武器、装备和元素伤害。 - AI 敌人和 Boss 战斗行为。 - 单机模式与多人联机模式。 - 动画、特效、音频和 UI 的统一事件驱动。 - 通过数据资产和配置表扩展战斗内容。 - 支持自动化测试、日志追踪和性能分析。 本文档重点关注程序架构、模块边界和运行时数据流，不展开角色建模、动画制作和关卡美术流程。 ---"
+          },
+          {
+            "rank": 10,
+            "logical_chunk_id": "chunk_ab7c0da6d4910e79",
+            "physical_id": "ee6e54644d74c97baf311035814ba5bce29fbd63d63fb2a8a9e9dba4b11f3a82",
+            "doc_id": "a9ea8da230cc2f5483959b55fddf1dda6621f95c4d7f0b159c7dac36c69f89c4",
+            "source_path": "development/游戏开发资产列表_RAG测试.xlsx",
+            "title": "Sheet 资产清单 / Rows 43-43",
+            "section_path": [
+              "Sheet: 资产清单",
+              "Rows 43-43"
+            ],
+            "record_type": null,
+            "logical_parent_id": null,
+            "parent_id": null,
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 37.259586,
+              "vector_score": null,
+              "keyword_score": 37.259586,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "Sheet: 资产清单 | Row | A | B | C | D | E | F | G | H | I | J | K | L | M | N | O | P | Q | R | S | T | U | V | W | X | | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | | 43 | AST-0041 | 战斗属性数据表 | Combat_Attribute_DataTable | 蓝图与数据 | 数据表 | 生命/攻击/防御/韧性 | /Game/Data/Combat/DT_CombatAttributes | uasset/CSV/JSON | 自研 | 项目内部使用 | 林溪 | 技术美术复核组 | 制作中 | P2 | v3.0 | 3.5 | 0 | — | Blueprint,DataAsset,Gameplay"
+          }
+        ],
+        "rrf": [
+          {
+            "rank": 1,
+            "logical_chunk_id": "chunk_a2a894bca15c2988",
+            "physical_id": "cddc8904521854cb7be3785958f3e5a9014ebd4e6777a7e560d1f2025ed61c3e",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "8. 像素 Sprite 规范",
+            "section_path": [
+              "角色美术风格规范",
+              "8. 像素 Sprite 规范"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_bfa7d957f0fc1e76",
+            "parent_id": "04afe55ee87c06049820770bab2ab8356a6717aa35708b082d10ca719e5cdece",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.03278688524590164,
+              "vector_score": null,
+              "keyword_score": 116.666245,
+              "rrf_score": 0.03278688524590164,
+              "rerank_score": null
+            },
+            "labels": [
+              "semantic_relevant",
+              "authoritative"
+            ],
+            "content_preview": "## 8. 像素 Sprite 规范 像素 Sprite 的核心原则是： > 清晰度优先于细节数量。 Sprite 制作要求： * 使用清晰色块 * 避免单像素噪点 * 保持头部和手部可读 * 不要过度抗锯齿 * 保持武器或工具轮廓清晰 * 不要在不同动画帧中改变角色核心轮廓 Sprite 中最重要的区域： 1. 头部 2. 手部 3. 武器或工具 4. 脚部接地点 5. 头发和披风的运动 动画中需要体现二级运动： ```text 身体先动 头发随后动 披风略微延迟 饰品最后跟随 ``` 这样可以让角色动作更自然，也更有重量感。 ---"
+          },
+          {
+            "rank": 2,
+            "logical_chunk_id": "chunk_84a050a71d304e3c",
+            "physical_id": "6882f07e3dcf29c59a56575a52aeed527207cb2c52331b3b9a984ccbfbca4f03",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "3. 面部与表情规范",
+            "section_path": [
+              "角色美术风格规范",
+              "3. 面部与表情规范"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_6fb8e032eb6a9626",
+            "parent_id": "7bbe749b65c1153f709141653b2af3f52f91931c8955fa493e14f3c001416143",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.031754032258064516,
+              "vector_score": null,
+              "keyword_score": 49.4537,
+              "rrf_score": 0.031754032258064516,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 3. 面部与表情规范 角色面部需要在小尺寸下保持可读。 眼睛区域是表情表达的核心。即使是像素风格，也需要通过眼睛、眉毛、嘴角表达清楚情绪。 常用表情处理方式如下： | 情绪 | 表现方式 | | -- | -------------- | | 平静 | 眉毛放松，眼神稳定，嘴角自然 | | 好奇 | 眉毛略微抬起，眼睛更圆 | | 自信 | 眉毛略有角度，嘴角轻微上扬 | | 疲惫 | 上眼睑下压，嘴部放松 | | 生气 | 眉毛向内压，嘴部收紧 | | 惊讶 | 眼睛放大，嘴部变小或微张 |"
+          },
+          {
+            "rank": 3,
+            "logical_chunk_id": "chunk_15eb212207bbd84e",
+            "physical_id": "08ca9094a1ffbb74eac2f17b76930eae7f84a8dfb4cffacdec4a9be67614b353",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "14. 总结",
+            "section_path": [
+              "角色美术风格规范",
+              "14. 总结"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_258443bba6ba99c6",
+            "parent_id": "6b33827d0ee3bd2a79930cccd0bf670139c9d2953f4606c08ad1aa2a7058856d",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.031746031746031744,
+              "vector_score": null,
+              "keyword_score": 51.48491,
+              "rrf_score": 0.031746031746031744,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 14. 总结 本文档定义了项目角色美术风格的基础规范。 核心原则是： > 角色首先要有清晰轮廓，其次要有明确性格，最后才是细节丰富度。 在知识库 ACL 权限测试中，本文档应自动获得以下权限 metadata： ```text allowed_departments = [\"art\"] visibility = department 或默认部门可见 ``` 因此，该文档应该只对 art 部门用户可见，不应该被 development 或 product_planning 部门用户检索到。"
+          },
+          {
+            "rank": 4,
+            "logical_chunk_id": "chunk_8590007d404f6dc1",
+            "physical_id": "11443944d1f9b51428d98706e41487417cb6e4128121657c397f4973980e2fea",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "文档目的",
+            "section_path": [
+              "角色美术风格规范",
+              "文档目的"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_48283932deb6a742",
+            "parent_id": "2924fd0042a8689fa78ebb20912f96b73a9cdaac018a0aa40ef0f5d143834449",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.030834914611005692,
+              "vector_score": null,
+              "keyword_score": 64.32572,
+              "rrf_score": 0.030834914611005692,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 文档目的 本文档用于定义当前 Agent RAG 测试项目中的角色美术风格规范，主要面向 **美术部门 art** 使用。 该文档适用于以下内容的设计与评审： * 角色概念设计 * 像素角色 Sprite * 角色立绘 * 战斗演出图 * UI 头像 * 动画参考图 * 技能展示中的角色姿态 本项目的角色美术目标是： > 角色需要具有清晰的轮廓、温暖的色彩、明确的性格表达，并且符合轻幻想冒险题材。 本文档属于美术部门内部知识库内容。非 art 部门用户在权限过滤正确的情况下，不应该检索到本文档内容。 ---"
+          },
+          {
+            "rank": 5,
+            "logical_chunk_id": "chunk_2b46de783426d416",
+            "physical_id": "c88ddd52addc72996be38890c4951fba8a2dce6ed4ab68ea1eb5b99d203ee5a4",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "1. 整体美术方向",
+            "section_path": [
+              "角色美术风格规范",
+              "1. 整体美术方向"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_f9b0e5c3e940d21b",
+            "parent_id": "7e47926b847f3ebbcb6562f35628cb8e76f0bf54e72b275c8a5e2fb93332068e",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.03076923076923077,
+              "vector_score": null,
+              "keyword_score": 48.774826,
+              "rrf_score": 0.03076923076923077,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 1. 整体美术方向 项目采用 **轻幻想冒险风格**。 角色不追求完全写实，而是更强调： * 轮廓清晰 * 情绪表达明确 * 颜色温暖 * 装备和服装具有辨识度 * 小尺寸下仍然可读 * 适合在 UI、像素 Sprite、立绘之间保持统一 推荐的视觉关键词： ```text 温暖 柔和 清晰 轻幻想 手绘感 角色性格明确 细节克制 轮廓优先 ``` 需要避免的方向： ```text 过度写实 颜色灰暗 盔甲细节过多 面部阴影过重 恐怖风格渲染 赛博朋克高对比霓虹光 头部和手部附近出现过多视觉噪声 ``` 角色设计的首要目标不是“细节最多”，而是“玩家第一眼能记住”。 ---"
+          },
+          {
+            "rank": 6,
+            "logical_chunk_id": "chunk_e298eadb2224345f",
+            "physical_id": "eca08f20770cd685ceae21092edd95959dd4ce0c8fce6dc9a008707346063eef",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "3. 面部与表情规范",
+            "section_path": [
+              "角色美术风格规范",
+              "3. 面部与表情规范"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_6fb8e032eb6a9626",
+            "parent_id": "7bbe749b65c1153f709141653b2af3f52f91931c8955fa493e14f3c001416143",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.015625,
+              "vector_score": 0.6701566576957703,
+              "keyword_score": null,
+              "rrf_score": 0.015625,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "面部细节不应过度复杂。 需要避免： * 牙齿细节过多 * 鼻梁渲染过重 * 法令纹过强 * 阴影让表情变得阴沉 * 小尺寸下眼睛无法识别 ---"
+          },
+          {
+            "rank": 7,
+            "logical_chunk_id": "chunk_1970ee43c01da9d0",
+            "physical_id": "3ae82058518448abdc3448d414d7bb21d6ff80d5eec902d5ec2dad8e0c60d251",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "角色美术风格规范",
+            "section_path": [
+              "角色美术风格规范"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_2310585c0625b3e2",
+            "parent_id": "d796f59af05c3b49c1010890d5b2acdb53db28804bc3109b41a8353164f3d0f2",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.015151515151515152,
+              "vector_score": 0.651367723941803,
+              "keyword_score": null,
+              "rrf_score": 0.015151515151515152,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "# 角色美术风格规范"
+          },
+          {
+            "rank": 8,
+            "logical_chunk_id": "chunk_fd4df6e86678422c",
+            "physical_id": "252a0960ba7e1e4e5ee8c701ecd32630c37219d0397bbb20be9f4b23697625e0",
+            "doc_id": "a9ea8da230cc2f5483959b55fddf1dda6621f95c4d7f0b159c7dac36c69f89c4",
+            "source_path": "development/游戏开发资产列表_RAG测试.xlsx",
+            "title": "Sheet 资产清单 / Rows 1-2",
+            "section_path": [
+              "Sheet: 资产清单",
+              "Rows 1-2"
+            ],
+            "record_type": null,
+            "logical_parent_id": null,
+            "parent_id": null,
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 0.015151515151515152,
+              "vector_score": null,
+              "keyword_score": 44.640076,
+              "rrf_score": 0.015151515151515152,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "Sheet: 资产清单 | Row | A | B | C | D | E | F | G | H | I | J | K | L | M | N | O | P | Q | R | S | T | U | V | W | X | | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | | 1 | 资产ID | 资产名称（中文） | Asset Name | 一级分类 | 二级分类 | 适用系统/场景 | UE5资源路径 | 文件格式 | 来源类型 | 许可证 | 负责人 | 审核人 | 制作状态 | 优先级 | 版本 | 文件大小(MB) | 三角面数 | 纹理分辨率 | 关键标签 | 用途与设计说明 | 技术备注/风险 | 创建日期 | 最后更新 | 是否核心资产 | | 2 | AST-0001 | 主角近战战士 | Hero_Mele"
+          },
+          {
+            "rank": 9,
+            "logical_chunk_id": "chunk_f81cc00923a8b5fe",
+            "physical_id": "dd7f95e3435de6850bfe9a8d351bf14d949356238bc464700bf137d74675d798",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "6. 服装设计规范",
+            "section_path": [
+              "角色美术风格规范",
+              "6. 服装设计规范"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_d00696a7acc9faad",
+            "parent_id": "93158429360c6c6b9c81641944d74fe3e6253ef8274e7bf14ae3ffeccde1d092",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.014925373134328358,
+              "vector_score": 0.65006422996521,
+              "keyword_score": null,
+              "rrf_score": 0.014925373134328358,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "服装设计要避免无意义堆叠。 好的角色服装通常来自： ```text 清晰轮廓 + 统一主题 + 少量高质量细节 ``` 细节应集中在视觉焦点区域： * 面部附近 * 胸口饰品 * 手部动作 * 武器或工具 * 腰部关键装饰 大面积留白是允许的。留白可以提升角色可读性。 ---"
+          },
+          {
+            "rank": 10,
+            "logical_chunk_id": "chunk_7beec1d7634fedc3",
+            "physical_id": "b15b44dae47ea4546e9b9ebf74449ef445cb464f42efe388ba4b63bdb5b24a6c",
+            "doc_id": "a9ea8da230cc2f5483959b55fddf1dda6621f95c4d7f0b159c7dac36c69f89c4",
+            "source_path": "development/游戏开发资产列表_RAG测试.xlsx",
+            "title": "Sheet 资产清单 / Rows 12-12",
+            "section_path": [
+              "Sheet: 资产清单",
+              "Rows 12-12"
+            ],
+            "record_type": null,
+            "logical_parent_id": null,
+            "parent_id": null,
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 0.014925373134328358,
+              "vector_score": null,
+              "keyword_score": 38.46578,
+              "rrf_score": 0.014925373134328358,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "Sheet: 资产清单 | Row | A | B | C | D | E | F | G | H | I | J | K | L | M | N | O | P | Q | R | S | T | U | V | W | X | | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | | 12 | AST-0011 | 遗迹大剑 | Ruins_Greatsword | 武器与装备 | 近战武器 | 重武器/蓄力攻击 | /Game/Items/Weapons/Greatsword/SM_Ruins_Greatsword | FBX + uasset | 自研 | 项目内部使用 | 林溪 | 技术美术复核组 | 制作中 | P2 | v3.0 | 51.8 | 24640 | 2K | 装备,插槽,碰撞,物品系统 | 遗迹大剑用于重武器/蓄"
+          }
+        ],
+        "rerank": [
+          {
+            "rank": 1,
+            "logical_chunk_id": "chunk_a2a894bca15c2988",
+            "physical_id": "cddc8904521854cb7be3785958f3e5a9014ebd4e6777a7e560d1f2025ed61c3e",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "8. 像素 Sprite 规范",
+            "section_path": [
+              "角色美术风格规范",
+              "8. 像素 Sprite 规范"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_bfa7d957f0fc1e76",
+            "parent_id": "04afe55ee87c06049820770bab2ab8356a6717aa35708b082d10ca719e5cdece",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.985890866059624,
+              "vector_score": null,
+              "keyword_score": 116.666245,
+              "rrf_score": 0.03278688524590164,
+              "rerank_score": 0.985890866059624
+            },
+            "labels": [
+              "semantic_relevant",
+              "authoritative"
+            ],
+            "content_preview": "## 8. 像素 Sprite 规范 像素 Sprite 的核心原则是： > 清晰度优先于细节数量。 Sprite 制作要求： * 使用清晰色块 * 避免单像素噪点 * 保持头部和手部可读 * 不要过度抗锯齿 * 保持武器或工具轮廓清晰 * 不要在不同动画帧中改变角色核心轮廓 Sprite 中最重要的区域： 1. 头部 2. 手部 3. 武器或工具 4. 脚部接地点 5. 头发和披风的运动 动画中需要体现二级运动： ```text 身体先动 头发随后动 披风略微延迟 饰品最后跟随 ``` 这样可以让角色动作更自然，也更有重量感。 ---"
+          },
+          {
+            "rank": 2,
+            "logical_chunk_id": "chunk_15eb212207bbd84e",
+            "physical_id": "08ca9094a1ffbb74eac2f17b76930eae7f84a8dfb4cffacdec4a9be67614b353",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "14. 总结",
+            "section_path": [
+              "角色美术风格规范",
+              "14. 总结"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_258443bba6ba99c6",
+            "parent_id": "6b33827d0ee3bd2a79930cccd0bf670139c9d2953f4606c08ad1aa2a7058856d",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.649542710385828,
+              "vector_score": null,
+              "keyword_score": 51.48491,
+              "rrf_score": 0.031746031746031744,
+              "rerank_score": 0.649542710385828
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 14. 总结 本文档定义了项目角色美术风格的基础规范。 核心原则是： > 角色首先要有清晰轮廓，其次要有明确性格，最后才是细节丰富度。 在知识库 ACL 权限测试中，本文档应自动获得以下权限 metadata： ```text allowed_departments = [\"art\"] visibility = department 或默认部门可见 ``` 因此，该文档应该只对 art 部门用户可见，不应该被 development 或 product_planning 部门用户检索到。"
+          },
+          {
+            "rank": 3,
+            "logical_chunk_id": "chunk_8590007d404f6dc1",
+            "physical_id": "11443944d1f9b51428d98706e41487417cb6e4128121657c397f4973980e2fea",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "文档目的",
+            "section_path": [
+              "角色美术风格规范",
+              "文档目的"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_48283932deb6a742",
+            "parent_id": "2924fd0042a8689fa78ebb20912f96b73a9cdaac018a0aa40ef0f5d143834449",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.6375023543297813,
+              "vector_score": null,
+              "keyword_score": 64.32572,
+              "rrf_score": 0.030834914611005692,
+              "rerank_score": 0.6375023543297813
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 文档目的 本文档用于定义当前 Agent RAG 测试项目中的角色美术风格规范，主要面向 **美术部门 art** 使用。 该文档适用于以下内容的设计与评审： * 角色概念设计 * 像素角色 Sprite * 角色立绘 * 战斗演出图 * UI 头像 * 动画参考图 * 技能展示中的角色姿态 本项目的角色美术目标是： > 角色需要具有清晰的轮廓、温暖的色彩、明确的性格表达，并且符合轻幻想冒险题材。 本文档属于美术部门内部知识库内容。非 art 部门用户在权限过滤正确的情况下，不应该检索到本文档内容。 ---"
+          },
+          {
+            "rank": 4,
+            "logical_chunk_id": "chunk_1970ee43c01da9d0",
+            "physical_id": "3ae82058518448abdc3448d414d7bb21d6ff80d5eec902d5ec2dad8e0c60d251",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "角色美术风格规范",
+            "section_path": [
+              "角色美术风格规范"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_2310585c0625b3e2",
+            "parent_id": "d796f59af05c3b49c1010890d5b2acdb53db28804bc3109b41a8353164f3d0f2",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.6002527462870499,
+              "vector_score": 0.651367723941803,
+              "keyword_score": null,
+              "rrf_score": 0.015151515151515152,
+              "rerank_score": 0.6002527462870499
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "# 角色美术风格规范"
+          },
+          {
+            "rank": 5,
+            "logical_chunk_id": "chunk_2b46de783426d416",
+            "physical_id": "c88ddd52addc72996be38890c4951fba8a2dce6ed4ab68ea1eb5b99d203ee5a4",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "1. 整体美术方向",
+            "section_path": [
+              "角色美术风格规范",
+              "1. 整体美术方向"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_f9b0e5c3e940d21b",
+            "parent_id": "7e47926b847f3ebbcb6562f35628cb8e76f0bf54e72b275c8a5e2fb93332068e",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.5310789068754467,
+              "vector_score": null,
+              "keyword_score": 48.774826,
+              "rrf_score": 0.03076923076923077,
+              "rerank_score": 0.5310789068754467
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 1. 整体美术方向 项目采用 **轻幻想冒险风格**。 角色不追求完全写实，而是更强调： * 轮廓清晰 * 情绪表达明确 * 颜色温暖 * 装备和服装具有辨识度 * 小尺寸下仍然可读 * 适合在 UI、像素 Sprite、立绘之间保持统一 推荐的视觉关键词： ```text 温暖 柔和 清晰 轻幻想 手绘感 角色性格明确 细节克制 轮廓优先 ``` 需要避免的方向： ```text 过度写实 颜色灰暗 盔甲细节过多 面部阴影过重 恐怖风格渲染 赛博朋克高对比霓虹光 头部和手部附近出现过多视觉噪声 ``` 角色设计的首要目标不是“细节最多”，而是“玩家第一眼能记住”。 ---"
+          }
+        ]
+      },
+      "final_context_documents": [
+        {
+          "rank": 1,
+          "logical_chunk_id": "parent_bfa7d957f0fc1e76",
+          "logical_parent_id": "parent_bfa7d957f0fc1e76",
+          "parent_id": "04afe55ee87c06049820770bab2ab8356a6717aa35708b082d10ca719e5cdece",
+          "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+          "source_path": "art/character-art-style.md",
+          "title": "8. 像素 Sprite 规范",
+          "labels": [
+            "unlabelled"
+          ],
+          "content_preview": "## 8. 像素 Sprite 规范 像素 Sprite 的核心原则是： > 清晰度优先于细节数量。 Sprite 制作要求： * 使用清晰色块 * 避免单像素噪点 * 保持头部和手部可读 * 不要过度抗锯齿 * 保持武器或工具轮廓清晰 * 不要在不同动画帧中改变角色核心轮廓 Sprite 中最重要的区域： 1. 头部 2. 手部 3. 武器或工具 4. 脚部接地点 5. 头发和披风的运动 动画中需要体现二级运动： ```text 身体先动 头发随后动 披风略微延迟 饰品最后跟随 ``` 这样可以让角色动作更自然，也更有重量感。 ---"
+        },
+        {
+          "rank": 2,
+          "logical_chunk_id": "parent_258443bba6ba99c6",
+          "logical_parent_id": "parent_258443bba6ba99c6",
+          "parent_id": "6b33827d0ee3bd2a79930cccd0bf670139c9d2953f4606c08ad1aa2a7058856d",
+          "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+          "source_path": "art/character-art-style.md",
+          "title": "14. 总结",
+          "labels": [
+            "unlabelled"
+          ],
+          "content_preview": "## 14. 总结 本文档定义了项目角色美术风格的基础规范。 核心原则是： > 角色首先要有清晰轮廓，其次要有明确性格，最后才是细节丰富度。 在知识库 ACL 权限测试中，本文档应自动获得以下权限 metadata： ```text allowed_departments = [\"art\"] visibility = department 或默认部门可见 ``` 因此，该文档应该只对 art 部门用户可见，不应该被 development 或 product_planning 部门用户检索到。"
+        },
+        {
+          "rank": 3,
+          "logical_chunk_id": "parent_48283932deb6a742",
+          "logical_parent_id": "parent_48283932deb6a742",
+          "parent_id": "2924fd0042a8689fa78ebb20912f96b73a9cdaac018a0aa40ef0f5d143834449",
+          "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+          "source_path": "art/character-art-style.md",
+          "title": "文档目的",
+          "labels": [
+            "unlabelled"
+          ],
+          "content_preview": "## 文档目的 本文档用于定义当前 Agent RAG 测试项目中的角色美术风格规范，主要面向 **美术部门 art** 使用。 该文档适用于以下内容的设计与评审： * 角色概念设计 * 像素角色 Sprite * 角色立绘 * 战斗演出图 * UI 头像 * 动画参考图 * 技能展示中的角色姿态 本项目的角色美术目标是： > 角色需要具有清晰的轮廓、温暖的色彩、明确的性格表达，并且符合轻幻想冒险题材。 本文档属于美术部门内部知识库内容。非 art 部门用户在权限过滤正确的情况下，不应该检索到本文档内容。 ---"
+        },
+        {
+          "rank": 4,
+          "logical_chunk_id": "chunk_1970ee43c01da9d0",
+          "logical_parent_id": "parent_2310585c0625b3e2",
+          "parent_id": "d796f59af05c3b49c1010890d5b2acdb53db28804bc3109b41a8353164f3d0f2",
+          "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+          "source_path": "art/character-art-style.md",
+          "title": "角色美术风格规范",
+          "labels": [
+            "unlabelled"
+          ],
+          "content_preview": "# 角色美术风格规范"
+        },
+        {
+          "rank": 5,
+          "logical_chunk_id": "chunk_2b46de783426d416",
+          "logical_parent_id": "parent_f9b0e5c3e940d21b",
+          "parent_id": "7e47926b847f3ebbcb6562f35628cb8e76f0bf54e72b275c8a5e2fb93332068e",
+          "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+          "source_path": "art/character-art-style.md",
+          "title": "1. 整体美术方向",
+          "labels": [
+            "unlabelled"
+          ],
+          "content_preview": "## 1. 整体美术方向 项目采用 **轻幻想冒险风格**。 角色不追求完全写实，而是更强调： * 轮廓清晰 * 情绪表达明确 * 颜色温暖 * 装备和服装具有辨识度 * 小尺寸下仍然可读 * 适合在 UI、像素 Sprite、立绘之间保持统一 推荐的视觉关键词： ```text 温暖 柔和 清晰 轻幻想 手绘感 角色性格明确 细节克制 轮廓优先 ``` 需要避免的方向： ```text 过度写实 颜色灰暗 盔甲细节过多 面部阴影过重 恐怖风格渲染 赛博朋克高对比霓虹光 头部和手部附近出现过多视觉噪声 ``` 角色设计的首要目标不是“细节最多”，而是“玩家第一眼能记住”。 ---"
+        }
+      ]
+    },
+    {
+      "case_id": "operator_documented_art_scope_multi",
+      "question": "ACL 规则文档如何描述普通 art 部门用户可见和不可见的文档范围？",
+      "top_k": 5,
+      "candidate_k": 10,
+      "semantic_relevant_ids": [
+        "chunk_15eb212207bbd84e",
+        "chunk_9ca728a00b73727c"
+      ],
+      "authoritative_ids": [
+        "chunk_15eb212207bbd84e",
+        "chunk_9ca728a00b73727c"
+      ],
+      "forbidden_ids": [],
+      "stages": {
+        "vector": [
+          {
+            "rank": 1,
+            "logical_chunk_id": "chunk_f996084e4616344d",
+            "physical_id": "397381e496a8e4eb093e0e51b2ceb0d550e3aadbe86f1f9011215da7b6272f2b",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "11. 总结",
+            "section_path": [
+              "项目整体介绍文档",
+              "11. 总结"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_ccf184dad97b2862",
+            "parent_id": "b3c57bb55016a58006050e605ddd597cecfb962894c4157ac0afcaa843d58e05",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.7292966842651367,
+              "vector_score": 0.7292966842651367,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 11. 总结 本文档是 ACL 权限测试知识库中的公开文档，用于验证 `public/**` 目录下的文档是否可以被所有已认证用户检索。 核心测试点是： ```text id=\"utw2ty\" 部门私有文档只能被对应部门检索。 public 文档应该被所有拥有 knowledge:read 权限的认证用户检索。 ``` 本文档应自动获得以下权限 metadata： ```text id=\"l37oec\" visibility = \"public\" ``` 如果 art、product_planning、development 三个部门用户都能检索到本文档，同时不能越权检索其他部门私有文档，则说明基础 ACL 权限过滤逻辑符合预期。"
+          },
+          {
+            "rank": 2,
+            "logical_chunk_id": "chunk_9c41fd05e02eca63",
+            "physical_id": "1beff6c214620b232311320746636000fff516627cdb0aa16c767b0131d14698",
+            "doc_id": "4c2169fe0d7953231e50a888399028a535272ca2f5a689ab548a3527279be023",
+            "source_path": "product_planning/combat-design.md",
+            "title": "15. RAG 权限测试说明",
+            "section_path": [
+              "战斗系统设计规划文档",
+              "15. RAG 权限测试说明"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_c8823bfe684d2549",
+            "parent_id": "7d38987550d371d1e259a627772745533b2144d87d853ff6e4339a928923e343",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.7065507769584656,
+              "vector_score": 0.7065507769584656,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 15. RAG 权限测试说明 本文档用于测试 product_planning 部门的知识库权限过滤。 根据目录规则： ```text knowledge-base-acl-test/product_planning/combat-design.md ``` 系统应自动生成以下权限 metadata： ```text allowed_departments = [\"product_planning\"] visibility = department 或默认部门可见 ``` 预期行为： ```text product_planning 部门用户可以检索到本文档。 art 部门用户不应该检索到本文档。 development 部门用户不应该检索到本文档。 public 权限用户不应该在无授权情况下检索到本文档。 ``` ---"
+          },
+          {
+            "rank": 3,
+            "logical_chunk_id": "chunk_e66042e24778969e",
+            "physical_id": "6315a53fce37a039a4233f44c19bfa600ee6ab63b52867f8417b77b7aad48684",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "文档目的",
+            "section_path": [
+              "项目整体介绍文档",
+              "文档目的"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_9c07611f3e02f04c",
+            "parent_id": "e0ce0eeec918470756fed246985fbb23a924ef30f8f7987efa33272aa5de6b18",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.6935253143310547,
+              "vector_score": 0.6935253143310547,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 文档目的 本文档用于介绍当前 Agent RAG 测试项目的整体目标、模块组成、测试范围和权限验证方式。 该文档位于： ```text id=\"e1naxg\" knowledge-base-acl-test/public/project-overview.md ``` 根据 ACL 测试目录规则，`public/**` 目录下的文档应自动生成以下权限 metadata： ```text id=\"n240qb\" visibility = \"public\" ``` 因此，本文档应该对所有已认证用户可见，包括： ```text id=\"6v82xc\" art 部门用户 product_planning 部门用户 development 部门用户 其他拥有 knowledge:read 权限的用户 ``` 本文档主要用于验证： > public 文档是否可以被不同部门用户共同检索到。 ---"
+          },
+          {
+            "rank": 4,
+            "logical_chunk_id": "chunk_0b669faee05f1144",
+            "physical_id": "0169b380ce30f776ca64e66a1796d8c10a08b03b068495c129347eca953157f9",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "8. 公开文档测试关键词",
+            "section_path": [
+              "项目整体介绍文档",
+              "8. 公开文档测试关键词"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_a6d9f71ab9b708f2",
+            "parent_id": "fe06115554ffac95952540f3c771f04e61b511e77e22259bb86e87669f8786ff",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.692584753036499,
+              "vector_score": 0.692584753036499,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 8. 公开文档测试关键词 以下关键词用于 public 权限检索测试： ```text id=\"mndxck\" 公开项目总览 public 文档可见性测试 多部门共同可见文档 知识库 ACL 测试目录 RAG 权限过滤总览 RBAC ACL ABAC 混合模型说明 Hybrid Retrieval 权限验证 Prompt 前最终兜底校验 ``` 这些关键词应该可以被 art、product_planning、development 三个部门用户检索到。 如果某个已认证用户无法检索到这些关键词，说明 public 文档权限处理可能存在问题。 ---"
+          },
+          {
+            "rank": 5,
+            "logical_chunk_id": "chunk_32ce6542a27093ac",
+            "physical_id": "4b0b52db57216a8992cf8a017bd5dc03620a31850ea72068b6ae38c0ffe4c4d8",
+            "doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+            "source_path": "development/rag-deployment-checklist.md",
+            "title": "8.1 权限规则",
+            "section_path": [
+              "RAG 后端本地部署验收清单",
+              "八、权限过滤验证",
+              "8.1 权限规则"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_d3251ca448e3d381",
+            "parent_id": "a81c1d6ded3b2462865dd0a611c0b68fc29a10852e0722e29a039ea09634ce58",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.6920012831687927,
+              "vector_score": 0.6920012831687927,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "### 8.1 权限规则 - [ ] `visibility = public` 的文档对所有认证用户可见 - [ ] `allowed_departments` 包含当前用户部门时可见 - [ ] `allowed_users` 包含当前用户 ID 时可见 - [ ] `owner_user_id` 匹配当前用户时可见 - [ ] 无 `knowledge:read` 权限时请求被拒绝"
+          },
+          {
+            "rank": 6,
+            "logical_chunk_id": "chunk_e61f024c79efd70d",
+            "physical_id": "458b00dcd5eb11e72a9eb539756ccc2c3a3f290f696c495432b6620b9f094be1",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "3. 测试知识库目录",
+            "section_path": [
+              "项目整体介绍文档",
+              "3. 测试知识库目录"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_becc58aca3143f88",
+            "parent_id": "d8a9af4c86e6e946bb14717f2c56329059faa2dd765761272d878fa583bb601e",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.6900182962417603,
+              "vector_score": 0.6900182962417603,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 3. 测试知识库目录 当前测试知识库目录如下： ```text id=\"aal0yq\" knowledge-base-acl-test/ art/ character-art-style.md product_planning/ combat-design.md development/ rag-backend-deployment.md public/ project-overview.md ``` 每个目录代表一种权限来源。 目录权限映射规则如下： | 目录 | 自动生成权限 metadata | 说明 | | ------------------- | ------------------------------------------ | ----------------------- | | art/** | allowed_departments = [\"art\"] | 仅 art 部门可见 | | product_planning/** | allowed_departments = [\"product_planning\"] | 仅 product_planning"
+          },
+          {
+            "rank": 7,
+            "logical_chunk_id": "chunk_f8a53eabbef5743c",
+            "physical_id": "416dee6e67f7767463f0e53adb97bc6c5a023843b3f420644f36d5517954c702",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "13. 权限过滤规则",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "13. 权限过滤规则"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_be17ccf837cb389b",
+            "parent_id": "ff7e785da9dce01c6086155c807d83be6b6313cd19d5ebf13f6d6aaa6752bca6",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.6882721185684204,
+              "vector_score": 0.6882721185684204,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 13. 权限过滤规则 development 用户应能检索到： ```text id=\"x7r9n5\" development/rag-backend-deployment.md public/project-overview.md ``` development 用户不应检索到： ```text id=\"gxod7x\" art/character-art-style.md product_planning/combat-design.md ``` 基本权限规则如下： ```text id=\"nfa3sf\" 如果 visibility = public，则所有认证用户可见。 如果 allowed_departments 包含当前用户 department_code，则可见。 如果 allowed_users 包含当前用户 user_id，则可见。 如果 owner_user_id 等于当前用户 user_id，则可见。 否则不可见。 ``` 如果当前用户没有 `knowledge:read` 权限，则应在检索前直接拒绝请求。 ---"
+          },
+          {
+            "rank": 8,
+            "logical_chunk_id": "chunk_e46195e75a0e4c4a",
+            "physical_id": "6e0ffbd1dd1aeabfa5298756d8b4f3dd6e9dc4746a7fbc111b301529bece581b",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "20. 总结",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "20. 总结"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_836cf005acc7b719",
+            "parent_id": "6e467effcfb3eca204a0d77c475e040f43e6e76cd427acc1621a87beb0822874",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.6838810443878174,
+              "vector_score": 0.6838810443878174,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 20. 总结 本文档定义了 RAG 后端部署与 ACL 权限测试相关的开发规范。 核心原则是： > 权限过滤不能只停留在接口层，必须贯穿文档导入、chunk metadata、Milvus 检索、Elasticsearch 检索、rerank 和 prompt 构建全过程。 在知识库 ACL 权限测试中，本文档应自动获得以下权限 metadata： ```text id=\"nxdorc\" allowed_departments = [\"development\"] visibility = department 或默认部门可见 ``` 因此，该文档应该只对 development 部门用户可见，不应该被 art 或 product_planning 部门用户检索到。 ---"
+          },
+          {
+            "rank": 9,
+            "logical_chunk_id": "chunk_4090e4a98217b902",
+            "physical_id": "257ca724f94c0dbc11710deed778ab8bd64893a986961a7c5e1bd887c080b22b",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "9. 权限过滤验收标准",
+            "section_path": [
+              "项目整体介绍文档",
+              "9. 权限过滤验收标准"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_48d98ca989356c33",
+            "parent_id": "d1dabdf9e5f116c6f8698a40b804dcc0ac3bee0ae06e0eb7851fd8983f911b79",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.6836192607879639,
+              "vector_score": 0.6836192607879639,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 9. 权限过滤验收标准 本文档的权限验收标准如下： * art 用户可以检索到本文档。 * product_planning 用户可以检索到本文档。 * development 用户可以检索到本文档。 * 已认证且拥有 `knowledge:read` 权限的普通用户可以检索到本文档。 * 本文档不应依赖 `allowed_departments` 才能被检索。 * 本文档的 chunk metadata 中应包含 `visibility = \"public\"`。 * Milvus 和 Elasticsearch 都应支持 public 文档过滤规则。 * public 文档可以和部门文档一起参与 Hybrid Retrieval。 * public 文档进入 prompt 前仍应通过最终权限校验。 ---"
+          },
+          {
+            "rank": 10,
+            "logical_chunk_id": "chunk_45e1ce019f9bef64",
+            "physical_id": "ef9c6f2800db673741b58f25c019df1c1ef5a6f3de2a1554e1211ca59dac0bb3",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "5. 部门私有文档与公开文档的区别",
+            "section_path": [
+              "项目整体介绍文档",
+              "5. 部门私有文档与公开文档的区别"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_f74f05dc6553cef8",
+            "parent_id": "2a73d09cf12ebd35b7e8ec69a5407d4e795740528c8092f1b483d55119c5c380",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.6819647550582886,
+              "vector_score": 0.6819647550582886,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 5. 部门私有文档与公开文档的区别 部门私有文档通常具有： ```text id=\"tvb0q4\" visibility = \"department\" allowed_departments = [\"某个部门\"] ``` 例如： ```text id=\"bpehp8\" art/character-art-style.md ``` 应该只能被 art 部门用户检索。 公开文档通常具有： ```text id=\"n8efee\" visibility = \"public\" ``` 例如： ```text id=\"e8ygk9\" public/project-overview.md ``` 应该能被所有已认证用户检索。 因此，本文档适合用于测试： ```text id=\"s55wh6\" 不同部门用户是否都能检索到 public 文档。 ``` ---"
+          }
+        ],
+        "keyword": [
+          {
+            "rank": 1,
+            "logical_chunk_id": "chunk_e66042e24778969e",
+            "physical_id": "6315a53fce37a039a4233f44c19bfa600ee6ab63b52867f8417b77b7aad48684",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "文档目的",
+            "section_path": [
+              "项目整体介绍文档",
+              "文档目的"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_9c07611f3e02f04c",
+            "parent_id": "e0ce0eeec918470756fed246985fbb23a924ef30f8f7987efa33272aa5de6b18",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 79.31115,
+              "vector_score": null,
+              "keyword_score": 79.31115,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 文档目的 本文档用于介绍当前 Agent RAG 测试项目的整体目标、模块组成、测试范围和权限验证方式。 该文档位于： ```text id=\"e1naxg\" knowledge-base-acl-test/public/project-overview.md ``` 根据 ACL 测试目录规则，`public/**` 目录下的文档应自动生成以下权限 metadata： ```text id=\"n240qb\" visibility = \"public\" ``` 因此，本文档应该对所有已认证用户可见，包括： ```text id=\"6v82xc\" art 部门用户 product_planning 部门用户 development 部门用户 其他拥有 knowledge:read 权限的用户 ``` 本文档主要用于验证： > public 文档是否可以被不同部门用户共同检索到。 ---"
+          },
+          {
+            "rank": 2,
+            "logical_chunk_id": "chunk_e61f024c79efd70d",
+            "physical_id": "458b00dcd5eb11e72a9eb539756ccc2c3a3f290f696c495432b6620b9f094be1",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "3. 测试知识库目录",
+            "section_path": [
+              "项目整体介绍文档",
+              "3. 测试知识库目录"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_becc58aca3143f88",
+            "parent_id": "d8a9af4c86e6e946bb14717f2c56329059faa2dd765761272d878fa583bb601e",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 73.74481,
+              "vector_score": null,
+              "keyword_score": 73.74481,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 3. 测试知识库目录 当前测试知识库目录如下： ```text id=\"aal0yq\" knowledge-base-acl-test/ art/ character-art-style.md product_planning/ combat-design.md development/ rag-backend-deployment.md public/ project-overview.md ``` 每个目录代表一种权限来源。 目录权限映射规则如下： | 目录 | 自动生成权限 metadata | 说明 | | ------------------- | ------------------------------------------ | ----------------------- | | art/** | allowed_departments = [\"art\"] | 仅 art 部门可见 | | product_planning/** | allowed_departments = [\"product_planning\"] | 仅 product_planning"
+          },
+          {
+            "rank": 3,
+            "logical_chunk_id": "chunk_e46195e75a0e4c4a",
+            "physical_id": "6e0ffbd1dd1aeabfa5298756d8b4f3dd6e9dc4746a7fbc111b301529bece581b",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "20. 总结",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "20. 总结"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_836cf005acc7b719",
+            "parent_id": "6e467effcfb3eca204a0d77c475e040f43e6e76cd427acc1621a87beb0822874",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 70.89512,
+              "vector_score": null,
+              "keyword_score": 70.89512,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 20. 总结 本文档定义了 RAG 后端部署与 ACL 权限测试相关的开发规范。 核心原则是： > 权限过滤不能只停留在接口层，必须贯穿文档导入、chunk metadata、Milvus 检索、Elasticsearch 检索、rerank 和 prompt 构建全过程。 在知识库 ACL 权限测试中，本文档应自动获得以下权限 metadata： ```text id=\"nxdorc\" allowed_departments = [\"development\"] visibility = department 或默认部门可见 ``` 因此，该文档应该只对 development 部门用户可见，不应该被 art 或 product_planning 部门用户检索到。 ---"
+          },
+          {
+            "rank": 4,
+            "logical_chunk_id": "chunk_15eb212207bbd84e",
+            "physical_id": "08ca9094a1ffbb74eac2f17b76930eae7f84a8dfb4cffacdec4a9be67614b353",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "14. 总结",
+            "section_path": [
+              "角色美术风格规范",
+              "14. 总结"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_258443bba6ba99c6",
+            "parent_id": "6b33827d0ee3bd2a79930cccd0bf670139c9d2953f4606c08ad1aa2a7058856d",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 70.350784,
+              "vector_score": null,
+              "keyword_score": 70.350784,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "semantic_relevant",
+              "authoritative"
+            ],
+            "content_preview": "## 14. 总结 本文档定义了项目角色美术风格的基础规范。 核心原则是： > 角色首先要有清晰轮廓，其次要有明确性格，最后才是细节丰富度。 在知识库 ACL 权限测试中，本文档应自动获得以下权限 metadata： ```text allowed_departments = [\"art\"] visibility = department 或默认部门可见 ``` 因此，该文档应该只对 art 部门用户可见，不应该被 development 或 product_planning 部门用户检索到。"
+          },
+          {
+            "rank": 5,
+            "logical_chunk_id": "chunk_32ce6542a27093ac",
+            "physical_id": "4b0b52db57216a8992cf8a017bd5dc03620a31850ea72068b6ae38c0ffe4c4d8",
+            "doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+            "source_path": "development/rag-deployment-checklist.md",
+            "title": "8.1 权限规则",
+            "section_path": [
+              "RAG 后端本地部署验收清单",
+              "八、权限过滤验证",
+              "8.1 权限规则"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_d3251ca448e3d381",
+            "parent_id": "a81c1d6ded3b2462865dd0a611c0b68fc29a10852e0722e29a039ea09634ce58",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 69.77857,
+              "vector_score": null,
+              "keyword_score": 69.77857,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "### 8.1 权限规则 - [ ] `visibility = public` 的文档对所有认证用户可见 - [ ] `allowed_departments` 包含当前用户部门时可见 - [ ] `allowed_users` 包含当前用户 ID 时可见 - [ ] `owner_user_id` 匹配当前用户时可见 - [ ] 无 `knowledge:read` 权限时请求被拒绝"
+          },
+          {
+            "rank": 6,
+            "logical_chunk_id": "chunk_9c41fd05e02eca63",
+            "physical_id": "1beff6c214620b232311320746636000fff516627cdb0aa16c767b0131d14698",
+            "doc_id": "4c2169fe0d7953231e50a888399028a535272ca2f5a689ab548a3527279be023",
+            "source_path": "product_planning/combat-design.md",
+            "title": "15. RAG 权限测试说明",
+            "section_path": [
+              "战斗系统设计规划文档",
+              "15. RAG 权限测试说明"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_c8823bfe684d2549",
+            "parent_id": "7d38987550d371d1e259a627772745533b2144d87d853ff6e4339a928923e343",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 66.33067,
+              "vector_score": null,
+              "keyword_score": 66.33067,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 15. RAG 权限测试说明 本文档用于测试 product_planning 部门的知识库权限过滤。 根据目录规则： ```text knowledge-base-acl-test/product_planning/combat-design.md ``` 系统应自动生成以下权限 metadata： ```text allowed_departments = [\"product_planning\"] visibility = department 或默认部门可见 ``` 预期行为： ```text product_planning 部门用户可以检索到本文档。 art 部门用户不应该检索到本文档。 development 部门用户不应该检索到本文档。 public 权限用户不应该在无授权情况下检索到本文档。 ``` ---"
+          },
+          {
+            "rank": 7,
+            "logical_chunk_id": "chunk_0b669faee05f1144",
+            "physical_id": "0169b380ce30f776ca64e66a1796d8c10a08b03b068495c129347eca953157f9",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "8. 公开文档测试关键词",
+            "section_path": [
+              "项目整体介绍文档",
+              "8. 公开文档测试关键词"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_a6d9f71ab9b708f2",
+            "parent_id": "fe06115554ffac95952540f3c771f04e61b511e77e22259bb86e87669f8786ff",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 64.321976,
+              "vector_score": null,
+              "keyword_score": 64.321976,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 8. 公开文档测试关键词 以下关键词用于 public 权限检索测试： ```text id=\"mndxck\" 公开项目总览 public 文档可见性测试 多部门共同可见文档 知识库 ACL 测试目录 RAG 权限过滤总览 RBAC ACL ABAC 混合模型说明 Hybrid Retrieval 权限验证 Prompt 前最终兜底校验 ``` 这些关键词应该可以被 art、product_planning、development 三个部门用户检索到。 如果某个已认证用户无法检索到这些关键词，说明 public 文档权限处理可能存在问题。 ---"
+          },
+          {
+            "rank": 8,
+            "logical_chunk_id": "chunk_f8a53eabbef5743c",
+            "physical_id": "416dee6e67f7767463f0e53adb97bc6c5a023843b3f420644f36d5517954c702",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "13. 权限过滤规则",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "13. 权限过滤规则"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_be17ccf837cb389b",
+            "parent_id": "ff7e785da9dce01c6086155c807d83be6b6313cd19d5ebf13f6d6aaa6752bca6",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 63.060356,
+              "vector_score": null,
+              "keyword_score": 63.060356,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 13. 权限过滤规则 development 用户应能检索到： ```text id=\"x7r9n5\" development/rag-backend-deployment.md public/project-overview.md ``` development 用户不应检索到： ```text id=\"gxod7x\" art/character-art-style.md product_planning/combat-design.md ``` 基本权限规则如下： ```text id=\"nfa3sf\" 如果 visibility = public，则所有认证用户可见。 如果 allowed_departments 包含当前用户 department_code，则可见。 如果 allowed_users 包含当前用户 user_id，则可见。 如果 owner_user_id 等于当前用户 user_id，则可见。 否则不可见。 ``` 如果当前用户没有 `knowledge:read` 权限，则应在检索前直接拒绝请求。 ---"
+          },
+          {
+            "rank": 9,
+            "logical_chunk_id": "chunk_cbefa0bef9337f45",
+            "physical_id": "034e2dadf5bb8c6e804b7ef1f73e474a568352319ddda74edd5b2122cba40f6f",
+            "doc_id": "4c2169fe0d7953231e50a888399028a535272ca2f5a689ab548a3527279be023",
+            "source_path": "product_planning/combat-design.md",
+            "title": "18. 总结",
+            "section_path": [
+              "战斗系统设计规划文档",
+              "18. 总结"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_0b44af92a335b057",
+            "parent_id": "21d0839fabb651a7cede978b516ed59fd520937058f33734c9418204f32d9763",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 56.084404,
+              "vector_score": null,
+              "keyword_score": 56.084404,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 18. 总结 本文档定义了项目战斗系统的产品规划方向。 核心原则是： > 战斗系统应该让玩家通过观察、选择、执行和复盘获得成长感，而不是只依赖数值碾压或随机结果。 本文档在 ACL 权限测试中应仅对 product_planning 部门用户可见，用于验证部门级知识库权限过滤是否生效。"
+          },
+          {
+            "rank": 10,
+            "logical_chunk_id": "chunk_4090e4a98217b902",
+            "physical_id": "257ca724f94c0dbc11710deed778ab8bd64893a986961a7c5e1bd887c080b22b",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "9. 权限过滤验收标准",
+            "section_path": [
+              "项目整体介绍文档",
+              "9. 权限过滤验收标准"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_48d98ca989356c33",
+            "parent_id": "d1dabdf9e5f116c6f8698a40b804dcc0ac3bee0ae06e0eb7851fd8983f911b79",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 53.12204,
+              "vector_score": null,
+              "keyword_score": 53.12204,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 9. 权限过滤验收标准 本文档的权限验收标准如下： * art 用户可以检索到本文档。 * product_planning 用户可以检索到本文档。 * development 用户可以检索到本文档。 * 已认证且拥有 `knowledge:read` 权限的普通用户可以检索到本文档。 * 本文档不应依赖 `allowed_departments` 才能被检索。 * 本文档的 chunk metadata 中应包含 `visibility = \"public\"`。 * Milvus 和 Elasticsearch 都应支持 public 文档过滤规则。 * public 文档可以和部门文档一起参与 Hybrid Retrieval。 * public 文档进入 prompt 前仍应通过最终权限校验。 ---"
+          }
+        ],
+        "rrf": [
+          {
+            "rank": 1,
+            "logical_chunk_id": "chunk_e66042e24778969e",
+            "physical_id": "6315a53fce37a039a4233f44c19bfa600ee6ab63b52867f8417b77b7aad48684",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "文档目的",
+            "section_path": [
+              "项目整体介绍文档",
+              "文档目的"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_9c07611f3e02f04c",
+            "parent_id": "e0ce0eeec918470756fed246985fbb23a924ef30f8f7987efa33272aa5de6b18",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.032266458495966696,
+              "vector_score": null,
+              "keyword_score": 79.31115,
+              "rrf_score": 0.032266458495966696,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 文档目的 本文档用于介绍当前 Agent RAG 测试项目的整体目标、模块组成、测试范围和权限验证方式。 该文档位于： ```text id=\"e1naxg\" knowledge-base-acl-test/public/project-overview.md ``` 根据 ACL 测试目录规则，`public/**` 目录下的文档应自动生成以下权限 metadata： ```text id=\"n240qb\" visibility = \"public\" ``` 因此，本文档应该对所有已认证用户可见，包括： ```text id=\"6v82xc\" art 部门用户 product_planning 部门用户 development 部门用户 其他拥有 knowledge:read 权限的用户 ``` 本文档主要用于验证： > public 文档是否可以被不同部门用户共同检索到。 ---"
+          },
+          {
+            "rank": 2,
+            "logical_chunk_id": "chunk_9c41fd05e02eca63",
+            "physical_id": "1beff6c214620b232311320746636000fff516627cdb0aa16c767b0131d14698",
+            "doc_id": "4c2169fe0d7953231e50a888399028a535272ca2f5a689ab548a3527279be023",
+            "source_path": "product_planning/combat-design.md",
+            "title": "15. RAG 权限测试说明",
+            "section_path": [
+              "战斗系统设计规划文档",
+              "15. RAG 权限测试说明"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_c8823bfe684d2549",
+            "parent_id": "7d38987550d371d1e259a627772745533b2144d87d853ff6e4339a928923e343",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.03128054740957967,
+              "vector_score": null,
+              "keyword_score": 66.33067,
+              "rrf_score": 0.03128054740957967,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 15. RAG 权限测试说明 本文档用于测试 product_planning 部门的知识库权限过滤。 根据目录规则： ```text knowledge-base-acl-test/product_planning/combat-design.md ``` 系统应自动生成以下权限 metadata： ```text allowed_departments = [\"product_planning\"] visibility = department 或默认部门可见 ``` 预期行为： ```text product_planning 部门用户可以检索到本文档。 art 部门用户不应该检索到本文档。 development 部门用户不应该检索到本文档。 public 权限用户不应该在无授权情况下检索到本文档。 ``` ---"
+          },
+          {
+            "rank": 3,
+            "logical_chunk_id": "chunk_e61f024c79efd70d",
+            "physical_id": "458b00dcd5eb11e72a9eb539756ccc2c3a3f290f696c495432b6620b9f094be1",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "3. 测试知识库目录",
+            "section_path": [
+              "项目整体介绍文档",
+              "3. 测试知识库目录"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_becc58aca3143f88",
+            "parent_id": "d8a9af4c86e6e946bb14717f2c56329059faa2dd765761272d878fa583bb601e",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.03128054740957967,
+              "vector_score": null,
+              "keyword_score": 73.74481,
+              "rrf_score": 0.03128054740957967,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 3. 测试知识库目录 当前测试知识库目录如下： ```text id=\"aal0yq\" knowledge-base-acl-test/ art/ character-art-style.md product_planning/ combat-design.md development/ rag-backend-deployment.md public/ project-overview.md ``` 每个目录代表一种权限来源。 目录权限映射规则如下： | 目录 | 自动生成权限 metadata | 说明 | | ------------------- | ------------------------------------------ | ----------------------- | | art/** | allowed_departments = [\"art\"] | 仅 art 部门可见 | | product_planning/** | allowed_departments = [\"product_planning\"] | 仅 product_planning"
+          },
+          {
+            "rank": 4,
+            "logical_chunk_id": "chunk_32ce6542a27093ac",
+            "physical_id": "4b0b52db57216a8992cf8a017bd5dc03620a31850ea72068b6ae38c0ffe4c4d8",
+            "doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+            "source_path": "development/rag-deployment-checklist.md",
+            "title": "8.1 权限规则",
+            "section_path": [
+              "RAG 后端本地部署验收清单",
+              "八、权限过滤验证",
+              "8.1 权限规则"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_d3251ca448e3d381",
+            "parent_id": "a81c1d6ded3b2462865dd0a611c0b68fc29a10852e0722e29a039ea09634ce58",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.03076923076923077,
+              "vector_score": null,
+              "keyword_score": 69.77857,
+              "rrf_score": 0.03076923076923077,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "### 8.1 权限规则 - [ ] `visibility = public` 的文档对所有认证用户可见 - [ ] `allowed_departments` 包含当前用户部门时可见 - [ ] `allowed_users` 包含当前用户 ID 时可见 - [ ] `owner_user_id` 匹配当前用户时可见 - [ ] 无 `knowledge:read` 权限时请求被拒绝"
+          },
+          {
+            "rank": 5,
+            "logical_chunk_id": "chunk_e46195e75a0e4c4a",
+            "physical_id": "6e0ffbd1dd1aeabfa5298756d8b4f3dd6e9dc4746a7fbc111b301529bece581b",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "20. 总结",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "20. 总结"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_836cf005acc7b719",
+            "parent_id": "6e467effcfb3eca204a0d77c475e040f43e6e76cd427acc1621a87beb0822874",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.03057889822595705,
+              "vector_score": null,
+              "keyword_score": 70.89512,
+              "rrf_score": 0.03057889822595705,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 20. 总结 本文档定义了 RAG 后端部署与 ACL 权限测试相关的开发规范。 核心原则是： > 权限过滤不能只停留在接口层，必须贯穿文档导入、chunk metadata、Milvus 检索、Elasticsearch 检索、rerank 和 prompt 构建全过程。 在知识库 ACL 权限测试中，本文档应自动获得以下权限 metadata： ```text id=\"nxdorc\" allowed_departments = [\"development\"] visibility = department 或默认部门可见 ``` 因此，该文档应该只对 development 部门用户可见，不应该被 art 或 product_planning 部门用户检索到。 ---"
+          },
+          {
+            "rank": 6,
+            "logical_chunk_id": "chunk_0b669faee05f1144",
+            "physical_id": "0169b380ce30f776ca64e66a1796d8c10a08b03b068495c129347eca953157f9",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "8. 公开文档测试关键词",
+            "section_path": [
+              "项目整体介绍文档",
+              "8. 公开文档测试关键词"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_a6d9f71ab9b708f2",
+            "parent_id": "fe06115554ffac95952540f3c771f04e61b511e77e22259bb86e87669f8786ff",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.03055037313432836,
+              "vector_score": null,
+              "keyword_score": 64.321976,
+              "rrf_score": 0.03055037313432836,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 8. 公开文档测试关键词 以下关键词用于 public 权限检索测试： ```text id=\"mndxck\" 公开项目总览 public 文档可见性测试 多部门共同可见文档 知识库 ACL 测试目录 RAG 权限过滤总览 RBAC ACL ABAC 混合模型说明 Hybrid Retrieval 权限验证 Prompt 前最终兜底校验 ``` 这些关键词应该可以被 art、product_planning、development 三个部门用户检索到。 如果某个已认证用户无法检索到这些关键词，说明 public 文档权限处理可能存在问题。 ---"
+          },
+          {
+            "rank": 7,
+            "logical_chunk_id": "chunk_f8a53eabbef5743c",
+            "physical_id": "416dee6e67f7767463f0e53adb97bc6c5a023843b3f420644f36d5517954c702",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "13. 权限过滤规则",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "13. 权限过滤规则"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_be17ccf837cb389b",
+            "parent_id": "ff7e785da9dce01c6086155c807d83be6b6313cd19d5ebf13f6d6aaa6752bca6",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.029631255487269532,
+              "vector_score": null,
+              "keyword_score": 63.060356,
+              "rrf_score": 0.029631255487269532,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 13. 权限过滤规则 development 用户应能检索到： ```text id=\"x7r9n5\" development/rag-backend-deployment.md public/project-overview.md ``` development 用户不应检索到： ```text id=\"gxod7x\" art/character-art-style.md product_planning/combat-design.md ``` 基本权限规则如下： ```text id=\"nfa3sf\" 如果 visibility = public，则所有认证用户可见。 如果 allowed_departments 包含当前用户 department_code，则可见。 如果 allowed_users 包含当前用户 user_id，则可见。 如果 owner_user_id 等于当前用户 user_id，则可见。 否则不可见。 ``` 如果当前用户没有 `knowledge:read` 权限，则应在检索前直接拒绝请求。 ---"
+          },
+          {
+            "rank": 8,
+            "logical_chunk_id": "chunk_4090e4a98217b902",
+            "physical_id": "257ca724f94c0dbc11710deed778ab8bd64893a986961a7c5e1bd887c080b22b",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "9. 权限过滤验收标准",
+            "section_path": [
+              "项目整体介绍文档",
+              "9. 权限过滤验收标准"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_48d98ca989356c33",
+            "parent_id": "d1dabdf9e5f116c6f8698a40b804dcc0ac3bee0ae06e0eb7851fd8983f911b79",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.02877846790890269,
+              "vector_score": null,
+              "keyword_score": 53.12204,
+              "rrf_score": 0.02877846790890269,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 9. 权限过滤验收标准 本文档的权限验收标准如下： * art 用户可以检索到本文档。 * product_planning 用户可以检索到本文档。 * development 用户可以检索到本文档。 * 已认证且拥有 `knowledge:read` 权限的普通用户可以检索到本文档。 * 本文档不应依赖 `allowed_departments` 才能被检索。 * 本文档的 chunk metadata 中应包含 `visibility = \"public\"`。 * Milvus 和 Elasticsearch 都应支持 public 文档过滤规则。 * public 文档可以和部门文档一起参与 Hybrid Retrieval。 * public 文档进入 prompt 前仍应通过最终权限校验。 ---"
+          },
+          {
+            "rank": 9,
+            "logical_chunk_id": "chunk_f996084e4616344d",
+            "physical_id": "397381e496a8e4eb093e0e51b2ceb0d550e3aadbe86f1f9011215da7b6272f2b",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "11. 总结",
+            "section_path": [
+              "项目整体介绍文档",
+              "11. 总结"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_ccf184dad97b2862",
+            "parent_id": "b3c57bb55016a58006050e605ddd597cecfb962894c4157ac0afcaa843d58e05",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.01639344262295082,
+              "vector_score": 0.7292966842651367,
+              "keyword_score": null,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 11. 总结 本文档是 ACL 权限测试知识库中的公开文档，用于验证 `public/**` 目录下的文档是否可以被所有已认证用户检索。 核心测试点是： ```text id=\"utw2ty\" 部门私有文档只能被对应部门检索。 public 文档应该被所有拥有 knowledge:read 权限的认证用户检索。 ``` 本文档应自动获得以下权限 metadata： ```text id=\"l37oec\" visibility = \"public\" ``` 如果 art、product_planning、development 三个部门用户都能检索到本文档，同时不能越权检索其他部门私有文档，则说明基础 ACL 权限过滤逻辑符合预期。"
+          },
+          {
+            "rank": 10,
+            "logical_chunk_id": "chunk_15eb212207bbd84e",
+            "physical_id": "08ca9094a1ffbb74eac2f17b76930eae7f84a8dfb4cffacdec4a9be67614b353",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "14. 总结",
+            "section_path": [
+              "角色美术风格规范",
+              "14. 总结"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_258443bba6ba99c6",
+            "parent_id": "6b33827d0ee3bd2a79930cccd0bf670139c9d2953f4606c08ad1aa2a7058856d",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 0.015625,
+              "vector_score": null,
+              "keyword_score": 70.350784,
+              "rrf_score": 0.015625,
+              "rerank_score": null
+            },
+            "labels": [
+              "semantic_relevant",
+              "authoritative"
+            ],
+            "content_preview": "## 14. 总结 本文档定义了项目角色美术风格的基础规范。 核心原则是： > 角色首先要有清晰轮廓，其次要有明确性格，最后才是细节丰富度。 在知识库 ACL 权限测试中，本文档应自动获得以下权限 metadata： ```text allowed_departments = [\"art\"] visibility = department 或默认部门可见 ``` 因此，该文档应该只对 art 部门用户可见，不应该被 development 或 product_planning 部门用户检索到。"
+          }
+        ],
+        "rerank": [
+          {
+            "rank": 1,
+            "logical_chunk_id": "chunk_15eb212207bbd84e",
+            "physical_id": "08ca9094a1ffbb74eac2f17b76930eae7f84a8dfb4cffacdec4a9be67614b353",
+            "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+            "source_path": "art/character-art-style.md",
+            "title": "14. 总结",
+            "section_path": [
+              "角色美术风格规范",
+              "14. 总结"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_258443bba6ba99c6",
+            "parent_id": "6b33827d0ee3bd2a79930cccd0bf670139c9d2953f4606c08ad1aa2a7058856d",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 0.9600404645894136,
+              "vector_score": null,
+              "keyword_score": 70.350784,
+              "rrf_score": 0.015625,
+              "rerank_score": 0.9600404645894136
+            },
+            "labels": [
+              "semantic_relevant",
+              "authoritative"
+            ],
+            "content_preview": "## 14. 总结 本文档定义了项目角色美术风格的基础规范。 核心原则是： > 角色首先要有清晰轮廓，其次要有明确性格，最后才是细节丰富度。 在知识库 ACL 权限测试中，本文档应自动获得以下权限 metadata： ```text allowed_departments = [\"art\"] visibility = department 或默认部门可见 ``` 因此，该文档应该只对 art 部门用户可见，不应该被 development 或 product_planning 部门用户检索到。"
+          },
+          {
+            "rank": 2,
+            "logical_chunk_id": "chunk_e66042e24778969e",
+            "physical_id": "6315a53fce37a039a4233f44c19bfa600ee6ab63b52867f8417b77b7aad48684",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "文档目的",
+            "section_path": [
+              "项目整体介绍文档",
+              "文档目的"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_9c07611f3e02f04c",
+            "parent_id": "e0ce0eeec918470756fed246985fbb23a924ef30f8f7987efa33272aa5de6b18",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.9370377399172803,
+              "vector_score": null,
+              "keyword_score": 79.31115,
+              "rrf_score": 0.032266458495966696,
+              "rerank_score": 0.9370377399172803
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 文档目的 本文档用于介绍当前 Agent RAG 测试项目的整体目标、模块组成、测试范围和权限验证方式。 该文档位于： ```text id=\"e1naxg\" knowledge-base-acl-test/public/project-overview.md ``` 根据 ACL 测试目录规则，`public/**` 目录下的文档应自动生成以下权限 metadata： ```text id=\"n240qb\" visibility = \"public\" ``` 因此，本文档应该对所有已认证用户可见，包括： ```text id=\"6v82xc\" art 部门用户 product_planning 部门用户 development 部门用户 其他拥有 knowledge:read 权限的用户 ``` 本文档主要用于验证： > public 文档是否可以被不同部门用户共同检索到。 ---"
+          },
+          {
+            "rank": 3,
+            "logical_chunk_id": "chunk_e46195e75a0e4c4a",
+            "physical_id": "6e0ffbd1dd1aeabfa5298756d8b4f3dd6e9dc4746a7fbc111b301529bece581b",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "20. 总结",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "20. 总结"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_836cf005acc7b719",
+            "parent_id": "6e467effcfb3eca204a0d77c475e040f43e6e76cd427acc1621a87beb0822874",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.9104523941660901,
+              "vector_score": null,
+              "keyword_score": 70.89512,
+              "rrf_score": 0.03057889822595705,
+              "rerank_score": 0.9104523941660901
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 20. 总结 本文档定义了 RAG 后端部署与 ACL 权限测试相关的开发规范。 核心原则是： > 权限过滤不能只停留在接口层，必须贯穿文档导入、chunk metadata、Milvus 检索、Elasticsearch 检索、rerank 和 prompt 构建全过程。 在知识库 ACL 权限测试中，本文档应自动获得以下权限 metadata： ```text id=\"nxdorc\" allowed_departments = [\"development\"] visibility = department 或默认部门可见 ``` 因此，该文档应该只对 development 部门用户可见，不应该被 art 或 product_planning 部门用户检索到。 ---"
+          },
+          {
+            "rank": 4,
+            "logical_chunk_id": "chunk_f8a53eabbef5743c",
+            "physical_id": "416dee6e67f7767463f0e53adb97bc6c5a023843b3f420644f36d5517954c702",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "13. 权限过滤规则",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "13. 权限过滤规则"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_be17ccf837cb389b",
+            "parent_id": "ff7e785da9dce01c6086155c807d83be6b6313cd19d5ebf13f6d6aaa6752bca6",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.8843937998774529,
+              "vector_score": null,
+              "keyword_score": 63.060356,
+              "rrf_score": 0.029631255487269532,
+              "rerank_score": 0.8843937998774529
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 13. 权限过滤规则 development 用户应能检索到： ```text id=\"x7r9n5\" development/rag-backend-deployment.md public/project-overview.md ``` development 用户不应检索到： ```text id=\"gxod7x\" art/character-art-style.md product_planning/combat-design.md ``` 基本权限规则如下： ```text id=\"nfa3sf\" 如果 visibility = public，则所有认证用户可见。 如果 allowed_departments 包含当前用户 department_code，则可见。 如果 allowed_users 包含当前用户 user_id，则可见。 如果 owner_user_id 等于当前用户 user_id，则可见。 否则不可见。 ``` 如果当前用户没有 `knowledge:read` 权限，则应在检索前直接拒绝请求。 ---"
+          },
+          {
+            "rank": 5,
+            "logical_chunk_id": "chunk_f996084e4616344d",
+            "physical_id": "397381e496a8e4eb093e0e51b2ceb0d550e3aadbe86f1f9011215da7b6272f2b",
+            "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+            "source_path": "public/project-overview.md",
+            "title": "11. 总结",
+            "section_path": [
+              "项目整体介绍文档",
+              "11. 总结"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_ccf184dad97b2862",
+            "parent_id": "b3c57bb55016a58006050e605ddd597cecfb962894c4157ac0afcaa843d58e05",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.8743164063721038,
+              "vector_score": 0.7292966842651367,
+              "keyword_score": null,
+              "rrf_score": 0.01639344262295082,
+              "rerank_score": 0.8743164063721038
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 11. 总结 本文档是 ACL 权限测试知识库中的公开文档，用于验证 `public/**` 目录下的文档是否可以被所有已认证用户检索。 核心测试点是： ```text id=\"utw2ty\" 部门私有文档只能被对应部门检索。 public 文档应该被所有拥有 knowledge:read 权限的认证用户检索。 ``` 本文档应自动获得以下权限 metadata： ```text id=\"l37oec\" visibility = \"public\" ``` 如果 art、product_planning、development 三个部门用户都能检索到本文档，同时不能越权检索其他部门私有文档，则说明基础 ACL 权限过滤逻辑符合预期。"
+          }
+        ]
+      },
+      "final_context_documents": [
+        {
+          "rank": 1,
+          "logical_chunk_id": "parent_258443bba6ba99c6",
+          "logical_parent_id": "parent_258443bba6ba99c6",
+          "parent_id": "6b33827d0ee3bd2a79930cccd0bf670139c9d2953f4606c08ad1aa2a7058856d",
+          "doc_id": "160ab88bc9718967e085645227c7d588dc1f0261a03acc4f25d6e61a284f8217",
+          "source_path": "art/character-art-style.md",
+          "title": "14. 总结",
+          "labels": [
+            "unlabelled"
+          ],
+          "content_preview": "## 14. 总结 本文档定义了项目角色美术风格的基础规范。 核心原则是： > 角色首先要有清晰轮廓，其次要有明确性格，最后才是细节丰富度。 在知识库 ACL 权限测试中，本文档应自动获得以下权限 metadata： ```text allowed_departments = [\"art\"] visibility = department 或默认部门可见 ``` 因此，该文档应该只对 art 部门用户可见，不应该被 development 或 product_planning 部门用户检索到。"
+        },
+        {
+          "rank": 2,
+          "logical_chunk_id": "parent_9c07611f3e02f04c",
+          "logical_parent_id": "parent_9c07611f3e02f04c",
+          "parent_id": "e0ce0eeec918470756fed246985fbb23a924ef30f8f7987efa33272aa5de6b18",
+          "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+          "source_path": "public/project-overview.md",
+          "title": "文档目的",
+          "labels": [
+            "unlabelled"
+          ],
+          "content_preview": "## 文档目的 本文档用于介绍当前 Agent RAG 测试项目的整体目标、模块组成、测试范围和权限验证方式。 该文档位于： ```text id=\"e1naxg\" knowledge-base-acl-test/public/project-overview.md ``` 根据 ACL 测试目录规则，`public/**` 目录下的文档应自动生成以下权限 metadata： ```text id=\"n240qb\" visibility = \"public\" ``` 因此，本文档应该对所有已认证用户可见，包括： ```text id=\"6v82xc\" art 部门用户 product_planning 部门用户 development 部门用户 其他拥有 knowledge:read 权限的用户 ``` 本文档主要用于验证： > public 文档是否可以被不同部门用户共同检索到。 ---"
+        },
+        {
+          "rank": 3,
+          "logical_chunk_id": "parent_836cf005acc7b719",
+          "logical_parent_id": "parent_836cf005acc7b719",
+          "parent_id": "6e467effcfb3eca204a0d77c475e040f43e6e76cd427acc1621a87beb0822874",
+          "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_path": "development/rag-backend-deployment.md",
+          "title": "20. 总结",
+          "labels": [
+            "unlabelled"
+          ],
+          "content_preview": "## 20. 总结 本文档定义了 RAG 后端部署与 ACL 权限测试相关的开发规范。 核心原则是： > 权限过滤不能只停留在接口层，必须贯穿文档导入、chunk metadata、Milvus 检索、Elasticsearch 检索、rerank 和 prompt 构建全过程。 在知识库 ACL 权限测试中，本文档应自动获得以下权限 metadata： ```text id=\"nxdorc\" allowed_departments = [\"development\"] visibility = department 或默认部门可见 ``` 因此，该文档应该只对 development 部门用户可见，不应该被 art 或 product_planning 部门用户检索到。 ---"
+        },
+        {
+          "rank": 4,
+          "logical_chunk_id": "chunk_f8a53eabbef5743c",
+          "logical_parent_id": "parent_be17ccf837cb389b",
+          "parent_id": "ff7e785da9dce01c6086155c807d83be6b6313cd19d5ebf13f6d6aaa6752bca6",
+          "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_path": "development/rag-backend-deployment.md",
+          "title": "13. 权限过滤规则",
+          "labels": [
+            "unlabelled"
+          ],
+          "content_preview": "## 13. 权限过滤规则 development 用户应能检索到： ```text id=\"x7r9n5\" development/rag-backend-deployment.md public/project-overview.md ``` development 用户不应检索到： ```text id=\"gxod7x\" art/character-art-style.md product_planning/combat-design.md ``` 基本权限规则如下： ```text id=\"nfa3sf\" 如果 visibility = public，则所有认证用户可见。 如果 allowed_departments 包含当前用户 department_code，则可见。 如果 allowed_users 包含当前用户 user_id，则可见。 如果 owner_user_id 等于当前用户 user_id，则可见。 否则不可见。 ``` 如果当前用户没有 `knowledge:read` 权限，则应在检索前直接拒绝请求。 ---"
+        },
+        {
+          "rank": 5,
+          "logical_chunk_id": "chunk_f996084e4616344d",
+          "logical_parent_id": "parent_ccf184dad97b2862",
+          "parent_id": "b3c57bb55016a58006050e605ddd597cecfb962894c4157ac0afcaa843d58e05",
+          "doc_id": "4ea514c96c5fb5aea72ade909c1b650823308a154a692c6b1f9a14c135f40741",
+          "source_path": "public/project-overview.md",
+          "title": "11. 总结",
+          "labels": [
+            "unlabelled"
+          ],
+          "content_preview": "## 11. 总结 本文档是 ACL 权限测试知识库中的公开文档，用于验证 `public/**` 目录下的文档是否可以被所有已认证用户检索。 核心测试点是： ```text id=\"utw2ty\" 部门私有文档只能被对应部门检索。 public 文档应该被所有拥有 knowledge:read 权限的认证用户检索。 ``` 本文档应自动获得以下权限 metadata： ```text id=\"l37oec\" visibility = \"public\" ``` 如果 art、product_planning、development 三个部门用户都能检索到本文档，同时不能越权检索其他部门私有文档，则说明基础 ACL 权限过滤逻辑符合预期。"
+        }
+      ]
+    },
+    {
+      "case_id": "operator_global_reader_dev_positive",
+      "question": "知识库中是否有关于 RAG 后端部署环境变量要求与 FastAPI 本地启动命令的资料？",
+      "top_k": 5,
+      "candidate_k": 10,
+      "semantic_relevant_ids": [
+        "chunk_bf5a29d90fe09980",
+        "chunk_4280ef8844cf5af5"
+      ],
+      "authoritative_ids": [
+        "chunk_bf5a29d90fe09980",
+        "chunk_4280ef8844cf5af5"
+      ],
+      "forbidden_ids": [],
+      "stages": {
+        "vector": [
+          {
+            "rank": 1,
+            "logical_chunk_id": "chunk_2e05b9ea8bf32de8",
+            "physical_id": "4faf1fd44d3833e2f01724a69c163f29f4fbf953333aaa19672455b77c81d784",
+            "doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+            "source_path": "development/rag-deployment-checklist.md",
+            "title": "四、FastAPI 服务",
+            "section_path": [
+              "RAG 后端本地部署验收清单",
+              "四、FastAPI 服务"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_93b613e673f76d60",
+            "parent_id": "87d6057d555987b49be77917932e5f1bcbf7a538d75a4b28ff7e171c314d3f26",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.8115655183792114,
+              "vector_score": 0.8115655183792114,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 四、FastAPI 服务 - [ ] 执行 `uvicorn fast_app.main:app --reload` 启动成功 - [ ] 访问 `http://127.0.0.1:8000/docs`，OpenAPI 文档正常打开 - [ ] 健康检查接口返回正常： ```bash curl http://127.0.0.1:8000/health ``` 预期返回：`{\"status\": \"ok\"}` ---"
+          },
+          {
+            "rank": 2,
+            "logical_chunk_id": "chunk_4280ef8844cf5af5",
+            "physical_id": "6360011403be6a60d51d8fe1f2e4a90563372aabd3809a734cf8dff72cab83f6",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "8. FastAPI 服务启动",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "8. FastAPI 服务启动"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_fd5cfa9bff1bd815",
+            "parent_id": "2f4587532ec67078d2386baa820c1b897b16a2606347ffc8d567c3d96e34fc37",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.8047341704368591,
+              "vector_score": 0.8047341704368591,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "semantic_relevant",
+              "authoritative"
+            ],
+            "content_preview": "## 8. FastAPI 服务启动 本地启动命令： ```bash id=\"y5pu75\" uvicorn fast_app.main:app --reload ``` 启动成功后，访问： ```text id=\"eepzsn\" http://127.0.0.1:8000/docs ``` 需要确认 OpenAPI 文档可以正常打开。 如果项目提供健康检查接口，可以执行： ```bash id=\"bb3sbs\" curl http://127.0.0.1:8000/health ``` 预期结果： ```json id=\"g4uy5a\" { \"status\": \"ok\" } ``` ---"
+          },
+          {
+            "rank": 3,
+            "logical_chunk_id": "chunk_bcd74f8708e42df4",
+            "physical_id": "05d4788b1caae0b47b06ed39f949a172223f08ffec9ce28acbda5717586199fa",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "2. 服务组成",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "2. 服务组成"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_52518b5f18d16df5",
+            "parent_id": "66b15d89eaa37ae4306e3960817190cb0755559e2e4df3dea16117eb3b83bcc3",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.7969194054603577,
+              "vector_score": 0.7969194054603577,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 2. 服务组成 当前 RAG 后端部署至少包含以下服务： | 服务 | 作用 | | ------------------ | ------------------ | | FastAPI Backend | 提供认证、文档导入、RAG 查询接口 | | PostgreSQL | 存储用户、权限、文档元数据 | | Milvus | 存储向量索引，用于语义检索 | | Elasticsearch | 存储文本索引，用于关键词检索 | | Redis | 可选，用于缓存、限流、任务状态 | | LLM Provider | 提供大模型生成能力 | | Embedding Provider | 提供文档向量化能力 | | Rerank Provider | 提供召回结果重排能力 | 如果当前测试阶段没有接入 Redis，可以先忽略 Redis，但部署文档中仍保留该项，方便后续扩展。 ---"
+          },
+          {
+            "rank": 4,
+            "logical_chunk_id": "chunk_bf5a29d90fe09980",
+            "physical_id": "5623fd11eab9da0e9e3bd1d4b0f0f4893c39c5440ae0979bfcda0f9211131cba",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "4. 环境变量配置",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "4. 环境变量配置"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_61b0e84dbd535c95",
+            "parent_id": "6949cf7fab442397a2fdba0a133a513cec6068761f89b99552cafa4961b15ccf",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.7802961468696594,
+              "vector_score": 0.7802961468696594,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "semantic_relevant",
+              "authoritative"
+            ],
+            "content_preview": "## 4. 环境变量配置 部署前需要检查 `.env` 文件。 推荐至少包含以下配置： ```env id=\"631npg\" APP_ENV=local APP_NAME=agent-rag-backend LOG_LEVEL=INFO AUTH_ENABLED=true JWT_SECRET_KEY=replace-with-local-secret JWT_ALGORITHM=HS256 JWT_ISSUER=agent-rag JWT_AUDIENCE=agent-rag-api JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30 JWT_REFRESH_TOKEN_EXPIRE_DAYS=14 API_KEY_PEPPER=replace-with-api-key-pepper DATABASE_URL=postgresql+asyncpg://rag_user:rag_password@localhost:5432/rag_db MILVUS_HOST=localhost MILVUS_PORT=19530 MILVUS_COLLECTION=rag_chu"
+          },
+          {
+            "rank": 5,
+            "logical_chunk_id": "chunk_284aad967acb60c7",
+            "physical_id": "cb7ece557ea63d2336044f20833345c02579fdb0982536f0e39a3905913e99a8",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "3. 推荐目录结构",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "3. 推荐目录结构"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_6a4d5e28cdb53bb0",
+            "parent_id": "fd974b164b209099b75972c46d2e93c7b66462fcafef9a6afdbdb3b724b6cd6f",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.7463148832321167,
+              "vector_score": 0.7463148832321167,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 3. 推荐目录结构 推荐部署目录结构如下： ```text id=\"8x2tok\" project-root/ fast_app/ main.py routers/ services/ repositories/ models/ schemas/ core/ migrations/ scripts/ tests/ knowledge-base-acl-test/ art/ product_planning/ development/ public/ .env docker-compose.yml README.md ``` 其中： ```text id=\"6v1bf7\" fast_app/ 后端应用代码 migrations/ Alembic 数据库迁移脚本 scripts/ 初始化、导入、测试脚本 knowledge-base-acl-test/ ACL 权限测试知识库 .env 本地环境变量 docker-compose.yml 本地依赖服务编排 ``` ---"
+          },
+          {
+            "rank": 6,
+            "logical_chunk_id": "chunk_fd5026edc8062ec3",
+            "physical_id": "773c1e88e4573c430bac1fa0e6a129ae9b9f79c0245d7c51dea0b04fc043770c",
+            "doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+            "source_path": "development/rag-deployment-checklist.md",
+            "title": "一、环境准备",
+            "section_path": [
+              "RAG 后端本地部署验收清单",
+              "一、环境准备"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_3a3b8c530029e182",
+            "parent_id": "c49492a74dc0d46a68fb34d6dc51936b8100c8e798a460a26a3df11339a0d935",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.7453632950782776,
+              "vector_score": 0.7453632950782776,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 一、环境准备 - [ ] `.env` 文件已创建并包含所有必要配置 - [ ] `JWT_SECRET_KEY` 不为空 - [ ] `API_KEY_PEPPER` 不为空 - [ ] `AUTH_ENABLED=true` 时认证配置完整 - [ ] `DATABASE_URL` 指向正确的 PostgreSQL 实例 - [ ] `MILVUS_HOST` / `MILVUS_PORT` 配置正确 - [ ] `ELASTICSEARCH_URL` 配置正确 - [ ] LLM / Embedding / Rerank Provider 的 API Key 已配置 - [ ] Elasticsearch 客户端版本与 Docker 服务端版本一致（如 `elasticsearch==8.17.0`） - [ ] 已安装 `aiohttp>=3,<4`（异步 ES 客户端依赖） ---"
+          },
+          {
+            "rank": 7,
+            "logical_chunk_id": "chunk_4fde136a1c94ccd2",
+            "physical_id": "d62495bc7954dcb3a3234b7c3a7b6f2d144397db7d09e14515f6b75c46a112fc",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "文档目的",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "文档目的"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_f6764380a62c73ae",
+            "parent_id": "6225e0031740d4ad16894f8c8fd8d34af84d5ba68e6699a786290aafa14bb140",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.7418875098228455,
+              "vector_score": 0.7418875098228455,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 文档目的 本文档用于定义当前 Agent RAG 测试项目中的后端部署规范，主要面向 **开发部门 development** 使用。 该文档适用于以下工作： * RAG 后端服务部署 * FastAPI 服务启动与检查 * Milvus / Elasticsearch / PostgreSQL 依赖服务联调 * 环境变量配置 * 索引初始化 * 日志检查 * 部署后健康检查 * 权限过滤功能验证 本文档属于开发部门内部知识库内容。非 development 部门用户在权限过滤正确的情况下，不应该检索到本文档内容。 ---"
+          },
+          {
+            "rank": 8,
+            "logical_chunk_id": "chunk_8b7d44d84e545fdb",
+            "physical_id": "086f315aed4591d97f0ced875470fc22a0ae8af7f5d6d2a51126f063ee2c3e46",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "1. 部署目标",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "1. 部署目标"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_72fa0f442dc91097",
+            "parent_id": "fdcd252d23ef07293c304a5ae050c955f304201ca6ecea2c853f423a3f1e17d1",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.7408916354179382,
+              "vector_score": 0.7408916354179382,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 1. 部署目标 RAG 后端部署的目标是保证以下能力稳定可用： ```text id=\"rugk9h\" 用户认证 知识库文档导入 向量检索 关键词检索 Hybrid Retrieval Rerank 权限过滤 SSE 流式问答 日志追踪 异常处理 ``` 部署完成后，系统应能够支持： 1. 用户登录并获取 access token。 2. 用户通过 API Key 调用 RAG 接口。 3. 不同部门用户只能检索到自己有权限的文档。 4. public 文档可以被所有认证用户检索。 5. Milvus 和 Elasticsearch 的权限过滤结果保持一致。 6. 无权限文档不会进入 LLM prompt。 ---"
+          },
+          {
+            "rank": 9,
+            "logical_chunk_id": "chunk_9686d186c22abd70",
+            "physical_id": "08421d8546a5e5c93897302594f6a082123453b62859dc2d9de62b853ac1ce48",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "RAG 后端部署规范文档",
+            "section_path": [
+              "RAG 后端部署规范文档"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_95ed097ac1f01bf4",
+            "parent_id": "2e2fea638c3f883d0a855dc7f8d45b7ddbe1483e816d33bd6e2b3ab5a0ff7322",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.7321457862854004,
+              "vector_score": 0.7321457862854004,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "# RAG 后端部署规范文档"
+          },
+          {
+            "rank": 10,
+            "logical_chunk_id": "chunk_7eef7ac591b1c33d",
+            "physical_id": "f1196850761caf037e8646aafd52e560d6ae696928748049ec542392c6ad0509",
+            "doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+            "source_path": "development/rag-deployment-checklist.md",
+            "title": "二、依赖服务启动",
+            "section_path": [
+              "RAG 后端本地部署验收清单",
+              "二、依赖服务启动"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_ace451eda95182e6",
+            "parent_id": "747ab52ae0b036c0d7ab5882b7b225e584236efd46fe59ea28ae011dd4c62820",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.7288479208946228,
+              "vector_score": 0.7288479208946228,
+              "keyword_score": null,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 二、依赖服务启动 - [ ] 执行 `docker compose up -d` 成功 - [ ] `docker ps` 确认以下容器运行正常： - [ ] PostgreSQL - [ ] Milvus - [ ] Elasticsearch - [ ] Elasticsearch IK 分词插件已安装（中文检索必需） ---"
+          }
+        ],
+        "keyword": [
+          {
+            "rank": 1,
+            "logical_chunk_id": "chunk_4fde136a1c94ccd2",
+            "physical_id": "d62495bc7954dcb3a3234b7c3a7b6f2d144397db7d09e14515f6b75c46a112fc",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "文档目的",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "文档目的"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_f6764380a62c73ae",
+            "parent_id": "6225e0031740d4ad16894f8c8fd8d34af84d5ba68e6699a786290aafa14bb140",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 60.196255,
+              "vector_score": null,
+              "keyword_score": 60.196255,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 文档目的 本文档用于定义当前 Agent RAG 测试项目中的后端部署规范，主要面向 **开发部门 development** 使用。 该文档适用于以下工作： * RAG 后端服务部署 * FastAPI 服务启动与检查 * Milvus / Elasticsearch / PostgreSQL 依赖服务联调 * 环境变量配置 * 索引初始化 * 日志检查 * 部署后健康检查 * 权限过滤功能验证 本文档属于开发部门内部知识库内容。非 development 部门用户在权限过滤正确的情况下，不应该检索到本文档内容。 ---"
+          },
+          {
+            "rank": 2,
+            "logical_chunk_id": "chunk_4280ef8844cf5af5",
+            "physical_id": "6360011403be6a60d51d8fe1f2e4a90563372aabd3809a734cf8dff72cab83f6",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "8. FastAPI 服务启动",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "8. FastAPI 服务启动"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_fd5cfa9bff1bd815",
+            "parent_id": "2f4587532ec67078d2386baa820c1b897b16a2606347ffc8d567c3d96e34fc37",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 59.039013,
+              "vector_score": null,
+              "keyword_score": 59.039013,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "semantic_relevant",
+              "authoritative"
+            ],
+            "content_preview": "## 8. FastAPI 服务启动 本地启动命令： ```bash id=\"y5pu75\" uvicorn fast_app.main:app --reload ``` 启动成功后，访问： ```text id=\"eepzsn\" http://127.0.0.1:8000/docs ``` 需要确认 OpenAPI 文档可以正常打开。 如果项目提供健康检查接口，可以执行： ```bash id=\"bb3sbs\" curl http://127.0.0.1:8000/health ``` 预期结果： ```json id=\"g4uy5a\" { \"status\": \"ok\" } ``` ---"
+          },
+          {
+            "rank": 3,
+            "logical_chunk_id": "chunk_648f9dbd486ba97a",
+            "physical_id": "40c6648a2edf3ce25b300991f02b1e6b338f12cb43e028b5afe83bc07d20c42c",
+            "doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+            "source_path": "development/rag-deployment-checklist.md",
+            "title": "十一、验收通过标准",
+            "section_path": [
+              "RAG 后端本地部署验收清单",
+              "十一、验收通过标准"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_ad3f80a83eef0454",
+            "parent_id": "e234399157310f1a69ed890815b9ebe8717a60713f1339db7820ca7de7ddcf49",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 50.39449,
+              "vector_score": null,
+              "keyword_score": 50.39449,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 十一、验收通过标准 所有以下项必须通过： - [ ] FastAPI 服务正常启动，`/docs` 可访问 - [ ] 用户可登录获取 access token - [ ] API Key 可调用受保护接口 - [ ] PostgreSQL migration 成功 - [ ] Milvus collection 创建成功，权限字段完整 - [ ] Elasticsearch index 创建成功，mapping 正确 - [ ] 测试知识库文档成功导入 - [ ] 部门用户只能检索到有权限的文档 - [ ] Milvus 与 Elasticsearch 权限过滤结果一致 - [ ] 无权限 chunk 不会进入 LLM prompt ---"
+          },
+          {
+            "rank": 4,
+            "logical_chunk_id": "chunk_6142fd318b2baf05",
+            "physical_id": "2a98904a9e75bca84f9a171a5ebd2d50d5381be9d8a135a281521d11b07ea3d5",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "5. 本地依赖服务启动",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "5. 本地依赖服务启动"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_75083150580b473c",
+            "parent_id": "4a6e184a4fe84c1b5ae0138880c62e9c09434cb1736e70f2956b56066b6acc58",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 49.336266,
+              "vector_score": null,
+              "keyword_score": 49.336266,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 5. 本地依赖服务启动 本地开发建议通过 Docker Compose 启动依赖服务。 启动命令： ```bash id=\"hbnu5i\" docker compose up -d ``` 检查容器状态： ```bash id=\"0mxgo8\" docker ps ``` 需要确认： ```text id=\"zo0auh\" PostgreSQL 正常运行 Milvus 正常运行 Elasticsearch 正常运行 Elasticsearch IK 分词插件已安装 ``` 如果 Elasticsearch 使用中文检索，必须确认 IK 分词器可用，否则中文关键词检索效果会明显下降。 ---"
+          },
+          {
+            "rank": 5,
+            "logical_chunk_id": "chunk_2e05b9ea8bf32de8",
+            "physical_id": "4faf1fd44d3833e2f01724a69c163f29f4fbf953333aaa19672455b77c81d784",
+            "doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+            "source_path": "development/rag-deployment-checklist.md",
+            "title": "四、FastAPI 服务",
+            "section_path": [
+              "RAG 后端本地部署验收清单",
+              "四、FastAPI 服务"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_93b613e673f76d60",
+            "parent_id": "87d6057d555987b49be77917932e5f1bcbf7a538d75a4b28ff7e171c314d3f26",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 48.2346,
+              "vector_score": null,
+              "keyword_score": 48.2346,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 四、FastAPI 服务 - [ ] 执行 `uvicorn fast_app.main:app --reload` 启动成功 - [ ] 访问 `http://127.0.0.1:8000/docs`，OpenAPI 文档正常打开 - [ ] 健康检查接口返回正常： ```bash curl http://127.0.0.1:8000/health ``` 预期返回：`{\"status\": \"ok\"}` ---"
+          },
+          {
+            "rank": 6,
+            "logical_chunk_id": "chunk_0b468b33828eaa6e",
+            "physical_id": "1b29bf1c5366fea744f05d1f8bb0e310452b3f5b341dc3409b3f59413a3e63d3",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "16. 部署后测试问题",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "16. 部署后测试问题"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_e43a419ce150ad42",
+            "parent_id": "dd468fb7572988f7aab562a1549ab220fe0cbbaae61945bd7a23d674f1231583",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 46.39066,
+              "vector_score": null,
+              "keyword_score": 46.39066,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 16. 部署后测试问题 可以使用以下问题测试 development 部门权限： ```text id=\"o2s4d5\" RAG 后端如何部署？ FastAPI 服务启动命令是什么？ Milvus 权限字段需要检查哪些？ Elasticsearch 为什么要检查 allowed_departments？ Hybrid Retrieval 权限一致性如何保证？ 进入 LLM prompt 前为什么还要做兜底校验？ ``` development 用户应该能检索到本文档内容。 art 用户、product_planning 用户在没有跨部门授权的情况下，不应该检索到本文档内容。 ---"
+          },
+          {
+            "rank": 7,
+            "logical_chunk_id": "chunk_1636692c95225f00",
+            "physical_id": "d3fcee65844e9252b3f32f623c8839b2c13f33d500ea23b1556092d14a4afe07",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "18.3 文档导入成功但检索不到",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "18. 常见部署问题",
+              "18.3 文档导入成功但检索不到"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_c82e983cd7d23de2",
+            "parent_id": "39bd012f1c05ce7571feb3c603083a5622583c0c826cf514eff09d595c62dcdc",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 43.333916,
+              "vector_score": null,
+              "keyword_score": 43.333916,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "### 18.3 文档导入成功但检索不到 需要检查： ```text id=\"p4jf5g\" 文档是否成功切分 chunk embedding 是否成功生成 Milvus 是否写入向量 Elasticsearch 是否写入文本索引 当前用户是否有部门权限 权限 filter 是否过严 ``` ---"
+          },
+          {
+            "rank": 8,
+            "logical_chunk_id": "chunk_b46ac6fcfb2ea3fd",
+            "physical_id": "91912732bcffdb409c285027ad36bb859accf077500d7826261a1b7ae5eaed19",
+            "doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+            "source_path": "development/rag-deployment-checklist.md",
+            "title": "十二、GitLab 文档源与发布版本验收",
+            "section_path": [
+              "RAG 后端本地部署验收清单",
+              "十二、GitLab 文档源与发布版本验收"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_1729fefe6ed5fcf9",
+            "parent_id": "37fec5379bccd8ae1f31d853349e83c3cafbbecee8cfd62a92f6654472703c29",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 40.806404,
+              "vector_score": null,
+              "keyword_score": 40.806404,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 十二、GitLab 文档源与发布版本验收 > 本章节定义知识库文档从 GitLab 源到生产发布版本的完整验收流程，确保文档变更经过审核、安全隔离、原子发布，并在失败时可回滚。"
+          },
+          {
+            "rank": 9,
+            "logical_chunk_id": "chunk_487bb9e692cee82b",
+            "physical_id": "85d74f242fa942037c9916c7c24f2db00443874cfc70bb5bb1ccbbf9cefd8b7b",
+            "doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+            "source_path": "development/rag-deployment-checklist.md",
+            "title": "RAG 后端本地部署验收清单",
+            "section_path": [
+              "RAG 后端本地部署验收清单"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_eacdcc56f13cbda0",
+            "parent_id": "b59e02cf32c396eded1bb692d8d063435404dff8cdfcd2a7e3db73349325ff9e",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 40.368763,
+              "vector_score": null,
+              "keyword_score": 40.368763,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "# RAG 后端本地部署验收清单 > 本文档基于 RAG 后端部署规范整理，用于本地部署完成后的逐项验收。 ---"
+          },
+          {
+            "rank": 10,
+            "logical_chunk_id": "chunk_284aad967acb60c7",
+            "physical_id": "cb7ece557ea63d2336044f20833345c02579fdb0982536f0e39a3905913e99a8",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "3. 推荐目录结构",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "3. 推荐目录结构"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_6a4d5e28cdb53bb0",
+            "parent_id": "fd974b164b209099b75972c46d2e93c7b66462fcafef9a6afdbdb3b724b6cd6f",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 39.48742,
+              "vector_score": null,
+              "keyword_score": 39.48742,
+              "rrf_score": null,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 3. 推荐目录结构 推荐部署目录结构如下： ```text id=\"8x2tok\" project-root/ fast_app/ main.py routers/ services/ repositories/ models/ schemas/ core/ migrations/ scripts/ tests/ knowledge-base-acl-test/ art/ product_planning/ development/ public/ .env docker-compose.yml README.md ``` 其中： ```text id=\"6v1bf7\" fast_app/ 后端应用代码 migrations/ Alembic 数据库迁移脚本 scripts/ 初始化、导入、测试脚本 knowledge-base-acl-test/ ACL 权限测试知识库 .env 本地环境变量 docker-compose.yml 本地依赖服务编排 ``` ---"
+          }
+        ],
+        "rrf": [
+          {
+            "rank": 1,
+            "logical_chunk_id": "chunk_4280ef8844cf5af5",
+            "physical_id": "6360011403be6a60d51d8fe1f2e4a90563372aabd3809a734cf8dff72cab83f6",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "8. FastAPI 服务启动",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "8. FastAPI 服务启动"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_fd5cfa9bff1bd815",
+            "parent_id": "2f4587532ec67078d2386baa820c1b897b16a2606347ffc8d567c3d96e34fc37",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.03225806451612903,
+              "vector_score": null,
+              "keyword_score": 59.039013,
+              "rrf_score": 0.03225806451612903,
+              "rerank_score": null
+            },
+            "labels": [
+              "semantic_relevant",
+              "authoritative"
+            ],
+            "content_preview": "## 8. FastAPI 服务启动 本地启动命令： ```bash id=\"y5pu75\" uvicorn fast_app.main:app --reload ``` 启动成功后，访问： ```text id=\"eepzsn\" http://127.0.0.1:8000/docs ``` 需要确认 OpenAPI 文档可以正常打开。 如果项目提供健康检查接口，可以执行： ```bash id=\"bb3sbs\" curl http://127.0.0.1:8000/health ``` 预期结果： ```json id=\"g4uy5a\" { \"status\": \"ok\" } ``` ---"
+          },
+          {
+            "rank": 2,
+            "logical_chunk_id": "chunk_2e05b9ea8bf32de8",
+            "physical_id": "4faf1fd44d3833e2f01724a69c163f29f4fbf953333aaa19672455b77c81d784",
+            "doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+            "source_path": "development/rag-deployment-checklist.md",
+            "title": "四、FastAPI 服务",
+            "section_path": [
+              "RAG 后端本地部署验收清单",
+              "四、FastAPI 服务"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_93b613e673f76d60",
+            "parent_id": "87d6057d555987b49be77917932e5f1bcbf7a538d75a4b28ff7e171c314d3f26",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.03177805800756621,
+              "vector_score": null,
+              "keyword_score": 48.2346,
+              "rrf_score": 0.03177805800756621,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 四、FastAPI 服务 - [ ] 执行 `uvicorn fast_app.main:app --reload` 启动成功 - [ ] 访问 `http://127.0.0.1:8000/docs`，OpenAPI 文档正常打开 - [ ] 健康检查接口返回正常： ```bash curl http://127.0.0.1:8000/health ``` 预期返回：`{\"status\": \"ok\"}` ---"
+          },
+          {
+            "rank": 3,
+            "logical_chunk_id": "chunk_4fde136a1c94ccd2",
+            "physical_id": "d62495bc7954dcb3a3234b7c3a7b6f2d144397db7d09e14515f6b75c46a112fc",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "文档目的",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "文档目的"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_f6764380a62c73ae",
+            "parent_id": "6225e0031740d4ad16894f8c8fd8d34af84d5ba68e6699a786290aafa14bb140",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.03131881575727918,
+              "vector_score": null,
+              "keyword_score": 60.196255,
+              "rrf_score": 0.03131881575727918,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 文档目的 本文档用于定义当前 Agent RAG 测试项目中的后端部署规范，主要面向 **开发部门 development** 使用。 该文档适用于以下工作： * RAG 后端服务部署 * FastAPI 服务启动与检查 * Milvus / Elasticsearch / PostgreSQL 依赖服务联调 * 环境变量配置 * 索引初始化 * 日志检查 * 部署后健康检查 * 权限过滤功能验证 本文档属于开发部门内部知识库内容。非 development 部门用户在权限过滤正确的情况下，不应该检索到本文档内容。 ---"
+          },
+          {
+            "rank": 4,
+            "logical_chunk_id": "chunk_284aad967acb60c7",
+            "physical_id": "cb7ece557ea63d2336044f20833345c02579fdb0982536f0e39a3905913e99a8",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "3. 推荐目录结构",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "3. 推荐目录结构"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_6a4d5e28cdb53bb0",
+            "parent_id": "fd974b164b209099b75972c46d2e93c7b66462fcafef9a6afdbdb3b724b6cd6f",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.02967032967032967,
+              "vector_score": null,
+              "keyword_score": 39.48742,
+              "rrf_score": 0.02967032967032967,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 3. 推荐目录结构 推荐部署目录结构如下： ```text id=\"8x2tok\" project-root/ fast_app/ main.py routers/ services/ repositories/ models/ schemas/ core/ migrations/ scripts/ tests/ knowledge-base-acl-test/ art/ product_planning/ development/ public/ .env docker-compose.yml README.md ``` 其中： ```text id=\"6v1bf7\" fast_app/ 后端应用代码 migrations/ Alembic 数据库迁移脚本 scripts/ 初始化、导入、测试脚本 knowledge-base-acl-test/ ACL 权限测试知识库 .env 本地环境变量 docker-compose.yml 本地依赖服务编排 ``` ---"
+          },
+          {
+            "rank": 5,
+            "logical_chunk_id": "chunk_bcd74f8708e42df4",
+            "physical_id": "05d4788b1caae0b47b06ed39f949a172223f08ffec9ce28acbda5717586199fa",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "2. 服务组成",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "2. 服务组成"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_52518b5f18d16df5",
+            "parent_id": "66b15d89eaa37ae4306e3960817190cb0755559e2e4df3dea16117eb3b83bcc3",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.015873015873015872,
+              "vector_score": 0.7969194054603577,
+              "keyword_score": null,
+              "rrf_score": 0.015873015873015872,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 2. 服务组成 当前 RAG 后端部署至少包含以下服务： | 服务 | 作用 | | ------------------ | ------------------ | | FastAPI Backend | 提供认证、文档导入、RAG 查询接口 | | PostgreSQL | 存储用户、权限、文档元数据 | | Milvus | 存储向量索引，用于语义检索 | | Elasticsearch | 存储文本索引，用于关键词检索 | | Redis | 可选，用于缓存、限流、任务状态 | | LLM Provider | 提供大模型生成能力 | | Embedding Provider | 提供文档向量化能力 | | Rerank Provider | 提供召回结果重排能力 | 如果当前测试阶段没有接入 Redis，可以先忽略 Redis，但部署文档中仍保留该项，方便后续扩展。 ---"
+          },
+          {
+            "rank": 6,
+            "logical_chunk_id": "chunk_648f9dbd486ba97a",
+            "physical_id": "40c6648a2edf3ce25b300991f02b1e6b338f12cb43e028b5afe83bc07d20c42c",
+            "doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+            "source_path": "development/rag-deployment-checklist.md",
+            "title": "十一、验收通过标准",
+            "section_path": [
+              "RAG 后端本地部署验收清单",
+              "十一、验收通过标准"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_ad3f80a83eef0454",
+            "parent_id": "e234399157310f1a69ed890815b9ebe8717a60713f1339db7820ca7de7ddcf49",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 0.015873015873015872,
+              "vector_score": null,
+              "keyword_score": 50.39449,
+              "rrf_score": 0.015873015873015872,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 十一、验收通过标准 所有以下项必须通过： - [ ] FastAPI 服务正常启动，`/docs` 可访问 - [ ] 用户可登录获取 access token - [ ] API Key 可调用受保护接口 - [ ] PostgreSQL migration 成功 - [ ] Milvus collection 创建成功，权限字段完整 - [ ] Elasticsearch index 创建成功，mapping 正确 - [ ] 测试知识库文档成功导入 - [ ] 部门用户只能检索到有权限的文档 - [ ] Milvus 与 Elasticsearch 权限过滤结果一致 - [ ] 无权限 chunk 不会进入 LLM prompt ---"
+          },
+          {
+            "rank": 7,
+            "logical_chunk_id": "chunk_bf5a29d90fe09980",
+            "physical_id": "5623fd11eab9da0e9e3bd1d4b0f0f4893c39c5440ae0979bfcda0f9211131cba",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "4. 环境变量配置",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "4. 环境变量配置"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_61b0e84dbd535c95",
+            "parent_id": "6949cf7fab442397a2fdba0a133a513cec6068761f89b99552cafa4961b15ccf",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.015625,
+              "vector_score": 0.7802961468696594,
+              "keyword_score": null,
+              "rrf_score": 0.015625,
+              "rerank_score": null
+            },
+            "labels": [
+              "semantic_relevant",
+              "authoritative"
+            ],
+            "content_preview": "## 4. 环境变量配置 部署前需要检查 `.env` 文件。 推荐至少包含以下配置： ```env id=\"631npg\" APP_ENV=local APP_NAME=agent-rag-backend LOG_LEVEL=INFO AUTH_ENABLED=true JWT_SECRET_KEY=replace-with-local-secret JWT_ALGORITHM=HS256 JWT_ISSUER=agent-rag JWT_AUDIENCE=agent-rag-api JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30 JWT_REFRESH_TOKEN_EXPIRE_DAYS=14 API_KEY_PEPPER=replace-with-api-key-pepper DATABASE_URL=postgresql+asyncpg://rag_user:rag_password@localhost:5432/rag_db MILVUS_HOST=localhost MILVUS_PORT=19530 MILVUS_COLLECTION=rag_chu"
+          },
+          {
+            "rank": 8,
+            "logical_chunk_id": "chunk_6142fd318b2baf05",
+            "physical_id": "2a98904a9e75bca84f9a171a5ebd2d50d5381be9d8a135a281521d11b07ea3d5",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "5. 本地依赖服务启动",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "5. 本地依赖服务启动"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_75083150580b473c",
+            "parent_id": "4a6e184a4fe84c1b5ae0138880c62e9c09434cb1736e70f2956b56066b6acc58",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 0.015625,
+              "vector_score": null,
+              "keyword_score": 49.336266,
+              "rrf_score": 0.015625,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 5. 本地依赖服务启动 本地开发建议通过 Docker Compose 启动依赖服务。 启动命令： ```bash id=\"hbnu5i\" docker compose up -d ``` 检查容器状态： ```bash id=\"0mxgo8\" docker ps ``` 需要确认： ```text id=\"zo0auh\" PostgreSQL 正常运行 Milvus 正常运行 Elasticsearch 正常运行 Elasticsearch IK 分词插件已安装 ``` 如果 Elasticsearch 使用中文检索，必须确认 IK 分词器可用，否则中文关键词检索效果会明显下降。 ---"
+          },
+          {
+            "rank": 9,
+            "logical_chunk_id": "chunk_fd5026edc8062ec3",
+            "physical_id": "773c1e88e4573c430bac1fa0e6a129ae9b9f79c0245d7c51dea0b04fc043770c",
+            "doc_id": "192e4c24ec0092cc53dd4e443f133df3f290828409c8f9bb5142158f55a1c32b",
+            "source_path": "development/rag-deployment-checklist.md",
+            "title": "一、环境准备",
+            "section_path": [
+              "RAG 后端本地部署验收清单",
+              "一、环境准备"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_3a3b8c530029e182",
+            "parent_id": "c49492a74dc0d46a68fb34d6dc51936b8100c8e798a460a26a3df11339a0d935",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.015151515151515152,
+              "vector_score": 0.7453632950782776,
+              "keyword_score": null,
+              "rrf_score": 0.015151515151515152,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 一、环境准备 - [ ] `.env` 文件已创建并包含所有必要配置 - [ ] `JWT_SECRET_KEY` 不为空 - [ ] `API_KEY_PEPPER` 不为空 - [ ] `AUTH_ENABLED=true` 时认证配置完整 - [ ] `DATABASE_URL` 指向正确的 PostgreSQL 实例 - [ ] `MILVUS_HOST` / `MILVUS_PORT` 配置正确 - [ ] `ELASTICSEARCH_URL` 配置正确 - [ ] LLM / Embedding / Rerank Provider 的 API Key 已配置 - [ ] Elasticsearch 客户端版本与 Docker 服务端版本一致（如 `elasticsearch==8.17.0`） - [ ] 已安装 `aiohttp>=3,<4`（异步 ES 客户端依赖） ---"
+          },
+          {
+            "rank": 10,
+            "logical_chunk_id": "chunk_0b468b33828eaa6e",
+            "physical_id": "1b29bf1c5366fea744f05d1f8bb0e310452b3f5b341dc3409b3f59413a3e63d3",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "16. 部署后测试问题",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "16. 部署后测试问题"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_e43a419ce150ad42",
+            "parent_id": "dd468fb7572988f7aab562a1549ab220fe0cbbaae61945bd7a23d674f1231583",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 0.015151515151515152,
+              "vector_score": null,
+              "keyword_score": 46.39066,
+              "rrf_score": 0.015151515151515152,
+              "rerank_score": null
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 16. 部署后测试问题 可以使用以下问题测试 development 部门权限： ```text id=\"o2s4d5\" RAG 后端如何部署？ FastAPI 服务启动命令是什么？ Milvus 权限字段需要检查哪些？ Elasticsearch 为什么要检查 allowed_departments？ Hybrid Retrieval 权限一致性如何保证？ 进入 LLM prompt 前为什么还要做兜底校验？ ``` development 用户应该能检索到本文档内容。 art 用户、product_planning 用户在没有跨部门授权的情况下，不应该检索到本文档内容。 ---"
+          }
+        ],
+        "rerank": [
+          {
+            "rank": 1,
+            "logical_chunk_id": "chunk_4fde136a1c94ccd2",
+            "physical_id": "d62495bc7954dcb3a3234b7c3a7b6f2d144397db7d09e14515f6b75c46a112fc",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "文档目的",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "文档目的"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_f6764380a62c73ae",
+            "parent_id": "6225e0031740d4ad16894f8c8fd8d34af84d5ba68e6699a786290aafa14bb140",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.9351556681794064,
+              "vector_score": null,
+              "keyword_score": 60.196255,
+              "rrf_score": 0.03131881575727918,
+              "rerank_score": 0.9351556681794064
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 文档目的 本文档用于定义当前 Agent RAG 测试项目中的后端部署规范，主要面向 **开发部门 development** 使用。 该文档适用于以下工作： * RAG 后端服务部署 * FastAPI 服务启动与检查 * Milvus / Elasticsearch / PostgreSQL 依赖服务联调 * 环境变量配置 * 索引初始化 * 日志检查 * 部署后健康检查 * 权限过滤功能验证 本文档属于开发部门内部知识库内容。非 development 部门用户在权限过滤正确的情况下，不应该检索到本文档内容。 ---"
+          },
+          {
+            "rank": 2,
+            "logical_chunk_id": "chunk_0b468b33828eaa6e",
+            "physical_id": "1b29bf1c5366fea744f05d1f8bb0e310452b3f5b341dc3409b3f59413a3e63d3",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "16. 部署后测试问题",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "16. 部署后测试问题"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_e43a419ce150ad42",
+            "parent_id": "dd468fb7572988f7aab562a1549ab220fe0cbbaae61945bd7a23d674f1231583",
+            "retrieval_sources": [
+              "elasticsearch"
+            ],
+            "scores": {
+              "score": 0.8833989469044774,
+              "vector_score": null,
+              "keyword_score": 46.39066,
+              "rrf_score": 0.015151515151515152,
+              "rerank_score": 0.8833989469044774
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 16. 部署后测试问题 可以使用以下问题测试 development 部门权限： ```text id=\"o2s4d5\" RAG 后端如何部署？ FastAPI 服务启动命令是什么？ Milvus 权限字段需要检查哪些？ Elasticsearch 为什么要检查 allowed_departments？ Hybrid Retrieval 权限一致性如何保证？ 进入 LLM prompt 前为什么还要做兜底校验？ ``` development 用户应该能检索到本文档内容。 art 用户、product_planning 用户在没有跨部门授权的情况下，不应该检索到本文档内容。 ---"
+          },
+          {
+            "rank": 3,
+            "logical_chunk_id": "chunk_bf5a29d90fe09980",
+            "physical_id": "5623fd11eab9da0e9e3bd1d4b0f0f4893c39c5440ae0979bfcda0f9211131cba",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "4. 环境变量配置",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "4. 环境变量配置"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_61b0e84dbd535c95",
+            "parent_id": "6949cf7fab442397a2fdba0a133a513cec6068761f89b99552cafa4961b15ccf",
+            "retrieval_sources": [
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.8132613144851626,
+              "vector_score": 0.7802961468696594,
+              "keyword_score": null,
+              "rrf_score": 0.015625,
+              "rerank_score": 0.8132613144851626
+            },
+            "labels": [
+              "semantic_relevant",
+              "authoritative"
+            ],
+            "content_preview": "## 4. 环境变量配置 部署前需要检查 `.env` 文件。 推荐至少包含以下配置： ```env id=\"631npg\" APP_ENV=local APP_NAME=agent-rag-backend LOG_LEVEL=INFO AUTH_ENABLED=true JWT_SECRET_KEY=replace-with-local-secret JWT_ALGORITHM=HS256 JWT_ISSUER=agent-rag JWT_AUDIENCE=agent-rag-api JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30 JWT_REFRESH_TOKEN_EXPIRE_DAYS=14 API_KEY_PEPPER=replace-with-api-key-pepper DATABASE_URL=postgresql+asyncpg://rag_user:rag_password@localhost:5432/rag_db MILVUS_HOST=localhost MILVUS_PORT=19530 MILVUS_COLLECTION=rag_chu"
+          },
+          {
+            "rank": 4,
+            "logical_chunk_id": "chunk_284aad967acb60c7",
+            "physical_id": "cb7ece557ea63d2336044f20833345c02579fdb0982536f0e39a3905913e99a8",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "3. 推荐目录结构",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "3. 推荐目录结构"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_6a4d5e28cdb53bb0",
+            "parent_id": "fd974b164b209099b75972c46d2e93c7b66462fcafef9a6afdbdb3b724b6cd6f",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.617953967135696,
+              "vector_score": null,
+              "keyword_score": 39.48742,
+              "rrf_score": 0.02967032967032967,
+              "rerank_score": 0.617953967135696
+            },
+            "labels": [
+              "unlabelled"
+            ],
+            "content_preview": "## 3. 推荐目录结构 推荐部署目录结构如下： ```text id=\"8x2tok\" project-root/ fast_app/ main.py routers/ services/ repositories/ models/ schemas/ core/ migrations/ scripts/ tests/ knowledge-base-acl-test/ art/ product_planning/ development/ public/ .env docker-compose.yml README.md ``` 其中： ```text id=\"6v1bf7\" fast_app/ 后端应用代码 migrations/ Alembic 数据库迁移脚本 scripts/ 初始化、导入、测试脚本 knowledge-base-acl-test/ ACL 权限测试知识库 .env 本地环境变量 docker-compose.yml 本地依赖服务编排 ``` ---"
+          },
+          {
+            "rank": 5,
+            "logical_chunk_id": "chunk_4280ef8844cf5af5",
+            "physical_id": "6360011403be6a60d51d8fe1f2e4a90563372aabd3809a734cf8dff72cab83f6",
+            "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+            "source_path": "development/rag-backend-deployment.md",
+            "title": "8. FastAPI 服务启动",
+            "section_path": [
+              "RAG 后端部署规范文档",
+              "8. FastAPI 服务启动"
+            ],
+            "record_type": "markdown_child",
+            "logical_parent_id": "parent_fd5cfa9bff1bd815",
+            "parent_id": "2f4587532ec67078d2386baa820c1b897b16a2606347ffc8d567c3d96e34fc37",
+            "retrieval_sources": [
+              "elasticsearch",
+              "milvus"
+            ],
+            "scores": {
+              "score": 0.6064383507587341,
+              "vector_score": null,
+              "keyword_score": 59.039013,
+              "rrf_score": 0.03225806451612903,
+              "rerank_score": 0.6064383507587341
+            },
+            "labels": [
+              "semantic_relevant",
+              "authoritative"
+            ],
+            "content_preview": "## 8. FastAPI 服务启动 本地启动命令： ```bash id=\"y5pu75\" uvicorn fast_app.main:app --reload ``` 启动成功后，访问： ```text id=\"eepzsn\" http://127.0.0.1:8000/docs ``` 需要确认 OpenAPI 文档可以正常打开。 如果项目提供健康检查接口，可以执行： ```bash id=\"bb3sbs\" curl http://127.0.0.1:8000/health ``` 预期结果： ```json id=\"g4uy5a\" { \"status\": \"ok\" } ``` ---"
+          }
+        ]
+      },
+      "final_context_documents": [
+        {
+          "rank": 1,
+          "logical_chunk_id": "parent_f6764380a62c73ae",
+          "logical_parent_id": "parent_f6764380a62c73ae",
+          "parent_id": "6225e0031740d4ad16894f8c8fd8d34af84d5ba68e6699a786290aafa14bb140",
+          "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_path": "development/rag-backend-deployment.md",
+          "title": "文档目的",
+          "labels": [
+            "unlabelled"
+          ],
+          "content_preview": "## 文档目的 本文档用于定义当前 Agent RAG 测试项目中的后端部署规范，主要面向 **开发部门 development** 使用。 该文档适用于以下工作： * RAG 后端服务部署 * FastAPI 服务启动与检查 * Milvus / Elasticsearch / PostgreSQL 依赖服务联调 * 环境变量配置 * 索引初始化 * 日志检查 * 部署后健康检查 * 权限过滤功能验证 本文档属于开发部门内部知识库内容。非 development 部门用户在权限过滤正确的情况下，不应该检索到本文档内容。 ---"
+        },
+        {
+          "rank": 2,
+          "logical_chunk_id": "parent_e43a419ce150ad42",
+          "logical_parent_id": "parent_e43a419ce150ad42",
+          "parent_id": "dd468fb7572988f7aab562a1549ab220fe0cbbaae61945bd7a23d674f1231583",
+          "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_path": "development/rag-backend-deployment.md",
+          "title": "16. 部署后测试问题",
+          "labels": [
+            "unlabelled"
+          ],
+          "content_preview": "## 16. 部署后测试问题 可以使用以下问题测试 development 部门权限： ```text id=\"o2s4d5\" RAG 后端如何部署？ FastAPI 服务启动命令是什么？ Milvus 权限字段需要检查哪些？ Elasticsearch 为什么要检查 allowed_departments？ Hybrid Retrieval 权限一致性如何保证？ 进入 LLM prompt 前为什么还要做兜底校验？ ``` development 用户应该能检索到本文档内容。 art 用户、product_planning 用户在没有跨部门授权的情况下，不应该检索到本文档内容。 ---"
+        },
+        {
+          "rank": 3,
+          "logical_chunk_id": "parent_61b0e84dbd535c95",
+          "logical_parent_id": "parent_61b0e84dbd535c95",
+          "parent_id": "6949cf7fab442397a2fdba0a133a513cec6068761f89b99552cafa4961b15ccf",
+          "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_path": "development/rag-backend-deployment.md",
+          "title": "4. 环境变量配置",
+          "labels": [
+            "unlabelled"
+          ],
+          "content_preview": "## 4. 环境变量配置 部署前需要检查 `.env` 文件。 推荐至少包含以下配置： ```env id=\"631npg\" APP_ENV=local APP_NAME=agent-rag-backend LOG_LEVEL=INFO AUTH_ENABLED=true JWT_SECRET_KEY=replace-with-local-secret JWT_ALGORITHM=HS256 JWT_ISSUER=agent-rag JWT_AUDIENCE=agent-rag-api JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30 JWT_REFRESH_TOKEN_EXPIRE_DAYS=14 API_KEY_PEPPER=replace-with-api-key-pepper DATABASE_URL=postgresql+asyncpg://rag_user:rag_password@localhost:5432/rag_db MILVUS_HOST=localhost MILVUS_PORT=19530 MILVUS_COLLECTION=rag_chu"
+        },
+        {
+          "rank": 4,
+          "logical_chunk_id": "chunk_284aad967acb60c7",
+          "logical_parent_id": "parent_6a4d5e28cdb53bb0",
+          "parent_id": "fd974b164b209099b75972c46d2e93c7b66462fcafef9a6afdbdb3b724b6cd6f",
+          "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_path": "development/rag-backend-deployment.md",
+          "title": "3. 推荐目录结构",
+          "labels": [
+            "unlabelled"
+          ],
+          "content_preview": "## 3. 推荐目录结构 推荐部署目录结构如下： ```text id=\"8x2tok\" project-root/ fast_app/ main.py routers/ services/ repositories/ models/ schemas/ core/ migrations/ scripts/ tests/ knowledge-base-acl-test/ art/ product_planning/ development/ public/ .env docker-compose.yml README.md ``` 其中： ```text id=\"6v1bf7\" fast_app/ 后端应用代码 migrations/ Alembic 数据库迁移脚本 scripts/ 初始化、导入、测试脚本 knowledge-base-acl-test/ ACL 权限测试知识库 .env 本地环境变量 docker-compose.yml 本地依赖服务编排 ``` ---"
+        },
+        {
+          "rank": 5,
+          "logical_chunk_id": "chunk_4280ef8844cf5af5",
+          "logical_parent_id": "parent_fd5cfa9bff1bd815",
+          "parent_id": "2f4587532ec67078d2386baa820c1b897b16a2606347ffc8d567c3d96e34fc37",
+          "doc_id": "bf9cf4876fe795c01fc7adb7c8c215d3f231f308d37b807a1852f8a170630c16",
+          "source_path": "development/rag-backend-deployment.md",
+          "title": "8. FastAPI 服务启动",
+          "labels": [
+            "semantic_relevant",
+            "authoritative"
+          ],
+          "content_preview": "## 8. FastAPI 服务启动 本地启动命令： ```bash id=\"y5pu75\" uvicorn fast_app.main:app --reload ``` 启动成功后，访问： ```text id=\"eepzsn\" http://127.0.0.1:8000/docs ``` 需要确认 OpenAPI 文档可以正常打开。 如果项目提供健康检查接口，可以执行： ```bash id=\"bb3sbs\" curl http://127.0.0.1:8000/health ``` 预期结果： ```json id=\"g4uy5a\" { \"status\": \"ok\" } ``` ---"
+        }
+      ]
+    }
+  ]
+}

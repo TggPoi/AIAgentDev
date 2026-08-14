@@ -1,0 +1,255 @@
+{
+  "baseline_report": null,
+  "case_count": 3,
+  "cases": [
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": true,
+      "case_id": "operator_pixel_sprite_rules",
+      "error": null,
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 89185.06559999878,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": false,
+          "score": 0.2,
+          "short_reason": "score=0.2000 < threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        }
+      },
+      "request_id": "a67f7b201f75410799606f0af77673fe",
+      "retrieval_source_policy": {
+        "forbidden_retrieved_logical_ids": [],
+        "matched_authoritative_logical_ids": [
+          "chunk_a2a894bca15c2988"
+        ],
+        "missing_authoritative_logical_ids": [],
+        "passed": true
+      },
+      "skipped_reason": null,
+      "snapshot_hash": "f2bdae7033d438017d687b2d2b5db1bde0eb00f7a7570e16a468567883bd68a4",
+      "snapshot_id": "0009aedd3f2e4857ba7d4515560cf838",
+      "status": "evaluated",
+      "trace_id": "a67f7b201f75410799606f0af77673fe"
+    },
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": true,
+      "case_id": "operator_documented_art_scope_multi",
+      "error": null,
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 126147.89569999994,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": false,
+          "score": 0.2,
+          "short_reason": "score=0.2000 < threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": true,
+          "score": 0.5,
+          "short_reason": "score=0.5000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        }
+      },
+      "request_id": "546c7f21e8ce42ba830c56b6d5713ceb",
+      "retrieval_source_policy": {
+        "forbidden_retrieved_logical_ids": [],
+        "matched_authoritative_logical_ids": [
+          "chunk_15eb212207bbd84e"
+        ],
+        "missing_authoritative_logical_ids": [
+          "chunk_9ca728a00b73727c"
+        ],
+        "passed": false
+      },
+      "skipped_reason": null,
+      "snapshot_hash": "1cb471dd19d6c7bdaf80128b25e0aa936fb8ef30a60d39fbcfde3b82ffc16722",
+      "snapshot_id": "bd08dbd80a054c45b44646bb97b087e7",
+      "status": "evaluated",
+      "trace_id": "546c7f21e8ce42ba830c56b6d5713ceb"
+    },
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": true,
+      "case_id": "operator_global_reader_dev_positive",
+      "error": null,
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 80694.9108000008,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": false,
+          "score": 0.3333333333333333,
+          "short_reason": "score=0.3333 < threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": false,
+          "score": 0.4,
+          "short_reason": "score=0.4000 < threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        }
+      },
+      "request_id": "5890a18486d14380afb97965ab2b7015",
+      "retrieval_source_policy": {
+        "forbidden_retrieved_logical_ids": [],
+        "matched_authoritative_logical_ids": [
+          "chunk_bf5a29d90fe09980",
+          "chunk_4280ef8844cf5af5"
+        ],
+        "missing_authoritative_logical_ids": [],
+        "passed": true
+      },
+      "skipped_reason": null,
+      "snapshot_hash": "f5244e8382840fb02fd4800e929227d1027a6b1f3627239eed7dc64923d8e982",
+      "snapshot_id": "298738d69402454da36a580d6d005781",
+      "status": "evaluated",
+      "trace_id": "5890a18486d14380afb97965ab2b7015"
+    }
+  ],
+  "created_at": "2026-08-12T17:40:25.691117Z",
+  "dataset_hash": "71bb897a278b6501067d33e6e7aff933e56d4aa3ece8567d5f3343d0bb34ec7d",
+  "dataset_id": "stage11_acl_rag_eval",
+  "dataset_version": "2.1.2",
+  "duration_ms": 296036.68500000273,
+  "evaluated_case_count": 3,
+  "failed_case_count": 0,
+  "judge_model": null,
+  "metric_summaries": {
+    "retrieval_hit_rate_at_k": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 3,
+      "mean_score": 1.0,
+      "metric_name": "retrieval_hit_rate_at_k",
+      "passed_count": 3,
+      "skipped_count": 0
+    },
+    "retrieval_mrr": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 3,
+      "mean_score": 0.7777777777777778,
+      "metric_name": "retrieval_mrr",
+      "passed_count": 2,
+      "skipped_count": 0
+    },
+    "retrieval_precision_at_k": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 3,
+      "mean_score": 0.26666666666666666,
+      "metric_name": "retrieval_precision_at_k",
+      "passed_count": 0,
+      "skipped_count": 0
+    },
+    "retrieval_recall_at_k": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 3,
+      "mean_score": 0.8333333333333334,
+      "metric_name": "retrieval_recall_at_k",
+      "passed_count": 3,
+      "skipped_count": 0
+    }
+  },
+  "mode": "retrieval",
+  "pipeline_provider": "rag_agent",
+  "run_id": "afc65bad-7792-439c-b662-7fd358f4129c",
+  "schema_version": "1.1",
+  "selected_metrics": [
+    "retrieval_recall_at_k",
+    "retrieval_precision_at_k",
+    "retrieval_hit_rate_at_k",
+    "retrieval_mrr"
+  ],
+  "skipped_case_count": 0,
+  "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+  "status": "partial",
+  "tested_model": "qwen:qwen3.7-plus"
+}

@@ -1,0 +1,800 @@
+{
+  "baseline_report": null,
+  "case_count": 12,
+  "cases": [
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": true,
+      "case_id": "reader_es_milvus_parent_child_expansion",
+      "error": null,
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 132630.10659999782,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": false,
+          "score": 0.3333333333333333,
+          "short_reason": "score=0.3333 < threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        }
+      },
+      "request_id": "174a0437592145d3a0cfcd7f0a62eaad",
+      "retrieval_source_policy": {
+        "forbidden_retrieved_logical_ids": [],
+        "matched_authoritative_logical_ids": [
+          "parent_19d48d66c7b9141e"
+        ],
+        "missing_authoritative_logical_ids": [],
+        "passed": true
+      },
+      "skipped_reason": null,
+      "snapshot_hash": "8ceb5e7f563258e4393e74caa44316c9881e3766d96f2228d0701e678fda5b10",
+      "snapshot_id": "82837074124c415f84689d5ec9863393",
+      "status": "evaluated",
+      "trace_id": "174a0437592145d3a0cfcd7f0a62eaad"
+    },
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": true,
+      "case_id": "reader_ue5_perfect_block",
+      "error": null,
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 89941.77090000085,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": false,
+          "score": 0.2,
+          "short_reason": "score=0.2000 < threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        }
+      },
+      "request_id": "ee5a69664bd4457a9791c3a0d390bf98",
+      "retrieval_source_policy": {
+        "forbidden_retrieved_logical_ids": [],
+        "matched_authoritative_logical_ids": [
+          "chunk_2d0790c48f8b0092"
+        ],
+        "missing_authoritative_logical_ids": [],
+        "passed": true
+      },
+      "skipped_reason": null,
+      "snapshot_hash": "09c0de62d0f4bf442b4607af238055c64caf277cb376b4287feffb693b905273",
+      "snapshot_id": "13eb72ad3f494d918a6fd4441f7a0045",
+      "status": "evaluated",
+      "trace_id": "ee5a69664bd4457a9791c3a0d390bf98"
+    },
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": true,
+      "case_id": "reader_gitlab_rollback_authoritative",
+      "error": null,
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 108734.86210000192,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": true,
+          "score": 0.5,
+          "short_reason": "score=0.5000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": true,
+          "score": 0.6,
+          "short_reason": "score=0.6000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        }
+      },
+      "request_id": "0feecf4a1f104d0f95a55b76248a35ac",
+      "retrieval_source_policy": {
+        "forbidden_retrieved_logical_ids": [
+          "chunk_bb13f7442fb8745c",
+          "chunk_58906be3fa1f61ce"
+        ],
+        "matched_authoritative_logical_ids": [
+          "chunk_296a2380e2d87791"
+        ],
+        "missing_authoritative_logical_ids": [],
+        "passed": false
+      },
+      "skipped_reason": null,
+      "snapshot_hash": "507db11fcd3fff819434a36639462e0db54f37e5dcaaaef14227ce63a0b8e427",
+      "snapshot_id": "834c837470084b639a76036c8c889236",
+      "status": "evaluated",
+      "trace_id": "0feecf4a1f104d0f95a55b76248a35ac"
+    },
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": true,
+      "case_id": "reader_webhook_worker_multi_source",
+      "error": null,
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 114830.34119999866,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": true,
+          "score": 0.6,
+          "short_reason": "score=0.6000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": true,
+          "score": 0.6,
+          "short_reason": "score=0.6000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        }
+      },
+      "request_id": "8b873733283d434b990932dd8a8ca6d0",
+      "retrieval_source_policy": {
+        "forbidden_retrieved_logical_ids": [],
+        "matched_authoritative_logical_ids": [],
+        "missing_authoritative_logical_ids": [
+          "chunk_0452d406311e7d7b",
+          "chunk_dea252b8024f71e1"
+        ],
+        "passed": false
+      },
+      "skipped_reason": null,
+      "snapshot_hash": "df6070eb388c258d6079af3bcdb1e8bb403aa5fa94b3974693013f308f5392b7",
+      "snapshot_id": "9ce3bb2bfc9946adae32b423403afece",
+      "status": "evaluated",
+      "trace_id": "8b873733283d434b990932dd8a8ca6d0"
+    },
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": true,
+      "case_id": "reader_milvus_index_check",
+      "error": null,
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 110438.09210000109,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": false,
+          "score": 0.4,
+          "short_reason": "score=0.4000 < threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        }
+      },
+      "request_id": "2319dfe95d4945979e9126fd2dd1e236",
+      "retrieval_source_policy": {
+        "forbidden_retrieved_logical_ids": [],
+        "matched_authoritative_logical_ids": [
+          "chunk_4e797af9683c05c2"
+        ],
+        "missing_authoritative_logical_ids": [],
+        "passed": true
+      },
+      "skipped_reason": null,
+      "snapshot_hash": "a0af757f56f527faee7cc2948419c01a66f52e856d2d080801e152f1f6f06342",
+      "snapshot_id": "15b48a5f37704c8ba748f59bcf9f29c5",
+      "status": "evaluated",
+      "trace_id": "2319dfe95d4945979e9126fd2dd1e236"
+    },
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": false,
+      "case_id": "reader_art_acl_negative",
+      "error": null,
+      "expected_route": "rag_no_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 25357.598199996573,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": null,
+          "score": null,
+          "short_reason": "no-answer case 没有黄金相关逻辑 Chunk，检索指标不适用",
+          "status": "skipped",
+          "threshold": null
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": null,
+          "score": null,
+          "short_reason": "no-answer case 没有黄金相关逻辑 Chunk，检索指标不适用",
+          "status": "skipped",
+          "threshold": null
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": null,
+          "score": null,
+          "short_reason": "no-answer case 没有黄金相关逻辑 Chunk，检索指标不适用",
+          "status": "skipped",
+          "threshold": null
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": null,
+          "score": null,
+          "short_reason": "no-answer case 没有黄金相关逻辑 Chunk，检索指标不适用",
+          "status": "skipped",
+          "threshold": null
+        }
+      },
+      "request_id": "4d04419525314ae1ab5283e147494c74",
+      "retrieval_source_policy": {
+        "forbidden_retrieved_logical_ids": [],
+        "matched_authoritative_logical_ids": [],
+        "missing_authoritative_logical_ids": [],
+        "passed": true
+      },
+      "skipped_reason": null,
+      "snapshot_hash": "4323bf8fa83108926d68be39226249bd107be557c8b8202f7cc6b05c8284aece",
+      "snapshot_id": "21d50af1250f4b30bc44ac3d276e6e74",
+      "status": "evaluated",
+      "trace_id": "4d04419525314ae1ab5283e147494c74"
+    },
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": true,
+      "case_id": "reader_visibility_positive",
+      "error": null,
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 56235.86449999857,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": true,
+          "score": 0.6,
+          "short_reason": "score=0.6000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": true,
+          "score": 0.75,
+          "short_reason": "score=0.7500 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        }
+      },
+      "request_id": "b7adc515e8504e9092555bc844b94ce2",
+      "retrieval_source_policy": {
+        "forbidden_retrieved_logical_ids": [],
+        "matched_authoritative_logical_ids": [
+          "chunk_f8a53eabbef5743c"
+        ],
+        "missing_authoritative_logical_ids": [
+          "chunk_e61f024c79efd70d"
+        ],
+        "passed": false
+      },
+      "skipped_reason": null,
+      "snapshot_hash": "da065fa3e9c22ed59519abf3b69544fdcafca3e9b43eb84451319035568a2799",
+      "snapshot_id": "13cdef991c4c4838a37c872aa472c50d",
+      "status": "evaluated",
+      "trace_id": "b7adc515e8504e9092555bc844b94ce2"
+    },
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": true,
+      "case_id": "reader_incremental_input_buffer",
+      "error": null,
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 36131.790999999794,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": false,
+          "score": 0.2,
+          "short_reason": "score=0.2000 < threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        }
+      },
+      "request_id": "9f5d10ad68ad4648b088acbcbd5c650e",
+      "retrieval_source_policy": {
+        "forbidden_retrieved_logical_ids": [],
+        "matched_authoritative_logical_ids": [
+          "chunk_fbbecbe7a07925ba"
+        ],
+        "missing_authoritative_logical_ids": [],
+        "passed": true
+      },
+      "skipped_reason": null,
+      "snapshot_hash": "6754d2b7e3e07b49b5d91962e17b9af85dbd8032f9e49f7db0e2dc736045d138",
+      "snapshot_id": "ac2eaec5da324448845df92465466cd1",
+      "status": "evaluated",
+      "trace_id": "9f5d10ad68ad4648b088acbcbd5c650e"
+    },
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": false,
+      "case_id": "reader_unanswerable_audio_middleware",
+      "error": null,
+      "expected_route": "rag_no_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 22570.866699999897,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": null,
+          "score": null,
+          "short_reason": "no-answer case 没有黄金相关逻辑 Chunk，检索指标不适用",
+          "status": "skipped",
+          "threshold": null
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": null,
+          "score": null,
+          "short_reason": "no-answer case 没有黄金相关逻辑 Chunk，检索指标不适用",
+          "status": "skipped",
+          "threshold": null
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": null,
+          "score": null,
+          "short_reason": "no-answer case 没有黄金相关逻辑 Chunk，检索指标不适用",
+          "status": "skipped",
+          "threshold": null
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": null,
+          "score": null,
+          "short_reason": "no-answer case 没有黄金相关逻辑 Chunk，检索指标不适用",
+          "status": "skipped",
+          "threshold": null
+        }
+      },
+      "request_id": "77e00d87ccc74248ba626e545c9daff3",
+      "retrieval_source_policy": null,
+      "skipped_reason": null,
+      "snapshot_hash": "838e0c4f39acdc67ac975b5b9eca94b5b8c1cce6d9a9009faf097810c9fcea03",
+      "snapshot_id": "7b4f46f1284c4e9db61427ba71dbb379",
+      "status": "evaluated",
+      "trace_id": "77e00d87ccc74248ba626e545c9daff3"
+    },
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": true,
+      "case_id": "reader_agent_tool_acceptance_underfilled",
+      "error": null,
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 28843.296300001384,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        }
+      },
+      "request_id": "323e62c00faa403ebbebe96c0217ba52",
+      "retrieval_source_policy": {
+        "forbidden_retrieved_logical_ids": [],
+        "matched_authoritative_logical_ids": [
+          "chunk_321a5c310d96c5a9"
+        ],
+        "missing_authoritative_logical_ids": [],
+        "passed": true
+      },
+      "skipped_reason": null,
+      "snapshot_hash": "32f17bffbad47387bcc09a37fe4518eadc49d5984e82d8b85083619220cdb938",
+      "snapshot_id": "0871f8be183841eda87056fd060db656",
+      "status": "evaluated",
+      "trace_id": "323e62c00faa403ebbebe96c0217ba52"
+    },
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": true,
+      "case_id": "reader_worker_failure_recovery",
+      "error": null,
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 102097.83949999837,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": false,
+          "score": 0.4,
+          "short_reason": "score=0.4000 < threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": true,
+          "score": 1.0,
+          "short_reason": "score=1.0000 >= threshold=0.5000",
+          "status": "evaluated",
+          "threshold": 0.5
+        }
+      },
+      "request_id": "1c77ff008458446aa0ca423daac19463",
+      "retrieval_source_policy": {
+        "forbidden_retrieved_logical_ids": [],
+        "matched_authoritative_logical_ids": [
+          "chunk_bf7e323eb34c4674"
+        ],
+        "missing_authoritative_logical_ids": [],
+        "passed": true
+      },
+      "skipped_reason": null,
+      "snapshot_hash": "ba4099767ab52308b423c7a9a513d0e23c5da0084b6ac3afb2e08241de910fa2",
+      "snapshot_id": "e6920e89d7394e4a82fb158aad322e0d",
+      "status": "evaluated",
+      "trace_id": "1c77ff008458446aa0ca423daac19463"
+    },
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": false,
+      "case_id": "reader_no_result_backup_schedule",
+      "error": null,
+      "expected_route": "rag_no_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 6,
+      "latency_ms": 22485.033400000248,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": null,
+          "score": null,
+          "short_reason": "no-answer case 没有黄金相关逻辑 Chunk，检索指标不适用",
+          "status": "skipped",
+          "threshold": null
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": null,
+          "score": null,
+          "short_reason": "no-answer case 没有黄金相关逻辑 Chunk，检索指标不适用",
+          "status": "skipped",
+          "threshold": null
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": null,
+          "score": null,
+          "short_reason": "no-answer case 没有黄金相关逻辑 Chunk，检索指标不适用",
+          "status": "skipped",
+          "threshold": null
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": null,
+          "score": null,
+          "short_reason": "no-answer case 没有黄金相关逻辑 Chunk，检索指标不适用",
+          "status": "skipped",
+          "threshold": null
+        }
+      },
+      "request_id": "4dcf713c5e6f4d448d9bfc9719b092eb",
+      "retrieval_source_policy": null,
+      "skipped_reason": null,
+      "snapshot_hash": "6304da0a6f8dea5daa57f408d93097222ed6aec4fcd3961e8710310e6b1da869",
+      "snapshot_id": "122450f04ec54778b40060ece389c1b2",
+      "status": "evaluated",
+      "trace_id": "4dcf713c5e6f4d448d9bfc9719b092eb"
+    }
+  ],
+  "created_at": "2026-08-12T17:34:55.831299Z",
+  "dataset_hash": "71bb897a278b6501067d33e6e7aff933e56d4aa3ece8567d5f3343d0bb34ec7d",
+  "dataset_id": "stage11_acl_rag_eval",
+  "dataset_version": "2.1.2",
+  "duration_ms": 850335.9342999975,
+  "evaluated_case_count": 12,
+  "failed_case_count": 0,
+  "judge_model": null,
+  "metric_summaries": {
+    "retrieval_hit_rate_at_k": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 9,
+      "mean_score": 1.0,
+      "metric_name": "retrieval_hit_rate_at_k",
+      "passed_count": 9,
+      "skipped_count": 3
+    },
+    "retrieval_mrr": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 9,
+      "mean_score": 0.9444444444444444,
+      "metric_name": "retrieval_mrr",
+      "passed_count": 9,
+      "skipped_count": 3
+    },
+    "retrieval_precision_at_k": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 9,
+      "mean_score": 0.48148148148148145,
+      "metric_name": "retrieval_precision_at_k",
+      "passed_count": 4,
+      "skipped_count": 3
+    },
+    "retrieval_recall_at_k": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 9,
+      "mean_score": 0.9277777777777777,
+      "metric_name": "retrieval_recall_at_k",
+      "passed_count": 9,
+      "skipped_count": 3
+    }
+  },
+  "mode": "retrieval",
+  "pipeline_provider": "rag_agent",
+  "run_id": "48c67654-1754-4394-82c4-519b96b29858",
+  "schema_version": "1.1",
+  "selected_metrics": [
+    "retrieval_recall_at_k",
+    "retrieval_precision_at_k",
+    "retrieval_hit_rate_at_k",
+    "retrieval_mrr"
+  ],
+  "skipped_case_count": 0,
+  "source_revision": "sha256:0896f1c3669b6abb9ffaa8b265e37f56b1c36f7101193d89664293e5d6604723",
+  "status": "partial",
+  "tested_model": "qwen:qwen3.7-plus"
+}
