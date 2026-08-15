@@ -24,6 +24,7 @@ from fast_app.components.rerankers.base import BaseReranker
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
 from fast_app.core.logging import format_log_fields, get_logger
+from fast_app.domain.agent_task_execution import require_task_plan_lease
 from fast_app.domain.agent_task_plan import AgentTaskPlan, AgentTaskSubQuestion, AgentTaskSubQuestionResult, AgentTaskToolCallTrace
 from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievedDoc
 from fast_app.domain.research_task_plan import ResearchWorkerCheckpointUpdate
@@ -143,6 +144,15 @@ class ResearchAttemptOutcome:
 
     result: AgentTaskSubQuestionResult
     context_doc_groups: list[list[RetrievedDoc]]
+    answer_context: RagContext | None
+
+
+@dataclass(slots=True)
+class ResearchAnswerGeneration:
+    """一次候选答案以及该答案实际使用的内存上下文。"""
+
+    answer: str
+    context: RagContext
 
 
 TASK_TOOL_SELECTION_PROMPT = """你是 Agent TaskPlan 的工具选择器。
@@ -503,13 +513,14 @@ class ResearchToolLoop:
                     operation_status="started",
                 )
                 try:
-                    answer = await self._answer_from_tool_calls(
+                    answer_generation = await self._answer_from_tool_calls(
                         sub_question=sub_question,
                         dependency_results=dependency_results,
                         context_docs=all_context_docs,
                         filters=filters,
                         retry_missing_points=retry_missing_points,
                         langchain_config_factory=langchain_config_factory,
+                        task_plan_id=plan.task_plan_id,
                     )
                 except Exception:
                     await _emit_checkpoint(
@@ -537,11 +548,15 @@ class ResearchToolLoop:
                         tool_input=last_call.tool_input if last_call else {},
                         tool_output=last_call.tool_output if last_call else {},
                         tool_calls=tool_calls,
-                        answer=answer,
-                        evidence=evidence,
+                        answer=answer_generation.answer,
+                        evidence=filter_evidence_refs_for_context(
+                            evidence,
+                            answer_generation.context,
+                        ),
                         status="completed",
                     ),
                     context_doc_groups=context_doc_groups,
+                    answer_context=answer_generation.context,
                 )
 
             if tool_calls or prior_tool_calls:
@@ -559,6 +574,7 @@ class ResearchToolLoop:
                         error=last_call.error or "NO_USABLE_EVIDENCE",
                     ),
                     context_doc_groups=context_doc_groups,
+                    answer_context=None,
                 )
 
             # LLM 一开始就判断不需要工具，或者 agent_max_tool_calls=0 时，走纯推理分支。
@@ -575,6 +591,7 @@ class ResearchToolLoop:
                     sub_question=sub_question,
                     dependency_results=dependency_results,
                     langchain_config_factory=langchain_config_factory,
+                    task_plan_id=plan.task_plan_id,
                 )
             except Exception:
                 await _emit_checkpoint(
@@ -606,6 +623,7 @@ class ResearchToolLoop:
                     status="completed",
                 ),
                 context_doc_groups=[],
+                answer_context=None,
             )
         except ToolPermissionDeniedError:
             # 权限拒绝属于任务级安全事件，不能降级成“这个子问题失败后继续试”。
@@ -623,6 +641,7 @@ class ResearchToolLoop:
                     error=f"{type(exc).__name__}: {exc}",
                 ),
                 context_doc_groups=context_doc_groups,
+                answer_context=None,
             )
 
     async def _select_tool_for_sub_question(
@@ -831,6 +850,8 @@ class ResearchToolLoop:
     ) -> list[dict[str, Any]] | None:
         """返回 LLM 本轮选择的全部原生 ToolCall。"""
 
+        # 模型调用边界：先确认当前执行者仍持有数据库租约（修订版 §14.4）。
+        require_task_plan_lease(plan.task_plan_id).assert_active()
         try:
             bound_tools = (
                 [tool for tool in tools if tool.name == required_tool_name]
@@ -901,6 +922,8 @@ class ResearchToolLoop:
     ) -> dict[str, Any] | None:
         """provider 不稳定支持 tool calling 时，退到结构化输出。"""
 
+        # 模型调用边界：先确认当前执行者仍持有数据库租约（修订版 §14.4）。
+        require_task_plan_lease(plan.task_plan_id).assert_active()
         try:
             model = ChatOpenAI(
                 model=self._settings.llm_model_name,
@@ -954,6 +977,9 @@ class ResearchToolLoop:
     ) -> ToolExecutionResult:
         """执行本地工具或 MCP 工具，不在单个工具边界生成答案。"""
 
+        # 工具调用边界：先确认当前执行者仍持有数据库租约（修订版 §14.4）。
+        if plan is not None:
+            require_task_plan_lease(plan.task_plan_id).assert_active()
         # 内置工具走本服务的强类型方法，方便复用权限、检索参数和证据格式。
         if selected_tool == KNOWLEDGE_RETRIEVAL_TOOL_NAME:
             return await self._run_knowledge_retrieval_for_sub_question(
@@ -1024,6 +1050,9 @@ class ResearchToolLoop:
 
         # 走到这里的是 MCP 等外部工具：先按白名单取工具，再由 LangChain tool 执行。
         tool = find_registered_tool(selected_tool, available_tools)
+        # 外部工具调用边界：再次确认租约有效（修订版 §14.4）。
+        if plan is not None:
+            require_task_plan_lease(plan.task_plan_id).assert_active()
         # MCP 输出未必是字符串；统一成文本后，完整内容只保留在 Worker 内存。
         content = await tool.ainvoke(
             tool_input,
@@ -1236,9 +1265,13 @@ class ResearchToolLoop:
         sub_question: AgentTaskSubQuestion,
         dependency_results: list[AgentTaskSubQuestionResult],
         langchain_config_factory: LangChainConfigFactory | None = None,
+        task_plan_id: str | None = None,
     ) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
         """不调用工具，只用已完成的前置子问题答案推理。"""
 
+        # 答案生成边界：先确认当前执行者仍持有数据库租约（修订版 §14.4）。
+        if task_plan_id is not None:
+            require_task_plan_lease(task_plan_id).assert_active()
         context = RagContext(
             query=sub_question.question,
             docs=[],
@@ -1266,9 +1299,13 @@ class ResearchToolLoop:
         filters: RetrievalFilters,
         retry_missing_points: list[str],
         langchain_config_factory: LangChainConfigFactory | None = None,
-    ) -> str:
+        task_plan_id: str | None = None,
+    ) -> ResearchAnswerGeneration:
         """用历史和当前 attempt 的全部工具原始上下文生成一次候选答案。"""
 
+        # 答案生成边界：先确认当前执行者仍持有数据库租约（修订版 §14.4）。
+        if task_plan_id is not None:
+            require_task_plan_lease(task_plan_id).assert_active()
         context = _append_dependency_answers(
             await assemble_rag_context(
                 settings=self._settings,
@@ -1295,7 +1332,7 @@ class ResearchToolLoop:
             query += f"\n本次纠正需要重点补足：{missing_text}"
 
         # 执行llm查询
-        return await self._generate_with_trace(
+        answer = await self._generate_with_trace(
             query=query,
             context=context,
             langchain_config=(
@@ -1306,6 +1343,7 @@ class ResearchToolLoop:
                 else None
             ),
         )
+        return ResearchAnswerGeneration(answer=answer, context=context)
 
 def _build_tool_selection_messages(
     plan: AgentTaskPlan,
@@ -1449,6 +1487,34 @@ def merge_evidence(
     return merged
 
 
+def filter_evidence_refs_for_context(
+    evidence_refs: list[dict[str, Any]],
+    context: RagContext | None,
+) -> list[dict[str, Any]]:
+    """只保留实际进入候选答案上下文的 Evidence 引用。"""
+
+    if context is None or not context.docs:
+        return []
+    used_reference_ids: set[str] = set()
+    for doc in context.docs:
+        used_reference_ids.add(str(doc.id))
+        for field in (
+            "logical_record_id",
+            "matched_child_ids",
+            "matched_logical_child_ids",
+        ):
+            value = doc.metadata.get(field)
+            if isinstance(value, list):
+                used_reference_ids.update(str(item) for item in value)
+            elif value:
+                used_reference_ids.add(str(value))
+    return [
+        item
+        for item in evidence_refs
+        if str(item.get("id") or item.get("url") or "") in used_reference_ids
+    ]
+
+
 def _merge_context_doc_groups(
     groups: list[list[RetrievedDoc]],
 ) -> list[RetrievedDoc]:
@@ -1549,5 +1615,6 @@ __all__ = [
     "ResearchToolLoop",
     "ToolExecutionResult",
     "build_public_web_query",
+    "filter_evidence_refs_for_context",
     "merge_evidence",
 ]

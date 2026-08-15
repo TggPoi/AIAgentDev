@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from datetime import UTC, datetime
-from tempfile import TemporaryDirectory
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "scripts" / "tests"))
+
+from agent_task_plan_test_support import InMemoryAgentTaskPlanStore
 
 from pydantic import ValidationError
 
 from fast_app.core.config import Settings
 from fast_app.domain.agent_tool_permissions import PermissionCode
+from fast_app.domain.rag_models import RagContext, RetrievedDoc
 from fast_app.domain.research_task_plan import (
     AgentTaskCapabilitySnapshot,
     AgentTaskDatasetScope,
@@ -35,7 +43,6 @@ from fast_app.domain.research_task_plan import (
     ResearchWorkerProgress,
     build_research_task_plan_public_view,
 )
-from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
 from fast_app.services.agent_tasks.agent_task_capability_service import AgentTaskCapabilityService
 from fast_app.services.agent_tasks.agent_task_dataset_scope_policy import (
     resolve_dataset_field_scope,
@@ -746,21 +753,24 @@ def main() -> None:
     assert "dataset_field_synonyms" not in public["capability_snapshot"]
     assert "等待人工确认" in build_task_plan_answer(plan)
 
-    with TemporaryDirectory() as directory:
-        store = AgentTaskPlanStore(
-            Settings(_env_file=None, AGENT_TASK_PLAN_DIR=directory)
-        )
-        store.save(plan)
-        loaded = store.load(plan.task_plan_id)
-        assert isinstance(loaded, ResearchTaskPlan)
-        assert loaded.schema_version == 2
-        assert loaded.research_policy.required_source_types == [
-            "nl2sql_query"
-        ]
-        assert loaded.research_policy.dataset_scope == dataset_scope
-        assert loaded.worker_checkpoints["sq_3"].evidence == [
-            {"id": "internal-only"}
-        ]
+    store = InMemoryAgentTaskPlanStore()
+
+    async def roundtrip_plan() -> ResearchTaskPlan:
+        await store.create(plan)
+        loaded_plan = await store.load(plan.task_plan_id)
+        assert isinstance(loaded_plan, ResearchTaskPlan)
+        return loaded_plan
+
+    loaded = asyncio.run(roundtrip_plan())
+    assert isinstance(loaded, ResearchTaskPlan)
+    assert loaded.schema_version == 2
+    assert loaded.research_policy.required_source_types == [
+        "nl2sql_query"
+    ]
+    assert loaded.research_policy.dataset_scope == dataset_scope
+    assert loaded.worker_checkpoints["sq_3"].evidence == [
+        {"id": "internal-only"}
+    ]
 
     legacy_payload = plan.model_dump(mode="json")
     legacy_payload["research_policy"].pop("required_source_types")
@@ -834,7 +844,25 @@ def main() -> None:
             sub_question=sq_sql,
             requirements=[req_cost],
             answer="asset_1 costs 100 yuan",
-            evidence=[{"source": "nl2sql_query", "query_id": "query-1"}],
+            evidence_refs=[
+                {
+                    "id": "query-1",
+                    "source": "nl2sql_query",
+                    "metadata": {"query_id": "query-1"},
+                }
+            ],
+            answer_context=RagContext(
+                query=sq_sql.question,
+                docs=[
+                    RetrievedDoc(
+                        id="query-1",
+                        content='{"asset_id":"asset_1","cost":100}',
+                        score=1.0,
+                        source="nl2sql_query",
+                    )
+                ],
+                context_text='{"asset_id":"asset_1","cost":100}',
+            ),
         )
     )
     assert evaluation.verdict == "sufficient"

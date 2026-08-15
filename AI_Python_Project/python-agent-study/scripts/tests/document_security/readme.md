@@ -12,6 +12,9 @@
 | `test_rbac_auth_migration.py` | 验证旧静态凭证已经移除，数据库 API Key、JWT、`/auth/me` 与 RBAC 合同正常。 | 需要 PostgreSQL。 |
 | `test_guarded_streaming.py` | 验证 answer delta 缓冲、Guard sanitize/block、确认和任务控制 SSE 契约。 | 直接运行。 |
 | `test_prompt_guard_document_parallelism.py` | 验证检索文档 Prompt Guard 并行检查及结果顺序。 | 直接运行。 |
+| `test_agent_task_plan_load_driver.py` | 验证问题十二压测驱动的结构化 SSE、唯一终态、固定请求数、预期容量拒绝、control 重放分类和15个混合请求的全局在途峰值。 | 纯确定性 MockTransport，不调用真实模型。 |
+| `accept_agent_task_plan_load.py` | 运行15个独立身份的10个普通RAG、3个Research control和2个Document SSE混合负载；不会调用 `/rag/chat`，并报告全局在途请求峰值。 | 先阅读 `scripts/docs/问题十二-压测方案-30元精简版.md`，准备 JWT、TaskPlan fixture 和费用闸门后分阶段运行。 |
+| `accept_agent_task_plan_http_contention.py` | 在 4 Worker 下对同一 TaskPlan 发起并发 confirm，验证唯一执行者。 | 需要全新 waiting_confirmation fixture 和对应身份 JWT。 |
 
 ## 示例
 

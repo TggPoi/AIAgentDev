@@ -249,7 +249,7 @@ async def test_confirm_stream_contract() -> None:
             return plan
 
     class FakeStore:
-        def load(self, _task_plan_id: str):
+        async def load(self, _task_plan_id: str):
             return plan
 
     prompt_guard = FakePromptGuard()
@@ -269,6 +269,7 @@ async def test_confirm_stream_contract() -> None:
                 task_plan_store=FakeStore(),
                 prompt_guard=prompt_guard,
                 settings=Settings(LANGSMITH_TRACING=False),
+                idempotency_key="confirm-stream-contract",
             )
         ]
     finally:
@@ -295,26 +296,30 @@ async def test_task_plan_control_contract() -> None:
     )
 
     class FakeExecutor:
-        async def cancel(self, task_plan_id, user):
+        async def cancel(self, task_plan_id, user, idempotency_key):
             assert task_plan_id == cancelled_plan.task_plan_id
             assert user.user_id == "user-test"
+            assert idempotency_key == "cancel-contract"
             return cancelled_plan
 
-        async def resume(self, task_plan_id, user):
+        async def resume(self, task_plan_id, user, idempotency_key):
             assert task_plan_id == resumed_plan.task_plan_id
             assert user.user_id == "user-test"
+            assert idempotency_key == "retry-contract"
             return resumed_plan
 
     user = SimpleNamespace(user_id="user-test")
     settings = Settings(LANGSMITH_TRACING=False)
     cancel_response = await task_plan_routes.cancel_agent_task_plan_endpoint(
         task_plan_id=cancelled_plan.task_plan_id,
+        idempotency_key="cancel-contract",
         user=user,
         task_executor=FakeExecutor(),
         settings=settings,
     )
     retry_response = await task_plan_routes.retry_agent_task_plan_endpoint(
         task_plan_id=resumed_plan.task_plan_id,
+        idempotency_key="retry-contract",
         user=user,
         task_executor=FakeExecutor(),
         settings=settings,

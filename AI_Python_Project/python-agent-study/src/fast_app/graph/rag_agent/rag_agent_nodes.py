@@ -1030,7 +1030,7 @@ def create_execute_task_plan_node(
             if plan.task_kind == "question_decomposition":
                 if not isinstance(plan, ResearchTaskPlan):
                     raise RuntimeError("question_decomposition 必须使用 ResearchTaskPlan v2")
-                task_executor.save_plan(plan)
+                await task_executor.save_plan(plan)
                 answer = build_task_plan_answer(plan)
                 result = {
                     "agent_task_plan": plan,

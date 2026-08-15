@@ -1,0 +1,148 @@
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started parent process [21408]
+INFO:     Started server process [28520]
+INFO:     Waiting for application startup.
+2026-08-15 19:56:42,039 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.disabled" reason="tracing_disabled_or_missing_api_key"
+INFO:     Started server process [13756]
+2026-08-15 19:56:42,039 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+INFO:     Waiting for application startup.
+2026-08-15 19:56:42,041 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.disabled" reason="tracing_disabled_or_missing_api_key"
+2026-08-15 19:56:42,041 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+INFO:     Started server process [21552]
+INFO:     Waiting for application startup.
+2026-08-15 19:56:42,045 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.disabled" reason="tracing_disabled_or_missing_api_key"
+2026-08-15 19:56:42,045 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+INFO:     Started server process [11244]
+INFO:     Waiting for application startup.
+2026-08-15 19:56:42,062 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.disabled" reason="tracing_disabled_or_missing_api_key"
+2026-08-15 19:56:42,062 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+2026-08-15 19:56:42,062 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-15 19:56:42,062 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-15 19:56:42,063 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-15 19:56:42,063 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-15 19:56:42,065 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-15 19:56:42,066 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-15 19:56:42,082 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-15 19:56:42,083 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-15 19:56:42,671 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-15 19:56:42,673 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-15 19:56:42,673 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-15 19:56:42,674 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-15 19:56:42,674 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-15 19:56:42,675 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-15 19:56:42,676 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-15 19:56:42,676 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-15 19:56:42,676 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-15 19:56:42,677 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-15 19:56:42,678 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-15 19:56:42,678 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-15 19:56:42,747 | INFO | fast_app.main | request_id=- | trace_id=- | Agent TaskPlan PostgreSQL Repository 与容量槽已初始化
+2026-08-15 19:56:42,747 | INFO | fast_app.main | request_id=- | trace_id=- | Agent TaskPlan PostgreSQL Repository 与容量槽已初始化
+2026-08-15 19:56:42,749 | INFO | fast_app.main | request_id=- | trace_id=- | Agent TaskPlan PostgreSQL Repository 与容量槽已初始化
+2026-08-15 19:56:42,753 | INFO | fast_app.main | request_id=- | trace_id=- | Agent TaskPlan PostgreSQL Repository 与容量槽已初始化
+2026-08-15 19:56:42,796 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-15 19:56:42,796 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-15 19:56:42,797 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-15 19:56:42,808 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-15 19:56:42,867 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint 已创建
+2026-08-15 19:56:42,867 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint 已创建
+2026-08-15 19:56:42,867 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint 已创建
+2026-08-15 19:56:42,867 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint 已创建
+INFO:     Application startup complete.
+INFO:     Application startup complete.
+INFO:     Application startup complete.
+INFO:     Application startup complete.
+2026-08-15 19:56:42,868 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已关闭
+2026-08-15 19:56:42,868 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已关闭
+2026-08-15 19:56:42,875 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已关闭
+2026-08-15 19:56:42,875 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已关闭
+2026-08-15 19:56:42,876 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint/store 已关闭
+2026-08-15 19:56:42,880 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已关闭
+2026-08-15 19:56:42,880 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL 只读连接池已关闭
+2026-08-15 19:56:42,880 | INFO | fast_app.main | request_id=- | trace_id=- | 应用关闭
+ERROR:    Traceback (most recent call last):
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 664, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 79, in serve
+    await self._serve(sockets)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 94, in _serve
+    await self.startup(sockets=sockets)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 144, in startup
+    server = await loop.create_server(create_protocol, sock=sock, ssl=config.ssl, backlog=config.backlog)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1561, in create_server
+    server._start_serving()
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 315, in _start_serving
+    sock.listen(self._backlog)
+OSError: [WinError 10022] 提供了一个无效的参数。
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\starlette\routing.py", line 645, in lifespan
+    await receive()
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\lifespan\on.py", line 137, in receive
+    return await self.receive_queue.get()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\queues.py", line 158, in get
+    await getter
+asyncio.exceptions.CancelledError
+
+Process SpawnProcess-3:
+Traceback (most recent call last):
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\multiprocessing\process.py", line 314, in _bootstrap
+    self.run()
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\multiprocessing\process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\_subprocess.py", line 80, in subprocess_started
+    target(sockets=sockets)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\supervisors\multiprocess.py", line 64, in target
+    return self.real_target(sockets)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 75, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 664, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 79, in serve
+    await self._serve(sockets)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 94, in _serve
+    await self.startup(sockets=sockets)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 144, in startup
+    server = await loop.create_server(create_protocol, sock=sock, ssl=config.ssl, backlog=config.backlog)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1561, in create_server
+    server._start_serving()
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 315, in _start_serving
+    sock.listen(self._backlog)
+OSError: [WinError 10022] 提供了一个无效的参数。
+2026-08-15 19:56:43,201 | INFO | fast_app.middlewares.request_id_middleware | request_id=53c95464d45b40b3ab5fdb4c785bc706 | trace_id=53c95464d45b40b3ab5fdb4c785bc706 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=4.14
+INFO:     Waiting for child process [13756]
+INFO:     Child process [13756] died
+INFO:     Started server process [28608]
+INFO:     Waiting for application startup.
+2026-08-15 19:56:55,143 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.disabled" reason="tracing_disabled_or_missing_api_key"
+2026-08-15 19:56:55,143 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+2026-08-15 19:56:55,161 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-15 19:56:55,162 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-15 19:56:55,520 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-15 19:56:55,522 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-15 19:56:55,523 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-15 19:56:55,582 | INFO | fast_app.main | request_id=- | trace_id=- | Agent TaskPlan PostgreSQL Repository 与容量槽已初始化
+2026-08-15 19:56:55,621 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-15 19:56:55,662 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint 已创建
+INFO:     Application startup complete.

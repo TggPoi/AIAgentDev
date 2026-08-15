@@ -5,6 +5,9 @@ from __future__ import annotations
 import asyncio
 from typing import Literal
 
+import httpx
+from langchain_core.messages import AIMessage
+from openai import BadRequestError
 from pydantic import BaseModel, Field
 
 import fast_app.core.structured_output as structured_output
@@ -16,6 +19,21 @@ class Payload(BaseModel):
 
 class StrictPayload(BaseModel):
     value: Literal["pass"] = Field(description="只能为 pass 的测试值。")
+
+
+def provider_bad_request() -> BadRequestError:
+    """构造与真实 OpenAI-compatible SDK 相同形态的无关键字 400。"""
+
+    request = httpx.Request("POST", "https://provider.test/v1/chat/completions")
+    response = httpx.Response(400, request=request)
+    return BadRequestError(
+        "provider rejected request",
+        response=response,
+        body={
+            "code": "invalid_parameter_error",
+            "message": "response format rejected by provider",
+        },
+    )
 
 
 class BoundTransport:
@@ -54,6 +72,30 @@ class FakeModel:
 
 
 async def main() -> None:
+    # 未缓存的结构化协议收到确定性 HTTP 400 时，不能原样重试同一个请求；
+    # 真实 qwen3.7-max 会依次拒绝前三种协议，必须有界降级到 strict_json。
+    structured_output._TRANSPORT_CACHE.clear()
+    bad_request_model = FakeModel(
+        {
+            "json_schema": provider_bad_request(),
+            "function_calling": provider_bad_request(),
+            "json_mode": provider_bad_request(),
+            "strict_json": AIMessage(content='{"value":"fallback-ok"}'),
+        }
+    )
+    fallback = await structured_output.invoke_structured_model(
+        model=bad_request_model,
+        schema=Payload,
+        messages=[],
+    )
+    assert fallback.value == "fallback-ok"
+    assert bad_request_model.calls == [
+        "json_schema",
+        "function_calling",
+        "json_mode",
+        "strict_json",
+    ]
+
     structured_output._TRANSPORT_CACHE.clear()
     model = FakeModel(
         {

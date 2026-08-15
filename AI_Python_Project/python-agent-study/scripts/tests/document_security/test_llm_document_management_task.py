@@ -9,6 +9,7 @@ from tempfile import TemporaryDirectory
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "scripts" / "tests"))
 os.environ["LANGSMITH_TRACING"] = "false"
 
 from langchain_core.messages import AIMessage, ToolMessage
@@ -17,6 +18,10 @@ import fast_app.services.agent_tasks.document_task_executor as document_module
 from fast_app.services.agent_tasks import agent_task_plan_store as plan_store_module
 from fast_app.services.agent_tasks.agent_task_tool_support import parallel_batch_error
 import fast_app.services.knowledge.knowledge_document_management_service as management_module
+from agent_task_plan_test_support import (
+    InMemoryAgentTaskLeaseManager,
+    InMemoryAgentTaskPlanStore,
+)
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
@@ -39,7 +44,7 @@ from fast_app.domain.rag_models import (
 )
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.ingestion.processing.metadata_models import build_document_metadata
-from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
+from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor
 from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 from fast_app.services.exceptions import AppServiceError
 from fast_app.services.knowledge.knowledge_document_management_service import (
@@ -220,7 +225,7 @@ class FakeBoundModel:
         assert self.calls == 5
         assert isinstance(messages[-1], ToolMessage)
         assert messages[-1].tool_call_id == "create_1"
-        assert messages[-1].status == "success"
+        assert messages[-1].status == "success", messages[-1]
         return AIMessage(content="dry-run 已完成", tool_calls=[])
 
 
@@ -374,6 +379,7 @@ async def main() -> None:
             KNOWLEDGE_BASE_DIR=kb.as_posix(),
             AGENT_DOCUMENT_TOOLS_ENABLED=True,
             AGENT_DOCUMENT_TOOLS_DRY_RUN_ONLY=False,
+            GITLAB_AGENT_CHANGES_ENABLED=False,
             AGENT_MAX_TOOL_CALLS=12,
             AGENT_TASK_PLAN_DIR=(root / "plans").as_posix(),
             MARKDOWN_CHUNK_MIN_CHARS=1,
@@ -400,7 +406,8 @@ async def main() -> None:
             document_management_service=KnowledgeDocumentManagementService(settings),
             tool_permission_service=FakePermissionService(),
             tool_audit_service=FakeAuditService(),
-            task_plan_store=AgentTaskPlanStore(settings),
+            task_plan_store=InMemoryAgentTaskPlanStore(),
+            lease_manager=InMemoryAgentTaskLeaseManager(),
         )
         original = document_module.ChatOpenAI
         document_module.ChatOpenAI = FakeChatOpenAI
@@ -426,7 +433,9 @@ async def main() -> None:
         assert result.steps[0].output["tool_call_id"] == "create_1"
         assert result.steps[0].input["target_path"] == "development/native-tool-call.md"
         assert not (kb / "development" / "native-tool-call.md").exists()
-        create_markdown = executor._task_plan_store.load_markdown(result.task_plan_id)
+        create_markdown = await executor._task_plan_store.load_markdown(
+            result.task_plan_id
+        )
         assert "## 子问题拆解" not in create_markdown
         assert "#### 候选正文" in create_markdown
         assert "````markdown" in create_markdown
@@ -513,7 +522,9 @@ async def main() -> None:
             raise AssertionError("expected document loop interruption")
         except asyncio.CancelledError:
             pass
-        interrupted = executor._task_plan_store.load(resumable_plan.task_plan_id)
+        interrupted = await executor._task_plan_store.load(
+            resumable_plan.task_plan_id
+        )
         assert interrupted.status == AgentTaskPlanStatus.FAILED
         assert interrupted.final_output["checkpoint"]["round"] == 1
         assert interrupted.final_output["checkpoint"]["call_count"] == 1
@@ -521,34 +532,54 @@ async def main() -> None:
 
         ModelWrapper.bound_model = ResumeCreateModel()
         document_module.ChatOpenAI = ModelWrapper
-        resumed = await executor.resume(interrupted.task_plan_id, user=user)
+        resumed = await executor.resume(
+            interrupted.task_plan_id,
+            user=user,
+            idempotency_key="resume-document-loop",
+        )
         assert resumed.status == AgentTaskPlanStatus.WAITING_CONFIRMATION
         assert [
             item["tool_name"] for item in resumed.final_output["tool_calls"]
         ] == ["knowledge_retrieval", "knowledge_document_create"]
         assert resumed.final_output["checkpoint"]["call_count"] == 2
         assert resumed.final_output["checkpoint"]["completed"] is True
-        resumed_markdown = executor._task_plan_store.load_markdown(resumed.task_plan_id)
+        resumed_markdown = await executor._task_plan_store.load_markdown(
+            resumed.task_plan_id
+        )
         assert "## Tool Loop 检查点" in resumed_markdown
         assert "最近完整轮次: `2`" in resumed_markdown
         assert "已消耗 ToolCall: `2`" in resumed_markdown
-        cancelled = await executor.cancel(resumed.task_plan_id, user=user)
+        cancelled = await executor.cancel(
+            resumed.task_plan_id,
+            user=user,
+            idempotency_key="cancel-document-loop",
+        )
         assert cancelled.status == AgentTaskPlanStatus.CANCELLED
         assert all(step.status.value == "skipped" for step in cancelled.steps)
         try:
-            await executor.confirm(cancelled.task_plan_id, user=user)
+            await executor.confirm(
+                cancelled.task_plan_id,
+                user=user,
+                idempotency_key="confirm-cancelled-document-loop",
+            )
             raise AssertionError("expected cancelled plan confirmation to fail")
         except AppServiceError:
             pass
         document_module.ChatOpenAI = original
 
-        confirmed = await executor.confirm(result.task_plan_id, user=user)
+        confirmed = await executor.confirm(
+            result.task_plan_id,
+            user=user,
+            idempotency_key="confirm-created-document",
+        )
         assert confirmed.status == AgentTaskPlanStatus.COMPLETED
         created = kb / "development" / "native-tool-call.md"
         assert created.read_text(encoding="utf-8") == (
             "# 原生 Tool Calling\n\n```python\nprint('ok')\n```\n\n正文"
         )
-        completed_markdown = executor._task_plan_store.load_markdown(result.task_plan_id)
+        completed_markdown = await executor._task_plan_store.load_markdown(
+            result.task_plan_id
+        )
         assert "#### 执行结果" in completed_markdown
         assert "已同步更新知识库源文件、Elasticsearch 和 Milvus" in completed_markdown
 
@@ -587,7 +618,8 @@ async def main() -> None:
             document_management_service=KnowledgeDocumentManagementService(settings),
             tool_permission_service=FakePermissionService(),
             tool_audit_service=FakeAuditService(),
-            task_plan_store=AgentTaskPlanStore(settings),
+            task_plan_store=InMemoryAgentTaskPlanStore(),
+            lease_manager=InMemoryAgentTaskLeaseManager(),
         )
         FakeChatOpenAI.bound_model = FakeUpdateModel(str(metadata["doc_id"]))
         document_module.ChatOpenAI = FakeChatOpenAI
@@ -610,7 +642,7 @@ async def main() -> None:
         assert updated.steps[0].output["tool_call_id"] == "update_1"
         assert "-旧内容" in updated.steps[0].output["diff"]
         assert "+新内容" in updated.steps[0].output["diff"]
-        update_markdown = update_executor._task_plan_store.load_markdown(
+        update_markdown = await update_executor._task_plan_store.load_markdown(
             updated.task_plan_id
         )
         assert "#### 精确替换 1" in update_markdown

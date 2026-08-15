@@ -1,0 +1,138 @@
+{
+  "request_count": 3,
+  "success_count": 3,
+  "expected_rejection_count": 0,
+  "unexpected_failure_count": 0,
+  "business_success_rate": 1.0,
+  "success_rate": 1.0,
+  "requests_per_second": 0.012418349353004024,
+  "latency_ms": {
+    "mean": 80337.0919333338,
+    "p50": 83002.10730000072,
+    "p95": 88914.6896000002,
+    "p99": 88914.6896000002,
+    "max": 88914.6896000002
+  },
+  "status_counts": {
+    "200": 3
+  },
+  "error_code_counts": {},
+  "outcome_counts": {
+    "success": 3
+  },
+  "sse_latency_ms": {
+    "first_event_p50": 21229.99180000079,
+    "first_event_p95": 21325.90800000071,
+    "first_answer_p50": 44213.23610000036,
+    "first_answer_p95": 44396.47850000074
+  },
+  "by_operation": {
+    "rag_stream": {
+      "count": 3,
+      "success_rate": 1.0,
+      "expected_rejection_count": 0,
+      "p95_ms": 88914.6896000002,
+      "max_ms": 88914.6896000002
+    }
+  },
+  "samples": [
+    {
+      "operation": "rag_stream",
+      "user": "load_test_01",
+      "status_code": 200,
+      "elapsed_ms": 69094.47890000047,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null,
+      "outcome": "success",
+      "first_event_ms": 21229.99180000079,
+      "first_answer_ms": 44213.23610000036,
+      "source_count": 5,
+      "answer_event_count": 4,
+      "terminal_event": "done",
+      "event_names": [
+        "agent_route_selected",
+        "sources",
+        "answer_delta",
+        "answer_delta",
+        "answer_delta",
+        "answer_delta",
+        "done"
+      ],
+      "protocol_error": null
+    },
+    {
+      "operation": "rag_stream",
+      "user": "load_test_01",
+      "status_code": 200,
+      "elapsed_ms": 88914.6896000002,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null,
+      "outcome": "success",
+      "first_event_ms": 18873.987099999795,
+      "first_answer_ms": 43679.48989999968,
+      "source_count": 5,
+      "answer_event_count": 6,
+      "terminal_event": "done",
+      "event_names": [
+        "agent_route_selected",
+        "sources",
+        "answer_delta",
+        "answer_delta",
+        "answer_delta",
+        "answer_delta",
+        "answer_delta",
+        "answer_delta",
+        "done"
+      ],
+      "protocol_error": null
+    },
+    {
+      "operation": "rag_stream",
+      "user": "load_test_01",
+      "status_code": 200,
+      "elapsed_ms": 83002.10730000072,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null,
+      "outcome": "success",
+      "first_event_ms": 21325.90800000071,
+      "first_answer_ms": 44396.47850000074,
+      "source_count": 5,
+      "answer_event_count": 6,
+      "terminal_event": "done",
+      "event_names": [
+        "agent_route_selected",
+        "sources",
+        "answer_delta",
+        "answer_delta",
+        "answer_delta",
+        "answer_delta",
+        "answer_delta",
+        "answer_delta",
+        "done"
+      ],
+      "protocol_error": null
+    }
+  ],
+  "configured_user_count": 15,
+  "virtual_user_count": 1,
+  "rag_concurrency": 1,
+  "global_peak_active_requests": 1,
+  "min_global_peak_active_requests": 0,
+  "max_global_peak_active_requests": 0,
+  "duration_seconds": 241.57799999999952,
+  "request_count_requested": 3,
+  "duration_seconds_requested": null,
+  "max_request_count": null,
+  "skip_rag": false,
+  "stop_rag_when_scenarios_complete": false,
+  "control_count": 0,
+  "sse_scenario_count": 0,
+  "participating_rag_users": [
+    "load_test_01"
+  ],
+  "rag_stream_success_rate": 1.0,
+  "rag_stream_p95_ms": 88914.6896000002
+}

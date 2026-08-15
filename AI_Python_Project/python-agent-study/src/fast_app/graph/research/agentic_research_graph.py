@@ -21,7 +21,7 @@ ResearchWorkerRunner = Callable[
 ]
 WaveCallback = Callable[[int, list[str]], Awaitable[None]]
 MergeCallback = Callable[[int, list[AgentTaskSubQuestionResult]], Awaitable[None]]
-StopChecker = Callable[[], bool]
+StopChecker = Callable[[], Awaitable[bool]]
 
 
 class ResearchExecutionCancelled(RuntimeError):
@@ -131,7 +131,7 @@ def build_agentic_research_graph(
     async def select_ready_wave(state: ResearchGraphState) -> dict[str, Any]:
         """根据已合并结果选出下一批依赖已满足、可并行研究的子问题。"""
 
-        if should_stop():
+        if await should_stop():
             # 每次准备派发新 Worker 前检查取消，避免取消后继续产生外部调用。
             raise ResearchExecutionCancelled("TaskPlan 已取消")
         # results 是跨波次累积列表；转换为字典后可按依赖 id 快速查找状态。
@@ -228,7 +228,7 @@ def build_agentic_research_graph(
     async def research_worker(state: ResearchWorkerState) -> dict[str, Any]:
         """执行一个子问题，并把单个结果交回全局 results reducer。"""
 
-        if should_stop():
+        if await should_stop():
             # Worker 开始外部检索/联网前再次检查取消，缩小取消请求的竞态窗口。
             raise ResearchExecutionCancelled("TaskPlan 已取消")
         result = await worker_runner(
@@ -239,7 +239,7 @@ def build_agentic_research_graph(
     async def merge_wave(state: ResearchGraphState) -> dict[str, Any]:
         """收集当前波次所有 Worker 结果，持久化进度后清空 batch 标记。"""
 
-        if should_stop():
+        if await should_stop():
             raise ResearchExecutionCancelled("TaskPlan 已取消")
         # batch_ids 冻结了本轮派发集合，避免把早前波次的累积结果重复交给合并回调。
         batch = set(state["batch_ids"])

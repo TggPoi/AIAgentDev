@@ -30,9 +30,11 @@ from fast_app.graph.research.agentic_research_graph import (
     ResearchExecutionCancelled,
     build_agentic_research_graph,
 )
+from fast_app.domain.agent_task_execution import require_task_plan_lease
 from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
 from fast_app.services.exceptions import (
     AgentTaskEvidenceStateInvalidError,
+    AgentTaskPlanVersionConflictError,
     AppServiceError,
     ToolPermissionDeniedError,
 )
@@ -74,8 +76,8 @@ class AgenticResearchExecutor:
         self._prompt_guard = prompt_guard
         self._evidence_service = evidence_service or AgentTaskRequirementEvidenceService()
 
-    def _sync_cancelled_state(self, plan: ResearchTaskPlan) -> bool:
-        latest = self._task_plan_store.load(plan.task_plan_id)
+    async def _sync_cancelled_state(self, plan: ResearchTaskPlan) -> bool:
+        latest = await self._task_plan_store.load(plan.task_plan_id)
         if not isinstance(latest, ResearchTaskPlan) or latest.status != AgentTaskPlanStatus.CANCELLED:
             return False
         plan.status = latest.status
@@ -107,7 +109,11 @@ class AgenticResearchExecutor:
             raise AgentTaskEvidenceStateInvalidError(
                 "SubQuestion Result 引用了 Registry 中不存在的 Evidence"
             )
-        plan.status = AgentTaskPlanStatus.RUNNING
+        # Research 只会在人工确认或确认后的 retry 中进入执行器；该状态是
+        # 数据库可审计的“已确认执行”，不同于确认前方案生成。
+        plan.status = AgentTaskPlanStatus.EXECUTING_CONFIRMED
+        plan.error_code = None
+        plan.error_message = None
         if not resume:
             plan.sub_question_results = []
             plan.evidence_registry.evidence_by_id.clear()
@@ -115,7 +121,7 @@ class AgenticResearchExecutor:
         retained = [item for item in plan.sub_question_results if item.status == "completed"]
         plan.sub_question_results = retained
         plan.final_output = None
-        self._save(plan)
+        await self._save(plan)
         snapshot_lock = asyncio.Lock()
         formal_by_id = {item.sub_question_id: item for item in plan.sub_questions}
         merged_results = {item.sub_question_id: item for item in retained}
@@ -179,7 +185,7 @@ class AgenticResearchExecutor:
         async def append_progress_event(event: str, payload: dict[str, object]) -> None:
             async with snapshot_lock:
                 apply_progress_event(event, payload)
-                self._save(plan)
+                await self._save(plan)
 
         async def save_worker_checkpoint(
             sub_question: ResearchTaskSubQuestion,
@@ -223,7 +229,7 @@ class AgenticResearchExecutor:
                         "last_tool_name": checkpoint.last_tool_name,
                     },
                 )
-                self._save(plan)
+                await self._save(plan)
 
         async def mark_worker_timed_out(
             sub_question: ResearchTaskSubQuestion,
@@ -259,7 +265,7 @@ class AgenticResearchExecutor:
                     worker.status = "running"
                     worker.wave = wave
                     worker.attempt = max(worker.attempt, 1)
-                self._save(plan)
+                await self._save(plan)
 
         async def on_wave_merged(
             wave: int,
@@ -317,10 +323,10 @@ class AgenticResearchExecutor:
                     results=plan.sub_question_results,
                     registry=plan.evidence_registry,
                 )
-                self._save(plan)
+                await self._save(plan)
 
-        def should_stop() -> bool:
-            return self._sync_cancelled_state(plan)
+        async def should_stop() -> bool:
+            return await self._sync_cancelled_state(plan)
 
         async def worker_runner(
             sub_question: ResearchTaskSubQuestion,
@@ -437,8 +443,8 @@ class AgenticResearchExecutor:
             ]
             if uncommitted:
                 await on_wave_merged(plan.progress.current_wave, uncommitted)
-            if self._sync_cancelled_state(plan):
-                self._save(plan)
+            if await self._sync_cancelled_state(plan):
+                await self._save_cancelled_convergence(plan)
                 return plan
             plan.requirement_evidence_statuses = self._evidence_service.aggregate(
                 requirements=plan.requirements,
@@ -455,7 +461,7 @@ class AgenticResearchExecutor:
                 plan.status = AgentTaskPlanStatus.FAILED
                 plan.error_code = "AGENT_TASK_REQUIREMENT_FAILED"
                 plan.error_message = "至少一个 Requirement 未满足证据契约。"
-                self._save(plan)
+                await self._save(plan)
                 return plan
             partial = any(item.status == "partially_satisfied" for item in plan.requirement_evidence_statuses)
             answer, included_ids, evidence_ids = await self._synthesize_final_answer(
@@ -505,17 +511,17 @@ class AgenticResearchExecutor:
                 guard_reason_codes=guard_reasons,
                 completed_at=datetime.now(UTC),
             )
-            self._save(plan)
+            await self._save(plan)
             return plan
         except ResearchExecutionCancelled:
-            self._sync_cancelled_state(plan)
-            self._save(plan)
+            await self._sync_cancelled_state(plan)
+            await self._save_cancelled_convergence(plan)
             return plan
         except Exception as exc:
             plan.status = AgentTaskPlanStatus.FAILED
             plan.error_code = type(exc).__name__
             plan.error_message = str(exc)
-            self._save(plan)
+            await self._save(plan)
             raise
 
     async def _synthesize_final_answer(
@@ -647,13 +653,28 @@ class AgenticResearchExecutor:
             value = await self._llm_client.generate(query=query, context=context)
         return str(value or "")
 
-    def _save(self, plan: ResearchTaskPlan) -> None:
+    async def _save(self, plan: ResearchTaskPlan) -> None:
         try:
-            self._task_plan_store.save(plan)
+            await self._task_plan_store.save(plan)
         except Exception as exc:
             raise _TaskPlanPersistenceError(
                 f"无法持久化 Research TaskPlan: {type(exc).__name__}: {exc}"
             ) from exc
+
+    async def _save_cancelled_convergence(self, plan: ResearchTaskPlan) -> None:
+        """取消收敛保存；数据库行已被 cancel_atomic 改为 cancelled 时容忍 CAS 冲突。
+
+        cancel_atomic 会先一步递增 record_version/lease_fence_token，本执行者在
+        收敛边界保存 CANCELLED 快照必然 CAS 失败。此时取消已经达成，静默返回；
+        只有在数据库并非 cancelled 时才把冲突向上抛。
+        """
+
+        try:
+            await self._task_plan_store.save(plan)
+        except AgentTaskPlanVersionConflictError:
+            latest = await self._task_plan_store.load(plan.task_plan_id)
+            if latest.status != AgentTaskPlanStatus.CANCELLED:
+                raise
 
 
 def _to_research_result(legacy, validation) -> ResearchTaskSubQuestionResult:

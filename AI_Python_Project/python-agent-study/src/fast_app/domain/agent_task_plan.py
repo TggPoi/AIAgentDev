@@ -21,14 +21,19 @@ AgentTaskInformationSourceHint = Literal[
 AgentTaskSubQuestionResultStatus = Literal["completed", "partial", "failed", "skipped"]
 AgentTaskToolCallStatus = Literal["completed", "failed"]
 AgentResearchWebPolicy = Literal["disabled", "fallback", "required"]
+AgentTaskFailurePhase = Literal[
+    "preparing_confirmation",
+    "executing_confirmed",
+]
 
 
 class AgentTaskPlanStatus(StrEnum):
     """任务整体状态：LLM 多步骤任务计划状态。"""
 
     CREATED = "created"
-    RUNNING = "running"
+    PREPARING_CONFIRMATION = "preparing_confirmation"
     WAITING_CONFIRMATION = "waiting_confirmation"
+    EXECUTING_CONFIRMED = "executing_confirmed"
     COMPLETED = "completed"
     COMPLETED_WITH_WARNINGS = "completed_with_warnings"
     FAILED = "failed"
@@ -313,6 +318,13 @@ class AgentTaskPlan(BaseModel):
         default=AgentTaskPlanStatus.CREATED,
         description="任务计划整体状态。",
     )
+    failure_phase: AgentTaskFailurePhase | None = Field(
+        default=None,
+        description=(
+            "最近一次 failed 发生前的权威活动阶段；仅由服务端写入，"
+            "用于 retry 区分确认前恢复与已确认执行恢复，非 failed 时为空。"
+        ),
+    )
     steps: list[AgentToolStep] = Field(description="顺序执行的工具步骤列表。")
     final_output: dict[str, Any] = Field(
         default_factory=dict,
@@ -325,6 +337,7 @@ class AgentTaskPlan(BaseModel):
 
 __all__ = [
     "AgentTaskInformationSourceHint",
+    "AgentTaskFailurePhase",
     "AgentTaskKind",
     "AgentTaskPlan",
     "AgentTaskPlanStatus",

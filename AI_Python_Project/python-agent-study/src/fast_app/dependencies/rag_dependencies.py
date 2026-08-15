@@ -33,7 +33,15 @@ from fast_app.services.auth.auth_service import AuthService
 from fast_app.services.auth.user_repository import UserRepository
 from fast_app.services.auth.permission_repository import PermissionRepository
 from fast_app.services.auth.permission_service import PermissionService
-from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
+from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor
+from fast_app.services.agent_tasks.agent_task_lease_manager import AgentTaskLeaseManager
+from fast_app.services.agent_tasks.agent_task_plan_repository import (
+    AgentTaskPlanRepository,
+)
+from fast_app.services.agent_tasks.agent_task_plan_store import (
+    AgentTaskPlanExportStore,
+    AgentTaskPlanStore,
+)
 from fast_app.services.research.agentic_research_executor import AgenticResearchExecutor
 from fast_app.services.agent_tasks.document_task_executor import DocumentTaskExecutor
 from fast_app.services.agent_tasks.deep_document_agent import DeepDocumentAgent
@@ -279,11 +287,22 @@ def get_agent_task_router(
 
 
 def get_agent_task_plan_store(
+    request: Request,
     settings: Settings = Depends(get_settings),
 ) -> AgentTaskPlanStore:
-    """提供 Agent task plan runtime JSON 存储。"""
+    """提供 Agent TaskPlan 的 PostgreSQL 事实库（JSON/Markdown 仅做导出）。"""
 
-    return AgentTaskPlanStore(settings=settings)
+    repository = getattr(
+        request.app.state,
+        "agent_task_plan_repository",
+        None,
+    )
+    if not isinstance(repository, AgentTaskPlanRepository):
+        raise AppServiceError("Agent TaskPlan PostgreSQL Repository 未初始化")
+    return AgentTaskPlanStore(
+        repository=repository,
+        export_store=AgentTaskPlanExportStore(settings),
+    )
 
 
 def get_agent_tool_permission_service(
@@ -442,6 +461,10 @@ def get_agent_task_executor(
             nl2sql_service=nl2sql_service,
         ),
     )
+    lease_manager = AgentTaskLeaseManager(
+        settings=settings,
+        store=task_plan_store,
+    )
     return AgentTaskExecutor(
         settings=settings,
         vector_retriever=vector_retriever,
@@ -451,6 +474,7 @@ def get_agent_task_executor(
         tool_permission_service=tool_permission_service,
         tool_audit_service=tool_audit_service,
         task_plan_store=task_plan_store,
+        lease_manager=lease_manager,
         research_executor=research_executor,
         document_executor=document_executor,
         capability_service=capability_service,

@@ -49,6 +49,7 @@ LangChainConfigFactory = Callable[[str], RunnableConfig]
 DEFAULT_CLARIFICATION_QUESTION = (
     "请明确希望进行普通问答、复杂分析、联网检索，还是创建、修改或删除知识库文档。"
 )
+AGENT_ROUTE_REASON_MAX_CHARS = 200
 
 AGENT_TASK_ROUTER_SYSTEM_PROMPT = """你是 RAG Agent 的任务路由器，只判断用户意图，不回答问题，也不生成执行参数。
 
@@ -64,7 +65,12 @@ AGENT_TASK_ROUTER_SYSTEM_PROMPT = """你是 RAG Agent 的任务路由器，只�
 - 解释一个概念、查询一个事实，通常是 simple_rag。
 - 明确要求对比两个或更多模块、分析多项关系或综合多个方面时，选择 question_decomposition；
   不要因为最终可以写成一段回答就降为 simple_rag。
-- knowledge_document_management 只用于知识库文档、报告或明确 .md/.txt 文件的创建、修改、删除、保存。
+- knowledge_document_management 只用于用户明确要求创建、修改、删除或保存知识库文档、报告、.md/.txt 文件，
+  即请求结果会改变持久化文档状态的场景。
+- 读取、查询、总结、解释、比较或提取指定文档中的事实属于知识问答；即使 query 包含“文档”、
+  `.md/.txt` 路径，也应按复杂度选择 simple_rag 或 question_decomposition。
+- “只读”“不要修改”“不创建、修改或删除文档”等否定约束必须优先于附近的文档动作词，
+  绝不能选择 knowledge_document_management。
   “删除 Redis 缓存”“移除 Docker 容器”“删除数据库记录”不是文档管理。
 - web_research 必须有明确 Web 依据且只需单步骤检索。
 - 即使全部事实都来自 Web，只要需要多个子问题、比较、依赖或综合，仍选择 question_decomposition。
@@ -77,6 +83,8 @@ AGENT_TASK_ROUTER_SYSTEM_PROMPT = """你是 RAG Agent 的任务路由器，只�
 - “FastAPI 是什么？” -> simple_rag
 - “对比混合检索与 rerank 的差异和协作关系” -> question_decomposition
 - “比较 Milvus 与 Elasticsearch 在混合检索中的职责” -> question_decomposition
+- “仅根据 development/rag-backend-deployment.md 列出三个示例配置值，不修改文档” -> simple_rag
+- “读取两份部署文档并比较权限过滤流程，不创建、修改或删除文档” -> question_decomposition
 - “删除知识库中的旧部署文档” -> knowledge_document_management
 - “删除 Redis 测试缓存” -> clarification_required
 - “移除本地 Docker 临时容器” -> clarification_required
@@ -121,7 +129,11 @@ class AgentRouteDecision(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     intent: AgentRouteIntent = Field(
-        description="业务路由结论；只决定后续分支，不授予权限或生成工具参数。"
+        description=(
+            "业务路由结论，只决定后续分支，不授予权限或生成工具参数；读取、查询、总结、解释、"
+            "比较或提取指定文档事实属于 simple_rag/question_decomposition，只有明确改变持久化文档"
+            "状态的创建、修改、删除或保存请求才属于 knowledge_document_management。"
+        )
     )
     confidence: float = Field(
         ge=0.0,
@@ -130,8 +142,11 @@ class AgentRouteDecision(BaseModel):
     )
     reason: str = Field(
         min_length=1,
-        max_length=200,
-        description="支持当前路由结论的简短理由，供 trace 和排查。",
+        max_length=AGENT_ROUTE_REASON_MAX_CHARS,
+        description=(
+            "支持当前路由结论的简短理由，供 trace 和排查；超过 200 字时服务端只截断"
+            "该审计说明，不改变已经通过 Schema 校验的 intent 或 confidence。"
+        ),
     )
     clarification_question: str | None = Field(
         default=None,
@@ -148,6 +163,15 @@ class AgentRouteDecision(BaseModel):
         # 相同；先归一化后，下面的 model validator 仍会拒绝非澄清意图携带非空追问。
         if isinstance(value, str) and not value.strip():
             return None
+        return value
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalize_reason_length(cls, value: object) -> object:
+        """审计说明超长时保留前 200 字，不让它推翻合法路由结论。"""
+
+        if isinstance(value, str):
+            return value[:AGENT_ROUTE_REASON_MAX_CHARS]
         return value
 
     @model_validator(mode="after")
@@ -355,10 +379,35 @@ def _route_with_high_confidence_rules(query: str) -> AgentRouteDecision | None:
             "写入",
         )
     )
+    # “不要修改”“不创建、修改或删除”等句子同样包含动作词。否定边界无法靠上面的
+    # 子串命中安全判断，因此一律交给结构化 Router 处理，而不是快速判成写操作。
+    negated_document_action = bool(
+        re.search(
+            r"(?:不|不要|无需|无须|不得|禁止|并非|不是)"
+            r"[^。！？；;\n]{0,20}?"
+            r"(?:创建|新增|新建|修改|更新|改写|替换|删除|移除|下线|保存|写入)",
+            text,
+        )
+    ) or "只读" in text
     explanatory_question = any(
-        word in text for word in ("是什么", "为什么", "如何实现", "原理", "解释", "介绍")
+        word in text
+        for word in (
+            "是什么",
+            "为什么",
+            "如何",
+            "怎么",
+            "怎样",
+            "原理",
+            "解释",
+            "介绍",
+        )
     )
-    if document_target and document_action and not explanatory_question:
+    if (
+        document_target
+        and document_action
+        and not negated_document_action
+        and not explanatory_question
+    ):
         # “如何修改文档”等解释型问题仍交给语义 Router；这里仅短路明确的文档操作请求。
         return AgentRouteDecision(
             intent="knowledge_document_management",

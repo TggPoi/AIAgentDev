@@ -210,11 +210,22 @@ async def main() -> None:
     assert _route_with_high_confidence_rules(
         "请修改 docs/development/rag.md 文档"
     ).intent == "knowledge_document_management"
+    read_only_document_query = (
+        "仅根据 development/rag-backend-deployment.md 中的内容，列出 "
+        "DATABASE_URL、MILVUS_PORT 和 ELASTICSEARCH_URL 的示例值；"
+        "这是只读知识问答，不创建、修改或删除文档。"
+    )
+    # 否定语义中的“创建/修改/删除”不能被当成文档写操作；复杂度仍交给结构化 Router 判断。
+    assert _route_with_high_confidence_rules(read_only_document_query) is None
+    assert _route_with_high_confidence_rules(
+        "读取 development/rag-backend-deployment.md 并总结；不要修改任何文档。"
+    ) is None
     # 简单/复杂 Web 必须由结构化 Router 判断，关键词规则不能把复杂比较短路成 direct Web。
     assert _route_with_high_confidence_rules("请联网搜索 FastAPI 最新版本") is None
     assert _route_with_high_confidence_rules("阅读 https://fastapi.tiangolo.com/") is None
     # 历史中的“文档”不会被规则拼入当前 query；普通缓存操作必须交给语义 Router。
     assert _route_with_high_confidence_rules("删除 Redis 测试缓存") is None
+    assert _route_with_high_confidence_rules("如何修改知识库文档？") is None
 
     original_chat_openai = router_module.ChatOpenAI
     router_module.ChatOpenAI = FakeChatOpenAI
@@ -229,6 +240,34 @@ async def main() -> None:
         assert result.decision.intent == "simple_rag"
         assert result.source == "model"
         assert "extra_body" not in FakeChatOpenAI.init_kwargs
+
+        FakeChatOpenAI.response = AgentRouteDecision(
+            intent="question_decomposition",
+            confidence=0.98,
+            reason="read-only multi-fact knowledge question",
+        )
+        result = await AgentTaskRouter(settings).route(
+            query=read_only_document_query
+        )
+        assert result.decision.intent == "question_decomposition"
+        assert result.source == "model"
+
+        # Provider 可能轻微超过 reason 的展示上限。reason 只用于审计，不能因为
+        # 它多出几个字符就丢弃已经合法的 intent/confidence 并降级为澄清。
+        FakeChatOpenAI.response = {
+            "intent": "question_decomposition",
+            "confidence": 0.95,
+            "reason": "路由说明" * 51,
+        }
+        result = await AgentTaskRouter(settings).route(
+            query=(
+                "仅根据 development/rag-backend-deployment.md，比较 Milvus 与 "
+                "Elasticsearch 的权限过滤职责；这是只读知识问答。"
+            )
+        )
+        assert result.decision.intent == "question_decomposition"
+        assert result.source == "model"
+        assert len(result.decision.reason) == 200
 
         FakeChatOpenAI.response = AgentRouteDecision(
             intent="web_research",

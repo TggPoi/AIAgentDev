@@ -47,25 +47,43 @@ async def invoke_structured_model(
             attempts += 1
             calls += 1
             try:
-                value = await _invoke_transport(model, schema, retry_messages, transport, config)
+                value = await _invoke_transport(
+                    model, schema, retry_messages, transport, config
+                )
                 _TRANSPORT_CACHE[key] = transport
                 return value
             except Exception as exc:
                 last_error = exc
+                http_status = _http_status_code(exc)
+                provider_error_code = _provider_error_code(exc)
                 logger.warning(
-                    "structured_output transport=%s attempt=%s error_type=%s validation_errors=%s",
+                    "structured_output transport=%s attempt=%s error_type=%s "
+                    "http_status=%s provider_error_code=%s validation_errors=%s",
                     transport,
                     attempts,
                     type(exc).__name__,
-                    exc.errors(include_input=False) if isinstance(exc, ValidationError) else None,
+                    http_status,
+                    provider_error_code,
+                    (
+                        exc.errors(include_input=False)
+                        if isinstance(exc, ValidationError)
+                        else None
+                    ),
                 )
-                if _transport_unsupported(exc):
+                # structured-output transport 的 HTTP 400 是确定性请求拒绝；
+                # 立即尝试下一协议，避免原样重放。strict_json 已是最终兜底。
+                if _transport_unsupported(exc) or (
+                    transport != "strict_json" and http_status == 400
+                ):
                     if _TRANSPORT_CACHE.get(key) == transport:
                         _TRANSPORT_CACHE.pop(key, None)
                     break
                 if isinstance(exc, ValidationError) and attempts == 1:
                     details = "; ".join(
-                        f"{'.'.join(map(str, item['loc'])) or '<root>'}: {item['msg']}"
+                        (
+                            f"{'.'.join(map(str, item['loc'])) or '<root>'}: "
+                            f"{item['msg']}"
+                        )
                         for item in exc.errors(include_input=False)
                     )
                     retry_messages = [
@@ -84,10 +102,14 @@ async def invoke_structured_model(
 
 async def _invoke_transport(model, schema, messages, transport, config):
     if transport in {"json_schema", "function_calling"}:
-        value = await model.with_structured_output(schema, method=transport).ainvoke(messages, config=config)
+        value = await model.with_structured_output(
+            schema, method=transport
+        ).ainvoke(messages, config=config)
         return value if isinstance(value, schema) else schema.model_validate(value)
     if transport == "json_mode":
-        response = await model.bind(response_format={"type": "json_object"}).ainvoke(messages, config=config)
+        response = await model.bind(
+            response_format={"type": "json_object"}
+        ).ainvoke(messages, config=config)
     else:
         response = await model.ainvoke(
             [
@@ -121,6 +143,29 @@ def _transport_unsupported(exc: Exception) -> bool:
             "unknown parameter: response_format",
         )
     )
+
+
+def _http_status_code(exc: Exception) -> int | None:
+    """读取 OpenAI-compatible SDK 的状态码，不依赖 provider 错误文案。"""
+
+    status_code = getattr(exc, "status_code", None)
+    if isinstance(status_code, int):
+        return status_code
+    response = getattr(exc, "response", None)
+    response_status = getattr(response, "status_code", None)
+    return response_status if isinstance(response_status, int) else None
+
+
+def _provider_error_code(exc: Exception) -> str | None:
+    """只记录非敏感 provider 错误码，不把错误正文或请求 Schema 写入日志。"""
+
+    body = getattr(exc, "body", None)
+    if not isinstance(body, dict):
+        return None
+    code = body.get("code")
+    if code is None and isinstance(body.get("error"), dict):
+        code = body["error"].get("code")
+    return str(code) if code is not None else None
 
 
 __all__ = ["invoke_structured_model"]

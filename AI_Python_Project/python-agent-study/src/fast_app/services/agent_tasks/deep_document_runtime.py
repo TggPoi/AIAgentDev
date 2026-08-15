@@ -4,12 +4,13 @@
 
 1. ``PostgresSaver`` 保存 LangGraph 的执行现场，例如节点进度、消息、Todo 和
    StateBackend 中的虚拟文件。这部分由 LangGraph 自动读写，并使用 AES 加密。
-2. ``PostgresStore`` 保存业务层的恢复登记表，例如 ACL 指纹、源文件 SHA、
-   ``record_version`` 和过期时间。Store 中不保存完整文档正文。
+2. ``agent_task_plan_runtime_records`` 业务表保存恢复登记表，例如 ACL 指纹、
+   源文件 SHA、``record_version`` 和过期时间，通过
+   ``AgentTaskPlanRepository`` 执行数据库原子 CAS，并同时校验父 TaskPlan 租约。
 
 ``DeepDocumentRuntime`` 将两者组合为同一个 TaskPlan 的可恢复运行环境：
-业务层先根据 Store 判断“是否允许恢复”，再由 Saver 告诉 LangGraph
-“从哪个执行状态继续”。
+业务层先根据 RuntimeRecord 判断"是否允许恢复"，再由 Saver 告诉 LangGraph
+"从哪个执行状态继续"。
 """
 
 from __future__ import annotations
@@ -34,24 +35,24 @@ from langgraph.checkpoint.base import (
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.serde.encrypted import EncryptedSerializer
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
-from langgraph.store.postgres import PostgresStore
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel, Field
 
 from fast_app.core.config import Settings
+from fast_app.domain.agent_task_execution import require_task_plan_lease
 from fast_app.domain.rag_models import RetrievalFilters
 from fast_app.domain.user_context import CurrentUserContext
+from fast_app.services.agent_tasks.agent_task_plan_repository import (
+    AgentTaskPlanRepository,
+)
 from fast_app.services.exceptions import (
     DocumentAgentCheckpointConflictError,
     DocumentAgentCheckpointUnavailableError,
 )
 
 
-# LangGraph Store 通过 ``namespace + key`` 定位数据。这里固定 namespace，
-# 再以 task_plan_id 作为 key，避免与其他 Store 业务数据冲突。
-_RUNTIME_NAMESPACE = ("deep_document_runtime",)
-# Store 数据结构的版本，与每次更新递增的 record_version 含义不同。
+# RuntimeRecord 数据结构的版本，与每次更新递增的 record_version 含义不同。
 _RUNTIME_SCHEMA_VERSION = 1
 
 
@@ -282,21 +283,29 @@ class DeepDocumentRuntime:
         settings: Settings,
         pool: ConnectionPool,
         checkpointer: _AsyncPostgresSaverAdapter,
-        store: PostgresStore,
+        repository: AgentTaskPlanRepository,
     ) -> None:
-        """保存 lifespan 已经创建好的连接池、Saver 和 Store。"""
+        """保存 lifespan 已经创建好的连接池、Saver 和 Runtime Repository。"""
 
         self.settings = settings
         self.pool = pool
         self.checkpointer = checkpointer
-        self.store = store
+        self.repository = repository
 
     @classmethod
-    async def start(cls, settings: Settings) -> "DeepDocumentRuntime":
-        """创建共享连接池、初始化官方表结构并清理过期运行记录。
+    async def start(
+        cls,
+        settings: Settings,
+        repository: AgentTaskPlanRepository,
+    ) -> "DeepDocumentRuntime":
+        """创建共享连接池、初始化官方表结构。
 
         该方法作为应用启动的失败边界：密钥无效、PostgreSQL 不可用或官方
         表结构初始化失败时，应用不应带着一个“无法恢复”的 Deep Agent 继续启动。
+
+        不再创建 PostgresStore，也不在启动时做无协调的过期清理：RuntimeRecord
+        事实已迁移到业务表（原子 CAS），过期清理由独立维护命令领取 cleanup
+        租约后执行，避免多个 Uvicorn Worker 同时清理。
         """
 
         # JsonPlusSerializer 负责将 LangGraph State 转成字节，EncryptedSerializer
@@ -310,8 +319,8 @@ class DeepDocumentRuntime:
             ),
             key=raw_key,
         )
-        # Saver 和 Store 共享一个线程安全的官方连接池。open=False
-        # 使连接动作保持在下方可统一清理的 try/except 边界内。
+        # Saver 使用线程安全的官方连接池。open=False 使连接动作保持在
+        # 下方可统一清理的 try/except 边界内。
         pool = ConnectionPool(
             _psycopg_connection_string(settings.database_url),
             min_size=1,
@@ -330,22 +339,18 @@ class DeepDocumentRuntime:
             # pool.open(wait=True) 会阻塞到最小连接就绪，因此也放到
             # 线程池；启动成功后才会向 FastAPI 暴露 runtime。
             await asyncio.to_thread(pool.open, wait=True)
-            # Saver 保存加密的 Graph State；Store 保存不含完整正文的
-            # DeepDocumentRuntimeRecord。两者虽共用 PostgreSQL，职责和表结构不同。
+            # Saver 保存加密的 Graph State；RuntimeRecord 业务事实由 Repository
+            # 保存在 agent_task_plan_runtime_records 表（原子 CAS）。
             saver = PostgresSaver(pool, serde=serializer)
-            store = PostgresStore(pool)
             runtime = cls(
                 settings=settings,
                 pool=pool,
                 checkpointer=_AsyncPostgresSaverAdapter(saver),
-                store=store,
+                repository=repository,
             )
-            # setup() 执行 LangGraph 官方表结构迁移。两个 setup 都是同步
-            # 数据库操作，所以不在事件循环线程里直接运行。
+            # setup() 执行 LangGraph 官方表结构迁移。它是同步数据库操作，
+            # 所以不在事件循环线程里直接运行。
             await asyncio.to_thread(saver.setup)
-            await asyncio.to_thread(store.setup)
-            # 先清理上次进程遗留的过期数据，再开始接收新请求。
-            await runtime.cleanup_expired()
             return runtime
         except BaseException:
             # BaseException 包含启动期 CancelledError。即使应用启动被取消，
@@ -388,6 +393,7 @@ class DeepDocumentRuntime:
         必须由拥有当前安全上下文的 DeepDocumentAgent 先做决策。
         """
 
+        lease = require_task_plan_lease(task_plan_id)
         now = datetime.now(UTC)
         record = DeepDocumentRuntimeRecord(
             task_plan_id=task_plan_id,
@@ -397,35 +403,26 @@ class DeepDocumentRuntime:
             expires_at=self.retention_deadline(),
             updated_at=now,
         )
-        # Store 使用 namespace + task_plan_id 定位记录。index=False 表示这是
-        # 精确 key 查询的运行事实，不需要语义向量索引。
-        await asyncio.to_thread(
-            self.store.put,
-            _RUNTIME_NAMESPACE,
-            task_plan_id,
-            record.model_dump(mode="json"),
-            False,
+        await self.repository.create_runtime_record(
+            snapshot=record.model_dump(mode="json"),
+            lease=lease,
         )
         return record
 
     async def load_record(self, task_plan_id: str) -> DeepDocumentRuntimeRecord | None:
         """读取并验证运行记录；结构损坏统一转换为稳定业务错误。
 
-        ``None`` 只表示 Store 中没有该任务。如果数据存在但无法验证，不能把它
+        ``None`` 只表示业务表中没有该任务。如果数据存在但无法验证，不能把它
         伪装成“没有记录”后静默重跑，因为这可能导致重复模型调用或越过原权限边界。
         """
 
-        item = await asyncio.to_thread(
-            self.store.get,
-            _RUNTIME_NAMESPACE,
-            task_plan_id,
-        )
-        if item is None:
+        payload = await self.repository.load_runtime_record(task_plan_id)
+        if payload is None:
             return None
         # model_validate 同时恢复 datetime 等强类型，并防止后续代码直接信任
-        # Store 中可能损坏或来自旧版本的原始 JSON。
+        # 业务表中可能损坏或来自旧版本的原始 JSON。
         try:
-            record = DeepDocumentRuntimeRecord.model_validate(item.value)
+            record = DeepDocumentRuntimeRecord.model_validate(payload)
         except Exception as exc:
             raise DocumentAgentCheckpointUnavailableError(
                 "Deep Agent 运行记录损坏或版本不兼容"
@@ -443,16 +440,13 @@ class DeepDocumentRuntime:
         expected_version: int,
         updates: dict[str, Any],
     ) -> DeepDocumentRuntimeRecord:
-        """在单进程锁内执行读版本、更新和递增，为多 Worker CAS 预留契约。
+        """读版本、合并并执行数据库原子 CAS。
 
-        ``expected_version`` 是调用方上次读到的版本。如果当前 Store 版本已变，
-        说明另一条执行路径已更新任务，本次不应覆盖它。
-
-        注意：当前的“读取 + 比较 + put”不是 PostgreSQL 原子 CAS，安全性依赖
-        AgentTaskExecutor 的单进程 task_plan_id 锁。未来多 Worker 部署时需改成
-        数据库条件更新或租约。
+        ``expected_version`` 是调用方上次读到的版本。业务表上的条件更新保证
+        跨进程并发时只有一个 writer 成功；本地读到的版本过期会先快速失败。
         """
 
+        lease = require_task_plan_lease(task_plan_id)
         current = await self.load_record(task_plan_id)
         if current is None:
             raise DocumentAgentCheckpointUnavailableError("Deep Agent 运行记录不存在")
@@ -471,20 +465,23 @@ class DeepDocumentRuntime:
                 "expires_at": self.retention_deadline(),
             }
         )
-        await asyncio.to_thread(
-            self.store.put,
-            _RUNTIME_NAMESPACE,
-            task_plan_id,
-            record.model_dump(mode="json"),
-            False,
+        version = await self.repository.update_runtime_record(
+            task_plan_id=task_plan_id,
+            expected_version=expected_version,
+            snapshot=record.model_dump(mode="json"),
+            lease=lease,
         )
+        if version != record.record_version:
+            raise DocumentAgentCheckpointConflictError(
+                "RuntimeRecord 数据库版本与返回模型不一致"
+            )
         return record
 
     async def has_checkpoint(self, task_plan_id: str) -> bool:
         """检查稳定 thread 是否至少存在一个可恢复 checkpoint。
 
-        Store 记录存在不代表 checkpoint 一定存在，因为进程可能在创建记录后、
-        首个 checkpoint 落库前崩溃。恢复决策因此必须同时检查 Store 和 Saver。
+        RuntimeRecord 存在不代表 checkpoint 一定存在，因为进程可能在创建记录后、
+        首个 checkpoint 落库前崩溃。恢复决策因此必须同时检查业务记录和 Saver。
         """
 
         config = {"configurable": {"thread_id": self.thread_id(task_plan_id)}}
@@ -493,56 +490,16 @@ class DeepDocumentRuntime:
     async def release(self, task_plan_id: str) -> None:
         """删除同一 TaskPlan 的 LangGraph thread 和可信运行事实。
 
-        先删 Saver，再删 Store。如果 checkpoint 删除失败，Store 记录仍保留，
-        上层可将它标记为 ``cleanup_pending`` 供下次启动重试；反过来先删
-        Store 会产生无人管理的加密虚拟工作区。
+        先删 Saver，再删业务表。如果 checkpoint 删除失败，RuntimeRecord 仍保留，
+        上层可将它标记为 ``cleanup_pending`` 供维护命令重试；反过来先删
+        业务记录会产生无人管理的加密虚拟工作区。
         """
 
+        # 修订：必须先取出当前协程的租约句柄（原方案此处引用未定义变量）。
+        lease = require_task_plan_lease(task_plan_id)
+        lease.assert_active()
         await self.checkpointer.adelete_thread(self.thread_id(task_plan_id))
-        await asyncio.to_thread(
-            self.store.delete,
-            _RUNTIME_NAMESPACE,
-            task_plan_id,
-        )
-
-    async def cleanup_expired(self) -> int:
-        """启动时释放超过保留期的运行记录和对应 checkpoint。
-
-        返回实际选中并调用 ``release()`` 的任务数。清理放在 FastAPI 启动
-        阶段，让上一次进程遗留的失败任务不会永久占用 PostgreSQL。
-        """
-
-        # Store.search() 默认只返回有限条目。先分页收集完整快照，
-        # 再删除，可避免“边分页边删除”导致 offset 移动而跳过记录。
-        items = []
-        offset = 0
-        while True:
-            batch = await asyncio.to_thread(
-                self.store.search,
-                _RUNTIME_NAMESPACE,
-                limit=100,
-                offset=offset,
-            )
-            items.extend(batch)
-            if len(batch) < 100:
-                break
-            offset += len(batch)
-        now = datetime.now(UTC)
-        expired_ids: list[str] = []
-        for item in items:
-            try:
-                record = DeepDocumentRuntimeRecord.model_validate(item.value)
-            except Exception:
-                # 启动清理不猜测损坏数据属于哪个 thread，避免误删。
-                # load_record() 在真正恢复该任务时会返回稳定的数据损坏错误。
-                continue
-            # cleanup_pending 表示之前的终态清理失败，无需等到 expires_at；
-            # 其他 running/failed 记录只在保留期结束后删除，为 /retry 留出时间。
-            if record.status == "cleanup_pending" or record.expires_at <= now:
-                expired_ids.append(record.task_plan_id)
-        for task_plan_id in expired_ids:
-            await self.release(task_plan_id)
-        return len(expired_ids)
+        await self.repository.delete_runtime_record(task_plan_id, lease=lease)
 
 
 __all__ = [

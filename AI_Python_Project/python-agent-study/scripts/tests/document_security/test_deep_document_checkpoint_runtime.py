@@ -4,19 +4,38 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from datetime import UTC, datetime
 from tempfile import TemporaryDirectory
 from typing import Any, TypedDict
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
+from sqlalchemy import delete
 
 import fast_app.services.agent_tasks.deep_document_agent as deep_agent_module
 from fast_app.core.config import get_settings
-from fast_app.domain.agent_task_plan import AgentResearchPolicy
+from fast_app.db.agent_task_plan_tables import (
+    AgentTaskCapacitySlotTable,
+    AgentTaskPlanCommandTable,
+    AgentTaskPlanRuntimeRecordTable,
+    AgentTaskPlanTable,
+)
+from fast_app.db.session import create_database_engine, create_session_factory
+from fast_app.domain.agent_task_execution import (
+    _CURRENT_TASK_PLAN_LEASE,
+    TaskPlanLease,
+)
+from fast_app.domain.agent_task_plan import AgentResearchPolicy, AgentTaskPlanStatus
 from fast_app.domain.document_workflow import DocumentWorkflowResult
 from fast_app.domain.rag_models import RetrievalFilters
 from fast_app.services.agent_tasks.agent_task_executor import _TASK_PLAN_LOCKS
-from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
+from fast_app.services.agent_tasks.agent_task_plan_repository import (
+    AgentTaskPlanRepository,
+)
+from fast_app.services.agent_tasks.agent_task_plan_store import (
+    AgentTaskPlanExportStore,
+    AgentTaskPlanStore,
+)
 from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 from fast_app.services.agent_tasks.deep_document_agent import DeepDocumentAgent
 from fast_app.services.agent_tasks.deep_document_runtime import (
@@ -36,6 +55,96 @@ from test_deep_document_agent_workflow import (
     build_decision,
     build_user,
 )
+
+
+async def _start_checkpoint_runtime(settings):
+    """按修订版装配 runtime：业务事实走 Repository，checkpoint 仍走 PostgresSaver。"""
+
+    engine = create_database_engine(settings)
+    factory = create_session_factory(engine)
+    repository = AgentTaskPlanRepository(factory)
+    await repository.ensure_capacity_slots(workload_type="document", count=2)
+    runtime = await DeepDocumentRuntime.start(settings, repository)
+    return engine, factory, repository, runtime
+
+
+async def _reset_task_plan(factory, task_plan_id: str) -> None:
+    """清理同一任务的历史行，保证固定 ID 的测试可重复运行。"""
+
+    async with factory() as session, session.begin():
+        await session.execute(
+            delete(AgentTaskPlanCommandTable).where(
+                AgentTaskPlanCommandTable.task_plan_id == task_plan_id
+            )
+        )
+        await session.execute(
+            delete(AgentTaskPlanRuntimeRecordTable).where(
+                AgentTaskPlanRuntimeRecordTable.task_plan_id == task_plan_id
+            )
+        )
+        await session.execute(
+            delete(AgentTaskPlanTable).where(
+                AgentTaskPlanTable.task_plan_id == task_plan_id
+            )
+        )
+        await session.execute(
+            delete(AgentTaskCapacitySlotTable).where(
+                AgentTaskCapacitySlotTable.task_plan_id == task_plan_id
+            )
+        )
+
+
+async def _acquire_plan_lease(
+    repository: AgentTaskPlanRepository,
+    task_plan_id: str,
+    *,
+    allowed_statuses: set[AgentTaskPlanStatus],
+) -> TaskPlanLease:
+    """为已存在的计划行领取真实数据库租约（调用方需自行绑定 ContextVar）。"""
+
+    acquired = await repository.begin_operation(
+        task_plan_id=task_plan_id,
+        operation="execute",
+        idempotency_key=f"checkpoint-test:{task_plan_id}",
+        request_hash="c" * 64,
+        worker_id="checkpoint-test-worker",
+        allowed_statuses=allowed_statuses,
+        workload_type="document",
+        capacity_limit=2,
+        lease_seconds=300,
+    )
+    assert isinstance(acquired, TaskPlanLease)
+    return acquired
+
+
+async def _bind_plan_lease(
+    repository: AgentTaskPlanRepository,
+    task_plan_id: str,
+    *,
+    allowed_statuses: set[AgentTaskPlanStatus],
+) -> TaskPlanLease:
+    """创建计划行并领取真实数据库租约，供 RuntimeRecord 操作的租约校验使用。
+
+    返回的租约句柄需要由调用方通过 ``_CURRENT_TASK_PLAN_LEASE.set(...)`` 绑定到
+    当前协程；测试不直接调用 ``bind_task_plan_lease`` 是为了避免整段重缩进。
+    """
+
+    now = datetime.now(UTC)
+    await repository.create_plan(
+        {
+            "task_plan_id": task_plan_id,
+            "schema_version": 1,
+            "task_kind": "knowledge_document_management",
+            "status": AgentTaskPlanStatus.CREATED.value,
+            "user_id": "checkpoint_runtime_test_user",
+            "created_at": now.isoformat(),
+        }
+    )
+    return await _acquire_plan_lease(
+        repository,
+        task_plan_id,
+        allowed_statuses=allowed_statuses,
+    )
 
 
 class MarkerState(TypedDict):
@@ -106,8 +215,15 @@ async def test_postgres_encryption_resume_and_record_version() -> None:
     settings = get_settings()
     task_plan_id = "task_plan_checkpoint_runtime_test"
     marker = "private-checkpoint-marker-20260719"
-    runtime = await DeepDocumentRuntime.start(settings)
+    engine, factory, repository, runtime = await _start_checkpoint_runtime(settings)
     try:
+        await _reset_task_plan(factory, task_plan_id)
+        lease = await _bind_plan_lease(
+            repository,
+            task_plan_id,
+            allowed_statuses={AgentTaskPlanStatus.CREATED},
+        )
+        token = _CURRENT_TASK_PLAN_LEASE.set(lease)
         await runtime.release(task_plan_id)
         record = await runtime.create_record(
             task_plan_id=task_plan_id,
@@ -164,7 +280,7 @@ async def test_postgres_encryption_resume_and_record_version() -> None:
         await runtime.close()
 
     # 模拟进程重启：重新创建连接池、Saver 和编译图，再用相同 thread_id 恢复。
-    runtime = await DeepDocumentRuntime.start(settings)
+    runtime = await DeepDocumentRuntime.start(settings, repository)
     try:
         graph = StateGraph(MarkerState)
         graph.add_node("write", lambda state: {"marker": state["marker"] + "-saved"})
@@ -184,11 +300,16 @@ async def test_postgres_encryption_resume_and_record_version() -> None:
     finally:
         await runtime.close()
 
+    _CURRENT_TASK_PLAN_LEASE.reset(token)
+    await _reset_task_plan(factory, task_plan_id)
+    await engine.dispose()
+
 
 async def test_deep_agent_forces_sync_and_stable_thread() -> None:
     settings = get_settings()
-    runtime = await DeepDocumentRuntime.start(settings)
+    engine, factory, repository, runtime = await _start_checkpoint_runtime(settings)
     captured: dict[str, object] = {}
+    token = None
 
     class CaptureGraph:
         async def ainvoke(self, graph_input, *, config, durability):
@@ -206,13 +327,23 @@ async def test_deep_agent_forces_sync_and_stable_thread() -> None:
             local_settings = settings.model_copy(
                 update={"agent_task_plan_dir": temp_dir}
             )
-            store = AgentTaskPlanStore(local_settings)
+            store = AgentTaskPlanStore(
+                repository=repository,
+                export_store=AgentTaskPlanExportStore(local_settings),
+            )
             plan = AgentTaskPlanner(local_settings).build_document_management_plan(
                 query="Update the damage rules",
                 user_id="tool_admin",
                 research_policy=AgentResearchPolicy(web_policy="disabled"),
             )
-            store.save(plan)
+            plan.status = AgentTaskPlanStatus.PREPARING_CONFIRMATION
+            await store.create(plan)
+            lease = await _acquire_plan_lease(
+                repository,
+                plan.task_plan_id,
+                allowed_statuses={AgentTaskPlanStatus.PREPARING_CONFIRMATION},
+            )
+            token = _CURRENT_TASK_PLAN_LEASE.set(lease)
             agent = DeepDocumentAgent(
                 settings=local_settings,
                 vector_retriever=FakeRetriever(),
@@ -243,13 +374,18 @@ async def test_deep_agent_forces_sync_and_stable_thread() -> None:
             await runtime.release(plan.task_plan_id)
     finally:
         deep_agent_module.create_deep_agent = original_factory
+        if token is not None:
+            _CURRENT_TASK_PLAN_LEASE.reset(token)
+        await _reset_task_plan(factory, plan.task_plan_id)
         await runtime.close()
+        await engine.dispose()
 
 
 async def test_deep_agent_resumes_without_repeating_completed_node() -> None:
     settings = get_settings()
-    runtime = await DeepDocumentRuntime.start(settings)
+    engine, factory, repository, runtime = await _start_checkpoint_runtime(settings)
     calls = {"completed_node": 0, "failing_node": 0}
+    token = None
 
     def checkpointing_factory(**kwargs):
         graph = StateGraph(FakeDeepState)
@@ -282,13 +418,23 @@ async def test_deep_agent_resumes_without_repeating_completed_node() -> None:
             local_settings = settings.model_copy(
                 update={"agent_task_plan_dir": temp_dir}
             )
-            store = AgentTaskPlanStore(local_settings)
+            store = AgentTaskPlanStore(
+                repository=repository,
+                export_store=AgentTaskPlanExportStore(local_settings),
+            )
             plan = AgentTaskPlanner(local_settings).build_document_management_plan(
                 query="Update the damage rules",
                 user_id="tool_admin",
                 research_policy=AgentResearchPolicy(web_policy="disabled"),
             )
-            store.save(plan)
+            plan.status = AgentTaskPlanStatus.PREPARING_CONFIRMATION
+            await store.create(plan)
+            lease = await _acquire_plan_lease(
+                repository,
+                plan.task_plan_id,
+                allowed_statuses={AgentTaskPlanStatus.PREPARING_CONFIRMATION},
+            )
+            token = _CURRENT_TASK_PLAN_LEASE.set(lease)
             agent = DeepDocumentAgent(
                 settings=local_settings,
                 vector_retriever=FakeRetriever(),
@@ -320,24 +466,39 @@ async def test_deep_agent_resumes_without_repeating_completed_node() -> None:
             await runtime.release(plan.task_plan_id)
     finally:
         deep_agent_module.create_deep_agent = original_factory
+        if token is not None:
+            _CURRENT_TASK_PLAN_LEASE.reset(token)
+        await _reset_task_plan(factory, plan.task_plan_id)
         await runtime.close()
+        await engine.dispose()
 
 
 async def test_acl_source_and_missing_checkpoint_recovery_rules() -> None:
     settings = get_settings()
-    runtime = await DeepDocumentRuntime.start(settings)
+    engine, factory, repository, runtime = await _start_checkpoint_runtime(settings)
+    token = None
     try:
         with TemporaryDirectory() as temp_dir:
             local_settings = settings.model_copy(
                 update={"agent_task_plan_dir": temp_dir}
             )
-            store = AgentTaskPlanStore(local_settings)
+            store = AgentTaskPlanStore(
+                repository=repository,
+                export_store=AgentTaskPlanExportStore(local_settings),
+            )
             plan = AgentTaskPlanner(local_settings).build_document_management_plan(
                 query="Update the damage rules",
                 user_id="tool_admin",
                 research_policy=AgentResearchPolicy(web_policy="disabled"),
             )
-            store.save(plan)
+            plan.status = AgentTaskPlanStatus.PREPARING_CONFIRMATION
+            await store.create(plan)
+            lease = await _acquire_plan_lease(
+                repository,
+                plan.task_plan_id,
+                allowed_statuses={AgentTaskPlanStatus.PREPARING_CONFIRMATION},
+            )
+            token = _CURRENT_TASK_PLAN_LEASE.set(lease)
             management = FakeManagementService()
             agent = DeepDocumentAgent(
                 settings=local_settings,
@@ -402,7 +563,7 @@ async def test_acl_source_and_missing_checkpoint_recovery_rules() -> None:
                 "status": "resumable",
                 "durability": "sync",
             }
-            store.save(plan)
+            await store.save(plan)
             try:
                 await agent._prepare_runtime(
                     plan=plan,
@@ -416,7 +577,11 @@ async def test_acl_source_and_missing_checkpoint_recovery_rules() -> None:
                 raise AssertionError("新格式运行记录缺少 checkpoint 时必须拒绝静默重跑")
             await runtime.release(plan.task_plan_id)
     finally:
+        if token is not None:
+            _CURRENT_TASK_PLAN_LEASE.reset(token)
+        await _reset_task_plan(factory, plan.task_plan_id)
         await runtime.close()
+        await engine.dispose()
 
 
 async def test_same_task_fail_fast_lock() -> None:

@@ -11,6 +11,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "scripts" / "tests"))
 
 from langchain_core.messages import AIMessage
 from langchain_core.tools import StructuredTool
@@ -28,7 +29,12 @@ from fast_app.domain.agent_task_plan import (
 )
 from fast_app.domain.rag_models import RagContext, RetrievalFilters, RetrievalOptions, RetrievedDoc
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
+from agent_task_plan_test_support import (
+    InMemoryAgentTaskLeaseManager,
+    InMemoryAgentTaskPlanStore,
+    bind_test_task_plan_lease,
+)
+from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor
 from fast_app.services.research.agentic_research_executor import AgenticResearchExecutor
 from fast_app.services.research.research_evidence_evaluator import ResearchEvidenceEvaluator
 from fast_app.services.research.research_tool_loop import (
@@ -125,6 +131,37 @@ class LoopResearchToolLoop(ResearchToolLoop):
             tool_output={"result_count": 1, "top_urls": ["https://example.com/rag"]},
             evidence=[{"id": "web_1", "source": "web_search"}],
             context_docs=[doc],
+        )
+
+
+class PackedContextResearchToolLoop(LoopResearchToolLoop):
+    """模拟工具返回三份证据，但回答 token 预算只能采用其中一部分。"""
+
+    async def _select_tool_for_sub_question(self, *args, **kwargs):
+        if kwargs.get("current_tool_calls"):
+            return {"selected_tool": "none", "tool_input": {}, "reason": "完成"}
+        return {
+            "selected_tool": "knowledge_retrieval",
+            "tool_input": {"query": "上下文装箱测试", "top_k": 3},
+            "reason": "取得候选证据",
+        }
+
+    async def _run_knowledge_retrieval_for_sub_question(self, *args, **kwargs):
+        docs = [
+            RetrievedDoc(
+                id=f"packed_doc_{index}",
+                content=f"证据{index}：" + ("这是有意义的部署证据。" * 350),
+                score=1.0 - index * 0.1,
+                source="knowledge_retrieval",
+            )
+            for index in range(1, 4)
+        ]
+        return ToolExecutionResult(
+            tool_output={"doc_count": 3},
+            evidence=[
+                {"id": doc.id, "source": "knowledge_retrieval"} for doc in docs
+            ],
+            context_docs=docs,
         )
 
 
@@ -302,9 +339,11 @@ class CorrectionResearchToolLoop(ResearchToolLoop):
 class RetryLocalOnceEvaluator:
     def __init__(self) -> None:
         self.calls = 0
+        self.answer_contexts: list[RagContext | None] = []
 
     async def evaluate(self, **kwargs):
         self.calls += 1
+        self.answer_contexts.append(kwargs.get("answer_context"))
         if self.calls == 1:
             return ResearchEvidenceEvaluation(
                 verdict="insufficient",
@@ -392,6 +431,7 @@ class ResearchHarness:
 
     def __init__(self, *, tool_loop_class=LoopResearchToolLoop, **kwargs) -> None:
         settings = kwargs["settings"]
+        kwargs.setdefault("lease_manager", InMemoryAgentTaskLeaseManager())
         self.tool_loop = tool_loop_class(
             settings=settings,
             vector_retriever=kwargs["vector_retriever"],
@@ -417,7 +457,10 @@ class ResearchHarness:
         return getattr(self.executor, name)
 
 
-def build_executor(settings: Settings, store: AgentTaskPlanStore) -> ResearchHarness:
+def build_executor(
+    settings: Settings,
+    store: InMemoryAgentTaskPlanStore,
+) -> ResearchHarness:
     return ResearchHarness(
         settings=settings,
         vector_retriever=FakeRetriever(),
@@ -427,6 +470,7 @@ def build_executor(settings: Settings, store: AgentTaskPlanStore) -> ResearchHar
         tool_permission_service=object(),
         tool_audit_service=object(),
         task_plan_store=store,
+        lease_manager=InMemoryAgentTaskLeaseManager(),
     )
 
 
@@ -439,7 +483,7 @@ async def main() -> None:
             AGENT_MAX_TOOL_CALLS=2,
             AGENT_RESEARCH_MAX_TOOL_CALLS_PER_WORKER=2,
         )
-        store = AgentTaskPlanStore(settings=settings)
+        store = InMemoryAgentTaskPlanStore()
         executor = build_executor(settings, store)
 
         class FakeBoundBatchModel:
@@ -473,17 +517,19 @@ async def main() -> None:
         original_chat_openai = tool_loop_module.ChatOpenAI
         tool_loop_module.ChatOpenAI = FakeChatOpenAI
         try:
-            native_calls = await executor._select_tool_with_bound_tools(
-                tools=await executor._build_available_task_tools(),
-                plan=build_plan("task_plan_native_batch"),
-                sub_question=build_plan("task_plan_native_batch").sub_questions[0],
-                dependency_results=[],
-                prior_tool_calls=[],
-                prior_evidence=[],
-                current_tool_calls=[],
-                current_evidence=[],
-                retry_missing_points=[],
-            )
+            native_plan = build_plan("task_plan_native_batch")
+            with bind_test_task_plan_lease(native_plan.task_plan_id):
+                native_calls = await executor._select_tool_with_bound_tools(
+                    tools=await executor._build_available_task_tools(),
+                    plan=native_plan,
+                    sub_question=native_plan.sub_questions[0],
+                    dependency_results=[],
+                    prior_tool_calls=[],
+                    prior_evidence=[],
+                    current_tool_calls=[],
+                    current_evidence=[],
+                    retry_missing_points=[],
+                )
         finally:
             tool_loop_module.ChatOpenAI = original_chat_openai
         assert native_calls is not None
@@ -535,18 +581,22 @@ async def main() -> None:
         )
         tool_loop_module.ChatOpenAI = RequiredWebChatOpenAI
         try:
-            required_web_calls = await required_executor._select_tool_for_sub_question(
-                plan=build_plan("task_plan_required_web"),
-                sub_question=web_sub_question,
-                dependency_results=[],
-                default_mode="hybrid",
-                default_top_k=3,
-                prior_tool_calls=[],
-                prior_evidence=[],
-                current_tool_calls=[],
-                current_evidence=[],
-                retry_missing_points=[],
-            )
+            required_web_plan = build_plan("task_plan_required_web")
+            with bind_test_task_plan_lease(required_web_plan.task_plan_id):
+                required_web_calls = (
+                    await required_executor._select_tool_for_sub_question(
+                        plan=required_web_plan,
+                        sub_question=web_sub_question,
+                        dependency_results=[],
+                        default_mode="hybrid",
+                        default_top_k=3,
+                        prior_tool_calls=[],
+                        prior_evidence=[],
+                        current_tool_calls=[],
+                        current_evidence=[],
+                        retry_missing_points=[],
+                    )
+                )
         finally:
             tool_loop_module.ChatOpenAI = original_chat_openai
         assert required_web_calls[0]["call_id"] == "required_web"
@@ -561,18 +611,22 @@ async def main() -> None:
 
         tool_loop_module.ChatOpenAI = FailingRequiredWebChatOpenAI
         try:
-            enforced_web_calls = await required_executor._select_tool_for_sub_question(
-                plan=build_plan("task_plan_required_web_fallback"),
-                sub_question=web_sub_question,
-                dependency_results=[],
-                default_mode="hybrid",
-                default_top_k=3,
-                prior_tool_calls=[],
-                prior_evidence=[],
-                current_tool_calls=[],
-                current_evidence=[],
-                retry_missing_points=[],
-            )
+            fallback_plan = build_plan("task_plan_required_web_fallback")
+            with bind_test_task_plan_lease(fallback_plan.task_plan_id):
+                enforced_web_calls = (
+                    await required_executor._select_tool_for_sub_question(
+                        plan=fallback_plan,
+                        sub_question=web_sub_question,
+                        dependency_results=[],
+                        default_mode="hybrid",
+                        default_top_k=3,
+                        prior_tool_calls=[],
+                        prior_evidence=[],
+                        current_tool_calls=[],
+                        current_evidence=[],
+                        retry_missing_points=[],
+                    )
+                )
         finally:
             tool_loop_module.ChatOpenAI = original_chat_openai
         assert enforced_web_calls == [
@@ -594,19 +648,23 @@ async def main() -> None:
             keyword_retriever=FakeRetriever(),
             llm_client=sequential_llm,
         )
-        sequential_outcome = await sequential_loop.run_attempt(
-            plan=build_plan("task_plan_single_answer"),
-            sub_question=build_plan("task_plan_single_answer").sub_questions[0],
-            dependency_results=[],
-            mode="hybrid",
-            top_k=3,
-            candidate_k=None,
-            min_score=0.0,
-            filters=RetrievalFilters(),
-        )
+        sequential_plan = build_plan("task_plan_single_answer")
+        with bind_test_task_plan_lease(sequential_plan.task_plan_id):
+            sequential_outcome = await sequential_loop.run_attempt(
+                plan=sequential_plan,
+                sub_question=sequential_plan.sub_questions[0],
+                dependency_results=[],
+                mode="hybrid",
+                top_k=3,
+                candidate_k=None,
+                min_score=0.0,
+                filters=RetrievalFilters(),
+            )
         assert len(sequential_outcome.result.tool_calls) == 2
-        assert len(sequential_llm.generate_calls) == 1
+        assert len(sequential_llm.generate_calls) == 1, sequential_llm.generate_calls
         sequential_context = sequential_llm.generate_calls[0][1].context_text
+        assert sequential_outcome.answer_context is not None
+        assert sequential_outcome.answer_context.context_text == sequential_context
         assert "完整的内部 RAG 设计证据" in sequential_context
         assert "完整的公开 RAG 评估实践" in sequential_context
         assert all(
@@ -614,18 +672,48 @@ async def main() -> None:
             for call in sequential_outcome.result.tool_calls
         )
 
+        packed_llm = FakeLLM()
+        packed_loop = PackedContextResearchToolLoop(
+            settings=Settings(
+                OPENAI_API_KEY="",
+                AGENT_TASK_PLAN_DIR=temp_dir,
+                AGENT_MAX_TOOL_CALLS=1,
+            ),
+            vector_retriever=FakeRetriever(),
+            keyword_retriever=FakeRetriever(),
+            llm_client=packed_llm,
+        )
+        packed_plan = build_plan("task_plan_packed_evidence")
+        with bind_test_task_plan_lease(packed_plan.task_plan_id):
+            packed_outcome = await packed_loop.run_attempt(
+                plan=packed_plan,
+                sub_question=packed_plan.sub_questions[0],
+                dependency_results=[],
+                mode="hybrid",
+                top_k=3,
+                candidate_k=None,
+                min_score=0.0,
+                filters=RetrievalFilters(),
+            )
+        assert packed_outcome.answer_context is not None
+        packed_doc_ids = {doc.id for doc in packed_outcome.answer_context.docs}
+        assert len(packed_doc_ids) < 3
+        assert {item["id"] for item in packed_outcome.result.evidence} == packed_doc_ids
+
         # 未注册工具没有产生任何可用证据，因此不能浪费一次回答模型调用。
         calls_before_failure = len(sequential_llm.generate_calls)
-        failed_outcome = await sequential_loop.run_attempt(
-            plan=build_plan("task_plan_no_evidence"),
-            sub_question=build_plan("task_plan_no_evidence").sub_questions[2],
-            dependency_results=[],
-            mode="hybrid",
-            top_k=3,
-            candidate_k=None,
-            min_score=0.0,
-            filters=RetrievalFilters(),
-        )
+        no_evidence_plan = build_plan("task_plan_no_evidence")
+        with bind_test_task_plan_lease(no_evidence_plan.task_plan_id):
+            failed_outcome = await sequential_loop.run_attempt(
+                plan=no_evidence_plan,
+                sub_question=no_evidence_plan.sub_questions[2],
+                dependency_results=[],
+                mode="hybrid",
+                top_k=3,
+                candidate_k=None,
+                min_score=0.0,
+                filters=RetrievalFilters(),
+            )
         assert failed_outcome.result.status == "failed"
         assert len(sequential_llm.generate_calls) == calls_before_failure
 
@@ -643,10 +731,11 @@ async def main() -> None:
             keyword_retriever=FakeRetriever(),
             llm_client=correction_llm,
         )
+        correction_evaluator = RetryLocalOnceEvaluator()
         correction_worker = ResearchWorkerAgent(
             correction_loop._settings,
             correction_loop,
-            RetryLocalOnceEvaluator(),
+            correction_evaluator,
         )
 
         async def ignore_progress(*args, **kwargs):
@@ -655,28 +744,37 @@ async def main() -> None:
         async def ignore_checkpoint(_update) -> None:
             return None
 
+        async def never_stop() -> bool:
+            return False
+
         correction_plan = build_plan("task_plan_cross_attempt")
-        correction_result = await correction_worker.run(
-            ResearchWorkerRequest(
-                plan=correction_plan,
-                sub_question=correction_plan.sub_questions[0],
-                dependency_results=[],
-                policy=AgentResearchPolicy(
-                    mode="hybrid",
-                    top_k=3,
-                    min_score=0.0,
-                    web_policy="disabled",
-                ),
-                filters=RetrievalFilters(),
-                wave=1,
-                on_progress=ignore_progress,
-                on_checkpoint=ignore_checkpoint,
-                should_stop=lambda: False,
+        with bind_test_task_plan_lease(correction_plan.task_plan_id):
+            correction_result = await correction_worker.run(
+                ResearchWorkerRequest(
+                    plan=correction_plan,
+                    sub_question=correction_plan.sub_questions[0],
+                    dependency_results=[],
+                    policy=AgentResearchPolicy(
+                        mode="hybrid",
+                        top_k=3,
+                        min_score=0.0,
+                        web_policy="disabled",
+                    ),
+                    filters=RetrievalFilters(),
+                    wave=1,
+                    on_progress=ignore_progress,
+                    on_checkpoint=ignore_checkpoint,
+                    should_stop=never_stop,
+                )
             )
-        )
         assert correction_result.status == "completed"
         assert correction_result.attempt_count == 2
+        assert "answer_context" not in correction_result.model_dump(mode="json")
         assert len(correction_llm.generate_calls) == 2
+        assert [
+            context.context_text if context is not None else None
+            for context in correction_evaluator.answer_contexts
+        ] == [call[1].context_text for call in correction_llm.generate_calls]
         assert correction_loop.attempt_starts == [
             {
                 "prior_call_count": 0,
@@ -714,16 +812,18 @@ async def main() -> None:
             tool_audit_service=object(),
             task_plan_store=store,
         )
-        parallel_outcome = await parallel_executor.run_attempt(
-            plan=build_plan("task_plan_parallel"),
-            sub_question=build_plan("task_plan_parallel").sub_questions[0],
-            dependency_results=[],
-            mode="hybrid",
-            top_k=3,
-            candidate_k=None,
-            min_score=0.0,
-            filters=RetrievalFilters(),
-        )
+        parallel_plan = build_plan("task_plan_parallel")
+        with bind_test_task_plan_lease(parallel_plan.task_plan_id):
+            parallel_outcome = await parallel_executor.run_attempt(
+                plan=parallel_plan,
+                sub_question=parallel_plan.sub_questions[0],
+                dependency_results=[],
+                mode="hybrid",
+                top_k=3,
+                candidate_k=None,
+                min_score=0.0,
+                filters=RetrievalFilters(),
+            )
         parallel_result = parallel_outcome.result
         assert parallel_executor.started == 2
         assert [call.call_id for call in parallel_result.tool_calls] == [
@@ -757,17 +857,18 @@ async def main() -> None:
         async def record_checkpoint(update) -> None:
             checkpoint_updates.append(update)
 
-        fetch_outcome = await fetch_loop.run_attempt(
-            plan=fetch_plan,
-            sub_question=fetch_plan.sub_questions[0],
-            dependency_results=[],
-            mode="hybrid",
-            top_k=3,
-            candidate_k=None,
-            min_score=0.0,
-            filters=RetrievalFilters(),
-            on_checkpoint=record_checkpoint,
-        )
+        with bind_test_task_plan_lease(fetch_plan.task_plan_id):
+            fetch_outcome = await fetch_loop.run_attempt(
+                plan=fetch_plan,
+                sub_question=fetch_plan.sub_questions[0],
+                dependency_results=[],
+                mode="hybrid",
+                top_k=3,
+                candidate_k=None,
+                min_score=0.0,
+                filters=RetrievalFilters(),
+                on_checkpoint=record_checkpoint,
+            )
 
         assert fetch_loop.started == 2
         assert [
@@ -798,17 +899,19 @@ async def main() -> None:
             keyword_retriever=FakeRetriever(),
             llm_client=budget_llm,
         )
-        budget_outcome = await budget_loop.run_attempt(
-            plan=build_plan("task_plan_budget_trim"),
-            sub_question=build_plan("task_plan_budget_trim").sub_questions[0],
-            dependency_results=[],
-            mode="hybrid",
-            top_k=3,
-            candidate_k=None,
-            min_score=0.0,
-            filters=RetrievalFilters(),
-            max_tool_calls_override=1,
-        )
+        budget_plan = build_plan("task_plan_budget_trim")
+        with bind_test_task_plan_lease(budget_plan.task_plan_id):
+            budget_outcome = await budget_loop.run_attempt(
+                plan=budget_plan,
+                sub_question=budget_plan.sub_questions[0],
+                dependency_results=[],
+                mode="hybrid",
+                top_k=3,
+                candidate_k=None,
+                min_score=0.0,
+                filters=RetrievalFilters(),
+                max_tool_calls_override=1,
+            )
         assert budget_outcome.result.status == "completed"
         assert [call.call_id for call in budget_outcome.result.tool_calls] == [
             "sq_loop_attempt_1_within_budget"
@@ -831,7 +934,6 @@ async def main() -> None:
                 ]
             ),
         )
-        mcp_store = AgentTaskPlanStore(settings=mcp_settings)
         mcp_executor = ResearchToolLoop(
             settings=mcp_settings,
             vector_retriever=FakeRetriever(),

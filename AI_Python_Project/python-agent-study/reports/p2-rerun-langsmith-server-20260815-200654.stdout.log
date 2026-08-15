@@ -1,0 +1,5 @@
+INFO:     127.0.0.1:54987 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55003 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55003 - "POST /rag/chat/stream/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55419 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55419 - "POST /rag/chat/stream/events HTTP/1.1" 200 OK

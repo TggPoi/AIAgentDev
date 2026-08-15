@@ -18,15 +18,21 @@ Research Worker、工具循环或文档写入细节。它主要解决四个问�
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
+from fast_app.domain.agent_task_execution import (
+    TaskPlanCommandReplay,
+    TaskPlanOperation,
+    TaskPlanWorkloadType,
+)
 from fast_app.domain.agent_task_plan import (
     AgentResearchPolicy,
     AgentTaskPlan,
@@ -42,6 +48,10 @@ from fast_app.domain.rag_models import RetrievalFilters
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.domain.agent_tool_permissions import PermissionCode, RoleCode
 from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
+from fast_app.services.agent_tasks.agent_task_lease_manager import (
+    AgentTaskLeaseManager,
+    build_request_hash,
+)
 from fast_app.services.agent_tasks.agent_task_capability_service import (
     AgentTaskCapabilityService,
 )
@@ -52,6 +62,8 @@ from fast_app.services.research.agentic_research_executor import AgenticResearch
 from fast_app.services.agent_tasks.document_task_executor import DocumentTaskExecutor
 from fast_app.services.exceptions import (
     AgentTaskPlanBusyError,
+    AgentTaskPlanLeaseLostError,
+    AgentTaskPlanVersionConflictError,
     AgentTaskSourceUnavailableError,
     AppServiceError,
     ToolPermissionDeniedError,
@@ -68,9 +80,6 @@ from fast_app.services.research.research_worker_agent import ResearchWorkerAgent
 
 
 LangChainConfigFactory = Callable[[str], RunnableConfig]
-# Research 执行时的进程内活动集合。它是 Research 链路的额外重入保护，
-# 不是持久化任务状态；进程重启后的恢复仍以 TaskPlan 快照为准。
-_ACTIVE_RESEARCH_TASK_PLAN_IDS: set[str] = set()
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +158,7 @@ class AgentTaskExecutor:
         tool_permission_service: AgentToolPermissionService,
         tool_audit_service: AgentToolAuditService,
         task_plan_store: AgentTaskPlanStore,
+        lease_manager: AgentTaskLeaseManager,
         evidence_evaluator: ResearchEvidenceEvaluator | None = None,
         research_executor: AgenticResearchExecutor | None = None,
         document_executor: DocumentTaskExecutor | None = None,
@@ -159,11 +169,13 @@ class AgentTaskExecutor:
 
         FastAPI 生产依赖层可以显式注入已装配的执行器；测试和兼容脚本
         如果只提供基础组件，则在这里组装最小的 Research ToolLoop -> Worker ->
-        Executor 和 DocumentTaskExecutor。
+        Executor 和 DocumentTaskExecutor。数据库租约管理器是 execute/confirm/
+        retry/cancel 控制协议的必需依赖。
         """
 
         self._settings = settings
         self._task_plan_store = task_plan_store
+        self._lease_manager = lease_manager
         self._capability_service = capability_service
         self._plan_validator = AgentTaskPlanValidator()
         if research_executor is None:
@@ -200,82 +212,40 @@ class AgentTaskExecutor:
             task_plan_store=task_plan_store,
         )
 
-    def save_plan(self, plan: AgentTaskPlan | ResearchTaskPlan) -> None:
+    async def save_plan(self, plan: AgentTaskPlan | ResearchTaskPlan) -> None:
         """保存等待用户确认的 TaskPlan。
 
-        该方法只保留 Facade 的统一入口，JSON/Markdown 原子写入细节由
-        ``AgentTaskPlanStore`` 负责。
+        该方法只保留 Facade 的统一入口，数据库写入与审查导出细节由
+        ``AgentTaskPlanStore`` 负责。同一 task_plan_id 重复创建会返回稳定冲突。
         """
 
-        self._task_plan_store.save(plan)
+        await self._task_plan_store.create(plan)
 
     async def cancel(
         self,
         task_plan_id: str,
         user: CurrentUserContext,
+        idempotency_key: str,
     ) -> AgentTaskPlan | ResearchTaskPlan:
         """写入任务级取消信号；运行节点会在下一安全边界停止。
 
         cancel 故意不进入 ``_TASK_PLAN_LOCKS.hold()``。如果它先等待正在运行的
-        Agent 释放锁，Agent 就永远看不到 CANCELLED 信号。因此这里立即更新 TaskPlan，
-        再由 Middleware/工具边界重读该状态。
+        Agent 释放锁，Agent 就永远看不到 CANCELLED 信号。这里通过数据库原子
+        cancel（SELECT FOR UPDATE + 失效 fencing token）立即更新 TaskPlan，再由
+        Middleware/工具边界重读该状态；checkpoint 由终态路径或维护命令清理，
+        不在取消路径上直接删除。
         """
 
-        plan = self._task_plan_store.load(task_plan_id)
-        # TaskPlan 归属是服务端数据；会话文本或模型输出不能作为取消授权。
-        if plan.user_id != user.user_id and not user.has_global_role(
-            RoleCode.SYSTEM_ADMIN.value
-        ):
-            raise ToolPermissionDeniedError("只能取消自己创建的 Agent task plan")
-        if isinstance(plan, ResearchTaskPlan):
-            if plan.status in {
-                AgentTaskPlanStatus.COMPLETED,
-                AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS,
-                AgentTaskPlanStatus.CANCELLED,
-            }:
-                raise AppServiceError("已完成或已取消的 Research TaskPlan 不能再次取消")
-            plan.status = AgentTaskPlanStatus.CANCELLED
-            plan.error_code = None
-            plan.error_message = None
-            for worker in plan.progress.workers.values():
-                if worker.status in {"pending", "running"}:
-                    worker.status = "skipped"
-            self._task_plan_store.save(plan)
-            return plan
-        if plan.status in {
-            AgentTaskPlanStatus.COMPLETED,
-            AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS,
-            AgentTaskPlanStatus.CANCELLED,
-        }:
-            raise AppServiceError("已完成或已取消的 Agent task plan 不能再次取消")
-        plan.status = AgentTaskPlanStatus.CANCELLED
-        plan.error = None
-        # 取消后把所有未终态步骤收敛为 SKIPPED，让 React 任务页不再展示
-        # 永久 running/waiting_confirmation 的残留步骤。
-        for step in plan.steps:
-            if step.status in {
-                AgentToolStepStatus.PENDING,
-                AgentToolStepStatus.RUNNING,
-                AgentToolStepStatus.WAITING_CONFIRMATION,
-            }:
-                step.status = AgentToolStepStatus.SKIPPED
-                step.requires_confirmation = False
-                step.error = "TaskPlan 已由用户取消"
-        plan.final_output.update(
-            {
-                "status": plan.status.value,
-                "cancelled_at": datetime.now(UTC).isoformat(),
-            }
+        return await self._task_plan_store.cancel(
+            task_plan_id=task_plan_id,
+            user=user,
+            idempotency_key=idempotency_key,
+            request_hash=build_request_hash(
+                task_plan_id=task_plan_id,
+                operation="cancel",
+                payload={},
+            ),
         )
-        self._task_plan_store.save(plan)
-        # 正在运行的 Deep Agent 会在下一安全边界看到 CANCELLED 并自行释放；
-        # 未运行的失败任务则在这里立即清理，不让 cancel 被长任务锁阻塞。
-        if (
-            plan.task_kind == "knowledge_document_management"
-            and not await _TASK_PLAN_LOCKS.is_locked(task_plan_id)
-        ):
-            await self._document_executor.release_agentic_checkpoint(plan)
-        return plan
 
     async def execute_question_decomposition_plan(
         self,
@@ -322,39 +292,188 @@ class AgentTaskExecutor:
 
         这里的 execute 不等于真实文件写入：它产生 dry-run/变更建议并进入
         ``WAITING_CONFIRMATION``。真实文件、ES 和 Milvus 更新从 ``confirm()`` 进入。
+
+        首次创建计划与执行都包在数据库租约内；幂等键由服务端稳定 TaskPlan ID
+        生成，同一 TaskPlan 的重复 execute 会命中同一条幂等命令（失败后同键
+        复活重试，见 Repository 的修订语义）。
         """
+
+        try:
+            await self._task_plan_store.create(plan)
+        except AgentTaskPlanVersionConflictError:
+            # 同一 TaskPlan 的请求重放交给 execute 命令幂等记录处理。
+            pass
 
         # 首次 agentic 执行和 /retry、/confirm 共用同一把 task_plan_id 锁，
         # 避免同一任务同时生成两套草稿或更新同一 RuntimeRecord。
         async with _TASK_PLAN_LOCKS.hold(plan.task_plan_id):
-            return await self._document_executor.execute(
-                plan=plan,
-                user=user,
-                mode=mode,
-                top_k=top_k,
-                candidate_k=candidate_k,
-                min_score=min_score,
-                filters=filters,
-                langchain_config_factory=langchain_config_factory,
+            result = await self._run_with_database_lease(
+                task_plan_id=plan.task_plan_id,
+                operation="execute",
+                idempotency_key=f"execute:{plan.task_plan_id}",
+                request_payload={},
+                allowed_statuses={AgentTaskPlanStatus.CREATED},
+                workload_type="document",
+                runner=lambda current: self._document_executor.execute(
+                    plan=current,
+                    user=user,
+                    mode=mode,
+                    top_k=top_k,
+                    candidate_k=candidate_k,
+                    min_score=min_score,
+                    filters=filters,
+                    langchain_config_factory=langchain_config_factory,
+                ),
             )
+        if not isinstance(result, AgentTaskPlan):
+            raise AppServiceError("Document execute 返回了错误的 TaskPlan 类型")
+        return result
+
+    async def _run_with_database_lease(
+        self,
+        *,
+        task_plan_id: str,
+        operation: TaskPlanOperation,
+        idempotency_key: str,
+        request_payload: dict[str, Any],
+        allowed_statuses: set[AgentTaskPlanStatus],
+        workload_type: TaskPlanWorkloadType,
+        runner: Callable[
+            [AgentTaskPlan | ResearchTaskPlan],
+            Awaitable[AgentTaskPlan | ResearchTaskPlan],
+        ],
+    ) -> AgentTaskPlan | ResearchTaskPlan:
+        """通用数据库租约执行骨架：重放、心跳、事实重读、成功释放、异常收尾。
+
+        Research/Document 业务仍留在原专用执行器；本方法只负责控制协议。
+        """
+
+        async with self._lease_manager.hold(
+            task_plan_id=task_plan_id,
+            operation=operation,
+            idempotency_key=idempotency_key,
+            request_payload=request_payload,
+            allowed_statuses=allowed_statuses,
+            workload_type=workload_type,
+        ) as acquired:
+            if isinstance(acquired, TaskPlanCommandReplay):
+                return self._task_plan_store.from_snapshot(
+                    dict(acquired.response_json)
+                )
+            lease = acquired
+            try:
+                current = await self._task_plan_store.load(task_plan_id)
+                result = await runner(current)
+                lease.assert_active()
+                # 先通知心跳停止续租，再释放数据库租约，避免成功释放与
+                # heartbeat UPDATE 竞态产生假的 lease-lost。
+                lease.closing.set()
+                try:
+                    await self._task_plan_store.repository.finish_success(
+                        lease=lease,
+                        response_json=result.model_dump(mode="json"),
+                    )
+                except AgentTaskPlanLeaseLostError:
+                    # 修订：用户取消可能恰好在 runner 返回后发生：cancel_atomic
+                    # 已经递增 fence token 并清空租约，finish_success 必然不命中。
+                    # 此时数据库状态已经是 cancelled，取消已经收敛，不应把成功的
+                    # 取消误报为执行失败。
+                    latest = await self._task_plan_store.load(task_plan_id)
+                    if latest.status != AgentTaskPlanStatus.CANCELLED:
+                        raise
+                    return latest
+                return result
+            except BaseException as exc:
+                lease.closing.set()
+                if isinstance(exc, AgentTaskPlanLeaseLostError):
+                    # heartbeat 可能比最终 finish_success 更早发现 cancel_atomic
+                    # 已经撤销当前租约。此时同样以数据库终态为准，避免把一次
+                    # 已成功持久化的取消继续收尾成 failed 或向客户端误报失败。
+                    latest = await self._task_plan_store.load(task_plan_id)
+                    if latest.status == AgentTaskPlanStatus.CANCELLED:
+                        return latest
+                # 专用执行器通常会先保存 failed；这里作为租约模块的最终兜底，
+                # 收敛发生在 Supervisor 等专用 try/except 之外的异常，避免任务
+                # 留在活跃状态但命令已经失败并释放租约。
+                try:
+                    latest = await self._task_plan_store.load(task_plan_id)
+                    if latest.status in {
+                        AgentTaskPlanStatus.CREATED,
+                        AgentTaskPlanStatus.PREPARING_CONFIRMATION,
+                        AgentTaskPlanStatus.EXECUTING_CONFIRMED,
+                    }:
+                        failed_from = latest.status
+                        latest.status = AgentTaskPlanStatus.FAILED
+                        if isinstance(latest, ResearchTaskPlan):
+                            latest.error_code = getattr(
+                                exc, "error_code", type(exc).__name__
+                            )
+                            latest.error_message = str(exc)
+                        else:
+                            latest.error = f"{type(exc).__name__}: {exc}"
+                            latest.failure_phase = failed_from.value
+                            latest.final_output["status"] = latest.status.value
+                        await self._task_plan_store.save(latest)
+                except (
+                    AgentTaskPlanLeaseLostError,
+                    AgentTaskPlanVersionConflictError,
+                ):
+                    # cancel 或其他新代际执行者已经取得权威事实时，旧执行者只做
+                    # 命令/容量释放，不能用兜底状态覆盖新快照。
+                    pass
+                await self._task_plan_store.repository.finish_failure(
+                    lease=lease,
+                    error_code=getattr(exc, "error_code", type(exc).__name__),
+                    error_message=str(exc),
+                )
+                raise
 
     async def resume(
         self,
         task_plan_id: str,
         user: CurrentUserContext,
+        idempotency_key: str,
         langchain_config_factory: LangChainConfigFactory | None = None,
     ) -> AgentTaskPlan | ResearchTaskPlan:
         """按任务类型恢复最近完整快照。
 
         公开方法只负责 fail-fast 取锁；必须在锁获取后才重读 TaskPlan，
-        否则两个并发 retry 可能都基于取锁前的旧状态做决策。
+        否则两个并发 retry 可能都基于取锁前的旧状态做决策。数据库租约
+        跨进程保证同一任务只有一个恢复执行者。
         """
 
         async with _TASK_PLAN_LOCKS.hold(task_plan_id):
-            return await self._resume_locked(
-                task_plan_id,
-                user,
-                langchain_config_factory=langchain_config_factory,
+            hint = await self._load_owned_plan(task_plan_id, user)
+            is_research = isinstance(hint, ResearchTaskPlan)
+            allowed = (
+                {
+                    AgentTaskPlanStatus.EXECUTING_CONFIRMED,
+                    AgentTaskPlanStatus.FAILED,
+                    AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS,
+                }
+                if is_research
+                else {
+                    AgentTaskPlanStatus.PREPARING_CONFIRMATION,
+                    AgentTaskPlanStatus.EXECUTING_CONFIRMED,
+                    AgentTaskPlanStatus.FAILED,
+                }
+            )
+
+            async def run(_current):
+                return await self._resume_locked(
+                    task_plan_id,
+                    user,
+                    langchain_config_factory=langchain_config_factory,
+                )
+
+            return await self._run_with_database_lease(
+                task_plan_id=task_plan_id,
+                operation="retry",
+                idempotency_key=idempotency_key,
+                request_payload={},
+                allowed_statuses=allowed,
+                workload_type="research" if is_research else "document",
+                runner=run,
             )
 
     async def _resume_locked(
@@ -372,15 +491,16 @@ class AgentTaskExecutor:
         """
 
         # 在锁内重读并验证归属，不使用 API 层调用前可能已过期的 plan 对象。
-        plan = self._load_owned_plan(task_plan_id, user)
+        plan = await self._load_owned_plan(task_plan_id, user)
         if plan.task_kind == "question_decomposition":
             if plan.status not in {
-                AgentTaskPlanStatus.RUNNING,
+                AgentTaskPlanStatus.EXECUTING_CONFIRMED,
                 AgentTaskPlanStatus.FAILED,
                 AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS,
             }:
                 raise AppServiceError(
-                    "研究 TaskPlan 只有 running、failed 或 completed_with_warnings 可以重试"
+                    "研究 TaskPlan 只有 executing_confirmed、failed 或 "
+                    "completed_with_warnings 可以重试"
                 )
             if not user.is_authenticated:
                 raise ToolPermissionDeniedError("当前用户身份已失效，拒绝恢复研究计划")
@@ -396,8 +516,26 @@ class AgentTaskExecutor:
             raise AppServiceError("当前只支持恢复文档管理 Tool Loop")
         if not user.is_authenticated:
             raise ToolPermissionDeniedError("当前用户身份已失效，拒绝恢复文档计划")
-        if plan.status not in {AgentTaskPlanStatus.RUNNING, AgentTaskPlanStatus.FAILED}:
-            raise AppServiceError("只有 running 或 failed 的文档 TaskPlan 可以恢复")
+        if plan.status not in {
+            AgentTaskPlanStatus.PREPARING_CONFIRMATION,
+            AgentTaskPlanStatus.EXECUTING_CONFIRMED,
+            AgentTaskPlanStatus.FAILED,
+        }:
+            raise AppServiceError(
+                "只有 preparing_confirmation、executing_confirmed 或 failed 的文档 "
+                "TaskPlan 可以恢复"
+            )
+        failed_phase = plan.failure_phase
+        if (
+            plan.status == AgentTaskPlanStatus.EXECUTING_CONFIRMED
+            or failed_phase == AgentTaskPlanStatus.EXECUTING_CONFIRMED.value
+        ):
+            plan.status = AgentTaskPlanStatus.EXECUTING_CONFIRMED
+            plan.error = None
+            plan.failure_phase = None
+            plan.final_output["status"] = plan.status.value
+            await self._task_plan_store.save(plan)
+            return await self._document_executor.confirm(plan=plan, user=user)
         workflow = plan.final_output.get("document_workflow")
         if isinstance(workflow, dict) and workflow.get("execution_mode") == "agentic":
             # 旧 TaskPlan 可能没有 research_policy。兼容默认不允许 Web，避免恢复时
@@ -445,57 +583,73 @@ class AgentTaskExecutor:
         self,
         task_plan_id: str,
         user: CurrentUserContext,
+        idempotency_key: str,
         langchain_config_factory: LangChainConfigFactory | None = None,
     ) -> AgentTaskPlan | ResearchTaskPlan:
         """确认计划，并在执行前使用当前身份和权限重新构造事实。
 
         confirm 和 resume 一样先占用 task_plan_id，但业务含义不同：Research confirm
         启动经用户确认的研究计划；Document confirm 则会进入高风险的真实文件/索引写入。
+        数据库租约 + 幂等命令保证多 Worker 下同一确认只执行一次真实副作用。
         """
 
         async with _TASK_PLAN_LOCKS.hold(task_plan_id):
-            return await self._confirm_locked(
-                task_plan_id,
-                user,
-                langchain_config_factory=langchain_config_factory,
+            hint = await self._load_owned_plan(task_plan_id, user)
+            workload_type: TaskPlanWorkloadType = (
+                "research"
+                if hint.task_kind == "question_decomposition"
+                else "document"
             )
 
-    async def _confirm_locked(
-        self,
-        task_plan_id: str,
-        user: CurrentUserContext,
-        *,
-        langchain_config_factory: LangChainConfigFactory | None,
-    ) -> AgentTaskPlan | ResearchTaskPlan:
-        """在同任务互斥范围内重新读取、鉴权并执行确认。
+            async def run(current):
+                # 租约内再次执行归属、身份、状态和当前 ACL 校验。
+                current = await self._load_owned_plan(task_plan_id, user)
+                if current.status != AgentTaskPlanStatus.WAITING_CONFIRMATION:
+                    raise AppServiceError(
+                        "Agent task plan 状态不是 waiting_confirmation，拒绝执行"
+                    )
+                if not user.is_authenticated:
+                    raise ToolPermissionDeniedError(
+                        "当前用户身份已失效，拒绝执行计划"
+                    )
+                current.status = AgentTaskPlanStatus.EXECUTING_CONFIRMED
+                if isinstance(current, ResearchTaskPlan):
+                    current.error_code = None
+                    current.error_message = None
+                else:
+                    current.error = None
+                    current.failure_phase = None
+                    current.final_output["status"] = current.status.value
+                # 人工确认先持久化为数据库权威状态，随后执行器和真实副作用
+                # 边界都会再次验证 executing_confirmed。
+                await self._task_plan_store.save(current)
+                if isinstance(current, ResearchTaskPlan):
+                    return await self._run_research_controlled(
+                        current,
+                        user,
+                        langchain_config_factory=langchain_config_factory,
+                        resume=False,
+                    )
+                if current.task_kind == "knowledge_document_management":
+                    # DocumentTaskExecutor.confirm() 会再次验证冻结的 dry-run、
+                    # 候选 doc_id、路径、base_sha256 和当前工具权限；
+                    # Router/Planner/LLM 输出不直接成为写入事实。
+                    return await self._document_executor.confirm(
+                        plan=current, user=user
+                    )
+                raise AppServiceError(f"不支持的 Agent task kind: {current.task_kind}")
 
-        只有 ``WAITING_CONFIRMATION`` 可以进入此分支。状态检查放在锁内，保证
-        第一个 confirm 更新任务后，第二个并发请求不会继续使用旧状态。
-        """
-
-        plan = self._load_owned_plan(task_plan_id, user)
-        if plan.status != AgentTaskPlanStatus.WAITING_CONFIRMATION:
-            raise AppServiceError("Agent task plan 状态不是 waiting_confirmation，拒绝执行")
-        if plan.task_kind == "question_decomposition":
-            if not isinstance(plan, ResearchTaskPlan):
-                raise AppServiceError("Research TaskPlan Schema 不受支持")
-            if not user.is_authenticated:
-                raise ToolPermissionDeniedError("当前用户身份已失效，拒绝执行研究计划")
-            return await self._run_research_controlled(
-                plan,
-                user,
-                langchain_config_factory=langchain_config_factory,
-                resume=False,
+            return await self._run_with_database_lease(
+                task_plan_id=task_plan_id,
+                operation="confirm",
+                idempotency_key=idempotency_key,
+                request_payload={"confirmed": True},
+                allowed_statuses={AgentTaskPlanStatus.WAITING_CONFIRMATION},
+                workload_type=workload_type,
+                runner=run,
             )
-        if plan.task_kind == "knowledge_document_management":
-            if not user.is_authenticated:
-                raise ToolPermissionDeniedError("当前用户身份已失效，拒绝执行文档计划")
-            # DocumentTaskExecutor.confirm() 会再次验证冻结的 dry-run、候选 doc_id、
-            # 路径、base_sha256 和当前工具权限；Router/Planner/LLM 输出不直接成为写入事实。
-            return await self._document_executor.confirm(plan=plan, user=user)
-        raise AppServiceError(f"不支持的 Agent task kind: {plan.task_kind}")
 
-    def _load_owned_plan(
+    async def _load_owned_plan(
         self,
         task_plan_id: str,
         user: CurrentUserContext,
@@ -506,7 +660,7 @@ class AgentTaskExecutor:
         ``admin`` 可执行管理操作；任务归属不从请求体或会话文本中接受。
         """
 
-        plan = self._task_plan_store.load(task_plan_id)
+        plan = await self._task_plan_store.load(task_plan_id)
         if plan.user_id != user.user_id and not user.has_global_role(
             RoleCode.SYSTEM_ADMIN.value
         ):
@@ -523,35 +677,28 @@ class AgentTaskExecutor:
     ) -> ResearchTaskPlan:
         """使用保存的 ResearchPolicy 和当前 ACL 启动或恢复 Research Executor。
 
-        ``_ACTIVE_RESEARCH_TASK_PLAN_IDS`` 保护当前进程内的 Research 重入，``finally``
-        保证无论 Worker 成功、失败还是取消，活动标记都不会永久残留。
+        同任务互斥由外层 ``_TASK_PLAN_LOCKS``（进程内快速失败）与数据库租约
+        （跨进程权威）共同保证，不再维护独立的进程内活动集合。
         """
 
         task_plan_id = plan.task_plan_id
-        if task_plan_id in _ACTIVE_RESEARCH_TASK_PLAN_IDS:
-            raise AppServiceError("研究 TaskPlan 当前仍在执行，不能重复确认或恢复")
         policy = plan.research_policy
         await self._refresh_research_capability(plan, user)
-        _ACTIVE_RESEARCH_TASK_PLAN_IDS.add(task_plan_id)
-        try:
-            return await self.execute_question_decomposition_plan(
-                plan=plan,
-                user=user,
-                mode=policy.mode,
-                top_k=policy.top_k,
-                candidate_k=policy.candidate_k,
-                min_score=policy.min_score,
-                filters=self._current_filters(
-                    user,
-                    source_path=policy.source_path,
-                    section_path=policy.section_path,
-                ),
-                langchain_config_factory=langchain_config_factory,
-                resume=resume,
-            )
-        finally:
-            # discard 在 ID 已被移除时也不抛错，适合异常/取消统一收尾。
-            _ACTIVE_RESEARCH_TASK_PLAN_IDS.discard(task_plan_id)
+        return await self.execute_question_decomposition_plan(
+            plan=plan,
+            user=user,
+            mode=policy.mode,
+            top_k=policy.top_k,
+            candidate_k=policy.candidate_k,
+            min_score=policy.min_score,
+            filters=self._current_filters(
+                user,
+                source_path=policy.source_path,
+                section_path=policy.section_path,
+            ),
+            langchain_config_factory=langchain_config_factory,
+            resume=resume,
+        )
 
     async def _refresh_research_capability(
         self,
@@ -620,4 +767,4 @@ class AgentTaskExecutor:
         )
 
 
-__all__ = ["AgentTaskExecutor", "AgentTaskPlanStore"]
+__all__ = ["AgentTaskExecutor"]

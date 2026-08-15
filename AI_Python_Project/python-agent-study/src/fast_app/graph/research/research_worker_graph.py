@@ -12,7 +12,7 @@ from fast_app.domain.agent_task_plan import (
     AgentTaskToolCallTrace,
     ResearchEvidenceEvaluation,
 )
-from fast_app.domain.rag_models import RetrievedDoc
+from fast_app.domain.rag_models import RagContext, RetrievedDoc
 
 
 class ResearchWorkerGraphState(TypedDict):
@@ -25,6 +25,8 @@ class ResearchWorkerGraphState(TypedDict):
     all_evidence: list[dict[str, Any]]
     # 完整正文只在当前 Worker Graph 内存中流转，不进入 TaskPlan 持久化模型。
     all_context_doc_groups: list[list[RetrievedDoc]]
+    # 当前候选答案实际使用的上下文；下一轮会被新的候选答案上下文覆盖。
+    last_answer_context: RagContext | None
     force_web: bool
     retry_missing_points: list[str]
     attempts: list[dict[str, Any]]

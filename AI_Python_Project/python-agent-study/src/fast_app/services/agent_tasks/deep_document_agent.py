@@ -57,6 +57,7 @@ from fast_app.agents.tools.web_search_tools import search_web_with_bocha
 from fast_app.agents.tools.calculator_tools import build_calculator_tool
 from fast_app.components.retrievers.base import BaseRetriever
 from fast_app.core.config import Settings
+from fast_app.domain.agent_task_execution import require_task_plan_lease
 from fast_app.domain.agent_task_plan import AgentTaskPlan, AgentTaskPlanStatus
 from fast_app.domain.agent_tool_permissions import PermissionCode, RoleCode
 from fast_app.domain.document_workflow import (
@@ -218,18 +219,19 @@ class _TaskPlanCancellationMiddleware(AgentMiddleware):
         self._store = store
         self._task_plan_id = task_plan_id
 
-    def _ensure_active(self) -> None:
-        """重读最新 TaskPlan，已取消时用 CancelledError 终止当前图。"""
+    async def _ensure_active(self) -> None:
+        """重读最新 TaskPlan 并验证租约，已取消/失租时终止当前图。"""
 
-        # 取消是服务端 TaskPlan 事实，不是依赖旧 LangGraph State 中的状态。
-        latest = self._store.load(self._task_plan_id)
+        # 取消与租约都是服务端 TaskPlan 事实，不是依赖旧 LangGraph State 中的状态。
+        require_task_plan_lease(self._task_plan_id).assert_active()
+        latest = await self._store.load(self._task_plan_id)
         if latest.status == AgentTaskPlanStatus.CANCELLED:
             raise asyncio.CancelledError("文档 TaskPlan 已取消")
 
     async def awrap_model_call(self, request, handler):
         """在外部 LLM 请求启动前检查取消，通过后不改写模型调用。"""
 
-        self._ensure_active()
+        await self._ensure_active()
         return await handler(request)
 
 
@@ -416,7 +418,7 @@ class _DocumentCoordinatorProgressMiddleware(_TaskPlanCancellationMiddleware):
     async def awrap_tool_call(self, request, handler):
         """只拦截 Coordinator 的 ``task`` 工具，记录 SubAgent 开始、完成或失败。"""
 
-        self._ensure_active()
+        await self._ensure_active()
         tool_call = request.tool_call
         # write_todos 等其他内置工具不是 SubAgent 派发，直接交给下层执行。
         if tool_call.get("name") != "task":
@@ -847,13 +849,13 @@ class _DocumentCoordinatorProgressMiddleware(_TaskPlanCancellationMiddleware):
         async with self._save_lock:
             # 每次都重读最新 TaskPlan，避免并行 SubAgent 基于同一旧快照
             # 各自 save，导致后写入的事件覆盖先写入的事件。
-            latest = self._store.load(self._task_plan_id)
+            latest = await self._store.load(self._task_plan_id)
             progress = dict(latest.final_output.get("document_progress") or {})
             events = list(progress.get("events") or [])
             events.append(event)
             progress["events"] = events
             latest.final_output["document_progress"] = progress
-            self._store.save(latest)
+            await self._store.save(latest)
 
 
 # ---------------------------------------------------------------------------
@@ -1275,7 +1277,7 @@ class DeepDocumentAgent:
         except asyncio.CancelledError:
             # 用户显式取消是终态，释放私有工作区；其他 CancelledError
             # 可能来自请求/进程中断，需保留 checkpoint 供 /retry。
-            latest = self._task_plan_store.load(plan.task_plan_id)
+            latest = await self._task_plan_store.load(plan.task_plan_id)
             if latest.status == AgentTaskPlanStatus.CANCELLED:
                 await self.release_checkpoint(latest, status="released")
             else:
@@ -1383,7 +1385,7 @@ class DeepDocumentAgent:
             record=latest_record,
             resumed_from_checkpoint=resume_from_checkpoint,
         )
-        self._task_plan_store.save(plan)
+        await self._task_plan_store.save(plan)
         return DeepDocumentAgentRunResult(
             workflow=workflow,
             candidates=candidates,
@@ -1536,7 +1538,7 @@ class DeepDocumentAgent:
             plan.final_output["warnings"] = list(
                 dict.fromkeys([*existing_warnings, *checkpoint_warnings])
             )
-        self._task_plan_store.save(plan)
+        await self._task_plan_store.save(plan)
         return (
             record,
             candidates,
@@ -1587,7 +1589,7 @@ class DeepDocumentAgent:
             record=record,
             resumed_from_checkpoint=False,
         )
-        self._task_plan_store.save(plan)
+        await self._task_plan_store.save(plan)
 
     async def release_checkpoint(
         self,
@@ -1624,7 +1626,7 @@ class DeepDocumentAgent:
                 # 原始清理错误已经决定 cleanup_pending；事实 Store 也不可用时
                 # 仍先保留 TaskPlan 摘要，等待管理员或下次启动再次处理。
                 pass
-            self._task_plan_store.save(plan)
+            await self._task_plan_store.save(plan)
             return False
         # 释放成功后保留 resume_count/record_version 等已写入的历史摘要，
         # 只移除已无意义的 retained_until。TaskPlan 因此仍能展示任务是否续跑过。
@@ -1640,7 +1642,7 @@ class DeepDocumentAgent:
         )
         metadata.pop("retained_until", None)
         plan.final_output["deep_agent_checkpoint"] = metadata
-        self._task_plan_store.save(plan)
+        await self._task_plan_store.save(plan)
         return True
 
     @staticmethod
@@ -1742,7 +1744,7 @@ class DeepDocumentAgent:
         async def knowledge_retrieval(query: str, mode: str = mode, top_k: int = top_k) -> str:
             """在当前 ACL 下检索 Chunk，并登记后续可读取/可修改的文档候选。"""
 
-            self._ensure_not_cancelled(plan.task_plan_id)
+            await self._ensure_not_cancelled(plan.task_plan_id)
             effective_top_k = min(top_k, policy_top_k)
             docs = await retrieve_knowledge_docs(
                 settings=self._settings,
@@ -1780,7 +1782,7 @@ class DeepDocumentAgent:
         async def read_document(doc_id: str) -> str:
             """读取已登记候选的完整原文，并保存内容 SHA 作为并发基线。"""
 
-            self._ensure_not_cancelled(plan.task_plan_id)
+            await self._ensure_not_cancelled(plan.task_plan_id)
             candidate = candidates.get(doc_id)
             if candidate is None:
                 raise AppServiceError("doc_id 不在当前 ACL 检索候选中")
@@ -1833,7 +1835,7 @@ class DeepDocumentAgent:
             async def nl2sql_query(question: str, max_rows: int = 100) -> str:
                 """查询服务端绑定的游戏 Dataset；模型不能选择 Dataset 或 Scope。"""
 
-                self._ensure_not_cancelled(plan.task_plan_id)
+                await self._ensure_not_cancelled(plan.task_plan_id)
                 # dataset_id 来自已经持久化并重新鉴权的 TaskPlan research_policy，
                 # 不在 Tool args_schema 中。Researcher 只能提问和收紧 max_rows，
                 # 无法换库、换项目或伪造 scope_ids。
@@ -1862,7 +1864,7 @@ class DeepDocumentAgent:
                         "status": "completed",
                     }
                 )
-                self._task_plan_store.save(plan)
+                await self._task_plan_store.save(plan)
                 await persist_runtime_facts()
                 return json.dumps(result.model_dump(mode="json"), ensure_ascii=False)
 
@@ -1885,7 +1887,7 @@ class DeepDocumentAgent:
                         _original=original_calculator,
                         **kwargs: Any,
                     ) -> Any:
-                        self._ensure_not_cancelled(plan.task_plan_id)
+                        await self._ensure_not_cancelled(plan.task_plan_id)
                         value = await _original(**kwargs)
                         used_tools.add("calculator")
                         await persist_runtime_facts()
@@ -1915,7 +1917,7 @@ class DeepDocumentAgent:
             ) -> str:
                 """根据公开缺失主题构造外部查询，不将私有文档作为查询输入。"""
 
-                self._ensure_not_cancelled(plan.task_plan_id)
+                await self._ensure_not_cancelled(plan.task_plan_id)
                 # deliverable_id 必须来自 Supervisor 已验证的规划，防止模型自行扩大
                 # 网络研究范围或为不存在的交付物消耗外部配额。
                 deliverable = next(
@@ -1986,7 +1988,7 @@ class DeepDocumentAgent:
                 ) -> Any:
                     """在原 MCP coroutine 外增加 TaskPlan 取消检查和成功工具记录。"""
 
-                    self._ensure_not_cancelled(plan.task_plan_id)
+                    await self._ensure_not_cancelled(plan.task_plan_id)
                     # 只有原工具成功返回后才记录 used_tools；异常的工具不应被伪装
                     # 为已获得有效证据。_default 参数会为每次循环绑定当前工具，
                     # 避免 Python 闭包的 late binding 让所有 wrapper 都调到最后一个 MCP 工具。
@@ -1998,10 +2000,11 @@ class DeepDocumentAgent:
                 tools.append(mcp_tool.model_copy(update={"coroutine": guarded_mcp_call}))
         return tools
 
-    def _ensure_not_cancelled(self, task_plan_id: str) -> None:
+    async def _ensure_not_cancelled(self, task_plan_id: str) -> None:
         """在每次工具外调用前重读 TaskPlan，取消后不再启动新的外部请求。"""
 
-        latest = self._task_plan_store.load(task_plan_id)
+        require_task_plan_lease(task_plan_id).assert_active()
+        latest = await self._task_plan_store.load(task_plan_id)
         if latest.status == AgentTaskPlanStatus.CANCELLED:
             raise asyncio.CancelledError("文档 TaskPlan 已取消")
 

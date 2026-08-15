@@ -27,6 +27,14 @@ CASES = [
     RouteCase("请对比混合检索与 rerank 的差异和协作关系。", frozenset({"question_decomposition"})),
     RouteCase("分析权限过滤、Prompt Guard 和检索质量之间的关系。", frozenset({"question_decomposition"})),
     RouteCase("比较 Milvus 与 Elasticsearch 在混合检索中的职责。", frozenset({"question_decomposition"})),
+    RouteCase(
+        "仅根据 development/rag-backend-deployment.md 中的内容，列出 DATABASE_URL、MILVUS_PORT 和 ELASTICSEARCH_URL 的示例值；这是只读知识问答，不创建、修改或删除文档。",
+        frozenset({"simple_rag", "question_decomposition"}),
+    ),
+    RouteCase(
+        "读取 development/rag-backend-deployment.md 并比较 Milvus 与 Elasticsearch 的权限过滤职责；不要修改任何文档。",
+        frozenset({"question_decomposition"}),
+    ),
     RouteCase("请创建知识库文档 docs/development/router-create.md。", frozenset({"knowledge_document_management"})),
     RouteCase("请修改 development/rag-backend-deployment.md 文档中的健康检查。", frozenset({"knowledge_document_management"})),
     RouteCase("请删除知识库中的旧部署文档。", frozenset({"knowledge_document_management"})),
@@ -83,8 +91,9 @@ async def main() -> None:
     assert accuracy >= 0.9
     assert all(
         item["actual"] != "simple_rag"
-        for item in results[6:16]
-    ), "文档操作或明确 Web Search 不得路由为 simple_rag"
+        for item in results
+        if "simple_rag" not in item["expected"]
+    ), "明确的复杂分析、文档操作、Web Search 或澄清请求不得路由为 simple_rag"
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ from typing import Any
 from langchain_core.runnables import RunnableConfig
 
 from fast_app.core.config import Settings
+from fast_app.domain.agent_task_execution import require_task_plan_lease
 from fast_app.domain.agent_task_plan import (
     AgentResearchPolicy,
     AgentTaskSubQuestion,
@@ -32,6 +33,7 @@ from fast_app.services.research.research_evidence_evaluator import ResearchEvide
 from fast_app.services.research.research_tool_loop import (
     ResearchToolLoop,
     build_public_web_query,
+    filter_evidence_refs_for_context,
     merge_evidence,
 )
 
@@ -53,7 +55,7 @@ class ResearchWorkerRequest:
     wave: int
     on_progress: ProgressCallback
     on_checkpoint: CheckpointCallback
-    should_stop: Callable[[], bool]
+    should_stop: Callable[[], Awaitable[bool]]
     langchain_config_factory: LangChainConfigFactory | None = None
     user: CurrentUserContext | None = None
 
@@ -86,6 +88,8 @@ class ResearchWorkerAgent:
     ) -> AgentTaskSubQuestionResult:
         """运行一个隔离 Worker，并返回唯一的结构化子问题结果。"""
 
+        # 租约安全边界：Worker 启动前先确认当前执行者仍持有数据库租约。
+        require_task_plan_lease(request.plan.task_plan_id).assert_active()
         initial = _failed_result(request.sub_question, "NOT_STARTED")
         graph_config = (
             request.langchain_config_factory(
@@ -103,6 +107,7 @@ class ResearchWorkerAgent:
                 "all_tool_calls": [],
                 "all_evidence": [],
                 "all_context_doc_groups": [],
+                "last_answer_context": None,
                 "force_web": request.policy.web_policy == "required",
                 "retry_missing_points": [],
                 "attempts": [],
@@ -125,7 +130,8 @@ class ResearchWorkerAgent:
         state: ResearchWorkerGraphState,
     ) -> dict[str, Any]:
         request: ResearchWorkerRequest = state["request"]
-        if request.should_stop():
+        require_task_plan_lease(request.plan.task_plan_id).assert_active()
+        if await request.should_stop():
             raise ResearchExecutionCancelled("TaskPlan 已取消")
         attempt = state["attempt"]
         remaining_calls = max(
@@ -188,17 +194,20 @@ class ResearchWorkerAgent:
             on_checkpoint=request.on_checkpoint,
         )
         last_result = attempt_outcome.result
+        all_evidence = filter_evidence_refs_for_context(
+            merge_evidence(state["all_evidence"], last_result.evidence),
+            attempt_outcome.answer_context,
+        )
         return {
             "last_result": last_result,
             "used_tool_calls": state["used_tool_calls"] + len(last_result.tool_calls),
             "all_tool_calls": [*state["all_tool_calls"], *last_result.tool_calls],
-            "all_evidence": merge_evidence(
-                state["all_evidence"], last_result.evidence
-            ),
+            "all_evidence": all_evidence,
             "all_context_doc_groups": [
                 *state["all_context_doc_groups"],
                 *attempt_outcome.context_doc_groups,
             ],
+            "last_answer_context": attempt_outcome.answer_context,
             "evaluation": None,
             "evaluator_error": None,
             "final_warning": None,
@@ -209,7 +218,8 @@ class ResearchWorkerAgent:
         state: ResearchWorkerGraphState,
     ) -> dict[str, Any]:
         request: ResearchWorkerRequest = state["request"]
-        if request.should_stop():
+        require_task_plan_lease(request.plan.task_plan_id).assert_active()
+        if await request.should_stop():
             raise ResearchExecutionCancelled("TaskPlan 已取消")
         await request.on_checkpoint(
             ResearchWorkerCheckpointUpdate(
@@ -235,7 +245,8 @@ class ResearchWorkerAgent:
                 sub_question=request.sub_question,
                 requirements=requirements,
                 answer=state["last_result"].answer,
-                evidence=state["all_evidence"],
+                evidence_refs=state["all_evidence"],
+                answer_context=state["last_answer_context"],
                 langchain_config=(
                     request.langchain_config_factory(
                         f"research.worker.{request.sub_question.sub_question_id}."

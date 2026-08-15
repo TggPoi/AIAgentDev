@@ -1,0 +1,292 @@
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started parent process [8976]
+INFO:     Started server process [27368]
+INFO:     Waiting for application startup.
+INFO:     Started server process [472]
+INFO:     Waiting for application startup.
+INFO:     Started server process [28364]
+2026-08-15 19:58:27,806 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.enabled" project="python-agent-study-phase-final-3" endpoint="https://api.smith.langchain.com"
+INFO:     Waiting for application startup.
+2026-08-15 19:58:27,806 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+2026-08-15 19:58:27,806 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.enabled" project="python-agent-study-phase-final-3" endpoint="https://api.smith.langchain.com"
+2026-08-15 19:58:27,806 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+2026-08-15 19:58:27,807 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.enabled" project="python-agent-study-phase-final-3" endpoint="https://api.smith.langchain.com"
+2026-08-15 19:58:27,807 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+2026-08-15 19:58:27,827 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-15 19:58:27,827 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-15 19:58:27,827 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-15 19:58:27,828 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-15 19:58:27,829 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-15 19:58:27,829 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+INFO:     Started server process [22804]
+INFO:     Waiting for application startup.
+2026-08-15 19:58:27,837 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.enabled" project="python-agent-study-phase-final-3" endpoint="https://api.smith.langchain.com"
+2026-08-15 19:58:27,837 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+2026-08-15 19:58:27,858 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-15 19:58:27,859 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-15 19:58:28,430 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-15 19:58:28,430 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-15 19:58:28,432 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-15 19:58:28,436 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-15 19:58:28,437 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-15 19:58:28,439 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-15 19:58:28,441 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-15 19:58:28,442 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-15 19:58:28,443 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-15 19:58:28,453 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-15 19:58:28,454 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-15 19:58:28,455 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-15 19:58:28,510 | INFO | fast_app.main | request_id=- | trace_id=- | Agent TaskPlan PostgreSQL Repository 与容量槽已初始化
+2026-08-15 19:58:28,510 | INFO | fast_app.main | request_id=- | trace_id=- | Agent TaskPlan PostgreSQL Repository 与容量槽已初始化
+2026-08-15 19:58:28,514 | INFO | fast_app.main | request_id=- | trace_id=- | Agent TaskPlan PostgreSQL Repository 与容量槽已初始化
+2026-08-15 19:58:28,531 | INFO | fast_app.main | request_id=- | trace_id=- | Agent TaskPlan PostgreSQL Repository 与容量槽已初始化
+2026-08-15 19:58:28,561 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-15 19:58:28,561 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-15 19:58:28,561 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-15 19:58:28,577 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-15 19:58:28,618 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint 已创建
+2026-08-15 19:58:28,618 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint 已创建
+2026-08-15 19:58:28,618 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint 已创建
+INFO:     Application startup complete.
+INFO:     Application startup complete.
+INFO:     Application startup complete.
+2026-08-15 19:58:28,619 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已关闭
+2026-08-15 19:58:28,619 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已关闭
+2026-08-15 19:58:28,619 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已关闭
+2026-08-15 19:58:28,619 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已关闭
+2026-08-15 19:58:28,627 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已关闭
+2026-08-15 19:58:28,627 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已关闭
+2026-08-15 19:58:28,627 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已关闭
+2026-08-15 19:58:28,627 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已关闭
+2026-08-15 19:58:28,628 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint/store 已关闭
+2026-08-15 19:58:28,628 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint/store 已关闭
+2026-08-15 19:58:28,629 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint 已创建
+INFO:     Application startup complete.
+2026-08-15 19:58:28,632 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已关闭
+2026-08-15 19:58:28,633 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已关闭
+2026-08-15 19:58:28,633 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL 只读连接池已关闭
+2026-08-15 19:58:28,633 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL 只读连接池已关闭
+2026-08-15 19:58:28,633 | INFO | fast_app.main | request_id=- | trace_id=- | 应用关闭
+2026-08-15 19:58:28,633 | INFO | fast_app.main | request_id=- | trace_id=- | 应用关闭
+ERROR:    Traceback (most recent call last):
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 664, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 79, in serve
+    await self._serve(sockets)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 94, in _serve
+    await self.startup(sockets=sockets)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 144, in startup
+    server = await loop.create_server(create_protocol, sock=sock, ssl=config.ssl, backlog=config.backlog)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1561, in create_server
+    server._start_serving()
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 315, in _start_serving
+    sock.listen(self._backlog)
+OSError: [WinError 10022] 提供了一个无效的参数。
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\starlette\routing.py", line 645, in lifespan
+    await receive()
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\lifespan\on.py", line 137, in receive
+    return await self.receive_queue.get()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\queues.py", line 158, in get
+    await getter
+asyncio.exceptions.CancelledError
+
+ERROR:    Traceback (most recent call last):
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 664, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 79, in serve
+    await self._serve(sockets)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 94, in _serve
+    await self.startup(sockets=sockets)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 144, in startup
+    server = await loop.create_server(create_protocol, sock=sock, ssl=config.ssl, backlog=config.backlog)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1561, in create_server
+    server._start_serving()
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 315, in _start_serving
+    sock.listen(self._backlog)
+OSError: [WinError 10022] 提供了一个无效的参数。
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\starlette\routing.py", line 645, in lifespan
+    await receive()
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\lifespan\on.py", line 137, in receive
+    return await self.receive_queue.get()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\queues.py", line 158, in get
+    await getter
+asyncio.exceptions.CancelledError
+
+Process SpawnProcess-1:
+Process SpawnProcess-2:
+Traceback (most recent call last):
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\multiprocessing\process.py", line 314, in _bootstrap
+    self.run()
+Traceback (most recent call last):
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\multiprocessing\process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\_subprocess.py", line 80, in subprocess_started
+    target(sockets=sockets)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\supervisors\multiprocess.py", line 64, in target
+    return self.real_target(sockets)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\multiprocessing\process.py", line 314, in _bootstrap
+    self.run()
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 75, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\multiprocessing\process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\_subprocess.py", line 80, in subprocess_started
+    target(sockets=sockets)
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\supervisors\multiprocess.py", line 64, in target
+    return self.real_target(sockets)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 664, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 75, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 79, in serve
+    await self._serve(sockets)
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 94, in _serve
+    await self.startup(sockets=sockets)
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 144, in startup
+    server = await loop.create_server(create_protocol, sock=sock, ssl=config.ssl, backlog=config.backlog)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 664, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1561, in create_server
+    server._start_serving()
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 79, in serve
+    await self._serve(sockets)
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 315, in _start_serving
+    sock.listen(self._backlog)
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 94, in _serve
+    await self.startup(sockets=sockets)
+OSError: [WinError 10022] 提供了一个无效的参数。
+  File "D:\AI_Agent_Project\AI_Python_Project\python-agent-study\.venv\Lib\site-packages\uvicorn\server.py", line 144, in startup
+    server = await loop.create_server(create_protocol, sock=sock, ssl=config.ssl, backlog=config.backlog)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1561, in create_server
+    server._start_serving()
+  File "C:\Users\TGG\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 315, in _start_serving
+    sock.listen(self._backlog)
+OSError: [WinError 10022] 提供了一个无效的参数。
+2026-08-15 19:58:29,247 | INFO | fast_app.middlewares.request_id_middleware | request_id=818bdce0c14140a989f6ad4b4104593e | trace_id=818bdce0c14140a989f6ad4b4104593e | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=3.21
+2026-08-15 19:58:30,278 | INFO | fast_app.middlewares.request_id_middleware | request_id=52f3247ca1ab4e808f4413961ff18d4c | trace_id=52f3247ca1ab4e808f4413961ff18d4c | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=0.98
+2026-08-15 19:58:31,310 | INFO | fast_app.middlewares.request_id_middleware | request_id=b16a2f630b9f49e58c98286077b70fc7 | trace_id=b16a2f630b9f49e58c98286077b70fc7 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.21
+2026-08-15 19:58:32,328 | INFO | fast_app.middlewares.request_id_middleware | request_id=094282da3056496a8df5240923b7faad | trace_id=094282da3056496a8df5240923b7faad | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=0.94
+2026-08-15 19:58:33,366 | INFO | fast_app.middlewares.request_id_middleware | request_id=5c7ab302a9b846049f5b2316f768616f | trace_id=5c7ab302a9b846049f5b2316f768616f | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.22
+INFO:     Waiting for child process [472]
+INFO:     Child process [472] died
+INFO:     Waiting for child process [28364]
+INFO:     Child process [28364] died
+2026-08-15 19:58:34,393 | INFO | fast_app.middlewares.request_id_middleware | request_id=b302710c851b431783a9ca3f0d4118f3 | trace_id=b302710c851b431783a9ca3f0d4118f3 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.87
+2026-08-15 19:58:35,424 | INFO | fast_app.middlewares.request_id_middleware | request_id=5ef0bbc1a83a4c548ba1b597eca4cb47 | trace_id=5ef0bbc1a83a4c548ba1b597eca4cb47 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.21
+2026-08-15 19:58:36,449 | INFO | fast_app.middlewares.request_id_middleware | request_id=039f21e26159402e8742e83606c33dd8 | trace_id=039f21e26159402e8742e83606c33dd8 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.44
+2026-08-15 19:58:37,475 | INFO | fast_app.middlewares.request_id_middleware | request_id=ee83213ca7674be5a9a24004c1656e35 | trace_id=ee83213ca7674be5a9a24004c1656e35 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.18
+2026-08-15 19:58:38,502 | INFO | fast_app.middlewares.request_id_middleware | request_id=fbb575535663409c9ddb0a9a145f1928 | trace_id=fbb575535663409c9ddb0a9a145f1928 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.29
+2026-08-15 19:58:39,529 | INFO | fast_app.middlewares.request_id_middleware | request_id=c254dd51161f45a29ad34dc904dfc134 | trace_id=c254dd51161f45a29ad34dc904dfc134 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.57
+2026-08-15 19:58:40,550 | INFO | fast_app.middlewares.request_id_middleware | request_id=680776454e72423184c23bd11b8c2dfa | trace_id=680776454e72423184c23bd11b8c2dfa | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=0.85
+2026-08-15 19:58:41,584 | INFO | fast_app.middlewares.request_id_middleware | request_id=d2d07cae53ff4dccb91ec76bf3066942 | trace_id=d2d07cae53ff4dccb91ec76bf3066942 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=2.63
+2026-08-15 19:58:42,619 | INFO | fast_app.middlewares.request_id_middleware | request_id=e1834d2b00c845a18c36204d0e30ff27 | trace_id=e1834d2b00c845a18c36204d0e30ff27 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.37
+INFO:     Started server process [27956]
+INFO:     Waiting for application startup.
+2026-08-15 19:58:43,506 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.enabled" project="python-agent-study-phase-final-3" endpoint="https://api.smith.langchain.com"
+2026-08-15 19:58:43,506 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+INFO:     Started server process [12688]
+INFO:     Waiting for application startup.
+2026-08-15 19:58:43,516 | INFO | fast_app.core.langsmith | request_id=- | trace_id=- | langsmith_config event="langsmith.config.enabled" project="python-agent-study-phase-final-3" endpoint="https://api.smith.langchain.com"
+2026-08-15 19:58:43,516 | INFO | fast_app.main | request_id=- | trace_id=- | 应用启动: app_name=Python Agent Study, env=dev
+2026-08-15 19:58:43,531 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-15 19:58:43,533 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-15 19:58:43,542 | INFO | fast_app.main | request_id=- | trace_id=- | Milvus client 已创建
+2026-08-15 19:58:43,543 | INFO | fast_app.main | request_id=- | trace_id=- | ElasticSearch client 已创建
+2026-08-15 19:58:43,641 | INFO | fast_app.middlewares.request_id_middleware | request_id=2364b41c140d4341b7d0d46aa691d6ca | trace_id=2364b41c140d4341b7d0d46aa691d6ca | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.47
+2026-08-15 19:58:44,076 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-15 19:58:44,077 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-15 19:58:44,078 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-15 19:58:44,083 | INFO | fast_app.main | request_id=- | trace_id=- | Rerank httpx client 已创建
+2026-08-15 19:58:44,084 | INFO | fast_app.main | request_id=- | trace_id=- | Redis client 已创建
+2026-08-15 19:58:44,086 | INFO | fast_app.main | request_id=- | trace_id=- | PostgreSQL async engine 已创建
+2026-08-15 19:58:44,153 | INFO | fast_app.main | request_id=- | trace_id=- | Agent TaskPlan PostgreSQL Repository 与容量槽已初始化
+2026-08-15 19:58:44,160 | INFO | fast_app.main | request_id=- | trace_id=- | Agent TaskPlan PostgreSQL Repository 与容量槽已初始化
+2026-08-15 19:58:44,197 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-15 19:58:44,206 | INFO | fast_app.main | request_id=- | trace_id=- | NL2SQL Dataset 配置已从平台数据库加载
+2026-08-15 19:58:44,246 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint 已创建
+INFO:     Application startup complete.
+2026-08-15 19:58:44,255 | INFO | fast_app.main | request_id=- | trace_id=- | Deep Agent PostgreSQL checkpoint 已创建
+INFO:     Application startup complete.
+2026-08-15 19:58:44,660 | INFO | fast_app.middlewares.request_id_middleware | request_id=49f83e3bd8d844b18ff31d79eabf263a | trace_id=49f83e3bd8d844b18ff31d79eabf263a | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=0.96
+2026-08-15 19:58:45,692 | INFO | fast_app.middlewares.request_id_middleware | request_id=9766ecbe011c48258ff2d61f9a53af70 | trace_id=9766ecbe011c48258ff2d61f9a53af70 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=0.9
+2026-08-15 19:58:46,710 | INFO | fast_app.middlewares.request_id_middleware | request_id=0666d691f5574281a9ba520d1ff9743f | trace_id=0666d691f5574281a9ba520d1ff9743f | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.15
+2026-08-15 19:58:47,733 | INFO | fast_app.middlewares.request_id_middleware | request_id=9fa4a02699ed4bfb8ee6c937c3504442 | trace_id=9fa4a02699ed4bfb8ee6c937c3504442 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.22
+2026-08-15 19:58:48,755 | INFO | fast_app.middlewares.request_id_middleware | request_id=5e5273647fa449e087893bdba3181c68 | trace_id=5e5273647fa449e087893bdba3181c68 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.42
+2026-08-15 19:58:49,776 | INFO | fast_app.middlewares.request_id_middleware | request_id=a7321972ca344c51bddbe1063b99fe98 | trace_id=a7321972ca344c51bddbe1063b99fe98 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.37
+2026-08-15 19:58:50,797 | INFO | fast_app.middlewares.request_id_middleware | request_id=1c6dd3d8ae72416f94b5f11b62066694 | trace_id=1c6dd3d8ae72416f94b5f11b62066694 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.4
+2026-08-15 19:58:51,820 | INFO | fast_app.middlewares.request_id_middleware | request_id=a99e807aa8af49aa8676a5c576ff43a9 | trace_id=a99e807aa8af49aa8676a5c576ff43a9 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.42
+2026-08-15 19:58:52,838 | INFO | fast_app.middlewares.request_id_middleware | request_id=6a370f06dade4faab6fbe8006b37ff61 | trace_id=6a370f06dade4faab6fbe8006b37ff61 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.09
+2026-08-15 19:58:53,863 | INFO | fast_app.middlewares.request_id_middleware | request_id=faedf62b9bf2497fa62f62ba8291d3b9 | trace_id=faedf62b9bf2497fa62f62ba8291d3b9 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=0.9
+2026-08-15 19:58:54,892 | INFO | fast_app.middlewares.request_id_middleware | request_id=832755122e6b4d13a481691944589084 | trace_id=832755122e6b4d13a481691944589084 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.29
+2026-08-15 19:58:55,910 | INFO | fast_app.middlewares.request_id_middleware | request_id=8929115eab7945f9a135002ab3c7f119 | trace_id=8929115eab7945f9a135002ab3c7f119 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=0.82
+2026-08-15 19:58:56,930 | INFO | fast_app.middlewares.request_id_middleware | request_id=54fed74da07647cf9bda4783c34f667f | trace_id=54fed74da07647cf9bda4783c34f667f | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.87
+2026-08-15 19:58:57,967 | INFO | fast_app.middlewares.request_id_middleware | request_id=e1e470e4b11042e297bfa8f62c4aa0bb | trace_id=e1e470e4b11042e297bfa8f62c4aa0bb | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.72
+2026-08-15 19:58:59,005 | INFO | fast_app.middlewares.request_id_middleware | request_id=e4e23b819c1d4542878199693ba51f54 | trace_id=e4e23b819c1d4542878199693ba51f54 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.89
+2026-08-15 19:59:00,038 | INFO | fast_app.middlewares.request_id_middleware | request_id=6eb239b803ac4d77814b1b9d65fab75d | trace_id=6eb239b803ac4d77814b1b9d65fab75d | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=0.96
+2026-08-15 19:59:01,071 | INFO | fast_app.middlewares.request_id_middleware | request_id=087a1394c0244a38b325c7f304e184d0 | trace_id=087a1394c0244a38b325c7f304e184d0 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=2.97
+2026-08-15 19:59:02,131 | INFO | fast_app.middlewares.request_id_middleware | request_id=d689259484474d02bd072db24a178609 | trace_id=d689259484474d02bd072db24a178609 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.43
+2026-08-15 19:59:03,100 | INFO | fast_app.middlewares.request_id_middleware | request_id=46a8f21ac21b4fbd9cde6ab2e535c613 | trace_id=46a8f21ac21b4fbd9cde6ab2e535c613 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=4.0
+2026-08-15 19:59:03,183 | INFO | fast_app.middlewares.request_id_middleware | request_id=4428fff39a604fbcba3923b50b83c235 | trace_id=4428fff39a604fbcba3923b50b83c235 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.32
+2026-08-15 19:59:04,200 | INFO | fast_app.middlewares.request_id_middleware | request_id=45048413a62d44329dc80ca978693b3b | trace_id=45048413a62d44329dc80ca978693b3b | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.04
+2026-08-15 19:59:05,220 | INFO | fast_app.middlewares.request_id_middleware | request_id=7b2756b25ee844f3b667a878ad738dd1 | trace_id=7b2756b25ee844f3b667a878ad738dd1 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.74
+2026-08-15 19:59:06,240 | INFO | fast_app.middlewares.request_id_middleware | request_id=2e24eb1075694a56bd1677d3bfea8e98 | trace_id=2e24eb1075694a56bd1677d3bfea8e98 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.5
+2026-08-15 19:59:07,263 | INFO | fast_app.middlewares.request_id_middleware | request_id=ed4e379a779745a8b8e809d96e3766c2 | trace_id=ed4e379a779745a8b8e809d96e3766c2 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.45
+2026-08-15 19:59:08,287 | INFO | fast_app.middlewares.request_id_middleware | request_id=bdd4d2e3f2e741fdae7f6af246ab683d | trace_id=bdd4d2e3f2e741fdae7f6af246ab683d | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=0.77
+2026-08-15 19:59:09,311 | INFO | fast_app.middlewares.request_id_middleware | request_id=9caf8220dc7a49e3ae7a0e5da61356b0 | trace_id=9caf8220dc7a49e3ae7a0e5da61356b0 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.56
+2026-08-15 19:59:10,336 | INFO | fast_app.middlewares.request_id_middleware | request_id=0d1c174f358d4e60a44a952e0a349e4f | trace_id=0d1c174f358d4e60a44a952e0a349e4f | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=0.86
+2026-08-15 19:59:11,360 | INFO | fast_app.middlewares.request_id_middleware | request_id=7928a816312a4c918f2a811abb2c3283 | trace_id=7928a816312a4c918f2a811abb2c3283 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.72
+2026-08-15 19:59:12,391 | INFO | fast_app.middlewares.request_id_middleware | request_id=bf0eb0bdef7b4120bfefc165631c1e6c | trace_id=bf0eb0bdef7b4120bfefc165631c1e6c | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.24
+2026-08-15 19:59:13,410 | INFO | fast_app.middlewares.request_id_middleware | request_id=9c107d75f29345c399c0b60ea93a42c9 | trace_id=9c107d75f29345c399c0b60ea93a42c9 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.62
+2026-08-15 19:59:14,431 | INFO | fast_app.middlewares.request_id_middleware | request_id=c4712728a692402eaaaa314fa7c0c2f4 | trace_id=c4712728a692402eaaaa314fa7c0c2f4 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.4
+2026-08-15 19:59:15,453 | INFO | fast_app.middlewares.request_id_middleware | request_id=e6c6dc0fc770479bab5f7d2026ca398f | trace_id=e6c6dc0fc770479bab5f7d2026ca398f | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.16
+2026-08-15 19:59:16,474 | INFO | fast_app.middlewares.request_id_middleware | request_id=a2ed6b171aca42219ee019a269e86674 | trace_id=a2ed6b171aca42219ee019a269e86674 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=0.83
+2026-08-15 19:59:17,496 | INFO | fast_app.middlewares.request_id_middleware | request_id=3a167ac515674c3ea0c7aeacb854d8b5 | trace_id=3a167ac515674c3ea0c7aeacb854d8b5 | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.02
+2026-08-15 19:59:18,516 | INFO | fast_app.middlewares.request_id_middleware | request_id=6b88669faa484916af6eb694b1df932f | trace_id=6b88669faa484916af6eb694b1df932f | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.04
+2026-08-15 19:59:19,539 | INFO | fast_app.middlewares.request_id_middleware | request_id=40e50c19b7fd47af8ef22b1e7bf8462b | trace_id=40e50c19b7fd47af8ef22b1e7bf8462b | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.97
+2026-08-15 19:59:20,570 | INFO | fast_app.middlewares.request_id_middleware | request_id=47fefad214ec46d1a2fe278c8d0d2dba | trace_id=47fefad214ec46d1a2fe278c8d0d2dba | http_request event="http.request.finish" method="GET" path="/health" status_code=200 latency_ms=1.07

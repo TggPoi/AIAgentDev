@@ -59,6 +59,39 @@ class AgentTaskPlanBusyError(AppServiceError):
     status_code = 409
 
 
+class AgentTaskPlanLeaseLostError(AppServiceError):
+    """当前协程持有的 TaskPlan fencing token 已失效。"""
+
+    error_code = "AGENT_TASK_PLAN_LEASE_LOST"
+    error_category = "system_error"
+    status_code = 409
+
+
+class AgentTaskPlanVersionConflictError(AppServiceError):
+    """TaskPlan 或 RuntimeRecord 的数据库原子 CAS 未命中。"""
+
+    error_code = "AGENT_TASK_PLAN_VERSION_CONFLICT"
+    status_code = 409
+
+
+class AgentTaskPlanIdempotencyConflictError(AppServiceError):
+    """同一 Idempotency-Key 被用于不同请求。"""
+
+    error_code = "AGENT_TASK_PLAN_IDEMPOTENCY_CONFLICT"
+    status_code = 409
+
+
+class AgentTaskCapacityExceededError(AppServiceError):
+    """全服务复杂 Agent 容量槽已经用尽。"""
+
+    error_code = "AGENT_CAPACITY_EXCEEDED"
+    status_code = 429
+
+    def __init__(self, message: str, *, retry_after_seconds: int) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
 class AgentTaskPlanningContextUnresolvedError(AppServiceError):
     """有限历史不足以可靠解析当前指代。"""
 

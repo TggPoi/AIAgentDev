@@ -12,6 +12,7 @@ from tempfile import TemporaryDirectory
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "scripts" / "tests"))
 os.environ.setdefault("LANGSMITH_TRACING", "false")
 os.environ.setdefault("LANGCHAIN_TRACING_V2", "false")
 
@@ -43,7 +44,10 @@ from fast_app.domain.knowledge_document_actions import (
 )
 from fast_app.domain.rag_models import RetrievalFilters, RetrievalOptions, RetrievedDoc
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
+from agent_task_plan_test_support import (
+    InMemoryAgentTaskPlanStore,
+    bind_test_task_plan_lease,
+)
 from fast_app.services.agent_tasks.agent_task_planner import AgentTaskPlanner
 from fast_app.services.agent_tasks.deep_document_agent import (
     DeepDocumentAgent,
@@ -67,6 +71,23 @@ from langchain.agents.middleware.todo import WRITE_TODOS_SYSTEM_PROMPT
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
+from sqlalchemy import delete
+
+from fast_app.db.agent_task_plan_tables import (
+    AgentTaskCapacitySlotTable,
+    AgentTaskPlanCommandTable,
+    AgentTaskPlanRuntimeRecordTable,
+    AgentTaskPlanTable,
+)
+from fast_app.db.session import create_database_engine, create_session_factory
+from fast_app.domain.agent_task_execution import TaskPlanLease, bind_task_plan_lease
+from fast_app.services.agent_tasks.agent_task_plan_repository import (
+    AgentTaskPlanRepository,
+)
+from fast_app.services.agent_tasks.agent_task_plan_store import (
+    AgentTaskPlanExportStore,
+    AgentTaskPlanStore as PostgresAgentTaskPlanStore,
+)
 
 
 ORIGINAL = "# Damage Rules\n\nBase damage is attack minus defense.\n"
@@ -277,13 +298,29 @@ async def test_deterministic_boundary() -> None:
             AGENT_DOCUMENT_TOOLS_ENABLED=True,
             AGENT_TASK_PLAN_DIR=temp_dir,
         )
-        store = AgentTaskPlanStore(settings)
+        class RecordingStore(InMemoryAgentTaskPlanStore):
+            def __init__(self) -> None:
+                super().__init__()
+                self.saved_statuses: list[AgentTaskPlanStatus] = []
+
+            async def save(self, current):
+                self.saved_statuses.append(current.status)
+                return await super().save(current)
+
+        store = RecordingStore()
         plan = AgentTaskPlanner(settings).build_document_management_plan(
             query="Update damage rules after reviewing related documents",
             user_id="tool_admin",
             research_policy=AgentResearchPolicy(web_policy="disabled"),
         )
-        store.save(plan)
+        await store.create(plan)
+
+        class StateCheckingSupervisor(StubSupervisor):
+            async def decide(self, **kwargs):
+                persisted = await store.load(plan.task_plan_id)
+                assert persisted.status == AgentTaskPlanStatus.PREPARING_CONFIRMATION
+                return await super().decide(**kwargs)
+
         management = FakeManagementService()
         executor = DocumentTaskExecutor(
             settings=settings,
@@ -293,7 +330,7 @@ async def test_deterministic_boundary() -> None:
             tool_permission_service=FakePermissionService(),  # type: ignore[arg-type]
             tool_audit_service=FakeAuditService(),  # type: ignore[arg-type]
             task_plan_store=store,
-            supervisor_agent=StubSupervisor(),  # type: ignore[arg-type]
+            supervisor_agent=StateCheckingSupervisor(),  # type: ignore[arg-type]
             deep_document_agent=StubDeepAgent(),  # type: ignore[arg-type]
         )
         result = await executor.execute(
@@ -306,6 +343,7 @@ async def test_deterministic_boundary() -> None:
             filters=RetrievalFilters(can_read_all=True),
         )
         assert result.status == AgentTaskPlanStatus.WAITING_CONFIRMATION
+        assert store.saved_statuses[0] == AgentTaskPlanStatus.PREPARING_CONFIRMATION
         assert len(result.steps) == 1
         assert result.steps[0].output["preview"]["before_hash"] == sha256(
             ORIGINAL.encode("utf-8")
@@ -328,13 +366,13 @@ async def test_recoverable_document_failure_returns_task_plan() -> None:
             AGENT_DOCUMENT_TOOLS_ENABLED=True,
             AGENT_TASK_PLAN_DIR=temp_dir,
         )
-        store = AgentTaskPlanStore(settings)
+        store = InMemoryAgentTaskPlanStore()
         plan = AgentTaskPlanner(settings).build_document_management_plan(
             query="Create a researched document",
             user_id="tool_admin",
             research_policy=AgentResearchPolicy(web_policy="disabled"),
         )
-        store.save(plan)
+        await store.create(plan)
         executor = DocumentTaskExecutor(
             settings=settings,
             vector_retriever=FakeRetriever(),
@@ -368,14 +406,14 @@ async def test_subagent_model_limit_isolated_as_tool_failure() -> None:
             OPENAI_API_KEY="test-key",
             AGENT_TASK_PLAN_DIR=temp_dir,
         )
-        store = AgentTaskPlanStore(settings)
+        store = InMemoryAgentTaskPlanStore()
         plan = AgentTaskPlanner(settings).build_document_management_plan(
             query="Create a reviewed document",
             user_id="tool_admin",
             research_policy=AgentResearchPolicy(web_policy="disabled"),
         )
         plan.final_output["document_progress"] = {"events": []}
-        store.save(plan)
+        await store.create(plan)
         middleware = _DocumentCoordinatorProgressMiddleware(
             store,
             plan.task_plan_id,
@@ -417,10 +455,11 @@ async def test_subagent_model_limit_isolated_as_tool_failure() -> None:
                 run_limit=12,
             )
 
-        result = await middleware.awrap_tool_call(Request(), exhausted_handler)
+        with bind_test_task_plan_lease(plan.task_plan_id):
+            result = await middleware.awrap_tool_call(Request(), exhausted_handler)
         assert isinstance(result, ToolMessage)
         assert "SUBAGENT_MODEL_CALL_LIMIT_EXCEEDED" in str(result.content)
-        latest = store.load(plan.task_plan_id)
+        latest = await store.load(plan.task_plan_id)
         event = latest.final_output["document_progress"]["events"][-1]
         assert event["event"] == "agent_task_document_subagent_failed"
         assert event["error_code"] == "SUBAGENT_MODEL_CALL_LIMIT_EXCEEDED"
@@ -463,10 +502,11 @@ async def test_subagent_model_limit_isolated_as_tool_failure() -> None:
             writer_called = True
             return "unexpected"
 
-        rejected = await middleware.awrap_tool_call(
-            WriterRequest(),
-            forbidden_writer,
-        )
+        with bind_test_task_plan_lease(plan.task_plan_id):
+            rejected = await middleware.awrap_tool_call(
+                WriterRequest(),
+                forbidden_writer,
+            )
         assert writer_called is False
         assert isinstance(rejected, ToolMessage)
         assert "UPSTREAM_RESEARCH_FAILED" in str(rejected.content)
@@ -504,13 +544,14 @@ async def test_subagent_model_limit_isolated_as_tool_failure() -> None:
         async def allowed_writer(_request):
             return "allowed"
 
-        assert (
-            await middleware.awrap_tool_call(
-                SuccessfulWriterRequest(),
-                allowed_writer,
+        with bind_test_task_plan_lease(plan.task_plan_id):
+            assert (
+                await middleware.awrap_tool_call(
+                    SuccessfulWriterRequest(),
+                    allowed_writer,
+                )
+                == "allowed"
             )
-            == "allowed"
-        )
 
         writer_failure_call = SuccessfulWriterRequest.tool_call
         writer_failure = ToolMessage(
@@ -620,14 +661,14 @@ async def test_shared_model_budget_and_deterministic_revision_limits() -> None:
             OPENAI_API_KEY="test-key",
             AGENT_TASK_PLAN_DIR=temp_dir,
         )
-        store = AgentTaskPlanStore(settings)
+        store = InMemoryAgentTaskPlanStore()
         plan = AgentTaskPlanner(settings).build_document_management_plan(
             query="Create a reviewed document",
             user_id="tool_admin",
             research_policy=AgentResearchPolicy(web_policy="disabled"),
         )
         plan.final_output["document_progress"] = {"events": []}
-        store.save(plan)
+        await store.create(plan)
         middleware = _DocumentCoordinatorProgressMiddleware(
             store,
             plan.task_plan_id,
@@ -674,10 +715,11 @@ async def test_shared_model_budget_and_deterministic_revision_limits() -> None:
             called = True
             return "unexpected"
 
-        rejected = await middleware.awrap_tool_call(
-            RetryRequest(),
-            forbidden_handler,
-        )
+        with bind_test_task_plan_lease(plan.task_plan_id):
+            rejected = await middleware.awrap_tool_call(
+                RetryRequest(),
+                forbidden_handler,
+            )
         assert called is False
         assert isinstance(rejected, ToolMessage)
         assert rejected.status == "error"
@@ -725,10 +767,11 @@ async def test_shared_model_budget_and_deterministic_revision_limits() -> None:
                 ]
             }
 
-        rejected = await middleware.awrap_tool_call(
-            RevisionLimitRequest(),
-            forbidden_handler,
-        )
+        with bind_test_task_plan_lease(plan.task_plan_id):
+            rejected = await middleware.awrap_tool_call(
+                RevisionLimitRequest(),
+                forbidden_handler,
+            )
         assert isinstance(rejected, ToolMessage)
         assert "SUBAGENT_REVISION_LIMIT_EXCEEDED" in str(rejected.content)
 
@@ -755,7 +798,7 @@ def test_document_content_models_have_streaming_retry_policy() -> None:
             vector_retriever=FakeRetriever(),
             keyword_retriever=FakeRetriever(),
             document_management_service=FakeManagementService(),  # type: ignore[arg-type]
-            task_plan_store=AgentTaskPlanStore(settings),
+            task_plan_store=InMemoryAgentTaskPlanStore(),
         )
         standard_model = agent._build_model()
         coordinator_model = agent._build_model(
@@ -985,7 +1028,7 @@ async def test_create_researcher_does_not_receive_full_document_tool() -> None:
             OPENAI_API_KEY="test-key",
             AGENT_TASK_PLAN_DIR=temp_dir,
         )
-        store = AgentTaskPlanStore(settings)
+        store = InMemoryAgentTaskPlanStore()
         plan = AgentTaskPlanner(settings).build_document_management_plan(
             query="Create a researched document",
             user_id="tool_admin",
@@ -1105,7 +1148,14 @@ async def test_real_deep_agent() -> None:
                 ),
             }
         )
-        store = AgentTaskPlanStore(settings)
+        engine = create_database_engine(settings)
+        factory = create_session_factory(engine)
+        repository = AgentTaskPlanRepository(factory)
+        await repository.ensure_capacity_slots(workload_type="document", count=1)
+        store = PostgresAgentTaskPlanStore(
+            repository=repository,
+            export_store=AgentTaskPlanExportStore(settings),
+        )
         plan = AgentTaskPlanner(settings).build_document_management_plan(
             query="Review the damage rules and update the document with an explicit minimum damage rule.",
             user_id="tool_admin",
@@ -1113,32 +1163,81 @@ async def test_real_deep_agent() -> None:
         )
         # 生产入口会在调用 DeepDocumentAgent 前创建进度容器；直接测试需模拟同一前置状态。
         plan.final_output["document_progress"] = {"stage": "deep_agent_running", "events": []}
-        store.save(plan)
-        runtime = await DeepDocumentRuntime.start(settings)
+        await store.create(plan)
+        acquired = await repository.begin_operation(
+            task_plan_id=plan.task_plan_id,
+            operation="execute",
+            idempotency_key=f"real-deep-agent:{plan.task_plan_id}",
+            request_hash="d" * 64,
+            worker_id="real-deep-agent-test",
+            allowed_statuses={AgentTaskPlanStatus.CREATED},
+            workload_type="document",
+            capacity_limit=1,
+            lease_seconds=settings.agent_task_lease_seconds,
+        )
+        assert isinstance(acquired, TaskPlanLease)
+        runtime = await DeepDocumentRuntime.start(settings, repository)
+        completed = False
         try:
-            agent = DeepDocumentAgent(
-                settings=settings,
-                vector_retriever=FakeRetriever(),
-                keyword_retriever=FakeRetriever(),
-                document_management_service=FakeManagementService(),  # type: ignore[arg-type]
-                task_plan_store=store,
-                runtime=runtime,
-            )
-            trace_handler = RealModelTraceHandler()
-            result = await agent.run(
-                plan=plan,
-                decision=build_decision(),
-                user=build_user(),
-                mode="hybrid",
-                top_k=5,
-                candidate_k=None,
-                min_score=0.0,
-                filters=RetrievalFilters(can_read_all=True),
-                langchain_config={"callbacks": [trace_handler]},
-            )
+            with bind_task_plan_lease(acquired):
+                agent = DeepDocumentAgent(
+                    settings=settings,
+                    vector_retriever=FakeRetriever(),
+                    keyword_retriever=FakeRetriever(),
+                    document_management_service=FakeManagementService(),  # type: ignore[arg-type]
+                    task_plan_store=store,
+                    runtime=runtime,
+                )
+                trace_handler = RealModelTraceHandler()
+                result = await agent.run(
+                    plan=plan,
+                    decision=build_decision(),
+                    user=build_user(),
+                    mode="hybrid",
+                    top_k=5,
+                    candidate_k=None,
+                    min_score=0.0,
+                    filters=RetrievalFilters(can_read_all=True),
+                    langchain_config={"callbacks": [trace_handler]},
+                )
+                await runtime.release(plan.task_plan_id)
+                latest = await store.load(plan.task_plan_id)
+                await repository.finish_success(
+                    lease=acquired,
+                    response_json=latest.model_dump(mode="json"),
+                )
+                completed = True
         finally:
-            await runtime.release(plan.task_plan_id)
+            if not completed:
+                await repository.finish_failure(
+                    lease=acquired,
+                    error_code="REAL_DEEP_AGENT_TEST_FAILED",
+                    error_message="real deep agent test did not complete",
+                )
             await runtime.close()
+            async with factory() as session, session.begin():
+                await session.execute(
+                    delete(AgentTaskPlanCommandTable).where(
+                        AgentTaskPlanCommandTable.task_plan_id == plan.task_plan_id
+                    )
+                )
+                await session.execute(
+                    delete(AgentTaskPlanRuntimeRecordTable).where(
+                        AgentTaskPlanRuntimeRecordTable.task_plan_id
+                        == plan.task_plan_id
+                    )
+                )
+                await session.execute(
+                    delete(AgentTaskPlanTable).where(
+                        AgentTaskPlanTable.task_plan_id == plan.task_plan_id
+                    )
+                )
+                await session.execute(
+                    delete(AgentTaskCapacitySlotTable).where(
+                        AgentTaskCapacitySlotTable.task_plan_id == plan.task_plan_id
+                    )
+                )
+            await engine.dispose()
         assert result.workflow.approved_changes, result.workflow.model_dump(mode="json")
         proposal = result.workflow.approved_changes[0]
         assert proposal.candidate_doc_id == DOC_ID

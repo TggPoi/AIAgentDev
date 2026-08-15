@@ -1,9 +1,9 @@
 import asyncio
 import json
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -28,7 +28,8 @@ from fast_app.domain.research_task_plan import (
     ResearchTaskPlan,
     build_research_task_plan_public_view,
 )
-from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor, AgentTaskPlanStore
+from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor
+from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
 from fast_app.services.exceptions import AppServiceError, ToolPermissionDeniedError
 from fast_app.services.rag.guarded_streaming import (
     GuardedStreamState,
@@ -39,6 +40,17 @@ from fast_app.services.rag.prompt_guard_service import PromptGuardService
 
 
 router = APIRouter(prefix="/agent/task-plans", tags=["agent-task-plans"])
+
+
+IdempotencyKey = Annotated[
+    str,
+    Header(
+        alias="Idempotency-Key",
+        min_length=16,
+        max_length=128,
+        description="confirm/retry/cancel 的客户端幂等键；同一次用户动作重试必须复用。",
+    ),
+]
 
 
 def _public_plan_payload(plan) -> dict[str, Any]:
@@ -116,7 +128,7 @@ async def get_agent_task_plan_endpoint(
 ) -> dict[str, Any]:
     """读取 Agent 多步骤任务计划。"""
 
-    plan = task_plan_store.load(task_plan_id)
+    plan = await task_plan_store.load(task_plan_id)
     if plan.user_id != user.user_id and not user.has_global_role(
         RoleCode.SYSTEM_ADMIN.value
     ):
@@ -132,17 +144,18 @@ async def get_agent_task_plan_markdown_endpoint(
 ) -> str:
     """读取 Agent TaskPlan 的 Markdown 审查视图。"""
 
-    plan = task_plan_store.load(task_plan_id)
+    plan = await task_plan_store.load(task_plan_id)
     if plan.user_id != user.user_id and not user.has_global_role(
         RoleCode.SYSTEM_ADMIN.value
     ):
         raise ToolPermissionDeniedError("只能查看自己创建的 Agent task plan")
-    return task_plan_store.load_markdown(task_plan_id)
+    return await task_plan_store.load_markdown(task_plan_id)
 
 
 @router.post("/{task_plan_id}/cancel", response_model=AgentTaskPlanControlResponse)
 async def cancel_agent_task_plan_endpoint(
     task_plan_id: str,
+    idempotency_key: IdempotencyKey,
     user: CurrentUserContext = Depends(get_current_user_context),
     task_executor: AgentTaskExecutor = Depends(get_agent_task_executor),
     settings: Settings = Depends(get_settings),
@@ -155,7 +168,11 @@ async def cancel_agent_task_plan_endpoint(
         task_plan_id=task_plan_id,
         user_id=user.user_id,
     ) as trace_run:
-        plan = await task_executor.cancel(task_plan_id, user=user)
+        plan = await task_executor.cancel(
+            task_plan_id,
+            user=user,
+            idempotency_key=idempotency_key,
+        )
         if trace_run is not None:
             trace_run.add_outputs(
                 {"task_plan_id": plan.task_plan_id, "status": plan.status.value}
@@ -172,6 +189,7 @@ async def cancel_agent_task_plan_endpoint(
 @router.post("/{task_plan_id}/retry", response_model=AgentTaskPlanControlResponse)
 async def retry_agent_task_plan_endpoint(
     task_plan_id: str,
+    idempotency_key: IdempotencyKey,
     user: CurrentUserContext = Depends(get_current_user_context),
     task_executor: AgentTaskExecutor = Depends(get_agent_task_executor),
     settings: Settings = Depends(get_settings),
@@ -184,7 +202,11 @@ async def retry_agent_task_plan_endpoint(
         task_plan_id=task_plan_id,
         user_id=user.user_id,
     ) as trace_run:
-        plan = await task_executor.resume(task_plan_id, user=user)
+        plan = await task_executor.resume(
+            task_plan_id,
+            user=user,
+            idempotency_key=idempotency_key,
+        )
         if trace_run is not None:
             trace_run.add_outputs(
                 {"task_plan_id": plan.task_plan_id, "status": plan.status.value}
@@ -202,6 +224,7 @@ async def retry_agent_task_plan_endpoint(
 async def confirm_agent_task_plan_endpoint(
     task_plan_id: str,
     req: AgentTaskPlanConfirmRequest,
+    idempotency_key: IdempotencyKey,
     user: CurrentUserContext = Depends(get_current_user_context),
     task_executor: AgentTaskExecutor = Depends(get_agent_task_executor),
     settings: Settings = Depends(get_settings),
@@ -233,6 +256,7 @@ async def confirm_agent_task_plan_endpoint(
         plan = await task_executor.confirm(
             task_plan_id=task_plan_id,
             user=user,
+            idempotency_key=idempotency_key,
             langchain_config_factory=build_confirm_config,
         )
         if trace_run is not None:
@@ -259,6 +283,7 @@ async def confirm_agent_task_plan_endpoint(
 async def confirm_agent_task_plan_stream_endpoint(
     task_plan_id: str,
     req: AgentTaskPlanConfirmRequest,
+    idempotency_key: IdempotencyKey,
     user: CurrentUserContext = Depends(get_current_user_context),
     task_executor: AgentTaskExecutor = Depends(get_agent_task_executor),
     task_plan_store: AgentTaskPlanStore = Depends(get_agent_task_plan_store),
@@ -278,6 +303,7 @@ async def confirm_agent_task_plan_stream_endpoint(
             task_plan_store=task_plan_store,
             prompt_guard=prompt_guard,
             settings=settings,
+            idempotency_key=idempotency_key,
         ),
         media_type="text/event-stream",
     )
@@ -290,12 +316,13 @@ async def _confirm_task_plan_sse_generator(
     task_plan_store: AgentTaskPlanStore,
     prompt_guard: PromptGuardService,
     settings: Settings,
+    idempotency_key: str,
 ) -> AsyncGenerator[str, None]:
     """确认并执行 TaskPlan，同时把执行中的进度转换为 SSE。
 
     ``task_executor.confirm()`` 本身返回的是最终完成后的 ``plan``，不会逐条
     ``yield`` 子问题结果。执行器每完成一个子问题会先把最新 ``plan`` 保存到
-    runtime JSON 快照；本生成器在确认任务运行期间每秒读取一次该快照，将新出现的
+    PostgreSQL 事实表；本生成器在确认任务运行期间每秒读取一次该快照，将新出现的
     子问题结果发给前端。因此无需为了流式进度额外给执行器设计事件总线。
     """
 
@@ -333,25 +360,51 @@ async def _confirm_task_plan_sse_generator(
             task_executor.confirm(
                 task_plan_id=task_plan_id,
                 user=user,
+                idempotency_key=idempotency_key,
                 langchain_config_factory=build_confirm_config,
             )
         )
         try:
             while not task.done():
                 try:
-                    # task_executor 会在 单个子问题 完成时更新 当前任务的json文件 快照；这里读取的是“目前为止”的进度。
-                    plan = task_plan_store.load(task_plan_id)
+                    # task_executor 会在 单个子问题 完成时更新 当前任务的数据库快照；这里读取的是"目前为止"的进度。
+                    plan = await task_plan_store.load(task_plan_id)
 
                     # 把当前读取到的 任务快照进度 转换为 sse事件 响应给前端显示任务状态
                     for event in _task_plan_progress_events(
                         plan, seen_sub_questions, seen_steps, seen_research_events
                     ):
                         yield event
-                
-                # 轮询快照的异常被忽略 例如后台任务刚启动、快照文件还没写好时，`load()` 可能暂时失败。这里不让一次短暂读取失败直接断开 SSE；等一秒后再试。
-                except Exception:
-                    # 任务刚启动、快照暂不可读等短暂情况不应中断已建立的 SSE 连接；下次轮询重试。
-                    pass
+
+                # 轮询快照的异常处理：只有"计划暂未入库"这类短暂 AppServiceError 允许
+                # 下一轮重试；租约失效、Schema 损坏和数据库故障必须转成稳定 error 事件。
+                except AppServiceError as exc:
+                    if exc.error_code != "APP_SERVICE_ERROR":
+                        yield _format_sse_event(
+                            "error",
+                            {
+                                "task_plan_id": task_plan_id,
+                                "error_code": exc.error_code,
+                                "message": exc.public_message,
+                                "retryable": False,
+                            },
+                        )
+                        return
+                except Exception as exc:
+                    yield _format_sse_event(
+                        "error",
+                        {
+                            "task_plan_id": task_plan_id,
+                            "error_code": getattr(
+                                exc, "error_code", "AGENT_TASK_PLAN_STREAM_FAILED"
+                            ),
+                            "message": getattr(
+                                exc, "public_message", "TaskPlan 执行失败"
+                            ),
+                            "retryable": False,
+                        },
+                    )
+                    return
                 await asyncio.sleep(1)
 
             # confirm 已结束，await 取得最终 plan，并补发最后一次快照中尚未发送的子问题事件。
@@ -428,7 +481,11 @@ async def _confirm_task_plan_sse_generator(
                 "error",
                 {
                     "task_plan_id": task_plan_id,
-                    "error": f"{type(exc).__name__}: {exc}",
+                    "error_code": getattr(
+                        exc, "error_code", "AGENT_TASK_PLAN_STREAM_FAILED"
+                    ),
+                    "message": getattr(exc, "public_message", "TaskPlan 执行失败"),
+                    "retryable": False,
                 },
             )
 

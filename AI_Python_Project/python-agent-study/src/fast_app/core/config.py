@@ -454,6 +454,43 @@ class Settings(BaseSettings):
         alias="AGENT_TASK_MCP_STDIO_SERVERS_JSON",
     )
 
+    # 多 Worker TaskPlan 一致性：数据库租约、心跳与全局容量配置。
+    agent_task_lease_seconds: int = Field(
+        default=90,
+        ge=30,
+        le=600,
+        alias="AGENT_TASK_LEASE_SECONDS",
+        description="TaskPlan 和容量槽一次数据库租约的有效秒数；心跳必须在到期前续租。",
+    )
+    agent_task_heartbeat_seconds: int = Field(
+        default=20,
+        ge=5,
+        le=120,
+        alias="AGENT_TASK_HEARTBEAT_SECONDS",
+        description="运行中 TaskPlan 的数据库续租间隔，必须小于租约时长的三分之一。",
+    )
+    agent_research_global_concurrency: int = Field(
+        default=2,
+        ge=1,
+        le=64,
+        alias="AGENT_RESEARCH_GLOBAL_CONCURRENCY",
+        description="所有 FastAPI Worker/实例共享的 Research TaskPlan 最大运行数；默认值只是保守熔断值，不是容量承诺。",
+    )
+    agent_document_global_concurrency: int = Field(
+        default=1,
+        ge=1,
+        le=32,
+        alias="AGENT_DOCUMENT_GLOBAL_CONCURRENCY",
+        description="所有 FastAPI Worker/实例共享的 Deep Document TaskPlan 最大运行数；最终值必须由压测确定。",
+    )
+    agent_task_idempotency_retention_days: int = Field(
+        default=7,
+        ge=1,
+        le=90,
+        alias="AGENT_TASK_IDEMPOTENCY_RETENTION_DAYS",
+        description="已完成控制命令幂等结果的保留天数。",
+    )
+
     # 多轮对话短期记忆配置。默认仍使用内存实现，避免本地开发强依赖 Redis。
     memory_store_provider: str = Field(
         default="in_memory",
@@ -795,6 +832,16 @@ class Settings(BaseSettings):
         description="是否把 rerank 后的 Markdown 子块安全扩展为有界父块；重建 v2 索引后再开启。",
     )
     # ingestion 的基础配置 end
+
+    @model_validator(mode="after")
+    def validate_agent_task_lease_settings(self) -> "Settings":
+        """心跳间隔必须明显小于租约时长，否则续租来不及完成租约就过期。"""
+
+        if self.agent_task_heartbeat_seconds * 3 >= self.agent_task_lease_seconds:
+            raise ValueError(
+                "AGENT_TASK_HEARTBEAT_SECONDS 必须小于 AGENT_TASK_LEASE_SECONDS 的三分之一"
+            )
+        return self
 
     @model_validator(mode="after")
     def validate_upload_size_limits(self) -> "Settings":

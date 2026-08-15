@@ -1,0 +1,391 @@
+{
+  "report_version": 3,
+  "executed_at": "2026-08-15",
+  "overall_result": "p2_failed_document_remediated_research_preflight_blocked",
+  "conclusion": "正式10+3+2混合负载达到15个全局在途请求，10个RAG SSE与Research容量2+1拒绝通过；两个Document请求因created到created非法保存触发版本冲突，两个Research执行者均因证据不足失败，RAG P95也超过120秒，因此10到15人混合业务验收不通过。",
+  "environment": {
+    "os": "Windows 10 Enterprise 64-bit",
+    "logical_processors": 12,
+    "physical_memory_bytes": 34163441664,
+    "python": "3.12.0",
+    "uvicorn_workers": 4,
+    "services": {
+      "postgresql": "healthy",
+      "redis": "healthy",
+      "elasticsearch": "running",
+      "milvus": "healthy"
+    },
+    "alembic_revision": "20260813_0013",
+    "research_global_concurrency": 2,
+    "document_global_concurrency": 1
+  },
+  "identity_preflight": {
+    "configured_users": 15,
+    "active_database_users": 15,
+    "concurrent_login_me_pairs": 15,
+    "http_requests": 30,
+    "elapsed_ms": 1420.722,
+    "login_200": 15,
+    "me_200": 15,
+    "unique_user_ids": 15
+  },
+  "p0_structured_sse": {
+    "endpoint": "/rag/chat/stream/events",
+    "request_count": 3,
+    "success_count": 3,
+    "success_rate": 1.0,
+    "http_200": 3,
+    "done_events": 3,
+    "sse_error_events": 0,
+    "protocol_errors": 0,
+    "source_count_total": 15,
+    "global_peak_active_requests": 1,
+    "duration_seconds": 284.61,
+    "requests_per_second": 0.010540740662660483,
+    "latency_ms": {
+      "mean": 94737.905,
+      "p50": 91041.397,
+      "p95": 104142.1005,
+      "p99": 104142.1005,
+      "max": 104142.1005
+    },
+    "sse_latency_ms": {
+      "first_event_p50": 12919.669,
+      "first_event_p95": 14995.953,
+      "first_answer_p50": 56710.494,
+      "first_answer_p95": 59464.323
+    },
+    "artifact": "reports/p0-a-structured-sse-3-after-session-fix.json",
+    "session_isolation": "passed"
+  },
+  "deterministic_consistency": {
+    "script_count": 5,
+    "passed": 5,
+    "failed": 0,
+    "total_elapsed_ms": 16383,
+    "scripts": [
+      {
+        "name": "test_agent_task_plan_postgres.py",
+        "elapsed_ms": 2768,
+        "result": "passed",
+        "assertion_groups": 11
+      },
+      {
+        "name": "test_agent_task_plan_multiprocess.py",
+        "elapsed_ms": 5305,
+        "result": "passed",
+        "processes": 2,
+        "acquired": 1,
+        "busy": 1
+      },
+      {
+        "name": "test_agent_task_plan_store_smoke.py",
+        "elapsed_ms": 1278,
+        "result": "passed"
+      },
+      {
+        "name": "test_agent_task_executor_control_regressions.py",
+        "elapsed_ms": 6719,
+        "result": "passed"
+      },
+      {
+        "name": "test_agent_task_plan_load_driver.py",
+        "elapsed_ms": 313,
+        "result": "passed"
+      }
+    ]
+  },
+  "http_multiworker_contention": {
+    "clean_restart_result": "passed",
+    "attempts": 20,
+    "elapsed_ms": 15609,
+    "http_status_counts": {
+      "409": 19,
+      "400": 1
+    },
+    "error_code_counts": {
+      "AGENT_TASK_PLAN_BUSY": 19,
+      "APP_SERVICE_ERROR": 1
+    },
+    "business_executor_count": 1,
+    "duplicate_executor_count": 0,
+    "final_database_state": {
+      "status": "failed",
+      "record_version": 2,
+      "lease_fence_token": 1,
+      "lease_owner": null,
+      "capacity_workload_type": null,
+      "capacity_slot_no": null
+    },
+    "startup_anomaly": {
+      "observed": true,
+      "first_start_error": "WinError 10022",
+      "first_start_worker_replaced": true,
+      "contaminated_attempt_client_timeout_ms": 180000,
+      "contaminated_attempt_requests_seen_by_app": 16,
+      "contaminated_attempt_requests_missing_from_app_log": 4,
+      "disposition": "discarded_and_rerun_after_clean_restart"
+    }
+  },
+  "research_fixture_gate": {
+    "attempted": 1,
+    "created": 0,
+    "waiting_confirmation": 0,
+    "upstream_chat_completion_status_counts": {
+      "200": 3,
+      "400": 2
+    },
+    "failed_transport": "json_schema",
+    "transport_attempts": 2,
+    "exception_type": "BadRequestError",
+    "database_task_plan_created": false,
+    "stop_gate_triggered": true,
+    "root_cause_boundary": "Reviewer调用的400未被_transport_unsupported分类；invoke_structured_model对json_schema重试两次后直接抛出，未进入后续transport。"
+  },
+  "research_fixture_gate_remediation": {
+    "fixed_at": "2026-08-15",
+    "status": "resolved_and_p2_rerun_completed",
+    "transport_sequence": [
+      "json_schema:400",
+      "function_calling:400",
+      "json_mode:400",
+      "strict_json:200"
+    ],
+    "provider_error_code": "invalid_parameter_error",
+    "verification_http_status": 200,
+    "verification_elapsed_ms": 78655.285,
+    "verification_event_names": [
+      "agent_route_selected",
+      "agent_task_plan_created",
+      "sources",
+      "answer_delta",
+      "done"
+    ],
+    "verification_created_count": 1,
+    "verification_error_count": 0,
+    "verification_done_count": 1,
+    "verification_task_status": "waiting_confirmation",
+    "verification_fixture_cleaned": true,
+    "p2_rerun_completed": true
+  },
+  "p2_mixed_load": {
+    "planned_mix": {
+      "rag_sse": 10,
+      "research_confirm": 3,
+      "document_sse": 2
+    },
+    "started": true,
+    "completed": true,
+    "overall_result": "failed",
+    "raw_report": "reports/p2-structured-sse-mixed.json",
+    "raw_report_reconstructed_from_assertion": true,
+    "initial_business_request_count": 15,
+    "driver_sample_count": 18,
+    "duration_seconds": 138.82799999999952,
+    "measured_global_peak_active_requests": 15,
+    "driver_success_count": 15,
+    "expected_rejection_count": 1,
+    "unexpected_failure_count": 2,
+    "driver_business_success_rate": 0.8823529411764706,
+    "initial_non_rejected_transport_success_rate": 0.8571428571428571,
+    "initial_non_rejected_end_to_end_success_rate": 0.7142857142857143,
+    "http_status_counts": {
+      "200": 17,
+      "429": 1
+    },
+    "error_code_counts": {
+      "AGENT_CAPACITY_EXCEEDED": 1,
+      "AGENT_TASK_PLAN_VERSION_CONFLICT": 2
+    },
+    "latency_ms": {
+      "mean": 71263.86762222237,
+      "p50": 83476.36720000082,
+      "p95": 137737.70420000073,
+      "p99": 137737.70420000073,
+      "max": 137737.70420000073
+    },
+    "sse_latency_ms": {
+      "first_event_p50": 20839.37800000058,
+      "first_event_p95": 37930.193500000314,
+      "first_answer_p50": 53352.4694000007,
+      "first_answer_p95": 70264.5479999992
+    },
+    "rag": {
+      "count": 10,
+      "success_count": 10,
+      "distinct_sessions": 10,
+      "p95_ms": 137737.70420000073,
+      "max_p95_threshold_ms": 120000,
+      "latency_gate_passed": false
+    },
+    "research": {
+      "accepted": 2,
+      "capacity_rejected": 1,
+      "capacity_gate_passed": true,
+      "accepted_final_failed": 2,
+      "accepted_business_success": 0,
+      "business_error_code": "AGENT_TASK_REQUIREMENT_FAILED",
+      "business_reason_code": "REQUIREMENT_EVIDENCE_INSUFFICIENT"
+    },
+    "document": {
+      "count": 2,
+      "success_count": 0,
+      "sse_error_count": 2,
+      "error_code": "AGENT_TASK_PLAN_VERSION_CONFLICT",
+      "capacity_gate_passed": false,
+      "root_cause": "Supervisor后在状态仍为created时保存补充快照，而状态机禁止created到created，导致第一次save_snapshot必然不命中。",
+      "production_fix_applied": false
+    },
+    "acceptance": {
+      "global_peak_15": true,
+      "rag_sse": true,
+      "research_capacity": true,
+      "document_capacity": false,
+      "p95_at_most_120000_ms": false,
+      "overall_15_user_mixed": false
+    },
+    "claim_15_inflight_allowed": true,
+    "claim_15_user_business_acceptance_allowed": false
+  },
+  "post_p2_document_state_remediation": {
+    "fixed_at": "2026-08-15",
+    "status": "resolved_pending_10_plus_3_plus_2_rerun",
+    "alembic_revision": "20260815_0014",
+    "task_plan_active_states": [
+      "preparing_confirmation",
+      "executing_confirmed"
+    ],
+    "pre_confirmation_flow": "created -> preparing_confirmation -> waiting_confirmation",
+    "confirmed_flow": "waiting_confirmation -> executing_confirmed -> completed|completed_with_warnings|failed",
+    "waiting_confirmation_direct_terminal_allowed": false,
+    "confirmed_side_effect_guarded_by_database_status": true,
+    "focused_regressions_passed": true,
+    "full_p2_rerun_completed": false,
+    "targeted_live_document_attempt": {
+      "endpoint": "/rag/chat/stream/events",
+      "http_status": 200,
+      "elapsed_ms": 21514.0953,
+      "result": "router_clarification_before_task_plan_creation",
+      "router_error_type": "ValidationError",
+      "event_names": [
+        "agent_route_selected",
+        "agent_route_clarification_required",
+        "sources",
+        "answer_delta",
+        "done"
+      ],
+      "task_plan_created": false,
+      "side_effects_executed": false,
+      "counts_as_state_machine_acceptance": false,
+      "automatic_retry_performed": false
+    }
+  },
+  "pre_p2_rerun_preparation": {
+    "prepared_at": "2026-08-15",
+    "status": "blocked_by_research_business_quality",
+    "formal_p2_allowed": false,
+    "environment": {
+      "alembic_current": "20260815_0014",
+      "alembic_head": "20260815_0014",
+      "gitlab": "healthy",
+      "uvicorn_workers_ready": 4,
+      "worker_replacement_observed": false
+    },
+    "identity_preflight": {
+      "login_200": 15,
+      "me_200": 15,
+      "unique_user_ids": 15,
+      "role_matrix_passed": true,
+      "system_admin_count": 0
+    },
+    "initial_research_fixture_creation": {
+      "attempted": 3,
+      "waiting_confirmation": 3,
+      "elapsed_ms": [
+        68606.9404,
+        70115.2876,
+        55593.6115
+      ],
+      "pilot_confirm_elapsed_ms": 107905.336,
+      "pilot_final_status": "failed",
+      "pilot_error_code": "AGENT_TASK_REQUIREMENT_FAILED",
+      "pilot_requirement_statuses": [
+        "failed",
+        "failed",
+        "failed"
+      ],
+      "pilot_reason_code": "REQUIREMENT_EVIDENCE_INSUFFICIENT"
+    },
+    "explicit_deployment_document_pilot": {
+      "creation_elapsed_ms": 53912.0717,
+      "creation_status": "waiting_confirmation",
+      "confirm_elapsed_ms": 121986.085,
+      "final_status": "failed",
+      "error_code": "AGENT_TASK_REQUIREMENT_FAILED",
+      "root_cause": "two knowledge workers exhausted tool-call budget before final answer and produced no valid evidence"
+    },
+    "exact_configuration_attempt": {
+      "elapsed_ms": 139796.371,
+      "sse_error_code": "APP_SERVICE_ERROR",
+      "research_task_plan_created": false,
+      "observed_route": "knowledge_document_management"
+    },
+    "stop_gate_triggered": true,
+    "additional_model_retries_performed_after_stop_gate": false,
+    "cleanup": {
+      "deleted_task_plans": 5,
+      "deleted_commands": 3,
+      "deleted_review_exports": 10,
+      "remaining_task_plans": 0,
+      "active_capacity_slots": 0,
+      "load_users_preserved": 15,
+      "load_config_controls": 0
+    },
+    "unblock_condition": "a fresh Research pilot must reach completed or completed_with_warnings with non-failed requirement evidence before creating three new waiting_confirmation controls"
+  },
+  "cost_accounting": {
+    "cost_bearing_rag_requests": 16,
+    "cost_bearing_research_fixture_attempts": 5,
+    "p2_research_confirm_attempts": 3,
+    "p2_document_attempts": 2,
+    "p2_known_rerank_calls": 14,
+    "p2_known_rerank_tokens": 10866,
+    "p2_known_llm_generate_calls": 4,
+    "p2_known_llm_generate_tokens": 8544,
+    "p2_llm_stream_calls_without_usage": 10,
+    "main_model_input_tokens": null,
+    "main_model_output_tokens": null,
+    "reviewer_model_tokens": null,
+    "exact_cost_cny": null,
+    "reason_exact_cost_unavailable": "结构化调用和流式主模型没有完整usage，且本次没有DashScope账户账单/用量控制台读权限。",
+    "budget_action": "只执行一次正式10+3+2，没有在失败后自动重试高成本业务请求。"
+  },
+  "database_after_tests": {
+    "active_task_leases": 0,
+    "active_capacity_slots": {
+      "research": 0,
+      "document": 0
+    },
+    "expired_occupied_slots": {
+      "research": 0,
+      "document": 0
+    },
+    "p2_document_runtime_record_count": 0,
+    "p2_document_gitlab_change_request_count": 0,
+    "p2_research_task_statuses": {
+      "failed": 2,
+      "waiting_confirmation": 1
+    },
+    "p2_document_task_statuses": {
+      "created": 2
+    }
+  },
+  "database_after_remediation_cleanup": {
+    "agent_task_plan_count": 0,
+    "active_capacity_slot_count": 0,
+    "configured_load_users": 15,
+    "present_load_users": 15,
+    "deleted_test_task_plans": 10,
+    "deleted_test_review_exports": 32
+  }
+}

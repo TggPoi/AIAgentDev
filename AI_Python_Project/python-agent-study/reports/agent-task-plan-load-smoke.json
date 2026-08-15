@@ -1,0 +1,169 @@
+{
+  "request_count": 14,
+  "success_count": 14,
+  "success_rate": 1.0,
+  "requests_per_second": 0.05836738097223366,
+  "latency_ms": {
+    "mean": 48027.54502142904,
+    "p50": 46878.58590000178,
+    "p95": 68706.13039999807,
+    "p99": 68706.13039999807,
+    "max": 68706.13039999807
+  },
+  "status_counts": {
+    "200": 14
+  },
+  "error_code_counts": {},
+  "by_operation": {
+    "rag_chat": {
+      "count": 14,
+      "success_rate": 1.0,
+      "p95_ms": 68706.13039999807,
+      "max_ms": 68706.13039999807
+    }
+  },
+  "samples": [
+    {
+      "operation": "rag_chat",
+      "user": "nl2sql_real_estate_employee",
+      "status_code": 200,
+      "elapsed_ms": 47350.01600000032,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null
+    },
+    {
+      "operation": "rag_chat",
+      "user": "nl2sql_game_router_employee",
+      "status_code": 200,
+      "elapsed_ms": 50323.50829999996,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null
+    },
+    {
+      "operation": "rag_chat",
+      "user": "nl2sql_game_employee",
+      "status_code": 200,
+      "elapsed_ms": 52488.44819999795,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null
+    },
+    {
+      "operation": "rag_chat",
+      "user": "rbac_admin",
+      "status_code": 200,
+      "elapsed_ms": 40102.90720000194,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null
+    },
+    {
+      "operation": "rag_chat",
+      "user": "rbac_editor",
+      "status_code": 200,
+      "elapsed_ms": 50969.8438000014,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null
+    },
+    {
+      "operation": "rag_chat",
+      "user": "rbac_manager",
+      "status_code": 200,
+      "elapsed_ms": 55368.70799999815,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null
+    },
+    {
+      "operation": "rag_chat",
+      "user": "rbac_operator",
+      "status_code": 200,
+      "elapsed_ms": 42551.2086000017,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null
+    },
+    {
+      "operation": "rag_chat",
+      "user": "rbac_reader",
+      "status_code": 200,
+      "elapsed_ms": 39035.41970000151,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null
+    },
+    {
+      "operation": "rag_chat",
+      "user": "load_test_01",
+      "status_code": 200,
+      "elapsed_ms": 46878.58590000178,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null
+    },
+    {
+      "operation": "rag_chat",
+      "user": "load_test_02",
+      "status_code": 200,
+      "elapsed_ms": 36681.58040000344,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null
+    },
+    {
+      "operation": "rag_chat",
+      "user": "nl2sql_real_estate_employee",
+      "status_code": 200,
+      "elapsed_ms": 45056.22890000086,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null
+    },
+    {
+      "operation": "rag_chat",
+      "user": "nl2sql_game_employee",
+      "status_code": 200,
+      "elapsed_ms": 44140.28029999827,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null
+    },
+    {
+      "operation": "rag_chat",
+      "user": "nl2sql_game_router_employee",
+      "status_code": 200,
+      "elapsed_ms": 68706.13039999807,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null
+    },
+    {
+      "operation": "rag_chat",
+      "user": "rbac_admin",
+      "status_code": 200,
+      "elapsed_ms": 52732.76460000125,
+      "error_code": null,
+      "task_plan_id": null,
+      "task_status": null
+    }
+  ],
+  "virtual_user_count": 10,
+  "rag_concurrency": 3,
+  "duration_seconds": 239.86000000000058,
+  "control_count": 0,
+  "participating_rag_users": [
+    "load_test_01",
+    "load_test_02",
+    "nl2sql_game_employee",
+    "nl2sql_game_router_employee",
+    "nl2sql_real_estate_employee",
+    "rbac_admin",
+    "rbac_editor",
+    "rbac_manager",
+    "rbac_operator",
+    "rbac_reader"
+  ]
+}

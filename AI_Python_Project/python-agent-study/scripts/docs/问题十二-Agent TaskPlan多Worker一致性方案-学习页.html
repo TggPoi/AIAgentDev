@@ -1,0 +1,1607 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="结合当前工程真实代码讲解 Agent TaskPlan 多 Worker 一致性：进程内锁、PostgreSQL 租约、CAS、fencing token、幂等命令、状态机与容量槽。">
+  <title>问题十二 · Agent TaskPlan 多 Worker 一致性深度学习页</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --paper: #ffffff;
+      --paper-soft: #fbfcff;
+      --ink: #172033;
+      --muted: #5e6b82;
+      --line: #dfe5ef;
+      --brand: #3157d5;
+      --brand-2: #5637c8;
+      --brand-soft: #edf1ff;
+      --green: #147d64;
+      --green-soft: #eaf8f3;
+      --amber: #a65b00;
+      --amber-soft: #fff5df;
+      --red: #bd3a4a;
+      --red-soft: #fff0f2;
+      --cyan: #087a91;
+      --cyan-soft: #e9f9fc;
+      --code: #111827;
+      --code-ink: #dbeafe;
+      --shadow: 0 14px 38px rgba(32, 48, 88, .08);
+      --radius: 18px;
+      --sidebar: 284px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 88px; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% -10%, rgba(49, 87, 213, .12), transparent 34rem),
+        radial-gradient(circle at 100% 15%, rgba(86, 55, 200, .08), transparent 30rem),
+        var(--bg);
+      font-family: "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+      font-size: 16px;
+      line-height: 1.82;
+    }
+    a { color: var(--brand); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    a:hover { color: var(--brand-2); }
+    button, input { font: inherit; }
+    code, pre { font-family: Consolas, "Cascadia Code", "Microsoft YaHei", monospace; }
+    code {
+      border: 1px solid #dbe2ef;
+      border-radius: 6px;
+      background: #f1f4fa;
+      padding: .08em .38em;
+      color: #243e8d;
+      font-size: .91em;
+    }
+
+    .reading-progress {
+      position: fixed;
+      inset: 0 auto auto 0;
+      z-index: 1000;
+      height: 4px;
+      width: 0;
+      background: linear-gradient(90deg, #4d72ee, #7c3aed, #0f9f82);
+      box-shadow: 0 0 12px rgba(77, 114, 238, .5);
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      color: white;
+      background: linear-gradient(125deg, #182554 0%, #263f99 52%, #5232a9 100%);
+      padding: 54px 24px 48px;
+    }
+    .hero::before,
+    .hero::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      filter: blur(2px);
+      opacity: .24;
+    }
+    .hero::before { width: 360px; height: 360px; right: -80px; top: -180px; background: #8ee7ff; }
+    .hero::after { width: 280px; height: 280px; left: -120px; bottom: -190px; background: #b7a4ff; }
+    .hero-inner { position: relative; z-index: 1; max-width: 1240px; margin: auto; }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px;
+      border: 1px solid rgba(255,255,255,.28);
+      border-radius: 999px;
+      background: rgba(255,255,255,.1);
+      font-size: 13px;
+      letter-spacing: .04em;
+    }
+    .hero h1 { max-width: 940px; margin: 17px 0 12px; font-size: clamp(30px, 5vw, 52px); line-height: 1.2; }
+    .hero .lead { max-width: 920px; margin: 0; color: #dce5ff; font-size: 18px; }
+    .hero-metrics { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+    .hero-metric {
+      min-width: 150px;
+      padding: 10px 13px;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 12px;
+      background: rgba(255,255,255,.09);
+      backdrop-filter: blur(6px);
+    }
+    .hero-metric b { display: block; font-size: 18px; }
+    .hero-metric span { color: #ced9ff; font-size: 12px; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 12px max(18px, calc((100vw - 1240px) / 2));
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(12px);
+    }
+    .topbar-title { font-weight: 750; color: #233671; }
+    .topbar-actions { display: flex; gap: 8px; }
+    .ghost-button {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--ink);
+      background: white;
+      cursor: pointer;
+      padding: 7px 11px;
+    }
+    .ghost-button:hover { border-color: #aebce6; background: var(--brand-soft); }
+
+    .layout {
+      display: grid;
+      grid-template-columns: var(--sidebar) minmax(0, 1fr);
+      gap: 28px;
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 30px 22px 90px;
+    }
+    .sidebar {
+      position: sticky;
+      top: 80px;
+      align-self: start;
+      max-height: calc(100vh - 100px);
+      overflow: auto;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255,255,255,.88);
+      box-shadow: var(--shadow);
+    }
+    .sidebar h2 { margin: 0 0 8px; font-size: 13px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+    .toc { margin: 0; padding: 0; list-style: none; }
+    .toc li { margin: 2px 0; }
+    .toc a {
+      display: block;
+      border-left: 3px solid transparent;
+      border-radius: 7px;
+      padding: 6px 8px 6px 10px;
+      color: #4f5c73;
+      text-decoration: none;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .toc a:hover { color: var(--brand); background: var(--brand-soft); }
+    .toc a.active { color: var(--brand); border-left-color: var(--brand); background: var(--brand-soft); font-weight: 700; }
+    .toc .toc-sub a { padding-left: 22px; font-size: 12.5px; }
+
+    article { min-width: 0; }
+    section.chapter {
+      margin-bottom: 28px;
+      padding: clamp(22px, 4vw, 38px);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,.96);
+      box-shadow: var(--shadow);
+    }
+    .chapter-kicker { color: var(--brand); font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    h2 { margin: 4px 0 17px; color: #1e2f69; font-size: clamp(25px, 3vw, 34px); line-height: 1.32; }
+    h3 { margin: 30px 0 11px; color: #263b75; font-size: 22px; line-height: 1.45; }
+    h4 { margin: 22px 0 8px; color: #33466f; font-size: 17px; }
+    p { margin: 10px 0; }
+    ul, ol { padding-left: 1.35em; }
+    li + li { margin-top: 5px; }
+    .big-idea { font-size: 19px; color: #27334a; }
+    .big-idea strong { color: #203c9d; }
+
+    .callout {
+      margin: 16px 0;
+      padding: 15px 17px;
+      border: 1px solid var(--line);
+      border-left-width: 5px;
+      border-radius: 12px;
+      background: var(--paper-soft);
+    }
+    .callout-title { display: block; margin-bottom: 5px; font-weight: 800; }
+    .callout.info { border-left-color: var(--brand); background: var(--brand-soft); }
+    .callout.ok { border-left-color: var(--green); background: var(--green-soft); }
+    .callout.warn { border-left-color: var(--amber); background: var(--amber-soft); }
+    .callout.danger { border-left-color: var(--red); background: var(--red-soft); }
+    .callout.cyan { border-left-color: var(--cyan); background: var(--cyan-soft); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 2px 9px;
+      font-size: 12px;
+      font-weight: 800;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .badge.observed { color: #0b6b55; background: #dff5ed; }
+    .badge.source { color: #2646a4; background: #e8edff; }
+    .badge.example { color: #8d5200; background: #fff0cf; }
+    .badge.pending { color: #a42d3f; background: #ffe5e9; }
+
+    .grid-2, .grid-3, .grid-4 { display: grid; gap: 14px; margin: 16px 0; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .mini-card {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--paper-soft);
+    }
+    .mini-card h4 { margin: 0 0 5px; }
+    .mini-card p { margin: 5px 0; color: #536078; font-size: 14px; }
+
+    .table-wrap { margin: 15px 0; overflow: auto; border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; background: white; font-size: 14px; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: #2b3f78; background: #f1f4fb; font-weight: 800; }
+    tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #fafbff; }
+    .nowrap { white-space: nowrap; }
+
+    .code-block { position: relative; margin: 15px 0; }
+    .code-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 12px 12px 0 0;
+      color: #b8c8e9;
+      background: #1d2740;
+      font-size: 12px;
+    }
+    .copy-button {
+      border: 1px solid #43516d;
+      border-radius: 7px;
+      color: #dce6ff;
+      background: transparent;
+      cursor: pointer;
+      padding: 3px 8px;
+      font-size: 12px;
+    }
+    .copy-button:hover { background: #2a3857; }
+    pre {
+      margin: 0;
+      overflow: auto;
+      border-radius: 0 0 12px 12px;
+      padding: 16px;
+      color: var(--code-ink);
+      background: var(--code);
+      font-size: 13.5px;
+      line-height: 1.65;
+      tab-size: 4;
+    }
+    pre code { border: 0; padding: 0; color: inherit; background: transparent; font-size: inherit; }
+    .code-walk { margin: 10px 0 20px; padding-left: 22px; color: #44516a; }
+    .code-walk li::marker { color: var(--brand); font-weight: 800; }
+
+    .mermaid-wrap {
+      margin: 18px 0;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fbfcff;
+      padding: 12px;
+    }
+    .diagram-caption { margin: 0 0 8px; color: var(--muted); font-size: 13px; font-weight: 700; }
+    pre.mermaid { min-width: 720px; border-radius: 9px; color: var(--ink); background: #fff; text-align: center; }
+
+    .state-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 17px 0; }
+    .state {
+      padding: 9px 12px;
+      border: 1px solid #bdc9eb;
+      border-radius: 10px;
+      color: #29448d;
+      background: #eef2ff;
+      font-family: Consolas, monospace;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .state.terminal { color: #0b6d57; border-color: #a9daca; background: #ebf8f3; }
+    .state.cancel { color: #a63243; border-color: #efb9c1; background: #fff0f2; }
+    .arrow { color: #7b88a3; font-size: 21px; }
+
+    .timeline { margin: 18px 0; padding: 0; list-style: none; counter-reset: timeline; }
+    .timeline li { position: relative; margin-left: 16px; padding: 0 0 22px 32px; border-left: 2px solid #ced7eb; }
+    .timeline li::before {
+      counter-increment: timeline;
+      content: counter(timeline);
+      position: absolute;
+      left: -15px;
+      top: 0;
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      color: white;
+      background: var(--brand);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .timeline li:last-child { border-left-color: transparent; padding-bottom: 0; }
+    .timeline strong { color: #253c7e; }
+    .timeline .value { display: block; margin-top: 5px; color: #56637a; font-size: 14px; }
+
+    details {
+      margin: 12px 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: white;
+    }
+    summary { cursor: pointer; padding: 12px 15px; color: #263b75; background: #f7f9fd; font-weight: 800; }
+    details[open] summary { border-bottom: 1px solid var(--line); }
+    .details-body { padding: 14px 16px; }
+
+    .simulator {
+      margin: 20px 0;
+      padding: 18px;
+      border: 1px solid #cdd8f1;
+      border-radius: 16px;
+      background: linear-gradient(145deg, #f7f9ff, #eff7ff);
+    }
+    .sim-controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .sim-button {
+      border: 0;
+      border-radius: 9px;
+      padding: 8px 11px;
+      color: white;
+      background: var(--brand);
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .sim-button.warn { background: var(--amber); }
+    .sim-button.danger { background: var(--red); }
+    .sim-button.secondary { background: #53627d; }
+    .sim-state {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin: 12px 0;
+    }
+    .sim-cell { padding: 9px; border: 1px solid #d8e1f3; border-radius: 9px; background: white; font-size: 13px; }
+    .sim-cell b { display: block; color: #27418b; }
+    .sim-log { min-height: 130px; max-height: 240px; overflow: auto; margin: 0; border-radius: 10px; white-space: pre-wrap; }
+
+    .file-map a { font-family: Consolas, monospace; font-size: 13px; }
+    .file-map td:first-child { min-width: 270px; }
+    .proof-board { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+    .proof { border-left: 4px solid var(--green); padding: 13px 15px; border-radius: 10px; background: var(--green-soft); }
+    .proof.pending { border-left-color: var(--red); background: var(--red-soft); }
+    .proof b { display: block; margin-bottom: 4px; }
+    .proof span { color: #526078; font-size: 14px; }
+
+    .quiz { counter-reset: q; }
+    .quiz details summary::before { counter-increment: q; content: "思考 " counter(q) " · "; color: var(--brand); }
+
+    footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 50px; color: var(--muted); font-size: 13px; }
+    .mobile-toc { display: none; }
+
+    body.dark {
+      --bg: #0e1422; --paper: #151d2d; --paper-soft: #182235; --ink: #e6ebf5;
+      --muted: #9ba9c1; --line: #2b3952; --brand: #8ca7ff; --brand-2: #b29cff;
+      --brand-soft: #202d4e; --green-soft: #15352f; --amber-soft: #392b17;
+      --red-soft: #3b2028; --cyan-soft: #14343c; --shadow: none;
+    }
+    body.dark .topbar, body.dark .sidebar, body.dark section.chapter, body.dark table, body.dark details { background: rgba(21,29,45,.97); }
+    body.dark th { background: #1c2940; color: #cbd8ff; }
+    body.dark tbody tr:hover td { background: #1a2639; }
+    body.dark code { color: #b9c9ff; background: #202c42; border-color: #34445f; }
+    body.dark .mini-card, body.dark .mermaid-wrap, body.dark .simulator, body.dark .sim-cell { background: #182235; }
+    body.dark pre.mermaid { background: white; }
+    body.dark .ghost-button { color: var(--ink); background: #182235; }
+
+    @media (max-width: 1040px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .mobile-toc { display: inline-block; }
+      .grid-4 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+    @media (max-width: 720px) {
+      body { font-size: 15px; }
+      .hero { padding: 38px 18px 34px; }
+      .layout { padding: 18px 12px 60px; }
+      section.chapter { padding: 20px 16px; border-radius: 14px; }
+      .grid-2, .grid-3, .grid-4, .proof-board, .sim-state { grid-template-columns: 1fr; }
+      .topbar-title { display: none; }
+      .topbar { justify-content: flex-end; padding: 10px 12px; }
+      .hero-metric { min-width: 135px; flex: 1; }
+    }
+    @media print {
+      .reading-progress, .topbar, .sidebar, .copy-button, .sim-controls { display: none !important; }
+      body { background: white; font-size: 11pt; }
+      .layout { display: block; max-width: none; padding: 0; }
+      section.chapter { break-inside: avoid; box-shadow: none; margin: 0 0 16px; }
+      .hero { color: #111827; background: white; border-bottom: 2px solid #334155; padding: 20px 0; }
+      .hero .lead, .hero-metric span { color: #475569; }
+      .hero-metric { border-color: #cbd5e1; }
+    }
+  </style>
+</head>
+<body>
+  <div id="readingProgress" class="reading-progress"></div>
+
+  <header class="hero">
+    <div class="hero-inner">
+      <span class="eyebrow">从锁理论走到分布式一致性工程</span>
+      <h1>问题十二：Agent TaskPlan 多 Worker / 多实例一致性</h1>
+      <p class="lead">这不是一份方案清单，而是一条完整学习路径：先亲手看见进程内锁为什么失效，再沿当前工程真实代码追踪数据库租约、fencing token、原子 CAS、幂等命令、状态机和容量槽如何协作。</p>
+      <div class="hero-metrics">
+        <div class="hero-metric"><b>4 张事实表</b><span>TaskPlan、Runtime、Command、Capacity</span></div>
+        <div class="hero-metric"><b>2 层互斥</b><span>进程内快速失败 + PostgreSQL 权威租约</span></div>
+        <div class="hero-metric"><b>8 个业务状态</b><span>确认前与确认后执行明确分离</span></div>
+        <div class="hero-metric"><b>当前结论</b><span>一致性机制已落地，正式混合压测待复测</span></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="topbar">
+    <div class="topbar-title">Agent TaskPlan 一致性 · 深度学习页</div>
+    <div class="topbar-actions">
+      <button id="mobileTocButton" class="ghost-button mobile-toc" type="button">目录</button>
+      <button id="themeButton" class="ghost-button" type="button">深色模式</button>
+      <button class="ghost-button" type="button" onclick="window.print()">打印 / PDF</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <aside id="sidebar" class="sidebar">
+      <h2>学习路线</h2>
+      <ol class="toc">
+        <li><a href="#contract">0. 学习契约与证据边界</a></li>
+        <li><a href="#mental-model">1. 先建立问题模型</a></li>
+        <li><a href="#basics">2. 补齐并发基础</a></li>
+        <li class="toc-sub"><a href="#process-thread-coroutine">进程、线程、协程</a></li>
+        <li class="toc-sub"><a href="#lock-scope">锁的作用域</a></li>
+        <li class="toc-sub"><a href="#atomicity">原子性与丢失更新</a></li>
+        <li><a href="#historical-failures">3. 历史故障怎样发生</a></li>
+        <li><a href="#target-architecture">4. 当前目标架构</a></li>
+        <li><a href="#data-model">5. 四张表与事实边界</a></li>
+        <li><a href="#state-machine">6. 完整状态机</a></li>
+        <li><a href="#mechanisms">7. 七个核心机制</a></li>
+        <li class="toc-sub"><a href="#local-lock">进程内快速锁</a></li>
+        <li class="toc-sub"><a href="#lease">数据库租约与心跳</a></li>
+        <li class="toc-sub"><a href="#fencing">fencing token</a></li>
+        <li class="toc-sub"><a href="#cas">原子 CAS</a></li>
+        <li class="toc-sub"><a href="#idempotency">幂等命令</a></li>
+        <li class="toc-sub"><a href="#capacity">全局容量槽</a></li>
+        <li class="toc-sub"><a href="#cancel-wins">取消必胜</a></li>
+        <li><a href="#confirm-trace">8. 一次 confirm 完整追踪</a></li>
+        <li><a href="#race-cases">9. 四类竞态推演</a></li>
+        <li><a href="#simulator">10. 交互式代际模拟器</a></li>
+        <li><a href="#code-map">11. 当前工程代码地图</a></li>
+        <li><a href="#verification">12. 测试证据与验证方式</a></li>
+        <li><a href="#frontend">13. API、SSE 与 React</a></li>
+        <li><a href="#limits">14. 边界、残余风险与误区</a></li>
+        <li><a href="#exercises">15. 动手练习</a></li>
+        <li><a href="#summary">16. 最终总结与自测</a></li>
+      </ol>
+    </aside>
+
+    <article>
+      <section id="contract" class="chapter">
+        <div class="chapter-kicker">Chapter 0 · 阅读前先统一事实</div>
+        <h2>这份页面教什么，也诚实说明还没证明什么</h2>
+        <p class="big-idea">目标读者是：<strong>学过锁的 API 和理论，但还没有亲手处理过多进程、数据库并发和分布式任务状态冲突</strong>。读完后，你应该能不打开源码，完整解释一次 TaskPlan confirm 为什么需要七道不同的保护。</p>
+
+        <div class="grid-2">
+          <div class="mini-card">
+            <h4>你将能够解释</h4>
+            <p>为什么 <code>asyncio.Lock</code> 没写错，却仍挡不住两个 Uvicorn Worker。</p>
+            <p>为什么租约、fencing token、CAS 和幂等键不能互相替代。</p>
+            <p>为什么人工确认前不能叫 <code>running</code>，确认后必须进入独立状态。</p>
+          </div>
+          <div class="mini-card">
+            <h4>你将能够定位</h4>
+            <p>HTTP 控制请求进入哪个 endpoint、执行器、Store 和 Repository。</p>
+            <p>哪条条件 UPDATE 决定“谁是合法执行者”。</p>
+            <p>409、429、cancelled 和版本冲突分别说明哪一道防线生效。</p>
+          </div>
+        </div>
+
+        <h3>证据标签怎么读</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>标签</th><th>含义</th><th>本页用法</th></tr></thead>
+            <tbody>
+              <tr><td><span class="badge observed">已观察</span></td><td>已有真实测试、日志、数据库结果或量化报告。</td><td>例如两个进程争抢结果为 1 acquired + 1 BUSY；四 Worker 下 20 次 confirm 为 19 个 409 + 1 个唯一执行者。</td></tr>
+              <tr><td><span class="badge source">源码确认</span></td><td>从当前工作区真实实现推导，但本轮没有重新运行。</td><td>例如 <code>save_snapshot()</code> 的 WHERE 同时校验 version、owner、fence、expiry 和状态来源。</td></tr>
+              <tr><td><span class="badge example">教学示例</span></td><td>为了把机制讲清楚而构造的简化值，不冒充真实请求。</td><td>例如后文使用 <code>task_plan_demo_001</code> 跟踪字段变化。</td></tr>
+              <tr><td><span class="badge pending">尚待验收</span></td><td>实现或局部修复已存在，但完整业务验收尚未通过。</td><td>正式 10+3+2 混合压测仍未通过；当前测试按用户要求保持停止。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout danger">
+          <span class="callout-title">旧学习页最需要纠正的地方</span>
+          旧页把“方案设计”“旧缺陷”“落地实现”和“压测结论”混在一起，甚至同时出现“方案已完整落地”和“代码尚未写入”的互相矛盾表述。更重要的是，旧页仍把 <code>waiting_confirmation → completed</code> 当作需要补齐的路径；当前完整状态模型明确要求先进入 <code>executing_confirmed</code>，真实副作用不能从等待确认直接落到完成。
+        </div>
+      </section>
+
+      <section id="mental-model" class="chapter">
+        <div class="chapter-kicker">Chapter 1 · 先讲人话，再看代码</div>
+        <h2>问题不是“多人用了系统”，而是“同一任务被多个执行者同时认领”</h2>
+        <p>15 个员工各自查询不同问题，并不会天然产生 TaskPlan 状态冲突。真正危险的条件是：<strong>同一个 <code>task_plan_id</code> 的 confirm、retry、resume 或 execute 被重复提交，而且这些请求落到不同进程或不同实例。</strong></p>
+
+        <div class="grid-3">
+          <div class="mini-card"><h4>输入</h4><p>同一个 TaskPlan 的重复控制请求。来源可能是双击、客户端超时重试、负载均衡重试或两个管理员同时操作。</p></div>
+          <div class="mini-card"><h4>危险变化</h4><p>两个 Worker 都以为自己是唯一执行者，同时调用模型、写 RuntimeRecord、生成草稿或触发真实副作用。</p></div>
+          <div class="mini-card"><h4>必须输出</h4><p>只有一个执行者获得数据库权威执行权；其他请求要么重放结果，要么稳定返回 409/429，不能悄悄重复执行。</p></div>
+        </div>
+
+        <div class="mermaid-wrap">
+          <p class="diagram-caption">核心因果链：请求如何变成数据库承认的唯一执行权</p>
+          <pre class="mermaid">
+flowchart LR
+    A["重复 confirm / retry 请求"] --> B["进程内 task_plan_id 快速锁"]
+    B -->|"同进程已占用"| C["409 AGENT_TASK_PLAN_BUSY"]
+    B -->|"本进程空闲"| D["PostgreSQL begin_operation()"]
+    D --> E["幂等命令检查"]
+    E --> F["TaskPlan 租约条件 UPDATE"]
+    F --> G["全局容量槽 SKIP LOCKED"]
+    G --> H["TaskPlanLease 句柄"]
+    H --> I["业务执行 + 心跳续租"]
+    I --> J["CAS / fence / 状态条件保存"]
+    J --> K["终态、命令结果、槽位释放"]
+          </pre>
+        </div>
+
+        <div class="callout info">
+          <span class="callout-title">一句话记忆</span>
+          <strong>进程内锁负责“快”，数据库租约负责“真”，fencing token 负责“旧人闭嘴”，CAS 负责“旧快照不能覆盖”，幂等命令负责“同一动作重试不重复做”，容量槽负责“全系统别同时跑太多重任务”。</strong>
+        </div>
+      </section>
+
+      <section id="basics" class="chapter">
+        <div class="chapter-kicker">Chapter 2 · 从你学过的锁理论出发</div>
+        <h2>并发基础：为什么一把正确的锁仍然可能保护错范围</h2>
+
+        <h3 id="process-thread-coroutine">2.1 进程、线程、协程：先分清“内存是否共享”</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>执行单位</th><th>内存关系</th><th>本工程对应</th><th>关键风险</th></tr></thead>
+            <tbody>
+              <tr><td>协程</td><td>同一线程、同一进程内共享对象；在 <code>await</code> 处让出执行权。</td><td>FastAPI 请求协程、心跳协程、SSE 轮询协程。</td><td>读完状态后发生 await，回来时状态可能已经变了。</td></tr>
+              <tr><td>线程</td><td>同一进程内共享堆内存，各线程有独立调用栈。</td><td><code>asyncio.to_thread()</code> 执行同步 checkpoint / 文件导出。</td><td>共享对象需要线程安全；但线程锁仍不能保护另一个进程。</td></tr>
+              <tr><td>进程</td><td>每个进程有独立地址空间，普通 Python 对象不共享。</td><td><code>uvicorn --workers 4</code> 的四个 Worker。</td><td>四份 <code>asyncio.Lock</code> 互相看不见。</td></tr>
+              <tr><td>实例 / 容器</td><td>不仅内存独立，甚至可能运行在不同机器。</td><td>负载均衡后多个 FastAPI 实例。</td><td>只有共享数据库、队列或协调服务能提供权威互斥。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4>最小实验：同一进程里的锁确实有效</h4>
+        <div class="code-block">
+          <div class="code-label"><span>教学示例 · asyncio_lock_same_process.py</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>import asyncio
+
+lock = asyncio.Lock()
+
+async def work(name: str) -&gt; None:
+    if lock.locked():
+        print(name, "发现锁已占用")
+    async with lock:
+        print(name, "进入临界区")
+        await asyncio.sleep(0.2)
+        print(name, "离开临界区")
+
+async def main() -&gt; None:
+    await asyncio.gather(work("A"), work("B"))
+
+asyncio.run(main())</code></pre>
+        </div>
+        <p>你会看到 A、B 不会同时进入临界区。这就是当前工程保留 <code>_TaskPlanLockRegistry</code> 的原因：同一 Worker 内可以极快地拒绝第二个请求，不必先访问数据库。</p>
+
+        <h3 id="lock-scope">2.2 锁的关键不是“有没有”，而是“谁能看见它”</h3>
+        <p>每个 Uvicorn Worker 导入模块时，都会各自执行一次 <code>_TASK_PLAN_LOCKS = _TaskPlanLockRegistry()</code>。四个 Worker 得到四个不同对象。因此 Worker 1 的字典里有 <code>task_plan_123</code>，Worker 2 的字典仍然是空的。</p>
+
+        <div class="code-block">
+          <div class="code-label"><span>教学示例 · Windows 下两个进程各自拥有自己的锁</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>import asyncio
+from multiprocessing import Process
+import os
+
+async def local_lock_demo() -&gt; None:
+    lock = asyncio.Lock()
+    async with lock:
+        print(f"pid={os.getpid()} acquired its own lock")
+        await asyncio.sleep(0.5)
+
+def worker() -&gt; None:
+    asyncio.run(local_lock_demo())
+
+if __name__ == "__main__":
+    p1 = Process(target=worker)
+    p2 = Process(target=worker)
+    p1.start()
+    p2.start()
+    p1.join()
+    p2.join()</code></pre>
+        </div>
+        <ol class="code-walk">
+          <li>两个进程都创建了名为 <code>lock</code> 的对象，但它们位于两个地址空间。</li>
+          <li>两行输出都会显示 acquired，这不是锁失效，而是锁从来没有被共享。</li>
+          <li>要跨进程协调，判定依据必须落在双方都能看到的 PostgreSQL 行上。</li>
+        </ol>
+
+        <h3 id="atomicity">2.3 原子性、TOCTOU 与丢失更新</h3>
+        <p><strong>TOCTOU</strong> 是“检查时”和“使用时”之间出现时间窗口。旧 Runtime 实现的逻辑是：先读取 version，再在 Python 中比较，最后普通写回。问题在于，两个 Writer 可以在检查阶段都看到 version=1。</p>
+
+        <div class="grid-2">
+          <div class="mini-card">
+            <h4>非原子读改写</h4>
+            <p>W1 读到 version=1。</p>
+            <p>W2 也读到 version=1。</p>
+            <p>W1 写 version=2。</p>
+            <p>W2 再写 version=2，覆盖 W1。</p>
+          </div>
+          <div class="mini-card">
+            <h4>数据库原子 CAS</h4>
+            <p>W1 执行 <code>UPDATE ... WHERE version=1</code>，更新 1 行。</p>
+            <p>数据库立即把 version 改为 2。</p>
+            <p>W2 的相同 UPDATE 更新 0 行。</p>
+            <p>W2 根据 rowcount=0 得知自己拿的是旧快照。</p>
+          </div>
+        </div>
+
+        <div class="callout warn">
+          <span class="callout-title">文件“原子替换”不是业务“原子状态转换”</span>
+          <code>os.replace()</code> 能保证读者不会看见半个 JSON 文件，但不能判断这个完整 JSON 是不是旧快照。旧执行者仍可能把完整的 <code>completed</code> 文件覆盖到刚保存的 <code>cancelled</code> 文件上。原子文件写解决的是“文件完整性”，CAS 解决的是“业务新旧顺序”。
+        </div>
+      </section>
+
+      <section id="historical-failures" class="chapter">
+        <div class="chapter-kicker">Chapter 3 · 用已经发生过的故障反推设计</div>
+        <h2>修复前的三条失败链路，分别暴露了三种不同缺口</h2>
+
+        <div class="proof-board">
+          <div class="proof">
+            <b><span class="badge observed">已观察</span> 两个进程都拿到本地锁</b>
+            <span>两个独立 Python 进程针对同一 task_plan_id 调用真实本地锁，结果是两个进程都 ACQUIRED。证明本地锁不能跨进程互斥。</span>
+          </div>
+          <div class="proof">
+            <b><span class="badge observed">已观察</span> 两个旧 Writer 都通过 version=1</b>
+            <span>两个并发更新都返回 record_version=2，最后只留下一个 Writer 的内容。证明 Python 中先比较再 put 不是原子 CAS。</span>
+          </div>
+          <div class="proof">
+            <b><span class="badge observed">已观察</span> cancelled 被旧快照覆盖</b>
+            <span>cancel 路径先保存 cancelled，旧 runner 随后保存 completed，最终文件是 completed。证明原子替换不保证状态单调。</span>
+          </div>
+          <div class="proof pending">
+            <b><span class="badge pending">当时未验证</span> 10–15 人容量承诺</b>
+            <span>没有全局容量槽和真实混合压测时，只能说低并发试用合理，不能宣称 15 人同时运行复杂 Agent。</span>
+          </div>
+        </div>
+
+        <div class="mermaid-wrap">
+          <p class="diagram-caption">旧链路：两个 Worker 都通过自己的本地判断</p>
+          <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant W1 as Uvicorn Worker 1
+    participant W2 as Uvicorn Worker 2
+    participant F as JSON / Runtime Store
+    C->>W1: confirm(task_plan_123)
+    C->>W2: confirm(task_plan_123)
+    W1->>W1: local lock is free
+    W2->>W2: local lock is free
+    W1->>F: read old snapshot
+    W2->>F: read same old snapshot
+    W1->>F: save completed snapshot
+    W2->>F: save another snapshot
+    Note over W1,W2: 两个执行者都认为自己合法
+          </pre>
+        </div>
+
+        <h3>为什么不能只换成“跨进程文件锁”</h3>
+        <p>文件锁最多解决单机共享目录中的互斥，无法自然覆盖多容器、多机器、状态条件更新、幂等结果重放和全局容量。更重要的是，本工程已经把 PostgreSQL 作为业务事实数据库；让数据库在一个事务里同时判断状态、租约、命令和槽位，才能把多个判断合成原子决策。</p>
+      </section>
+
+      <section id="target-architecture" class="chapter">
+        <div class="chapter-kicker">Chapter 4 · 先看整体，再拆机制</div>
+        <h2>当前架构：数据库负责裁决，业务执行器负责工作</h2>
+        <p>最重要的分层不是类名，而是职责：<strong>Repository 决定“你有没有资格写”，Executor 决定“拿到资格后做什么业务”。</strong>模型、Tool Loop、Research Worker 都不能绕过 Repository 自己宣布执行权。</p>
+
+        <div class="mermaid-wrap">
+          <p class="diagram-caption">当前实现的控制面与业务面</p>
+          <pre class="mermaid">
+flowchart TB
+    API["FastAPI 控制 API<br/>confirm / retry / cancel"] --> EX["AgentTaskExecutor<br/>控制协议 Facade"]
+    EX --> LL["_TaskPlanLockRegistry<br/>同进程快速失败"]
+    EX --> LM["AgentTaskLeaseManager<br/>hold + heartbeat"]
+    LM --> ST["AgentTaskPlanStore<br/>事实读写入口"]
+    ST --> RP["AgentTaskPlanRepository<br/>唯一并发 SQL 边界"]
+    RP --> PG[("PostgreSQL<br/>4 张业务表")]
+    EX --> RE["Research Executor"]
+    EX --> DE["Document Executor / Deep Agent"]
+    RE --> ST
+    DE --> ST
+    ST -. "best effort" .-> EXPORT["JSON / Markdown 审查导出"]
+    DE --> CP["LangGraph 加密 checkpoint"]
+    style RP fill:#eaf8f3,stroke:#147d64
+    style PG fill:#eaf8f3,stroke:#147d64
+    style EXPORT fill:#fff5df,stroke:#a65b00
+          </pre>
+        </div>
+
+        <div class="grid-3">
+          <div class="mini-card"><h4>控制面</h4><p>谁可以执行、是否重复、状态是否允许、租约是否有效、是否有容量。</p></div>
+          <div class="mini-card"><h4>业务面</h4><p>Research 检索与综合、Document dry-run、人工确认后真实写入。</p></div>
+          <div class="mini-card"><h4>展示面</h4><p>React 读取公共 TaskPlan View、SSE 进度、稳定错误码；JSON/Markdown 只是审查导出。</p></div>
+        </div>
+
+        <div class="callout cyan">
+          <span class="callout-title">为什么 Repository 必须成为唯一并发 SQL 入口</span>
+          如果 Executor、Runtime、API 各自拼一部分 UPDATE，就很难保证每条写入都带上相同的 owner、fence、version 和状态条件。当前 <code>agent_task_plan_repository.py</code> 明确集中所有 <code>SELECT FOR UPDATE</code>、<code>SKIP LOCKED</code>、条件 UPDATE 和 CAS；每个方法创建自己的短 Session，心跳协程与主执行协程不共享 AsyncSession。
+        </div>
+      </section>
+
+      <section id="data-model" class="chapter">
+        <div class="chapter-kicker">Chapter 5 · 数据库不是存档柜，而是并发裁判</div>
+        <h2>四张表分别回答四个问题</h2>
+
+        <div class="grid-4">
+          <div class="mini-card"><h4>agent_task_plans</h4><p>这个任务当前是什么状态？谁持有执行租约？这是第几代执行者？快照版本是多少？</p></div>
+          <div class="mini-card"><h4>runtime_records</h4><p>Deep Document 恢复登记信息是什么？哪个 Runtime 版本才是最新？</p></div>
+          <div class="mini-card"><h4>commands</h4><p>这个 confirm/retry/cancel 是否已经处理过？相同幂等键应该重放、拒绝还是复活？</p></div>
+          <div class="mini-card"><h4>capacity_slots</h4><p>整个集群当前还有没有 Research 或 Document 执行名额？</p></div>
+        </div>
+
+        <h3>5.1 TaskPlan 主表：执行权与业务快照的共同锚点</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>字段</th><th>业务含义</th><th>防止什么问题</th></tr></thead>
+            <tbody>
+              <tr><td><code>task_plan_id</code></td><td>任务稳定主键。</td><td>所有控制动作、命令、Runtime 和容量占用都围绕同一身份。</td></tr>
+              <tr><td><code>status</code></td><td>数据库权威业务状态。</td><td>拒绝非法状态跳转，例如等待确认不能直接完成。</td></tr>
+              <tr><td><code>record_version</code></td><td>TaskPlan 快照 CAS 版本，从 1 单调递增。</td><td>旧快照无法覆盖新快照。</td></tr>
+              <tr><td><code>lease_owner</code></td><td>当前执行者的唯一 worker_id。</td><td>另一个 Worker 不能冒充持有者续租或保存。</td></tr>
+              <tr><td><code>lease_until</code></td><td>数据库时间判定的租约到期点。</td><td>进程崩溃后不会永久锁死任务。</td></tr>
+              <tr><td><code>lease_fence_token</code></td><td>每次成功领取都递增的执行代际。</td><td>旧 Worker 即使“复活”，也不能再写。</td></tr>
+              <tr><td><code>active_operation</code></td><td>当前 execute、confirm、retry 或 cleanup。</td><td>审计当前执行用途。</td></tr>
+              <tr><td><code>capacity_workload_type / slot_no</code></td><td>当前占用的集群容量槽。</td><td>终态释放时能准确归还同一个槽。</td></tr>
+              <tr><td><code>snapshot_json</code></td><td>完整 TaskPlan 当前快照。</td><td>PostgreSQL 成为业务事实，不再从本地 JSON 反推状态。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>5.2 另外三张表不是重复存储</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>表</th><th>独有字段 / 约束</th><th>为什么不能塞进主表</th></tr></thead>
+            <tbody>
+              <tr><td><code>agent_task_plan_runtime_records</code></td><td>独立 <code>record_version</code>、<code>expires_at</code>、Runtime 快照。</td><td>Deep Agent 的恢复元数据更新频率和生命周期不同，但每次更新仍必须验证父 TaskPlan 租约。</td></tr>
+              <tr><td><code>agent_task_plan_commands</code></td><td><code>(task_plan_id, operation, idempotency_key)</code> 唯一；保存 request_hash、结果和错误。</td><td>一个 TaskPlan 会经历多个用户命令；命令结果需要独立重放和保留。</td></tr>
+              <tr><td><code>agent_task_capacity_slots</code></td><td><code>(workload_type, slot_no)</code> 主键，槽也有 owner、expiry、fence。</td><td>容量是整个集群共享的有限资源，不属于某一个 TaskPlan 的永久属性。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="mermaid-wrap">
+          <p class="diagram-caption">四张表的身份关系</p>
+          <pre class="mermaid">
+erDiagram
+    AGENT_TASK_PLANS ||--o| AGENT_TASK_PLAN_RUNTIME_RECORDS : "owns runtime"
+    AGENT_TASK_PLANS ||--o{ AGENT_TASK_PLAN_COMMANDS : "receives commands"
+    AGENT_TASK_PLANS }o--o| AGENT_TASK_CAPACITY_SLOTS : "temporarily occupies"
+    AGENT_TASK_PLANS {
+      string task_plan_id PK
+      string status
+      bigint record_version
+      string lease_owner
+      datetime lease_until
+      bigint lease_fence_token
+      jsonb snapshot_json
+    }
+    AGENT_TASK_PLAN_RUNTIME_RECORDS {
+      string task_plan_id PK_FK
+      bigint record_version
+      jsonb snapshot_json
+      datetime expires_at
+    }
+    AGENT_TASK_PLAN_COMMANDS {
+      string command_id PK
+      string task_plan_id FK
+      string operation
+      string idempotency_key UK
+      string request_hash
+      string status
+    }
+    AGENT_TASK_CAPACITY_SLOTS {
+      string workload_type PK
+      int slot_no PK
+      string lease_owner
+      bigint lease_fence_token
+      string task_plan_id
+    }
+          </pre>
+        </div>
+
+        <div class="callout info">
+          <span class="callout-title">JSON / Markdown 现在是什么角色？</span>
+          <code>AgentTaskPlanStore</code> 从 PostgreSQL 读取和保存业务事实；<code>AgentTaskPlanExportStore</code> 只生成可重建的人工审查导出物。导出失败只记录 warning，不能回滚已经提交的数据库事实，也不能被业务读取当作真相。
+        </div>
+      </section>
+
+      <section id="state-machine" class="chapter">
+        <div class="chapter-kicker">Chapter 6 · 状态名必须表达业务含义</div>
+        <h2>完整状态机：确认前“准备材料”，确认后才“执行副作用”</h2>
+
+        <div class="state-flow" aria-label="TaskPlan 主状态流">
+          <span class="state">created</span><span class="arrow">→</span>
+          <span class="state">preparing_confirmation</span><span class="arrow">→</span>
+          <span class="state">waiting_confirmation</span><span class="arrow">→</span>
+          <span class="state">executing_confirmed</span><span class="arrow">→</span>
+          <span class="state terminal">completed / warnings / failed</span>
+        </div>
+        <p><code>cancelled</code> 是从多个非完成状态可达的独立终态。关键分界点是人工 confirm：它把 <code>waiting_confirmation</code> 原子推进到 <code>executing_confirmed</code>，之后才允许 Document 真实写副作用或 Research 正式执行。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>状态</th><th>系统正在做什么</th><th>允许真实副作用吗</th><th>为什么需要单独存在</th></tr></thead>
+            <tbody>
+              <tr><td><code>created</code></td><td>TaskPlan 事实行刚创建。</td><td>不允许</td><td>稳定创建点；与尚未开始准备区分。</td></tr>
+              <tr><td><code>preparing_confirmation</code></td><td>生成预览、dry-run、Supervisor 决策和确认材料。</td><td>不允许</td><td>告诉用户“系统在准备确认内容”，不是在执行已确认动作。</td></tr>
+              <tr><td><code>waiting_confirmation</code></td><td>确认材料已就绪，等待用户点击确认。</td><td>不允许</td><td>只有这个状态开放 confirm。</td></tr>
+              <tr><td><code>executing_confirmed</code></td><td>用户已经确认，业务执行器正在工作。</td><td>允许，但仍需权限、fence 和状态复核</td><td>把人工授权后的执行阶段变成可审计事实。</td></tr>
+              <tr><td><code>completed</code></td><td>所有要求成功完成。</td><td>已结束</td><td>正常终态。</td></tr>
+              <tr><td><code>completed_with_warnings</code></td><td>完成但存在可接受警告或部分项。</td><td>已结束</td><td>支持 Research 重试未完成部分。</td></tr>
+              <tr><td><code>failed</code></td><td>准备确认或确认后执行失败。</td><td>已停止</td><td><code>failure_phase</code> 记录失败发生在哪个活动阶段，retry 据此回到正确位置。</td></tr>
+              <tr><td><code>cancelled</code></td><td>用户取消已经成为数据库权威事实。</td><td>禁止</td><td>通过递增 fence 让旧执行者全部失效。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>状态机不是 UI 标签，而是条件 UPDATE 的一部分</h3>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · agent_task_execution.py</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>ALLOWED_SOURCE_STATUSES_BY_TARGET = {
+    PREPARING_CONFIRMATION: {CREATED, PREPARING_CONFIRMATION, FAILED},
+    WAITING_CONFIRMATION: {PREPARING_CONFIRMATION},
+    EXECUTING_CONFIRMED: {
+        WAITING_CONFIRMATION,
+        EXECUTING_CONFIRMED,
+        FAILED,
+        COMPLETED_WITH_WARNINGS,
+    },
+    COMPLETED: {EXECUTING_CONFIRMED},
+    COMPLETED_WITH_WARNINGS: {EXECUTING_CONFIRMED},
+    FAILED: {CREATED, PREPARING_CONFIRMATION, EXECUTING_CONFIRMED},
+    CANCELLED: {
+        CREATED,
+        PREPARING_CONFIRMATION,
+        WAITING_CONFIRMATION,
+        EXECUTING_CONFIRMED,
+        FAILED,
+    },
+}</code></pre>
+        </div>
+        <ol class="code-walk">
+          <li>字典按“目标状态”索引，值是允许的“来源状态”。</li>
+          <li><code>save_snapshot()</code> 把这份规则放进 SQL 的 WHERE，不只是 Python 预检查。</li>
+          <li>因此另一个事务先改成 cancelled 后，旧 runner 的 completed UPDATE 会更新 0 行。</li>
+        </ol>
+
+        <div class="callout danger">
+          <span class="callout-title">TaskPlan 状态与 Command 状态是两套不同状态机</span>
+          TaskPlan 不再使用含糊的 <code>running</code>；但命令表仍然需要 <code>running / succeeded / failed / rejected / cancelled</code>，因为它描述的是“一次 HTTP 控制命令的处理情况”，不是整个业务任务生命周期。不能因为 TaskPlan 删除了 running，就把命令表的 running 一并删除。
+        </div>
+      </section>
+
+      <section id="mechanisms" class="chapter">
+        <div class="chapter-kicker">Chapter 7 · 七个机制，七种不同故障</div>
+        <h2>为什么不能只上一个“更大的锁”</h2>
+
+        <h3 id="local-lock">7.1 进程内快速锁：减少数据库竞争，不承担跨进程真相</h3>
+        <p><code>_TaskPlanLockRegistry</code> 维护 <code>task_plan_id → asyncio.Lock</code>。<code>_guard</code> 只保护这个字典的创建和删除；每个 TaskPlan 有自己的锁，因此不同任务仍可并行。</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · _TaskPlanLockRegistry.hold()</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>async with self._guard:
+    lock = self._locks.setdefault(task_plan_id, asyncio.Lock())
+    if lock.locked():
+        raise AgentTaskPlanBusyError("Agent task plan 当前仍在执行")
+    await lock.acquire()
+try:
+    yield
+finally:
+    async with self._guard:
+        lock.release()
+        self._locks.pop(task_plan_id, None)</code></pre>
+        </div>
+        <p>它选择 fail-fast 而不是排队：第二个同进程请求立即得到 409。因为排队后继续执行很可能把一次用户重复点击变成第二次业务执行。</p>
+
+        <h3 id="lease">7.2 数据库租约：有过期时间的跨进程执行权</h3>
+        <p>租约不是永远持有的锁，而是“在 <code>lease_until</code> 之前，数据库承认 owner 有执行资格”。领取 SQL 只有在状态允许且旧租约为空或已过期时才成功。当前默认租约 90 秒，心跳 20 秒；Settings 强制心跳间隔小于租约时长的三分之一。</p>
+
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · begin_operation() 的 TaskPlan 领取条件</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>UPDATE agent_task_plans
+SET lease_owner = :worker_id,
+    lease_until = now() + interval '90 seconds',
+    lease_fence_token = lease_fence_token + 1,
+    active_operation = :operation
+WHERE task_plan_id = :task_plan_id
+  AND status IN (:allowed_statuses)
+  AND (lease_until IS NULL OR lease_until &lt;= now())
+RETURNING lease_fence_token, record_version;</code></pre>
+        </div>
+        <p>这里的 SQL 是依据当前 ORM 逻辑改写的教学等价形式。真正实现使用 SQLAlchemy <code>update(...).where(...).returning(...)</code>。</p>
+
+        <h4>心跳为什么要同时续租 TaskPlan 和容量槽</h4>
+        <p>如果只续 TaskPlan，不续容量槽，长任务运行到一半时槽位会被别人重新领取；如果只续槽位，不续 TaskPlan，旧执行者会继续占着容量却失去业务写权限。<code>renew_lease()</code> 在同一事务中分别更新两行，并要求两次 rowcount 都等于 1，否则抛出 <code>AGENT_TASK_PLAN_LEASE_LOST</code>。</p>
+
+        <h3 id="fencing">7.3 fencing token：租约过期后，让旧执行者永久失去写权</h3>
+        <p>只靠到期时间仍有一个危险：Worker A 暂停很久，租约过期；Worker B 接手并执行；随后 A 又恢复。A 的本地代码可能仍以为自己在运行。fencing token 给每次领取发一个单调递增的“代际编号”。</p>
+
+        <div class="grid-3">
+          <div class="mini-card"><h4>第一代</h4><p>A 领取，数据库把 fence 从 0 改为 1。A 的所有写入必须携带 token=1。</p></div>
+          <div class="mini-card"><h4>第二代</h4><p>A 过期，B 领取，数据库把 fence 从 1 改为 2。B 携带 token=2。</p></div>
+          <div class="mini-card"><h4>旧人复活</h4><p>A 用 token=1 保存；WHERE 要求当前 token=1，但数据库已经是 2，所以 rowcount=0。</p></div>
+        </div>
+
+        <div class="callout info">
+          <span class="callout-title">租约回答“现在是否到期”，fencing 回答“你属于哪一代”</span>
+          时间可能向前走，进程可能暂停又恢复；代际编号一旦落后就永远落后。因此旧 Worker 无法因为本地时钟、网络延迟或事件循环恢复而重新获得旧权限。
+        </div>
+
+        <h3 id="cas">7.4 原子 CAS：防止同一代执行者拿旧快照覆盖新快照</h3>
+        <p>fencing 防旧执行者，<code>record_version</code> 防旧快照。两者解决的问题不同。当前 <code>save_snapshot()</code> 一次性校验五件事：</p>
+        <ol>
+          <li>task_plan_id 是目标任务；</li>
+          <li>record_version 等于租约句柄记录的版本；</li>
+          <li>lease_owner 等于当前 Worker；</li>
+          <li>lease_fence_token 等于当前代际且租约未过期；</li>
+          <li>当前数据库状态允许转换到目标状态。</li>
+        </ol>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码等价逻辑 · save_snapshot()</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>UPDATE agent_task_plans
+SET status = :target_status,
+    snapshot_json = :snapshot,
+    record_version = record_version + 1
+WHERE task_plan_id = :task_plan_id
+  AND record_version = :expected_version
+  AND lease_owner = :owner
+  AND lease_fence_token = :fence_token
+  AND lease_until &gt; now()
+  AND status IN (:allowed_source_statuses)
+RETURNING record_version;</code></pre>
+        </div>
+        <p>返回 1 行时，Repository 把新版本写回内存中的 <code>lease.record_version</code>；返回 0 行时，不猜是哪一个条件失败，统一抛出版本/租约/状态冲突。这样调用方不会把不确定的旧对象继续保存。</p>
+
+        <h4>RuntimeRecord 也必须 CAS，而且还要验证父租约</h4>
+        <p><code>update_runtime_record()</code> 的 WHERE 同时要求 Runtime 自己的 <code>record_version</code> 命中，并用 EXISTS 验证父 TaskPlan 当前 owner、fence、expiry 且状态不是 cancelled。即使 Runtime 版本没变，失去父任务执行权的 Worker 也不能更新恢复记录。</p>
+
+        <h3 id="idempotency">7.5 幂等命令：网络重试不等于第二次业务操作</h3>
+        <p>客户端为一次 confirm 生成 <code>Idempotency-Key</code>。如果超时后重试，必须复用同一个 key。服务端将 task_plan_id、operation 和 payload 做规范化 JSON，再算 SHA-256 request_hash。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>已有命令状态</th><th>同 key + 同 hash 的处理</th><th>原因</th></tr></thead>
+            <tbody>
+              <tr><td><code>succeeded</code></td><td>返回 <code>TaskPlanCommandReplay</code>，重放原 response_json。</td><td>动作已经成功，不再执行副作用。</td></tr>
+              <tr><td><code>running</code> 且仍有有效同代租约</td><td>409 BUSY。</td><td>原请求仍在执行。</td></tr>
+              <tr><td><code>running</code> 但父租约已失效</td><td>复活这条孤儿命令，再争抢新租约。</td><td>进程崩溃不能让同 key 永久卡死。</td></tr>
+              <tr><td><code>failed / rejected</code></td><td>清空旧结果，状态恢复 running，再尝试领取。</td><td>临时失败或容量拒绝允许同一次用户动作重试。</td></tr>
+              <tr><td>同 key 但 request_hash 不同</td><td>409 IDEMPOTENCY_CONFLICT。</td><td>防止客户端误把同一个 key 用于另一份请求。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout warn">
+          <span class="callout-title">幂等命令不等于外部网络副作用“恰好一次”</span>
+          如果请求已经发到 GitLab，但响应在网络中丢失，数据库无法凭空知道 GitLab 是否成功。命令幂等只能防控制入口重复执行；真正的外部副作用还必须使用稳定业务幂等身份，例如稳定 MR 身份、唯一约束或目标系统提供的幂等键。
+        </div>
+
+        <h3 id="capacity">7.6 全局容量槽：数据库版集群信号量</h3>
+        <p>Research 和 Deep Document 会占用大量模型、连接池和检索资源。Python 的 <code>asyncio.Semaphore(2)</code> 在四 Worker 下会变成 4×2=8 个名额，不是全局 2。容量槽表预先创建固定槽位，领取时用 <code>SELECT ... FOR UPDATE SKIP LOCKED LIMIT 1</code>。</p>
+
+        <div class="code-block">
+          <div class="code-label"><span>当前源码等价 SQL · 领取一个全局容量槽</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>SELECT *
+FROM agent_task_capacity_slots
+WHERE workload_type = :workload_type
+  AND slot_no &lt;= :capacity_limit
+  AND (lease_until IS NULL OR lease_until &lt;= now())
+ORDER BY slot_no
+FOR UPDATE SKIP LOCKED
+LIMIT 1;</code></pre>
+        </div>
+        <p><code>SKIP LOCKED</code> 的作用不是跳过“已租用”的槽，而是跳过“正在被另一个数据库事务锁住、尚未提交判定”的行，避免多个领取者在同一槽上排队。找不到槽时，先释放刚领取的 TaskPlan 租约，再把命令标记 rejected，最终返回 429 和 <code>Retry-After</code>。</p>
+
+        <h3 id="cancel-wins">7.7 取消必胜：cancel 不等正在运行的锁</h3>
+        <p>cancel 故意不进入 <code>_TASK_PLAN_LOCKS.hold()</code>。如果取消请求先排队等待当前任务执行完，执行器永远看不到取消信号。<code>cancel_atomic()</code> 对 TaskPlan 行执行 <code>SELECT FOR UPDATE</code>，在一个事务中完成：</p>
+        <ol>
+          <li>验证任务归属或 system_admin 权限；</li>
+          <li>把 snapshot 和 status 改为 cancelled；</li>
+          <li>record_version + 1，lease_fence_token + 1；</li>
+          <li>清空任务租约并归还容量槽；</li>
+          <li>把其他 running 命令收敛为 cancelled；</li>
+          <li>把 cancel 命令本身记录为 succeeded，并保存可重放响应。</li>
+        </ol>
+        <p>旧执行者随后续租或保存时，owner/fence/status 至少有一个不匹配，无法覆盖 cancelled。执行器在 <code>finish_success()</code> 恰好碰到 cancel 时，会重读数据库；若权威状态已经是 cancelled，就返回 cancelled，而不是误报“执行失败”。</p>
+      </section>
+
+      <section id="confirm-trace" class="chapter">
+        <div class="chapter-kicker">Chapter 8 · 用一个请求串起全部机制</div>
+        <h2>一次 Document confirm 从 HTTP 到数据库终态发生了什么</h2>
+        <div class="callout warn"><span class="callout-title"><span class="badge example">教学示例</span> 下面的 ID 与数值用于跟踪机制</span>它们不是本轮真实请求，也不是生产数据。真实函数名和状态变化来自当前源码。</div>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>代表值</th><th>初始内容</th><th>用途</th></tr></thead>
+            <tbody>
+              <tr><td><code>task_plan_id</code></td><td><code>task_plan_demo_001</code></td><td>所有层共用的任务身份。</td></tr>
+              <tr><td><code>Idempotency-Key</code></td><td><code>confirm-demo-20260815-0001</code></td><td>同一次点击重试时复用。</td></tr>
+              <tr><td><code>worker_id</code></td><td><code>hostA:4210:ab12cd34ef56</code></td><td>LeaseManager 在每个进程实例化时生成。</td></tr>
+              <tr><td>数据库起始状态</td><td><code>waiting_confirmation, version=7, fence=12</code></td><td>任务已准备好，等待用户确认。</td></tr>
+              <tr><td>容量配置</td><td><code>document=1</code></td><td>整个集群只有一个 Document 重任务槽。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <ol class="timeline">
+          <li><strong>FastAPI 接收控制请求</strong><span class="value"><code>POST /agent/task-plans/task_plan_demo_001/confirm</code>，请求体要求 <code>confirmed=true</code>，Header 的 Idempotency-Key 长度必须为 16–128。</span></li>
+          <li><strong>Endpoint 绑定当前认证身份</strong><span class="value">用户身份来自服务端认证依赖，不从 TaskPlan 文本或请求体接受 owner。Endpoint 调用 <code>AgentTaskExecutor.confirm()</code>。</span></li>
+          <li><strong>进程内快速锁</strong><span class="value">本 Worker 先占用 task_plan_id。若同进程已有请求，立即 409；不同进程仍继续交给数据库裁决。</span></li>
+          <li><strong>第一次读取只用于选择 workload</strong><span class="value">Executor 读取当前 Plan，确认属于当前用户，并判断它是 Research 还是 Document。真正执行前还会在租约内再读一次。</span></li>
+          <li><strong>LeaseManager 构造 request_hash</strong><span class="value">规范化内容是 task_plan_id + operation=confirm + payload={confirmed:true}，键排序后做 SHA-256。</span></li>
+          <li><strong>Repository 原子 begin_operation</strong><span class="value">插入 command=running；领取 TaskPlan 租约使 fence 12→13；领取 document slot 1；返回 <code>TaskPlanLease(record_version=7, fence=13)</code>。</span></li>
+          <li><strong>启动心跳并绑定 ContextVar</strong><span class="value">心跳每 20 秒续租；<code>bind_task_plan_lease()</code> 让深层 Store、Runtime 和工具边界能取得当前租约句柄，但数据库行仍是权威。</span></li>
+          <li><strong>租约内重读与确认状态转换</strong><span class="value">再次验证 owner、认证与 status。把 waiting_confirmation 改为 executing_confirmed，CAS 保存后 version 7→8。</span></li>
+          <li><strong>Document Executor 再验证副作用边界</strong><span class="value">确认冻结 dry-run、候选 doc_id、路径、base_sha256、当前权限；真实写入前要求状态仍为 executing_confirmed 且租约 active。</span></li>
+          <li><strong>业务保存终态</strong><span class="value">成功时把 Plan 改为 completed，CAS 保存后 version 8→9。若期间 cancel 已经发生，这次 UPDATE 命中 0 行。</span></li>
+          <li><strong>控制协议原子收尾</strong><span class="value">停止心跳；<code>finish_success()</code> 校验 owner/fence/expiry/最终 status，释放 TaskPlan 租约和容量槽，并把 command 标成 succeeded，保存 response_json。</span></li>
+          <li><strong>API 返回可观察结果</strong><span class="value">React 获得 task_plan_id、status、task_plan 公共快照、request_id、trace_id。相同 key 重试时直接重放已保存结果。</span></li>
+        </ol>
+
+        <div class="mermaid-wrap">
+          <p class="diagram-caption">真实符号组成的 confirm 时序</p>
+          <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant UI as React / Client
+    participant API as confirm_agent_task_plan_endpoint
+    participant EX as AgentTaskExecutor.confirm
+    participant LM as AgentTaskLeaseManager.hold
+    participant RP as AgentTaskPlanRepository
+    participant DB as PostgreSQL
+    participant DOC as DocumentTaskExecutor.confirm
+
+    UI->>API: POST confirm + Idempotency-Key
+    API->>EX: confirm(task_plan_id, user, key)
+    EX->>EX: _TASK_PLAN_LOCKS.hold(task_plan_id)
+    EX->>LM: hold(operation=confirm)
+    LM->>RP: begin_operation(...)
+    RP->>DB: command INSERT + lease UPDATE + slot SKIP LOCKED
+    DB-->>RP: fence + version + slot
+    RP-->>LM: TaskPlanLease
+    LM->>LM: start heartbeat + bind ContextVar
+    LM-->>EX: acquired lease
+    EX->>RP: load latest snapshot
+    EX->>RP: save executing_confirmed with CAS
+    EX->>DOC: confirm(plan, current user)
+    DOC->>DOC: permission + dry-run + path + lease checks
+    DOC->>RP: save completed with CAS
+    DOC-->>EX: completed plan
+    EX->>RP: finish_success(response_json)
+    RP->>DB: release lease + release slot + command succeeded
+    EX-->>API: final plan
+    API-->>UI: structured response
+          </pre>
+        </div>
+      </section>
+
+      <section id="race-cases" class="chapter">
+        <div class="chapter-kicker">Chapter 9 · 不背术语，用竞态验证设计</div>
+        <h2>四种最值得亲手推演的并发场景</h2>
+
+        <details open>
+          <summary>场景 A：两个 Worker 同时 confirm 同一 TaskPlan</summary>
+          <div class="details-body">
+            <p>W1、W2 的进程内锁都空闲，因此两者都会进入 Repository。数据库的条件 UPDATE 只能让一个事务把空闲租约改为自己的 owner。赢家继续领取容量槽；输家 UPDATE 返回 0 行，命令被标记 rejected，并得到 409 BUSY。</p>
+            <p><strong>防线：</strong>TaskPlan 租约。<strong>不应依赖：</strong>进程内锁。<strong>已观察证据：</strong>跨进程测试只有 1 acquired + 1 BUSY；四 Worker 20 请求只有 1 个业务执行者。</p>
+          </div>
+        </details>
+
+        <details>
+          <summary>场景 B：Worker A 停顿，租约过期，Worker B 接手</summary>
+          <div class="details-body">
+            <p>A 持有 fence=5 后暂停。租约过期，B 成功领取并得到 fence=6。A 恢复后本地代码还在，但续租、TaskPlan 保存、Runtime 保存和终态提交都要求数据库 fence=5；数据库已经是 6，因此 A 只能收到 lease-lost/version-conflict，不能覆盖 B。</p>
+            <p><strong>防线：</strong>lease expiry + fencing token。单有租约到期而没有 fence 条件，A 仍可能用旧内存结果写回。</p>
+          </div>
+        </details>
+
+        <details>
+          <summary>场景 C：cancel 与 completed 几乎同时发生</summary>
+          <div class="details-body">
+            <p>cancel 用行锁把 status 改为 cancelled，同时 record_version+1、fence+1 并清空租约。旧 runner 保存 completed 时，version/fence/allowed source status 都不再匹配。即使 runner 已经返回业务结果，<code>finish_success()</code> 也会失败并重读数据库；发现 cancelled 后以取消结果为准。</p>
+            <p><strong>防线：</strong>原子 cancel + fence invalidation + 单调状态机 + finish_success 二次收敛。</p>
+          </div>
+        </details>
+
+        <details>
+          <summary>场景 D：三个 Research confirm 同时到达，但全局容量是 2</summary>
+          <div class="details-body">
+            <p>三个请求操作三个不同 TaskPlan，因此任务租约都可能成功。但容量表只有 research slot 1 和 2。前两个事务各锁定一个空闲槽；第三个找不到槽，释放自己刚拿到的 TaskPlan 租约，把命令记为 rejected，返回 429 <code>AGENT_CAPACITY_EXCEEDED</code> 和 Retry-After。</p>
+            <p><strong>防线：</strong>容量槽。它解决的是资源过载，不是同任务重复执行。</p>
+          </div>
+        </details>
+      </section>
+
+      <section id="simulator" class="chapter">
+        <div class="chapter-kicker">Chapter 10 · 点按钮观察数据库代际</div>
+        <h2>交互式 fencing / CAS 模拟器</h2>
+        <p>按推荐顺序点击：A 领取 → A 保存 → 租约过期 → B 领取 → A 旧写入 → B 保存。观察 A 为什么永久失去写权。这个模拟器只在浏览器内改变 JavaScript 对象，不连接工程数据库。</p>
+
+        <div class="simulator">
+          <div class="sim-state">
+            <div class="sim-cell"><b>owner</b><span id="simOwner">none</span></div>
+            <div class="sim-cell"><b>fence</b><span id="simFence">0</span></div>
+            <div class="sim-cell"><b>version</b><span id="simVersion">1</span></div>
+            <div class="sim-cell"><b>status</b><span id="simStatus">waiting_confirmation</span></div>
+          </div>
+          <div class="sim-controls">
+            <button class="sim-button" type="button" data-sim="acquireA">1. Worker A 领取</button>
+            <button class="sim-button" type="button" data-sim="saveA">2. A 保存 preparing</button>
+            <button class="sim-button warn" type="button" data-sim="expire">3. 模拟租约过期</button>
+            <button class="sim-button" type="button" data-sim="acquireB">4. Worker B 接手</button>
+            <button class="sim-button danger" type="button" data-sim="staleA">5. A 尝试旧写入</button>
+            <button class="sim-button" type="button" data-sim="saveB">6. B 合法保存</button>
+            <button class="sim-button danger" type="button" data-sim="cancel">模拟 cancel</button>
+            <button class="sim-button secondary" type="button" data-sim="reset">重置</button>
+          </div>
+          <pre id="simLog" class="sim-log">模拟器已就绪。数据库初始状态：无 owner，fence=0，version=1。</pre>
+        </div>
+
+        <div class="callout cyan">
+          <span class="callout-title">模拟器里每次“保存”都检查什么</span>
+          Worker 本地保存着领取时得到的 owner、fence 和 version。只有三者与数据库当前值都相等，而且租约仍有效、状态转换合法，保存才会把 version+1。真实工程还额外检查 task_plan_id、lease_until 和 allowed source status。
+        </div>
+      </section>
+
+      <section id="code-map" class="chapter">
+        <div class="chapter-kicker">Chapter 11 · 按执行顺序读真实代码</div>
+        <h2>当前工程代码地图：每个文件只承担一个清晰边界</h2>
+
+        <div class="table-wrap file-map">
+          <table>
+            <thead><tr><th>建议阅读文件</th><th>重点符号</th><th>要回答的问题</th></tr></thead>
+            <tbody>
+              <tr><td><a href="../../src/fast_app/domain/agent_task_plan.py">domain/agent_task_plan.py</a></td><td><code>AgentTaskPlanStatus</code></td><td>业务状态有哪些？确认前后如何区分？</td></tr>
+              <tr><td><a href="../../src/fast_app/domain/agent_task_execution.py">domain/agent_task_execution.py</a></td><td><code>TaskPlanLease</code>、状态转换表、ContextVar</td><td>内存租约句柄保存哪些数据库事实？哪些转换合法？</td></tr>
+              <tr><td><a href="../../src/fast_app/db/agent_task_plan_tables.py">db/agent_task_plan_tables.py</a></td><td>四个 ORM Table</td><td>数据库用哪些列和约束表达一致性？</td></tr>
+              <tr><td><a href="../../src/fast_app/services/agent_tasks/agent_task_plan_repository.py">services/agent_tasks/agent_task_plan_repository.py</a></td><td><code>begin_operation</code>、<code>save_snapshot</code>、<code>cancel_atomic</code></td><td>哪个事务真正裁决执行权？条件 UPDATE 如何组成？</td></tr>
+              <tr><td><a href="../../src/fast_app/services/agent_tasks/agent_task_plan_store.py">services/agent_tasks/agent_task_plan_store.py</a></td><td><code>AgentTaskPlanStore</code>、<code>AgentTaskPlanExportStore</code></td><td>数据库事实与 JSON/Markdown 导出怎样分离？</td></tr>
+              <tr><td><a href="../../src/fast_app/services/agent_tasks/agent_task_lease_manager.py">services/agent_tasks/agent_task_lease_manager.py</a></td><td><code>hold</code>、<code>_heartbeat</code>、<code>build_request_hash</code></td><td>租约怎样绑定到执行链？心跳失败怎样通知主协程？</td></tr>
+              <tr><td><a href="../../src/fast_app/services/agent_tasks/agent_task_executor.py">services/agent_tasks/agent_task_executor.py</a></td><td><code>confirm</code>、<code>resume</code>、<code>_run_with_database_lease</code></td><td>通用控制协议怎样包住 Research / Document 业务？</td></tr>
+              <tr><td><a href="../../src/fast_app/services/agent_tasks/deep_document_runtime.py">services/agent_tasks/deep_document_runtime.py</a></td><td><code>update_record</code>、<code>release</code></td><td>Runtime CAS 怎样验证父租约？checkpoint 与业务记录是什么关系？</td></tr>
+              <tr><td><a href="../../src/fast_app/api/agent_task_plan_routes.py">api/agent_task_plan_routes.py</a></td><td>confirm / retry / cancel endpoints</td><td>Idempotency-Key、当前用户、SSE 和公共响应在哪里进入？</td></tr>
+              <tr><td><a href="../../alembic/versions/20260813_0013_add_agent_task_plan_runtime.py">alembic 0013</a></td><td>四表迁移</td><td>表和约束如何进入真实数据库？</td></tr>
+              <tr><td><a href="../../alembic/versions/20260815_0014_split_agent_task_plan_active_states.py">alembic 0014</a></td><td>状态 CheckConstraint</td><td>为什么旧 running 被拆为 preparing 与 executing？</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>11.1 深读 <code>AgentTaskLeaseManager.hold()</code></h3>
+        <p><strong>它拥有的问题：</strong>把一次控制请求从“普通协程”变成“持有数据库权威租约、接受心跳监督的执行链”。</p>
+        <ul>
+          <li><strong>输入：</strong>task_plan_id、operation、idempotency_key、请求 payload、允许状态和 workload 类型。payload 与 key 属于请求事实；允许状态和容量上限属于服务端策略。</li>
+          <li><strong>关键局部变量：</strong><code>acquired</code> 可能是新 <code>TaskPlanLease</code>，也可能是已成功命令的 <code>TaskPlanCommandReplay</code>。</li>
+          <li><strong>分支：</strong>Replay 直接 yield 后返回；Lease 则创建 stop Event、启动 heartbeat、绑定 ContextVar。</li>
+          <li><strong>失败传播：</strong>心跳异常把 <code>lease.lost</code> 置位；主业务在安全边界调用 <code>assert_active()</code> 失败。</li>
+          <li><strong>清理：</strong>finally 必定停止并取消心跳，避免请求结束后后台协程继续续租。</li>
+        </ul>
+
+        <h3>11.2 深读 <code>AgentTaskExecutor._run_with_database_lease()</code></h3>
+        <p><strong>它拥有的问题：</strong>Research 与 Document 的业务完全不同，但领取、重放、心跳、权威重读、成功释放和失败收尾应使用同一套控制协议。</p>
+        <ul>
+          <li>先进入 LeaseManager；Replay 时从 response_json 还原 Plan，不运行 runner。</li>
+          <li>拿到 lease 后重新从数据库 load，避免使用 API 层较早读取的旧对象。</li>
+          <li>调用专用 runner；业务过程中所有 Store.save 都从 ContextVar 取得同一个 lease。</li>
+          <li>runner 返回后再 assert_active，并先设置 closing 停止心跳，再调用 finish_success。</li>
+          <li>若 cancel 已经赢得竞态，重读 cancelled 并把它作为权威结果。</li>
+          <li>其他异常尝试把仍处于活动状态的 Plan 收敛为 failed，然后 finish_failure 释放资源并保留原异常。</li>
+        </ul>
+
+        <h3>11.3 深读 <code>DeepDocumentRuntime.update_record()</code></h3>
+        <p>本地先比较 version 仍然保留，因为它能快速发现明显旧调用；但真正安全性来自 Repository 的原子 UPDATE。合并 updates 后重新用 Pydantic 模型验证类型和状态，再执行带 expected_version 与父 TaskPlan EXISTS 租约条件的 CAS。数据库返回的新 version 还要与模型中计算的新 version 一致。</p>
+      </section>
+
+      <section id="verification" class="chapter">
+        <div class="chapter-kicker">Chapter 12 · 测试不是数量，而是每层证明什么</div>
+        <h2>当前已有证据，以及不能越界声称的结论</h2>
+
+        <h3>12.1 已经得到的确定性 / 并发证据</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>测试</th><th>证明的机制</th><th>已有结果</th><th>不能证明</th></tr></thead>
+            <tbody>
+              <tr><td><code>test_agent_task_plan_postgres.py</code></td><td>租约唯一性、TaskPlan CAS、cancel fencing、Runtime CAS、命令复活、状态边界、容量拒绝、孤儿命令清理等。</td><td><span class="badge observed">passed</span> 11 组数据库语义。</td><td>真实模型质量和 15 人吞吐。</td></tr>
+              <tr><td><code>test_agent_task_plan_multiprocess.py</code></td><td>两个独立进程争抢同一个 TaskPlan。</td><td><span class="badge observed">passed</span> 1 acquired + 1 BUSY。</td><td>四 Worker HTTP 路由和业务副作用。</td></tr>
+              <tr><td><code>test_agent_task_plan_store_smoke.py</code></td><td>Store 从 PostgreSQL 读写事实并正确转状态。</td><td><span class="badge observed">passed</span></td><td>复杂恢复和外部服务。</td></tr>
+              <tr><td><code>test_agent_task_executor_control_regressions.py</code></td><td>cancel 赢得终态竞态、心跳失租收敛、resume/confirm 控制边界。</td><td><span class="badge observed">passed</span></td><td>真实 Postgres 进程竞争。</td></tr>
+              <tr><td>四 Worker、20 confirm 争抢</td><td>HTTP 层的本地快速锁 + 数据库权威锁组合。</td><td><span class="badge observed">passed</span> 19×409 + 1 唯一执行者，0 重复执行者。</td><td>赢家 fixture 故意允许业务失败，不代表 Document 业务成功。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>12.2 正式混合压测为什么仍不能写“通过”</h3>
+        <div class="proof-board">
+          <div class="proof"><b>15 个全局在途请求</b><span>一次正式 10+3+2 已达到 global peak=15，10 个普通 RAG SSE 协议成功。</span></div>
+          <div class="proof"><b>Research 容量控制</b><span>容量 2 下，3 个 confirm 中 2 个进入业务路径、1 个得到预期 429；槽位最终释放。</span></div>
+          <div class="proof pending"><b>Research 业务未通过</b><span>当轮两个执行者最终 failed；后续已修复 Evidence 120 字截断并准备真实 Chunk Query，但新的 confirm pilot 尚未通过。</span></div>
+          <div class="proof pending"><b>Document 与尾延迟待复测</b><span>当轮 Document 暴露状态机缺陷，后来已改成完整状态模型；完整 10+3+2 尚未重跑，RAG P95 当时也超过 120 秒闸门。</span></div>
+        </div>
+
+        <div class="callout danger">
+          <span class="callout-title">当前权威结论</span>
+          <code>formal_p2_allowed = false</code>。一致性实现已落地并通过针对性验证，但“10–15 人混合业务场景整体通过”仍未被证明。当前测试按用户指令停止，本页没有重新启动服务、调用模型或运行压力测试。
+        </div>
+
+        <h3>12.3 以后需要运行时的 PowerShell 命令</h3>
+        <p>以下命令是学习和后续验收入口，本次编辑没有执行。运行前需要 PostgreSQL 测试环境和仓库要求的配置。</p>
+        <div class="code-block">
+          <div class="code-label"><span>PowerShell · 最小到最大的验证顺序</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>$env:PYTHONPATH="src;scripts\tests\document_security"
+
+# 1. PostgreSQL 原子语义
+python -B scripts\tests\document_security\test_agent_task_plan_postgres.py
+
+# 2. 两个独立进程争抢同一任务
+python -B scripts\tests\document_security\test_agent_task_plan_multiprocess.py
+
+# 3. Store 与控制协议
+python -B scripts\tests\document_security\test_agent_task_plan_store_smoke.py
+python -B scripts\tests\document_security\test_agent_task_executor_control_regressions.py
+
+# 4. 压测驱动自身的确定性测试
+python -B scripts\tests\document_security\test_agent_task_plan_load_driver.py</code></pre>
+        </div>
+
+        <h4>第一诊断点怎么选</h4>
+        <ul>
+          <li>两个进程都 acquired：先查数据库迁移、测试是否指向同一数据库、begin_operation 条件 UPDATE。</li>
+          <li>旧 Writer 仍能覆盖：查 save_snapshot 是否同时携带 record_version、owner、fence、expiry、状态来源。</li>
+          <li>容量超过上限仍运行：查容量槽是否在启动时按配置创建、是否错误使用了进程内 Semaphore。</li>
+          <li>cancel 后返回失败：查 executor 的 cancel-winner 收敛分支和 finish_success 的权威重读。</li>
+        </ul>
+      </section>
+
+      <section id="frontend" class="chapter">
+        <div class="chapter-kicker">Chapter 13 · 后端一致性最终要能被前端正确消费</div>
+        <h2>API、SSE 与 React：用户不应该从自然语言猜任务状态</h2>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>接口</th><th>React 用途</th><th>一致性要求</th></tr></thead>
+            <tbody>
+              <tr><td><code>POST /rag/chat/stream/events</code></td><td>主结构化 RAG / Agent 路由入口，接收 sources、Agent 事件、guard 事件、done/error。</td><td>这是新前端主线；不要把新功能加到 deprecated token-only stream。</td></tr>
+              <tr><td><code>GET /agent/task-plans/{id}</code></td><td>任务详情页刷新数据库权威公共快照。</td><td>普通用户只能读取自己的任务，system_admin 可管理。</td></tr>
+              <tr><td><code>POST .../{id}/confirm</code></td><td>确认按钮。</td><td>必须发送稳定 Idempotency-Key；只有 waiting_confirmation 可确认。</td></tr>
+              <tr><td><code>POST .../{id}/confirm/stream</code></td><td>确认后显示子任务进度 SSE。</td><td>生成器每秒读取 PostgreSQL 快照，不靠本地 JSON。</td></tr>
+              <tr><td><code>POST .../{id}/retry</code></td><td>失败任务恢复按钮。</td><td>同一次点击重试复用 key；failure_phase 决定回到确认前还是确认后。</td></tr>
+              <tr><td><code>POST .../{id}/cancel</code></td><td>取消按钮。</td><td>不等待运行锁；成功后前端以 cancelled 为权威终态。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>前端如何处理稳定错误</h3>
+        <div class="grid-3">
+          <div class="mini-card"><h4>409 BUSY</h4><p>同一 TaskPlan 正在执行。禁用按钮并刷新任务状态，不要自动生成新幂等键疯狂重试。</p></div>
+          <div class="mini-card"><h4>409 IDEMPOTENCY CONFLICT</h4><p>同一个 key 被用于不同请求。它是客户端 bug，应记录并停止重试。</p></div>
+          <div class="mini-card"><h4>429 CAPACITY</h4><p>全局复杂 Agent 槽位已满。读取 Retry-After，向用户显示排队/稍后重试提示。</p></div>
+        </div>
+
+        <div class="code-block">
+          <div class="code-label"><span>教学示例 · React 控制动作的幂等键生命周期</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>// 一次用户点击只生成一次 key；网络超时重试仍复用它。
+const actionKey = crypto.randomUUID();
+
+async function confirmTaskPlan(taskPlanId) {
+  return fetch(`/agent/task-plans/${taskPlanId}/confirm`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": actionKey,
+      "Authorization": `Bearer ${accessToken}`
+    },
+    body: JSON.stringify({ confirmed: true })
+  });
+}</code></pre>
+        </div>
+        <p>示例中的 accessToken 只是变量名；真实前端不能把测试密码、固定 JWT 或管理凭证写进源码。后端仍会重新验证当前用户、权限、TaskPlan 归属和当前 ACL，幂等键不是授权凭证。</p>
+      </section>
+
+      <section id="limits" class="chapter">
+        <div class="chapter-kicker">Chapter 14 · 工程判断来自边界意识</div>
+        <h2>已经解决什么，仍然不能承诺什么</h2>
+
+        <h3>14.1 当前方案明确解决</h3>
+        <ul>
+          <li>多 Worker / 多实例对同一 TaskPlan 的权威互斥。</li>
+          <li>旧 TaskPlan 和 RuntimeRecord 快照的丢失更新。</li>
+          <li>旧执行者在租约过期或 cancel 后继续保存。</li>
+          <li>confirm/retry/cancel 的控制入口幂等与结果重放。</li>
+          <li>Research / Document 的集群级并发熔断。</li>
+          <li>确认前准备与确认后真实执行的状态语义分离。</li>
+        </ul>
+
+        <h3>14.2 仍需理解的残余边界</h3>
+        <div class="grid-2">
+          <div class="mini-card"><h4>租约不是 exactly-once</h4><p>数据库能阻止旧 Worker 保存本地事实，但对已经发出的外部网络请求无法撤回。外部副作用仍需业务幂等。</p></div>
+          <div class="mini-card"><h4>checkpoint 与业务事实不是一张表</h4><p>LangGraph 官方 Saver 写 checkpoint，业务 RuntimeRecord 通过 Repository CAS；极窄的 checkpoint 写窗口仍要依靠执行边界与恢复规则处理。</p></div>
+          <div class="mini-card"><h4>容量数字不是性能承诺</h4><p>Research=2、Document=1 是保守熔断值。只有完整压测的成功率、P95、连接池和成本数据才能形成容量承诺。</p></div>
+          <div class="mini-card"><h4>数据库成为关键依赖</h4><p>PostgreSQL 不可用时不能降级到本地 JSON 继续执行，否则会重新引入分裂事实。</p></div>
+          <div class="mini-card"><h4>Windows Worker 启动可靠性</h4><p>历史四 Worker 启动出现过 WinError 10022 和 Worker 替换；出现替换必须废弃整轮并干净重启。</p></div>
+          <div class="mini-card"><h4>正式业务压测未通过</h4><p>Research Query、Planner/Reviewer 预算与 Evidence 链路仍需 pilot；不能把互斥测试通过等同于 15 人业务成功。</p></div>
+        </div>
+
+        <h3>14.3 常见误区</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>误解</th><th>正确理解</th></tr></thead>
+            <tbody>
+              <tr><td>“有 asyncio.Lock 就线程安全了。”</td><td>先问作用域。它只保护创建它的进程内协程。</td></tr>
+              <tr><td>“数据库事务等于分布式锁。”</td><td>事务只是边界；必须有正确的条件 UPDATE、行锁、过期和 owner/fence 条件。</td></tr>
+              <tr><td>“有 lease_owner 就够了。”</td><td>owner 字符串可能被旧进程继续持有；需要 expiry 和单调 fence。</td></tr>
+              <tr><td>“有 fence 就不需要 version。”</td><td>同一代内仍可能有旧快照；version 负责快照顺序。</td></tr>
+              <tr><td>“幂等键每次重试都换一个。”</td><td>同一次用户动作必须复用同一个 key；新点击才生成新 key。</td></tr>
+              <tr><td>“cancel 应该先拿执行锁。”</td><td>这会让取消信号等任务结束后才写入。cancel 必须能立即使 fence 失效。</td></tr>
+              <tr><td>“原子写 JSON 就不会覆盖。”</td><td>它只保证文件不残缺，不保证旧业务状态不能覆盖新终态。</td></tr>
+              <tr><td>“19 个 409 说明整个业务压测通过。”</td><td>它只证明同 TaskPlan 互斥；不证明 Research/Document 质量和 15 人尾延迟。</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="exercises" class="chapter">
+        <div class="chapter-kicker">Chapter 15 · 把“看懂”变成“会判断”</div>
+        <h2>四组练习：不改生产代码也能建立并发直觉</h2>
+
+        <h3>练习 1：纸面模拟 CAS</h3>
+        <ol>
+          <li>在纸上写数据库：owner=A、fence=3、version=8、status=executing_confirmed。</li>
+          <li>让 Writer A 和 A2 都复制这四个值。</li>
+          <li>A 先保存并把 version 改成 9。</li>
+          <li>问：A2 的 WHERE 中哪个条件失败？答案是 version=8。</li>
+          <li>再让 cancel 把 fence 改成 4、status 改成 cancelled。问：旧 Writer 至少有几个条件失败？</li>
+        </ol>
+
+        <h3>练习 2：判断每种机制负责谁</h3>
+        <div class="quiz">
+          <details><summary>同一 HTTP 请求因网络超时重发，应该由谁处理？</summary><div class="details-body">Idempotency-Key + command 表。若第一次已成功就重放；仍运行就 BUSY；孤儿/失败/拒绝按规则复活。它不应通过 TaskPlan version 猜测是不是重复请求。</div></details>
+          <details><summary>Worker 暂停两分钟后恢复，应该由谁拦截？</summary><div class="details-body">lease expiry 允许新 Worker 接手，fencing token 让旧 Worker 的续租、保存和终态提交全部失效。</div></details>
+          <details><summary>不同 TaskPlan 同时跑太多导致模型连接池拥塞，应该由谁限制？</summary><div class="details-body">全局容量槽。任务租约只限制“同一个任务一个执行者”，不限制不同任务总数。</div></details>
+          <details><summary>cancelled 被 completed 覆盖，缺了哪几道保护？</summary><div class="details-body">至少缺少原子 cancel、fence invalidation、record_version CAS 和状态来源条件；任何一条单独存在都不如组合条件完整。</div></details>
+        </div>
+
+        <h3>练习 3：阅读一次条件 UPDATE</h3>
+        <p>打开 <a href="../../src/fast_app/services/agent_tasks/agent_task_plan_repository.py"><code>agent_task_plan_repository.py</code></a> 的 <code>save_snapshot()</code>，逐条给 WHERE 条件标注：</p>
+        <ul>
+          <li>身份条件；</li>
+          <li>快照新旧条件；</li>
+          <li>租约持有者条件；</li>
+          <li>执行代际条件；</li>
+          <li>时间有效性条件；</li>
+          <li>业务状态机条件。</li>
+        </ul>
+        <p>如果你能解释删除每一条会发生什么故障，就真正理解了 CAS 与 fencing 的组合。</p>
+
+        <h3>练习 4：用测试结果做“有限结论”</h3>
+        <p>对下面证据分别写一句“能证明”和“不能证明”：</p>
+        <ol>
+          <li>两个进程结果为 acquired=1、busy=1。</li>
+          <li>四 Worker 20 confirm 中 19 个 409、1 个业务执行者。</li>
+          <li>10 个普通 RAG SSE 全部 done。</li>
+          <li>Research 容量 2 时第三个请求得到 429。</li>
+        </ol>
+        <p>这一步训练的不是写测试，而是避免把局部绿灯包装成端到端成功。</p>
+      </section>
+
+      <section id="summary" class="chapter">
+        <div class="chapter-kicker">Chapter 16 · 把复杂方案压缩成稳定心智模型</div>
+        <h2>最后只记住一条“六问法”</h2>
+        <p>未来再遇到多 Worker 任务问题，不要先问“用什么锁”，按顺序问：</p>
+
+        <div class="grid-3">
+          <div class="mini-card"><h4>1. 事实在哪里？</h4><p>如果事实只在本地内存或文件，就无法让多个实例统一判断。</p></div>
+          <div class="mini-card"><h4>2. 谁能领取？</h4><p>领取必须是数据库原子条件更新，而不是先查再改。</p></div>
+          <div class="mini-card"><h4>3. 旧人怎么失效？</h4><p>过期租约允许接手，fencing token 拒绝旧代际。</p></div>
+          <div class="mini-card"><h4>4. 旧快照怎么拒绝？</h4><p>record_version CAS + rowcount 判断冲突。</p></div>
+          <div class="mini-card"><h4>5. 重试怎么去重？</h4><p>幂等键绑定同一动作和 request_hash，成功时重放。</p></div>
+          <div class="mini-card"><h4>6. 总容量怎么限制？</h4><p>共享容量槽，而不是每进程一个 Semaphore。</p></div>
+        </div>
+
+        <div class="callout ok">
+          <span class="callout-title">你现在应该能讲清楚的完整答案</span>
+          当前工程采用“进程内 task_plan_id 快速锁 + PostgreSQL 权威租约”的双层互斥。控制请求先用幂等命令去重，再通过状态和租约条件原子领取 TaskPlan，同时用 SKIP LOCKED 获取集群容量槽。执行期间心跳同时续租任务和槽位；所有 TaskPlan 与 Runtime 写入都携带 owner、fencing token 和 record_version CAS，状态机把确认前准备与确认后副作用分开。cancel 通过行锁原子写终态并递增 fence，使旧执行者无法覆盖。JSON/Markdown 只做可重建导出，不再承担业务事实。
+        </div>
+
+        <h3>最终自测</h3>
+        <div class="quiz">
+          <details><summary>为什么进程内锁仍然保留？</summary><div class="details-body">它能让同一 Worker 的重复请求快速 409，减少数据库竞争；但跨进程权威仍由 PostgreSQL 租约承担。</div></details>
+          <details><summary>为什么人工确认不能从 waiting_confirmation 直接 completed？</summary><div class="details-body">那会把“用户授权”和“真实执行”压成一次不可观察跳转。先持久化 executing_confirmed，执行器和副作用边界才能确定性验证用户已经确认。</div></details>
+          <details><summary>为什么同时需要 fence 和 version？</summary><div class="details-body">fence 区分执行者代际，version 区分快照新旧。旧代执行者和同代旧快照是两种不同竞态。</div></details>
+          <details><summary>当前是否已经证明 10–15 人混合业务可用？</summary><div class="details-body">没有。互斥、CAS、容量等一致性机制已有强证据，但正式 10+3+2 在 Research 业务质量、Document 修复后复测和尾延迟方面仍未通过门禁。</div></details>
+        </div>
+      </section>
+    </article>
+  </div>
+
+  <footer>
+    <p><strong>事实源：</strong>当前工作区生产代码、Alembic 0013/0014、问题十二确定性测试、量化报告与压测方案。旧解决方案文档仅作为历史设计参考；代码与文档冲突时，以当前代码为准。</p>
+    <p><strong>版本边界：</strong>页面按 2026-08-15 当前未提交工作区生成。当前测试服务保持停止，未在生成页面时调用真实模型或执行正式压力测试。</p>
+  </footer>
+
+  <script>
+    (function () {
+      var body = document.body;
+      var themeButton = document.getElementById("themeButton");
+      var savedTheme = localStorage.getItem("taskplan-learning-theme");
+      if (savedTheme === "dark") {
+        body.classList.add("dark");
+        themeButton.textContent = "浅色模式";
+      }
+      themeButton.addEventListener("click", function () {
+        body.classList.toggle("dark");
+        var dark = body.classList.contains("dark");
+        localStorage.setItem("taskplan-learning-theme", dark ? "dark" : "light");
+        themeButton.textContent = dark ? "浅色模式" : "深色模式";
+      });
+
+      var mobileTocButton = document.getElementById("mobileTocButton");
+      var sidebar = document.getElementById("sidebar");
+      mobileTocButton.addEventListener("click", function () {
+        var shown = sidebar.style.display === "block";
+        sidebar.style.display = shown ? "none" : "block";
+        if (!shown) {
+          sidebar.style.position = "fixed";
+          sidebar.style.left = "12px";
+          sidebar.style.right = "12px";
+          sidebar.style.top = "64px";
+          sidebar.style.zIndex = "200";
+          sidebar.style.maxHeight = "75vh";
+        }
+      });
+
+      document.querySelectorAll(".copy-button").forEach(function (button) {
+        button.addEventListener("click", function () {
+          var code = button.closest(".code-block").querySelector("pre").innerText;
+          navigator.clipboard.writeText(code).then(function () {
+            var old = button.textContent;
+            button.textContent = "已复制";
+            setTimeout(function () { button.textContent = old; }, 1200);
+          });
+        });
+      });
+
+      var progress = document.getElementById("readingProgress");
+      function updateProgress() {
+        var height = document.documentElement.scrollHeight - window.innerHeight;
+        var ratio = height > 0 ? window.scrollY / height : 0;
+        progress.style.width = Math.min(100, Math.max(0, ratio * 100)) + "%";
+      }
+      window.addEventListener("scroll", updateProgress, { passive: true });
+      updateProgress();
+
+      var links = Array.prototype.slice.call(document.querySelectorAll(".toc a"));
+      var sections = links.map(function (link) {
+        return document.querySelector(link.getAttribute("href"));
+      }).filter(Boolean);
+      var observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          links.forEach(function (link) {
+            link.classList.toggle("active", link.getAttribute("href") === "#" + entry.target.id);
+          });
+        });
+      }, { rootMargin: "-18% 0px -72% 0px", threshold: 0 });
+      sections.forEach(function (section) { observer.observe(section); });
+
+      var sim = {
+        owner: null,
+        fence: 0,
+        version: 1,
+        status: "waiting_confirmation",
+        valid: false,
+        a: null,
+        b: null,
+        log: []
+      };
+      function simSnapshot(worker) {
+        return { owner: worker, fence: sim.fence, version: sim.version };
+      }
+      function simAppend(message) {
+        sim.log.push((sim.log.length + 1) + ". " + message);
+        document.getElementById("simLog").textContent = sim.log.join("\n");
+      }
+      function simRender() {
+        document.getElementById("simOwner").textContent = sim.owner || "none";
+        document.getElementById("simFence").textContent = String(sim.fence);
+        document.getElementById("simVersion").textContent = String(sim.version);
+        document.getElementById("simStatus").textContent = sim.status;
+      }
+      function simAcquire(worker) {
+        if (sim.valid && sim.owner !== null) {
+          simAppend(worker + " 领取失败：数据库仍有有效 owner=" + sim.owner + "。相当于 409 BUSY。");
+          return null;
+        }
+        sim.owner = worker;
+        sim.valid = true;
+        sim.fence += 1;
+        var token = simSnapshot(worker);
+        simAppend(worker + " 领取成功：得到 fence=" + token.fence + "、version=" + token.version + "。");
+        return token;
+      }
+      function simSave(worker, token, target) {
+        if (!token) {
+          simAppend(worker + " 没有租约句柄，不能保存。");
+          return;
+        }
+        var ok = sim.valid && sim.owner === token.owner && sim.fence === token.fence && sim.version === token.version;
+        if (!ok) {
+          simAppend(worker + " 保存被拒：本地(owner=" + token.owner + ", fence=" + token.fence + ", version=" + token.version + ") 与数据库不匹配。rowcount=0。");
+          return;
+        }
+        sim.status = target;
+        sim.version += 1;
+        token.version = sim.version;
+        simAppend(worker + " 保存成功：status=" + target + "，version 递增为 " + sim.version + "。");
+      }
+      function simReset() {
+        sim.owner = null;
+        sim.fence = 0;
+        sim.version = 1;
+        sim.status = "waiting_confirmation";
+        sim.valid = false;
+        sim.a = null;
+        sim.b = null;
+        sim.log = [];
+        simAppend("已重置：无 owner，fence=0，version=1。");
+        simRender();
+      }
+      document.querySelectorAll("[data-sim]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          var action = button.getAttribute("data-sim");
+          if (action === "acquireA") sim.a = simAcquire("Worker A");
+          if (action === "saveA") simSave("Worker A", sim.a, "preparing_confirmation");
+          if (action === "expire") {
+            sim.valid = false;
+            simAppend("数据库时间超过 lease_until：A 的租约已过期，但 A 本地对象仍存在。");
+          }
+          if (action === "acquireB") sim.b = simAcquire("Worker B");
+          if (action === "staleA") simSave("Worker A", sim.a, "completed");
+          if (action === "saveB") simSave("Worker B", sim.b, "executing_confirmed");
+          if (action === "cancel") {
+            sim.status = "cancelled";
+            sim.version += 1;
+            sim.fence += 1;
+            sim.owner = null;
+            sim.valid = false;
+            simAppend("cancel 原子提交：status=cancelled、version+1、fence+1、清空 owner。旧句柄全部失效。");
+          }
+          if (action === "reset") simReset();
+          simRender();
+        });
+      });
+    })();
+  </script>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      securityLevel: "strict",
+      theme: "neutral",
+      flowchart: { htmlLabels: true, curve: "basis" },
+      sequence: { useMaxWidth: true, wrap: true }
+    });
+  </script>
+</body>
+</html>

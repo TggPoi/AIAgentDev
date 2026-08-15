@@ -1,0 +1,92 @@
+{
+  "users": [
+    {
+      "name": "load_test_01",
+      "token_env": "LOAD_USER_01_TOKEN"
+    },
+    {
+      "name": "load_test_02",
+      "token_env": "LOAD_USER_02_TOKEN"
+    },
+    {
+      "name": "load_test_03",
+      "token_env": "LOAD_USER_03_TOKEN"
+    },
+    {
+      "name": "load_test_04",
+      "token_env": "LOAD_USER_04_TOKEN"
+    },
+    {
+      "name": "load_test_05",
+      "token_env": "LOAD_USER_05_TOKEN"
+    },
+    {
+      "name": "load_test_06",
+      "token_env": "LOAD_USER_06_TOKEN"
+    },
+    {
+      "name": "load_test_07",
+      "token_env": "LOAD_USER_07_TOKEN"
+    },
+    {
+      "name": "load_test_08",
+      "token_env": "LOAD_USER_08_TOKEN"
+    },
+    {
+      "name": "load_test_09",
+      "token_env": "LOAD_USER_09_TOKEN"
+    },
+    {
+      "name": "load_test_10",
+      "token_env": "LOAD_USER_10_TOKEN"
+    },
+    {
+      "name": "load_test_11",
+      "token_env": "LOAD_USER_11_TOKEN"
+    },
+    {
+      "name": "load_test_12",
+      "token_env": "LOAD_USER_12_TOKEN"
+    },
+    {
+      "name": "load_test_13",
+      "token_env": "LOAD_USER_13_TOKEN"
+    },
+    {
+      "name": "load_test_14",
+      "token_env": "LOAD_USER_14_TOKEN"
+    },
+    {
+      "name": "load_test_15",
+      "token_env": "LOAD_USER_15_TOKEN"
+    }
+  ],
+  "controls": [],
+  "sse_scenarios": [
+    {
+      "name": "document_accepted",
+      "user": "load_test_14",
+      "query": "请基于当前知识库创建一份隔离压测用部署核对报告，保存为测试项目中的 load-tests/taskplan-document-a.md，只生成一个交付物。",
+      "require_answer": false,
+      "required_events": [
+        "agent_task_plan_created",
+        "agent_task_document_supervised",
+        "agent_task_document_review_completed"
+      ],
+      "expected_task_statuses": [
+        "waiting_confirmation"
+      ]
+    },
+    {
+      "name": "document_capacity_collision",
+      "user": "load_test_15",
+      "query": "请基于当前知识库创建一份隔离压测用部署核对报告，保存为测试项目中的 load-tests/taskplan-document-b.md，只生成一个交付物。",
+      "wait_for_capacity_workload": "document",
+      "capacity_wait_timeout_seconds": 180,
+      "require_answer": false,
+      "expected_error_codes": [
+        "AGENT_CAPACITY_EXCEEDED"
+      ]
+    }
+  ]
+}

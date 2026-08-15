@@ -61,7 +61,12 @@ from fast_app.services.agent_tasks.document_change_plan_service import (
     DocumentActionConflictError,
     DocumentChangePlanService,
 )
-from fast_app.services.exceptions import AppServiceError, ToolPermissionDeniedError
+from fast_app.domain.agent_task_execution import require_task_plan_lease
+from fast_app.services.exceptions import (
+    AgentTaskPlanVersionConflictError,
+    AppServiceError,
+    ToolPermissionDeniedError,
+)
 from fast_app.services.knowledge.knowledge_document_management_service import KnowledgeDocumentManagementService
 from fast_app.services.agent_tasks.deep_document_agent import DeepDocumentAgent
 from fast_app.services.agent_tasks.document_supervisor_agent import DocumentSupervisorAgent
@@ -135,8 +140,8 @@ class DocumentTaskExecutor:
             tool_audit_service=tool_audit_service,
         )
 
-    def _sync_cancelled_state(self, plan: AgentTaskPlan) -> bool:
-        latest = self._task_plan_store.load(plan.task_plan_id)
+    async def _sync_cancelled_state(self, plan: AgentTaskPlan) -> bool:
+        latest = await self._task_plan_store.load(plan.task_plan_id)
         if latest.status != AgentTaskPlanStatus.CANCELLED:
             return False
         plan.status = latest.status
@@ -173,6 +178,18 @@ class DocumentTaskExecutor:
                 filters=filters,
                 langchain_config_factory=langchain_config_factory,
             )
+        # TaskPlan 一旦领取租约并开始生成待确认方案，就不再是仅创建状态。
+        # 这里先落权威状态，再调用耗时 Supervisor；确认前阶段绝不允许真实写入。
+        plan.user_id = plan.user_id or user.user_id
+        plan.status = AgentTaskPlanStatus.PREPARING_CONFIRMATION
+        plan.error = None
+        plan.failure_phase = None
+        plan.final_output["status"] = plan.status.value
+        plan.final_output["document_progress"] = {
+            **dict(plan.final_output.get("document_progress") or {}),
+            "stage": "supervising",
+        }
+        await self._task_plan_store.save(plan)
         web_policy = (
             plan.research_policy.web_policy
             if plan.research_policy is not None
@@ -242,7 +259,7 @@ class DocumentTaskExecutor:
             "execution_mode": decision.execution_mode,
             "supervisor": decision.model_dump(mode="json"),
         }
-        self._task_plan_store.save(plan)
+        await self._task_plan_store.save(plan)
         if decision.execution_mode == "direct":
             return await self._execute_document_tool_loop(
                 plan=plan,
@@ -287,14 +304,15 @@ class DocumentTaskExecutor:
             raise AppServiceError("DeepDocumentAgent 未装配")
         try:
             plan.user_id = plan.user_id or user.user_id
-            plan.status = AgentTaskPlanStatus.RUNNING
+            plan.status = AgentTaskPlanStatus.PREPARING_CONFIRMATION
             plan.steps = []
             plan.error = None
+            plan.failure_phase = None
             plan.final_output.update(
                 {
                     "status": plan.status.value,
                     "document_progress": {
-                        "stage": "deep_agent_running",
+                        "stage": "preparing_confirmation",
                         "events": [
                             {
                                 "event": "agent_task_document_supervised",
@@ -320,7 +338,7 @@ class DocumentTaskExecutor:
                     },
                 }
             )
-            self._task_plan_store.save(plan)
+            await self._task_plan_store.save(plan)
             run_result = await self._deep_document_agent.run(
                 plan=plan,
                 decision=decision,
@@ -367,7 +385,7 @@ class DocumentTaskExecutor:
             document_actions: dict[str, str] = {}
             # Deep Agents 运行期间 Middleware 已把 task 工具边界写入最新快照；
             # 重新加载而不是使用旧 plan 对象，避免结束时覆盖真实的实时事件。
-            latest = self._task_plan_store.load(plan.task_plan_id)
+            latest = await self._task_plan_store.load(plan.task_plan_id)
             live_progress = dict(
                 latest.final_output.get("document_progress") or {}
             )
@@ -509,11 +527,15 @@ class DocumentTaskExecutor:
             if not plan.steps:
                 plan.status = AgentTaskPlanStatus.FAILED
                 plan.error = "复杂文档任务没有产生可确认动作"
+                plan.failure_phase = (
+                    AgentTaskPlanStatus.PREPARING_CONFIRMATION.value
+                )
                 plan.final_output["status"] = plan.status.value
                 await self._retain_agentic_checkpoint(plan)
-                self._task_plan_store.save(plan)
+                await self._task_plan_store.save(plan)
                 return plan
             plan.status = AgentTaskPlanStatus.WAITING_CONFIRMATION
+            plan.failure_phase = None
             plan.final_output.update(
                 {
                     "status": plan.status.value,
@@ -521,17 +543,18 @@ class DocumentTaskExecutor:
                     "document_action_count": len(plan.steps),
                 }
             )
-            self._task_plan_store.save(plan)
+            await self._task_plan_store.save(plan)
             # TaskPlan JSON 已原子保存完整待确认正文；此后不再依赖虚拟工作区。
             await self.release_agentic_checkpoint(plan)
             return plan
         except asyncio.CancelledError:
-            if self._sync_cancelled_state(plan):
+            if await self._sync_cancelled_state(plan):
                 return plan
             plan.status = AgentTaskPlanStatus.FAILED
             plan.error = "AgentTaskInterrupted: DeepDocumentAgent 执行中断"
+            plan.failure_phase = AgentTaskPlanStatus.PREPARING_CONFIRMATION.value
             plan.final_output["status"] = plan.status.value
-            self._task_plan_store.save(plan)
+            await self._task_plan_store.save(plan)
             raise
         except (APIError, TimeoutError, ModelCallLimitExceededError) as exc:
             # 外部模型失败、文档 Worker 超时和模型预算耗尽都属于本次文档任务
@@ -540,15 +563,17 @@ class DocumentTaskExecutor:
             await self._retain_agentic_checkpoint(plan)
             plan.status = AgentTaskPlanStatus.FAILED
             plan.error = f"{type(exc).__name__}: {exc}"
+            plan.failure_phase = AgentTaskPlanStatus.PREPARING_CONFIRMATION.value
             plan.final_output["status"] = plan.status.value
-            self._task_plan_store.save(plan)
+            await self._task_plan_store.save(plan)
             return plan
         except Exception as exc:
             await self._retain_agentic_checkpoint(plan)
             plan.status = AgentTaskPlanStatus.FAILED
             plan.error = f"{type(exc).__name__}: {exc}"
+            plan.failure_phase = AgentTaskPlanStatus.PREPARING_CONFIRMATION.value
             plan.final_output["status"] = plan.status.value
-            self._task_plan_store.save(plan)
+            await self._task_plan_store.save(plan)
             raise
 
     async def _prepare_agentic_proposal(
@@ -669,12 +694,13 @@ class DocumentTaskExecutor:
                 raise AppServiceError("文档 TaskPlan 检查点结构无效") from exc
             if len(messages) < 2:
                 raise AppServiceError("文档 TaskPlan 检查点缺少模型消息")
-            plan.status = AgentTaskPlanStatus.RUNNING
+            plan.status = AgentTaskPlanStatus.PREPARING_CONFIRMATION
             plan.error = None
+            plan.failure_phase = None
             plan.final_output["status"] = plan.status.value
-            self._task_plan_store.save(plan)
+            await self._task_plan_store.save(plan)
         else:
-            plan.status = AgentTaskPlanStatus.RUNNING
+            plan.status = AgentTaskPlanStatus.PREPARING_CONFIRMATION
             plan.steps = []
             supervisor_output = plan.final_output.get("document_workflow")
             plan.final_output = {"tool_calls": [], "used_tools": []}
@@ -701,7 +727,7 @@ class DocumentTaskExecutor:
             traces: list[AgentTaskToolCallTrace] = []
             call_count = 0
             round_index = 0
-            self._task_plan_store.save(plan)
+            await self._task_plan_store.save(plan)
         tools = await self._build_document_agent_tools(
             plan=plan,
             user=user,
@@ -726,7 +752,7 @@ class DocumentTaskExecutor:
         max_calls = max(self._settings.agent_max_tool_calls, 0)
         if call_count >= max_calls:
             raise AppServiceError("文档 Agent 已达到最大工具调用次数")
-        self._save_document_tool_progress(
+        await self._save_document_tool_progress(
             plan,
             traces,
             round_index=round_index,
@@ -803,7 +829,7 @@ class DocumentTaskExecutor:
                                 error=error,
                             )
                         )
-                    self._save_document_tool_progress(
+                    await self._save_document_tool_progress(
                         plan,
                         traces,
                         round_index=round_index,
@@ -863,7 +889,7 @@ class DocumentTaskExecutor:
                                 error=batch_error,
                             )
                         )
-                    self._save_document_tool_progress(
+                    await self._save_document_tool_progress(
                         plan,
                         traces,
                         round_index=round_index,
@@ -966,7 +992,7 @@ class DocumentTaskExecutor:
                             )
                         )
                 # 所有同批结果先汇总，再保存进度；这些新状态只会在下一轮成为可依赖的事实。
-                self._save_document_tool_progress(
+                await self._save_document_tool_progress(
                     plan,
                     traces,
                     round_index=round_index,
@@ -981,6 +1007,7 @@ class DocumentTaskExecutor:
                 raise AppServiceError("LLM 未调用任何文档 dry-run 工具")
             # 到这里仍没有真实写入；TaskPlan 保存了用户确认时需要看到的全部冻结事实。
             plan.status = AgentTaskPlanStatus.WAITING_CONFIRMATION
+            plan.failure_phase = None
             plan.final_output.update(
                 {
                     "status": plan.status.value,
@@ -989,28 +1016,37 @@ class DocumentTaskExecutor:
                 }
             )
             plan.final_output["checkpoint"]["completed"] = True
-            self._task_plan_store.save(plan)
+            await self._task_plan_store.save(plan)
             return plan
         except _TaskPlanCancelledError:
             plan.status = AgentTaskPlanStatus.CANCELLED
             plan.error = None
             plan.final_output["status"] = plan.status.value
-            self._task_plan_store.save(plan)
+            try:
+                await self._task_plan_store.save(plan)
+            except AgentTaskPlanVersionConflictError:
+                # cancel_atomic 已经先一步把数据库行改为 cancelled；本执行者的
+                # 收敛保存必然 CAS 失败，此时取消已经达成，直接返回。
+                latest = await self._task_plan_store.load(plan.task_plan_id)
+                if latest.status != AgentTaskPlanStatus.CANCELLED:
+                    raise
             return plan
         except asyncio.CancelledError:
             # 进程/请求中断可能发生在轮次边界以外，不能当作用户主动取消。
             plan.status = AgentTaskPlanStatus.FAILED
             plan.error = "AgentTaskInterrupted: 文档 Agent 在完整轮次边界外中断"
+            plan.failure_phase = AgentTaskPlanStatus.PREPARING_CONFIRMATION.value
             plan.final_output["status"] = plan.status.value
-            self._task_plan_store.save(plan)
+            await self._task_plan_store.save(plan)
             raise
         except Exception as exc:
             plan.status = AgentTaskPlanStatus.FAILED
             plan.error = f"{type(exc).__name__}: {exc}"
+            plan.failure_phase = AgentTaskPlanStatus.PREPARING_CONFIRMATION.value
             plan.final_output["status"] = plan.status.value
-            self._task_plan_store.save(plan)
+            await self._task_plan_store.save(plan)
             raise
-    def _save_document_tool_progress(
+    async def _save_document_tool_progress(
         self,
         plan: AgentTaskPlan,
         traces: list[AgentTaskToolCallTrace],
@@ -1024,7 +1060,7 @@ class DocumentTaskExecutor:
     ) -> None:
         """将每轮原生工具轨迹写回 TaskPlan，供 SSE、页面和 LangSmith 对照查看。"""
 
-        if self._sync_cancelled_state(plan):
+        if await self._sync_cancelled_state(plan):
             raise _TaskPlanCancelledError("Agent task plan 已取消")
         # 将消息同时持久化为 LangChain 可反序列化格式，resume 才能把 ToolMessage 原样交回模型。
         plan.final_output["tool_calls"] = [
@@ -1045,7 +1081,7 @@ class DocumentTaskExecutor:
             "document_actions": document_actions,
             "completed": False,
         }
-        self._task_plan_store.save(plan)
+        await self._task_plan_store.save(plan)
 
     async def _build_document_agent_tools(
         self,
@@ -1266,6 +1302,10 @@ class DocumentTaskExecutor:
     ) -> AgentTaskPlan:
         """重新鉴权全部文档步骤，再交给 service 做整批执行和补偿。"""
 
+        if plan.status != AgentTaskPlanStatus.EXECUTING_CONFIRMED:
+            raise AppServiceError(
+                "文档 TaskPlan 未进入 executing_confirmed，拒绝执行真实写入"
+            )
         result = await self._confirm_once(plan=plan, user=user)
         await self.release_agentic_checkpoint(result)
         return result
@@ -1299,6 +1339,11 @@ class DocumentTaskExecutor:
 
         actions: list[tuple[KnowledgeDocumentActionRequest, str | None]] = []
         contexts: list[AgentToolCallContext] = []
+        latest = await self._task_plan_store.load(plan.task_plan_id)
+        if latest.status != AgentTaskPlanStatus.EXECUTING_CONFIRMED:
+            raise AppServiceError(
+                "数据库 TaskPlan 未进入 executing_confirmed，拒绝执行真实写入"
+            )
         try:
             # 先完成整批事实解析和二次鉴权，任何一步失败都不会调用真实写入 Service。
             for step in plan.steps:
@@ -1354,6 +1399,12 @@ class DocumentTaskExecutor:
                 KnowledgeDocumentActionPreview.model_validate(step.output["preview"])
                 for step in plan.steps
             ]
+            # 真实副作用边界（修订版 §14.3）：写文件/ES/Milvus 前再次确认租约
+            # 有效且任务未被取消，防止失租旧执行者触发第二次真实写入。
+            require_task_plan_lease(plan.task_plan_id).assert_active()
+            latest = await self._task_plan_store.load(plan.task_plan_id)
+            if latest.status != AgentTaskPlanStatus.EXECUTING_CONFIRMED:
+                raise asyncio.CancelledError("文档 TaskPlan 已取消或确认执行权已失效")
             results = await self._document_management_service.execute_confirmed_actions(
                 actions=actions,
                 user=user,
@@ -1393,12 +1444,13 @@ class DocumentTaskExecutor:
                     result.preview.affected_doc_id for result in results
                 ],
             }
-            self._task_plan_store.save(plan)
+            await self._task_plan_store.save(plan)
             return plan
         except Exception as exc:
             # Service 会负责数据补偿；Executor 只持久化计划失败状态和可展示的回滚摘要。
             plan.status = AgentTaskPlanStatus.FAILED
             plan.error = f"{type(exc).__name__}: {exc}"
+            plan.failure_phase = AgentTaskPlanStatus.EXECUTING_CONFIRMED.value
             plan.final_output = {
                 **plan.final_output,
                 "status": plan.status.value,
@@ -1406,7 +1458,7 @@ class DocumentTaskExecutor:
                 if "已完成补偿回滚" in str(exc)
                 else "not_required_or_failed",
             }
-            self._task_plan_store.save(plan)
+            await self._task_plan_store.save(plan)
             raise
 
     async def resume(

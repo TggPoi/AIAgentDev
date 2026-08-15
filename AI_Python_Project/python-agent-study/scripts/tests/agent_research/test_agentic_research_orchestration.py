@@ -3,9 +3,23 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import sys
 from datetime import UTC, datetime
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import perf_counter
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "scripts" / "tests"))
+os.environ["LANGSMITH_TRACING"] = "false"
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+
+from agent_task_plan_test_support import (
+    InMemoryAgentTaskLeaseManager,
+    InMemoryAgentTaskPlanStore,
+)
 
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.core.config import Settings
@@ -33,7 +47,6 @@ from fast_app.domain.research_task_plan import (
 )
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor
-from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
 from fast_app.services.research.agentic_research_executor import AgenticResearchExecutor
 
 
@@ -286,7 +299,7 @@ async def main() -> None:
             AGENT_TASK_PLAN_DIR=directory,
             AGENT_RESEARCH_MAX_PARALLEL_WORKERS=4,
         )
-        store = AgentTaskPlanStore(settings)
+        store = InMemoryAgentTaskPlanStore()
         worker = ControlledWorker()
         llm = FakeLLM()
         research = AgenticResearchExecutor(settings, llm, store, worker)
@@ -309,6 +322,7 @@ async def main() -> None:
             tool_permission_service=object(),
             tool_audit_service=object(),
             task_plan_store=store,
+            lease_manager=InMemoryAgentTaskLeaseManager(),
             research_executor=research,
             document_executor=object(),
             capability_service=capability_service,
@@ -348,7 +362,6 @@ async def main() -> None:
         assert all(item.status == "satisfied" for item in completed.requirement_evidence_statuses)
         assert len(completed.evidence_registry.evidence_by_id) == 3
         assert completed.final_output is not None
-        assert not list(store._task_plan_dir.glob("*.tmp"))
 
         # strict Requirement 失败时不调用 Final Synthesis。
         strict_failure = plan(
@@ -456,7 +469,7 @@ async def main() -> None:
             AGENT_RESEARCH_MAX_PARALLEL_WORKERS=2,
             AGENT_RESEARCH_WORKER_TIMEOUT_SECONDS=0.2,
         )
-        timeout_store = AgentTaskPlanStore(timeout_settings)
+        timeout_store = InMemoryAgentTaskPlanStore()
         timeout_executor = AgenticResearchExecutor(
             timeout_settings,
             FakeLLM(),
@@ -513,7 +526,7 @@ async def main() -> None:
             AGENT_RESEARCH_MAX_PARALLEL_WORKERS=2,
             AGENT_RESEARCH_WORKER_TIMEOUT_SECONDS=0.2,
         )
-        derived_timeout_store = AgentTaskPlanStore(derived_timeout_settings)
+        derived_timeout_store = InMemoryAgentTaskPlanStore()
         derived_timeout_executor = AgenticResearchExecutor(
             derived_timeout_settings,
             SlowDerivedLLM(),
@@ -575,8 +588,12 @@ async def main() -> None:
             [requirement("req_a", "knowledge_retrieval")],
             [question("sq_1", 1, "knowledge_retrieval", ["req_a"])],
         )
-        store.save(confirmable)
-        confirmed = await executor.confirm(confirmable.task_plan_id, user=user)
+        await store.create(confirmable)
+        confirmed = await executor.confirm(
+            confirmable.task_plan_id,
+            user=user,
+            idempotency_key="confirm-research-orchestration",
+        )
         assert confirmed.status == AgentTaskPlanStatus.COMPLETED
         assert capability_service.calls == 1
 

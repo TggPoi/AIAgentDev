@@ -1,47 +1,118 @@
-"""TaskPlan JSON/Markdown 快照的原子文件存储。"""
+"""Agent TaskPlan 的 PostgreSQL 事实库与 JSON/Markdown 审查导出。
+
+分层契约：
+
+- ``AgentTaskPlanStore``：唯一业务事实读写入口，全部走
+  ``AgentTaskPlanRepository``（原子 CAS / 租约 / 幂等）。
+- ``AgentTaskPlanExportStore``：只生成可重建的 JSON/Markdown 审查导出物，
+  任何导出失败都不能回滚已提交的数据库事实，也不参与业务读取。
+"""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from fast_app.core.config import Settings
 from fast_app.core.logging import get_logger
-from fast_app.domain.agent_task_plan import AgentTaskPlan, AgentTaskPlanStatus
+from fast_app.domain.agent_task_execution import (
+    TaskPlanCommandReplay,
+    TaskPlanLease,
+    TaskPlanOperation,
+    TaskPlanWorkloadType,
+    require_task_plan_lease,
+)
+from fast_app.domain.agent_task_plan import (
+    AgentTaskPlan,
+    AgentTaskPlanStatus,
+    AgentToolStepStatus,
+)
+from fast_app.domain.agent_tool_permissions import RoleCode
 from fast_app.domain.knowledge_document_actions import KnowledgeDocumentOperation
 from fast_app.domain.research_task_plan import ResearchTaskPlan
+from fast_app.domain.user_context import CurrentUserContext
+from fast_app.services.agent_tasks.agent_task_plan_repository import (
+    AgentTaskPlanRepository,
+)
 from fast_app.services.exceptions import AgentTaskPlanSchemaUnsupportedError, AppServiceError
 
 
 StoredAgentTaskPlan = AgentTaskPlan | ResearchTaskPlan
 logger = get_logger(__name__)
 
-class AgentTaskPlanStore:
-    """用 runtime JSON 文件保存 TaskPlan 的当前快照。"""
+
+def _deserialize_plan(payload: dict[str, Any]) -> StoredAgentTaskPlan:
+    if payload.get("task_kind") == "question_decomposition":
+        if payload.get("schema_version") != 2:
+            raise AgentTaskPlanSchemaUnsupportedError(
+                "Research TaskPlan schema_version 不受支持"
+            )
+        return ResearchTaskPlan.model_validate(payload)
+    return AgentTaskPlan.model_validate(payload)
+
+
+def _cancelled_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
+    """把快照收敛为 cancelled；与历史 cancel 的展示语义保持一致。"""
+
+    plan = _deserialize_plan(payload)
+    now = datetime.now(UTC)
+    plan.status = AgentTaskPlanStatus.CANCELLED
+    plan.updated_at = now
+    if isinstance(plan, ResearchTaskPlan):
+        plan.error_code = None
+        plan.error_message = None
+        for worker in plan.progress.workers.values():
+            if worker.status in {"pending", "running"}:
+                worker.status = "skipped"
+    else:
+        plan.error = None
+        for step in plan.steps:
+            if step.status in {
+                AgentToolStepStatus.PENDING,
+                AgentToolStepStatus.RUNNING,
+                AgentToolStepStatus.WAITING_CONFIRMATION,
+            }:
+                step.status = AgentToolStepStatus.SKIPPED
+                step.requires_confirmation = False
+                step.error = "TaskPlan 已由用户取消"
+        plan.final_output.update(
+            {
+                "status": AgentTaskPlanStatus.CANCELLED.value,
+                "cancelled_at": now.isoformat(),
+            }
+        )
+    return plan.model_dump(mode="json")
+
+
+class AgentTaskPlanExportStore:
+    """只生成可重建的 JSON/Markdown 审查导出物，不参与业务读取。"""
 
     def __init__(self, settings: Settings) -> None:
         self._task_plan_dir = Path(settings.agent_task_plan_dir)
 
     def save(self, plan: StoredAgentTaskPlan) -> None:
-        """新增或覆盖同一个 task_plan_id 对应的 JSON 文件。"""
-
-        # JSON 是接口读取的事实快照；Markdown 是同一份事实的人类可读视图。
         self._task_plan_dir.mkdir(parents=True, exist_ok=True)
-        plan.updated_at = datetime.now(UTC)
-        path = self._path_for_new_plan(plan)
+        path = self._path_for(plan)
         self._atomic_write_text(path, plan.model_dump_json(indent=2))
-        try:
-            self._atomic_write_text(
-                path.with_suffix(".md"),
-                _render_task_plan_markdown(plan),
-            )
-        except OSError as exc:
-            # JSON 是唯一事实源；Markdown 只是可再生成的审查视图。
-            logger.warning("TaskPlan Markdown 快照写入失败: %s", type(exc).__name__)
+        self._atomic_write_text(
+            path.with_suffix(".md"),
+            _render_task_plan_markdown(plan),
+        )
+
+    def _path_for(self, plan: StoredAgentTaskPlan) -> Path:
+        existing = sorted(
+            self._task_plan_dir.glob(f"*_{plan.task_plan_id}.json")
+        )
+        if existing:
+            return existing[-1]
+        created = plan.created_at.strftime("%Y%m%d_%H%M%S")
+        return self._task_plan_dir / f"{created}_{plan.task_plan_id}.json"
 
     @staticmethod
     def _atomic_write_text(path: Path, content: str) -> None:
@@ -66,43 +137,108 @@ class AgentTaskPlanStore:
             if temp_path is not None and temp_path.exists():
                 temp_path.unlink(missing_ok=True)
 
-    def load(self, task_plan_id: str) -> StoredAgentTaskPlan:
-        """按 task_plan_id 读取最近一次保存的计划快照。"""
 
-        # task_plan_id 来自外部确认接口，先做最小格式校验，避免任意 glob 查询。
+class AgentTaskPlanStore:
+    """PostgreSQL TaskPlan 事实库；JSON/Markdown 仅做 best-effort 导出。"""
+
+    def __init__(
+        self,
+        *,
+        repository: AgentTaskPlanRepository,
+        export_store: AgentTaskPlanExportStore,
+    ) -> None:
+        self.repository = repository
+        self._export_store = export_store
+
+    @staticmethod
+    def from_snapshot(payload: dict[str, Any]) -> StoredAgentTaskPlan:
+        return _deserialize_plan(payload)
+
+    async def create(self, plan: StoredAgentTaskPlan) -> StoredAgentTaskPlan:
+        plan.updated_at = datetime.now(UTC)
+        await self.repository.create_plan(plan.model_dump(mode="json"))
+        await self._export(plan)
+        return plan
+
+    async def load(self, task_plan_id: str) -> StoredAgentTaskPlan:
         if not task_plan_id.startswith("task_plan_"):
             raise AppServiceError("非法 task_plan_id")
-        self._task_plan_dir.mkdir(parents=True, exist_ok=True)
-        matches = sorted(self._task_plan_dir.glob(f"*_{task_plan_id}.json"))
-        if not matches:
-            raise AppServiceError("Agent task plan 不存在")
-        payload = json.loads(matches[-1].read_text(encoding="utf-8"))
-        if payload.get("task_kind") == "question_decomposition":
-            if payload.get("schema_version") != 2:
-                raise AgentTaskPlanSchemaUnsupportedError(
-                    "Research TaskPlan schema_version 不受支持"
-                )
-            return ResearchTaskPlan.model_validate(payload)
-        return AgentTaskPlan.model_validate(payload)
+        payload, _version = await self.repository.load_snapshot(task_plan_id)
+        return _deserialize_plan(payload)
 
-    def load_markdown(self, task_plan_id: str) -> str:
-        """读取面向人工审查的 Markdown；没有旧文件时按 JSON 现场渲染。"""
+    async def load_with_version(
+        self, task_plan_id: str
+    ) -> tuple[StoredAgentTaskPlan, int]:
+        payload, version = await self.repository.load_snapshot(task_plan_id)
+        return _deserialize_plan(payload), version
 
-        plan = self.load(task_plan_id)
-        matches = sorted(self._task_plan_dir.glob(f"*_{task_plan_id}.md"))
-        if matches:
-            return matches[-1].read_text(encoding="utf-8")
+    async def load_markdown(self, task_plan_id: str) -> str:
+        plan = await self.load(task_plan_id)
         return _render_task_plan_markdown(plan)
 
-    def _path_for_new_plan(self, plan: StoredAgentTaskPlan) -> Path:
-        """已有文件继续覆盖，避免同一个 plan 在执行中生成多份快照。"""
+    async def save(self, plan: StoredAgentTaskPlan) -> StoredAgentTaskPlan:
+        lease = require_task_plan_lease(plan.task_plan_id)
+        plan.updated_at = datetime.now(UTC)
+        await self.repository.save_snapshot(
+            snapshot=plan.model_dump(mode="json"),
+            lease=lease,
+        )
+        await self._export(plan)
+        return plan
 
-        existing = sorted(self._task_plan_dir.glob(f"*_{plan.task_plan_id}.json"))
-        if existing:
-            return existing[-1]
-        created = plan.created_at.strftime("%Y%m%d_%H%M%S")
-        return self._task_plan_dir / f"{created}_{plan.task_plan_id}.json"
+    async def begin_operation(
+        self,
+        *,
+        task_plan_id: str,
+        operation: TaskPlanOperation,
+        idempotency_key: str,
+        request_hash: str,
+        worker_id: str,
+        allowed_statuses: set[AgentTaskPlanStatus],
+        workload_type: TaskPlanWorkloadType,
+        capacity_limit: int,
+        lease_seconds: int,
+    ) -> TaskPlanLease | TaskPlanCommandReplay:
+        return await self.repository.begin_operation(
+            task_plan_id=task_plan_id,
+            operation=operation,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            worker_id=worker_id,
+            allowed_statuses=allowed_statuses,
+            workload_type=workload_type,
+            capacity_limit=capacity_limit,
+            lease_seconds=lease_seconds,
+        )
 
+    async def cancel(
+        self,
+        *,
+        task_plan_id: str,
+        user: CurrentUserContext,
+        idempotency_key: str,
+        request_hash: str,
+    ) -> StoredAgentTaskPlan:
+        payload = await self.repository.cancel_atomic(
+            task_plan_id=task_plan_id,
+            actor_user_id=user.user_id,
+            can_manage_all=user.has_global_role(RoleCode.SYSTEM_ADMIN.value),
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            mutate_snapshot=_cancelled_snapshot,
+        )
+        plan = _deserialize_plan(payload)
+        await self._export(plan)
+        return plan
+
+    async def _export(self, plan: StoredAgentTaskPlan) -> None:
+        try:
+            await asyncio.to_thread(self._export_store.save, plan.model_copy(deep=True))
+        except OSError as exc:
+            logger.warning(
+                "TaskPlan 审查导出失败，不回滚数据库事实: %s",
+                type(exc).__name__,
+            )
 
 
 def _render_task_plan_markdown(plan: StoredAgentTaskPlan) -> str:
@@ -355,6 +491,7 @@ def _render_research_task_plan_markdown(plan: ResearchTaskPlan) -> str:
     )
     return "\n".join(lines) + "\n"
 
+
 def _markdown_fenced_block(text: str, language: str) -> list[str]:
     """生成不会被正文内部反引号提前闭合的 Markdown 代码块。"""
 
@@ -363,4 +500,5 @@ def _markdown_fenced_block(text: str, language: str) -> list[str]:
     fence = "`" * max(3, longest_run + 1)
     return [f"{fence}{language}", text, fence]
 
-__all__ = ["AgentTaskPlanStore", "StoredAgentTaskPlan"]
+
+__all__ = ["AgentTaskPlanExportStore", "AgentTaskPlanStore", "StoredAgentTaskPlan"]

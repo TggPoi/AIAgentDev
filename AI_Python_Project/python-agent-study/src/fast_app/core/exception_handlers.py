@@ -115,8 +115,14 @@ def register_exception_handlers(app: FastAPI) -> None:
             ),
         )
 
+        headers = None
+        retry_after = getattr(exc, "retry_after_seconds", None)
+        if isinstance(retry_after, int) and retry_after > 0:
+            headers = {"Retry-After": str(retry_after)}
+
         return JSONResponse(
             status_code=exc.status_code,
+            headers=headers,
             content=build_app_error_response_content(
                 exc,
                 request_id=request_id,

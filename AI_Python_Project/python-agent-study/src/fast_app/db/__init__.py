@@ -4,6 +4,12 @@
 """
 
 from fast_app.db.base import Base
+from fast_app.db.agent_task_plan_tables import (
+    AgentTaskCapacitySlotTable,
+    AgentTaskPlanCommandTable,
+    AgentTaskPlanRuntimeRecordTable,
+    AgentTaskPlanTable,
+)
 from fast_app.db.auth_tables import (
     ApiKeyTable,
     DepartmentTable,
@@ -44,6 +50,10 @@ from fast_app.db.nl2sql_tables import (
 )
 
 __all__ = [
+    "AgentTaskCapacitySlotTable",
+    "AgentTaskPlanCommandTable",
+    "AgentTaskPlanRuntimeRecordTable",
+    "AgentTaskPlanTable",
     "ApiKeyTable",
     "Base",
     "ConversationMessageTable",
