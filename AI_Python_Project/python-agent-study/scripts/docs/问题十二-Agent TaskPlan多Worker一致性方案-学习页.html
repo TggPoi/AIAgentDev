@@ -800,7 +800,7 @@ erDiagram
       jsonb snapshot_json
     }
     AGENT_TASK_PLAN_RUNTIME_RECORDS {
-      string task_plan_id PK_FK
+      string task_plan_id PK, FK
       bigint record_version
       jsonb snapshot_json
       datetime expires_at
