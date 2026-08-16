@@ -151,7 +151,7 @@ class AgentTaskPlanRepository:
                     )
                     .returning(AgentTaskPlanCommandTable.command_id)
                 )
-            ).scalar_one_or_none()
+            ).scalar_one_or_none() # 取第一行第一列的单值：没有 → None，多于一行 → 报错。
 
             if inserted is None:
                 existing = await session.scalar(
@@ -192,7 +192,7 @@ class AgentTaskPlanRepository:
                                 AgentTaskPlanTable.task_plan_id == task_plan_id
                             )
                         )
-                    ).one_or_none()
+                    ).one_or_none() # 取第一行：没有 → None，多于一行 → 报错。
                     still_owned = (
                         task_state is not None
                         and task_state.lease_owner is not None
@@ -313,7 +313,7 @@ class AgentTaskPlanRepository:
                                 AgentTaskCapacitySlotTable.lease_fence_token
                             )
                         )
-                    ).one()
+                    ).one() # 取第一行：没有 → 报错，多于一行 → 报错。 和 one_or_none() 不同，slot 已经 SELECT FOR UPDATE 锁定，必然只有一行。
                     await session.execute(
                         update(AgentTaskPlanTable)
                         .where(

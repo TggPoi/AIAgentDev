@@ -126,10 +126,14 @@ class _TaskPlanLockRegistry:
                 self._locks.pop(task_plan_id, None)
 
     async def is_locked(self, task_plan_id: str) -> bool:
-        """取消请求只读取占用状态，不等待正在运行的任务。
+        """只读查询当前进程内 task_plan_id 的占用状态，不等待运行中的任务。
 
-        返回值是查询当时的进程内快照，只用来判断 cancel 是立即清理
-        checkpoint，还是让正在运行的 Deep Agent 在安全边界自行清理。
+        返回值是查询瞬间的进程内快照，且只反映当前 Worker 进程的状态：任务
+        在另一个 Worker 上运行时这里必然返回 False。当前 cancel 路径不调用本
+        方法：cancel 直接走数据库原子取消（SELECT FOR UPDATE + 失效 fencing
+        token），不在取消路径上删除 checkpoint；checkpoint 由终态路径或维护
+        命令在租约/fence 校验下清理。任何未来调用方都不得把破坏性动作（如
+        删除 checkpoint）绑定到这个会过期的进程内快照上。
         """
 
         async with self._guard:

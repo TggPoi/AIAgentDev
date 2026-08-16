@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="结合当前工程真实代码讲解 Agent TaskPlan 多 Worker 一致性：进程内锁、PostgreSQL 租约、CAS、fencing token、幂等命令、状态机与容量槽。">
   <title>问题十二 · Agent TaskPlan 多 Worker 一致性深度学习页</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
   <style>
     :root {
       --bg: #f6f7fb;
@@ -188,6 +189,31 @@
     p { margin: 10px 0; }
     ul, ol { padding-left: 1.35em; }
     li + li { margin-top: 5px; }
+    .check-list { list-style: none; padding-left: 0; }
+    .check-list li { position: relative; padding-left: 26px; margin-top: 8px; }
+    .check-list li::before {
+      content: "✓";
+      position: absolute; left: 0; top: 0;
+      color: var(--green); font-weight: 800;
+    }
+    .diagram-note {
+      margin: 8px 0;
+      padding: 8px 12px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      border-radius: 8px;
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 14px;
+      overflow-x: auto;
+    }
+    blockquote {
+      margin: 12px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--cyan);
+      background: var(--cyan-soft);
+      border-radius: 8px;
+    }
+    blockquote p { margin: 0; }
     .big-idea { font-size: 19px; color: #27334a; }
     .big-idea strong { color: #203c9d; }
 
@@ -276,6 +302,9 @@
       tab-size: 4;
     }
     pre code { border: 0; padding: 0; color: inherit; background: transparent; font-size: inherit; }
+    /* highlight.js 语法高亮：主题自带颜色，背景沿用页面深色代码板 */
+    pre code.hljs { background: transparent; padding: 0; display: block; }
+    .hljs { background: transparent; }
     .code-walk { margin: 10px 0 20px; padding-left: 22px; color: #44516a; }
     .code-walk li::marker { color: var(--brand); font-weight: 800; }
 
@@ -462,8 +491,28 @@
         <li class="toc-sub"><a href="#atomicity">原子性与丢失更新</a></li>
         <li><a href="#historical-failures">3. 历史故障怎样发生</a></li>
         <li><a href="#target-architecture">4. 当前目标架构</a></li>
+        <li class="toc-sub"><a href="#arch-layers">4.1 分层职责与术语表</a></li>
+        <li class="toc-sub"><a href="#arch-docstring">4.2 唯一 SQL 边界的铁律</a></li>
+        <li class="toc-sub"><a href="#arch-begin-operation">4.3 一口气做三件事</a></li>
+        <li class="toc-sub"><a href="#arch-short-session">4.4 为什么用短 Session</a></li>
+        <li class="toc-sub"><a href="#arch-summary">4.5 这一章背什么</a></li>
         <li><a href="#data-model">5. 四张表与事实边界</a></li>
+        <li class="toc-sub"><a href="#data-responsibility">5.0 四张表的职责与来源</a></li>
+        <li class="toc-sub"><a href="#data-pk-fk-uk">5.1 PK / FK / UK</a></li>
+        <li class="toc-sub"><a href="#data-relations">5.2 身份关系图逐条翻译</a></li>
+        <li class="toc-sub"><a href="#data-main-fields">5.3 主表逐字段</a></li>
+        <li class="toc-sub"><a href="#data-other-tables">5.4 另外三张表</a></li>
+        <li class="toc-sub"><a href="#data-runtime">5.5 Deep Document 恢复安全门</a></li>
+        <li class="toc-sub"><a href="#data-summary">5.6 这一章背什么</a></li>
         <li><a href="#state-machine">6. 完整状态机</a></li>
+        <li class="toc-sub"><a href="#state-why">6.1 为什么状态机存在</a></li>
+        <li class="toc-sub"><a href="#state-table">6.2 八个状态</a></li>
+        <li class="toc-sub"><a href="#state-dict">6.3 规则字典</a></li>
+        <li class="toc-sub"><a href="#state-save-snapshot">6.4 save_snapshot 唯一写入入口</a></li>
+        <li class="toc-sub"><a href="#state-check-constraint">6.5 数据库检查约束</a></li>
+        <li class="toc-sub"><a href="#state-retry">6.6 retry 与 failure_phase</a></li>
+        <li class="toc-sub"><a href="#state-two-machines">6.7 两套状态机</a></li>
+        <li class="toc-sub"><a href="#state-summary">6.8 这一章背什么</a></li>
         <li><a href="#mechanisms">7. 七个核心机制</a></li>
         <li class="toc-sub"><a href="#local-lock">进程内快速锁</a></li>
         <li class="toc-sub"><a href="#lease">数据库租约与心跳</a></li>
@@ -473,14 +522,16 @@
         <li class="toc-sub"><a href="#capacity">全局容量槽</a></li>
         <li class="toc-sub"><a href="#cancel-wins">取消必胜</a></li>
         <li><a href="#confirm-trace">8. 一次 confirm 完整追踪</a></li>
-        <li><a href="#race-cases">9. 四类竞态推演</a></li>
-        <li><a href="#simulator">10. 交互式代际模拟器</a></li>
-        <li><a href="#code-map">11. 当前工程代码地图</a></li>
-        <li><a href="#verification">12. 测试证据与验证方式</a></li>
-        <li><a href="#frontend">13. API、SSE 与 React</a></li>
-        <li><a href="#limits">14. 边界、残余风险与误区</a></li>
-        <li><a href="#exercises">15. 动手练习</a></li>
-        <li><a href="#summary">16. 最终总结与自测</a></li>
+        <li><a href="#cancel-trace">9. 一次 cancel 完整追踪</a></li>
+        <li><a href="#lease-recovery">10. 租约过期与恢复执行</a></li>
+        <li><a href="#race-cases">11. 四类竞态推演</a></li>
+        <li><a href="#simulator">12. 交互式代际模拟器</a></li>
+        <li><a href="#code-map">13. 当前工程代码地图</a></li>
+        <li><a href="#verification">14. 测试证据与验证方式</a></li>
+        <li><a href="#frontend">15. API、SSE 与 React</a></li>
+        <li><a href="#limits">16. 边界、残余风险与误区</a></li>
+        <li><a href="#exercises">17. 动手练习</a></li>
+        <li><a href="#summary">18. 最终总结与自测</a></li>
       </ol>
     </aside>
 
@@ -740,11 +791,204 @@ flowchart TB
           <span class="callout-title">为什么 Repository 必须成为唯一并发 SQL 入口</span>
           如果 Executor、Runtime、API 各自拼一部分 UPDATE，就很难保证每条写入都带上相同的 owner、fence、version 和状态条件。当前 <code>agent_task_plan_repository.py</code> 明确集中所有 <code>SELECT FOR UPDATE</code>、<code>SKIP LOCKED</code>、条件 UPDATE 和 CAS；每个方法创建自己的短 Session，心跳协程与主执行协程不共享 AsyncSession。
         </div>
+
+        <h3 id="arch-layers">4.1 先把架构图翻译成人话：一家公司里，谁负责什么</h3>
+        <p>这张图用一句话说就是：<strong>用户请求像一份"办事申请单"，它要经过几道手续，但最后只有一个人能改账本。</strong>打个比方，你去银行办事：</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>银行里的角色</th><th>只负责做什么</th><th>工程里对应谁</th></tr></thead>
+            <tbody>
+              <tr><td>柜台接待</td><td>收你的身份证和申请单，检查格式，给你回执</td><td><code>api/agent_task_plan_routes.py</code> 里的 endpoint（L156）</td></tr>
+              <tr><td>大堂经理</td><td>看申请单决定走哪个流程，但自己从不碰钱</td><td><code>agent_task_executor.py</code> 的 <code>AgentTaskExecutor</code>（L225）</td></tr>
+              <tr><td>档案管理员</td><td>把办完的结果归档，顺手复印一份给你看（复印坏了不影响正事）</td><td><code>agent_task_plan_store.py</code> 的 <code>AgentTaskPlanStore</code>（L214）</td></tr>
+              <tr><td><strong>金库管理员</strong></td><td><strong>全公司唯一</strong>能打开金库、改账本的人</td><td><code>agent_task_plan_repository.py</code> 的 <code>AgentTaskPlanRepository</code>（L560）</td></tr>
+              <tr><td>金库账本</td><td>记下来的一切才是事实</td><td>PostgreSQL 里的四张表</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>为什么"改账本"只能由金库管理员一个人做？因为改账本有个铁律：<strong>必须同时完成"看条件"和"写结果"</strong>。如果大堂经理、档案员都能自己改，就会出现第 2 章讲过的丢失更新——你看着旧账做决定，写下去时账已经变了。所以工程规定：谁都可以收申请单、谁都可以引导流程，但<strong>只要涉及"根据条件改数据"的 SQL，一律只能写在 Repository 这一个文件里</strong>。这就是图里 Repository 下面标的"唯一并发 SQL 边界"——"边界"的意思是：线外面的人不允许干这件事。</p>
+        <p>下面是这一章你会反复遇到的词，先集中解释一遍，后面每出现一次就不再重复：</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>术语</th><th>人话解释</th><th>生活类比</th></tr></thead>
+            <tbody>
+              <tr><td><strong>事务</strong>（transaction）</td><td>一组动作"一口气办完"：要么全部成功，要么全部作废，不存在办一半</td><td>转账：扣你的钱和加对方的钱必须同时成功，否则都不算数</td></tr>
+              <tr><td><strong>租约</strong>（lease）</td><td>一块"此任务归我办理"的牌子，带有效期，到期自动失效</td><td>租房合同：租期内只有你能住，到期不续约自动作废</td></tr>
+              <tr><td><strong>条件 UPDATE</strong></td><td>一条"改数据"的 SQL 带着条件——<strong>不满足条件就一行都改不动</strong></td><td>"如果价格还是 100 元就成交"——价格变了，这句话自动失效</td></tr>
+              <tr><td><strong>fencing token</strong>（栅栏令牌）</td><td>每次"换人办理"都会 +1 的编号，用来识别这是第几任办理人</td><td>门禁卡代次：新卡发下来，旧卡刷卡就会被拒</td></tr>
+              <tr><td><strong>SKIP LOCKED</strong></td><td>抢车位规则：别人正在锁的车位，我不等它，跳过它找下一个</td><td>停车场找位：这个车位正在被占，直接开过去找下一个空位</td></tr>
+              <tr><td><strong>幂等键</strong>（idempotency key）</td><td>申请单编号：同一编号的事，系统保证只办一次</td><td>挂号单号：拿同一个号去两次窗口，也不会给你办两次</td></tr>
+              <tr><td><strong>Session</strong></td><td>和数据库的一次"通话"，办完就挂断</td><td>打一次电话：说完就挂，不占线</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="arch-docstring">4.2 金库管理员的铁律写在文件第一行</h3>
+        <p>上一节的规矩不是嘴上说说，它写在 Repository 文件的开头（L1-6），谁改这个文件都能看见：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · agent_task_plan_repository.py 文件开头 L1-6</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>"""Agent TaskPlan 数据库租约、原子 CAS 与幂等命令的唯一并发 SQL 入口。
+
+所有跨进程一致性的条件 UPDATE / SELECT FOR UPDATE / CAS 都必须写在本模块，
+业务层不得自行拼接并发 SQL。每个方法自开短 Session：SQLAlchemy AsyncSession
+不支持并发使用，心跳任务与主执行协程不能共享同一个 Session。
+"""</code></pre>
+        </div>
+        <p>逐句翻译成人话：</p>
+        <ul class="check-list">
+          <li>"唯一并发 SQL 入口"——全工程只有这一个文件允许写"根据条件改数据"的 SQL；</li>
+          <li>"业务层不得自行拼接并发 SQL"——Executor、Runtime、API 这些层如果自己写 UPDATE，就绕过了金库管理员，规矩就破了；</li>
+          <li>"每个方法自开短 Session"——每次办事自己拨电话，办完立刻挂断（4.4 详细讲为什么）。</li>
+        </ul>
+
+        <h3 id="arch-begin-operation">4.3 金库管理员办一件事：一口气做三件事</h3>
+        <p>所有控制操作（confirm 确认、retry 重试、cancel 取消）最后都会走进 Repository 的同一个方法：<code>begin_operation()</code>（repository L119）。它在一个<strong>事务</strong>里，一口气依次做三件事：</p>
+        <ol>
+          <li><strong>查申请单编号</strong>——这件事以前办过吗？（防"重复办理"）</li>
+          <li><strong>领执行权</strong>——这个任务现在归我管吗？（防"两个人同时办"）</li>
+          <li><strong>领车位</strong>——公司还有空车位给我吗？（防"同时办太多重活"）</li>
+        </ol>
+        <p>"一口气"是关键：三件事在一个事务里，任何一件失败，前面做的全部作废——不存在"查完编号发现重复，但牌子已经挂上了"这种半吊子状态。</p>
+
+        <h4>第一件事：查申请单编号（防止同一件事办两次）</h4>
+        <p><strong>要解决的问题</strong>：用户双击"确认"按钮、或者网络超时后客户端自动重试，同一件事会到达服务器两次。如果两次都照办，任务就被执行两遍。</p>
+        <p><strong>解决思路</strong>：客户端每次发控制请求都要带一个"申请单编号"（幂等键，HTTP 头里的 <code>Idempotency-Key</code>）。数据库规定：<strong>同一个任务 + 同一种操作 + 同一个编号，只能存在一条记录</strong>。第一单进来时把记录存进去；第二单带着相同编号进来，数据库会拒绝存储（编号重复），于是代码知道"这单以前来过"，改去查老记录：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · 第一件事：登记申请单（L132-154 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>async with self._session_factory() as session, session.begin():  # 开始一个事务（一口气办完）
+    inserted = (                                     # 尝试把这张申请单存进"命令表"
+        await session.execute(
+            pg_insert(AgentTaskPlanCommandTable)      # 往命令表插入
+            .values(
+                command_id=command_id,                # 这条记录自己的编号
+                task_plan_id=task_plan_id,            # 是哪个任务的事
+                operation=operation,                  # 办什么：confirm / retry / cancel
+                idempotency_key=idempotency_key,      # ← 申请单编号（关键）
+                request_hash=request_hash,            # 申请单内容的指纹（防同号不同内容）
+                status="running",                     # 先记"正在办理"
+            )
+            .on_conflict_do_nothing(                  # ← 编号重复：什么都不做，存不进去
+                constraint="uq_agent_task_plan_command_idempotency"
+            )
+            .returning(AgentTaskPlanCommandTable.command_id)  # 存成功就把记录编号返回
+        )
+    ).scalar_one_or_none()</code></pre>
+        </div>
+        <p>两个词先解释掉：</p>
+        <ul class="check-list">
+          <li><strong>幂等</strong>：同一个操作做一次和做一百次，结果一样。给请求编上号，就是实现幂等的第一步——重试不再产生第二次业务；</li>
+          <li><code>on_conflict_do_nothing</code>：人话就是"编号冲突就什么都不做"。数据库里有条硬规则（<code>uq_agent_task_plan_command_idempotency</code>，uq = 唯一约束），保证"同任务+同操作+同编号"只存得进一条。</li>
+        </ul>
+        <p>然后代码看 <code>inserted</code> 的值分两种情况：</p>
+        <ul class="check-list">
+          <li><strong>存进去了</strong>（<code>inserted</code> 有值）：这单第一次来，继续往下办第二、第三件事；</li>
+          <li><strong>没存进去</strong>（<code>inserted</code> 是 None）：编号重复，这单以前来过。按老记录的状态分四路处理——以前成功了：直接把上次结果原样返回（重放）；以前还在办：看是不是已经没人管的"孤儿"（办的人早死了就允许重新办）；以前被拒/失败了：允许同一编号重试（复活）；编号相同但内容指纹不同：拒绝，防止拿旧编号干新事。这四路是第 7 章"幂等命令"的完整内容，现在知道"为什么查编号"就够了。</li>
+        </ul>
+
+        <h4>第二件事：领执行权（防止两个人同时办同一任务）</h4>
+        <p><strong>要解决的问题</strong>：就算申请单编号不重复，同一个任务还是可能被<strong>两个不同编号</strong>的请求抢——比如两个管理员同时点"确认"，或者第 2 章说的：同一个请求被网络分发到了两个不同的 Worker 进程。</p>
+        <p><strong>解决思路</strong>：任务表上有一块"牌子"——<strong>租约</strong>，上面写着"这个任务现在归我（员工编号）办，有效期到 XX 时间"。要办任务，第一步就是挂这块牌子。</p>
+        <p>但挂牌子有个陷阱：不能"先看任务闲不闲、再挂"。因为"看"和"挂"之间哪怕只隔一瞬间，别人可能抢先挂了（第 2 章的 TOCTOU）。<strong>正确做法是把"看"和"挂"合成一个动作</strong>——把"任务必须空闲、状态必须允许"这些条件，直接写进"挂"这条 SQL 的条件里：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · 第二件事：挂租约牌子（L221-249 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>task_row = (
+    await session.execute(
+        update(AgentTaskPlanTable)                    # 我要"改"任务表
+        .where(                                        # ← 改之前先看条件，全满足才允许改：
+            AgentTaskPlanTable.task_plan_id == task_plan_id,      # 改的是这个任务
+            AgentTaskPlanTable.status.in_(allowed_statuses),      # 状态允许现在执行
+            or_(                                     # 并且牌子是空的：
+                AgentTaskPlanTable.lease_until.is_(None),          # 要么从没挂过牌
+                AgentTaskPlanTable.lease_until &lt;= func.now(),     # 要么旧牌已过期
+            ),
+        )
+        .values(                                       # 条件全满足，就把牌子挂上：
+            lease_owner=worker_id,                     # 牌子写"归我办"（我是几号员工）
+            lease_until=_deadline(lease_seconds),      # 牌子有效期到什么时候
+            lease_fence_token=AgentTaskPlanTable.lease_fence_token + 1,  # 第几任办理人：+1
+            active_operation=operation,                # 正在办什么
+        )
+        .returning(                                    # 挂成功后，把两个数字读回来
+            AgentTaskPlanTable.lease_fence_token,      # 我这一任的编号
+            AgentTaskPlanTable.record_version,         # 任务的版本号
+        )
+    )
+).one_or_none()</code></pre>
+        </div>
+        <p>这行代码的威力在 <code>.where(...)</code> 里的条件：</p>
+        <ul class="check-list">
+          <li>两个请求（哪怕在两个不同 Worker 进程里）同时执行这条 SQL，数据库会<strong>只让其中一个改成功</strong>——第一个把牌子挂上后，第二个再看"牌子是空的"这个条件就不成立了，它<strong>一行都改不动</strong>（返回空，即 <code>one_or_none()</code> 得到 None）；</li>
+          <li>改不动的那方立刻明白"有人正在办"，向客户端返回 <code>AGENT_TASK_PLAN_BUSY</code>（HTTP 409，意思是"任务忙"）；</li>
+          <li>上一轮压测的实测结果"4 个 Worker、20 个 confirm 抢同一个任务 → 19 个 409 + 1 个唯一执行者"，就是这行代码的功劳；</li>
+          <li><strong>fencing token（+1）</strong>：每次成功挂牌，这个数字加 1，等于"第几任办理人"的编号。旧一任办理人手里还拿着旧编号，它之后想写任何数据都必须报编号，编号对不上就作废——这就是"旧人闭嘴"的实现。第 7 章专门讲。</li>
+        </ul>
+
+        <h4>第三件事：领车位（防止同时办太多重活）</h4>
+        <p><strong>要解决的问题</strong>：Research、Document 这类任务很贵（要调很多次大模型、跑几分钟）。公司规定：<strong>Research 最多同时办 2 件，Document 最多同时办 1 件</strong>。超过了就拒绝，而不是硬扛。</p>
+        <p><strong>解决思路</strong>：有一张"车位表"（容量槽表）。Research 有 2 个车位，Document 有 1 个。牌子挂好了，还要领到一个空车位才能真正开工。车位被占也挂"已占用"的牌子、带有效期——和任务租约同一套思路。</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · 第三件事：领车位（L259-272 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>slot = await session.scalar(
+    select(AgentTaskCapacitySlotTable)               # 在"车位表"里找车位
+    .where(
+        AgentTaskCapacitySlotTable.workload_type == workload_type,  # 车型要对：Research 还是 Document
+        AgentTaskCapacitySlotTable.slot_no &lt;= capacity_limit,      # 只找限定的车位号（如 1 号、2 号）
+        or_(                                     # 车位要空着：
+            AgentTaskCapacitySlotTable.lease_until.is_(None),        # 要么从没被占
+            AgentTaskCapacitySlotTable.lease_until &lt;= func.now(),   # 要么占用已过期
+        ),
+    )
+    .order_by(AgentTaskCapacitySlotTable.slot_no)    # 从 1 号车位开始找
+    .with_for_update(skip_locked=True)               # ← 关键：别人正在抢的车位，我跳过
+    .limit(1)                                        # 找到一个就够
+)</code></pre>
+        </div>
+        <p>这里最值得学的是 <code>skip_locked=True</code>，人话解释：</p>
+        <ul class="check-list">
+          <li>多个请求同时来抢仅有的 2 个车位时，先到的会把车位"锁住"；</li>
+          <li>后来的请求看到车位被锁，<strong>不等它解锁，直接跳过它去找下一个空车位</strong>——这就是"跳过已锁行"；</li>
+          <li>好处：不排队、不死锁（死锁 = 两个事务互相等对方解锁，谁都动不了）；</li>
+          <li>一个空车位都没有（<code>slot</code> 为 None）时，代码走拒绝分支：把刚挂的任务牌子摘掉（归还未生效的租约）、在命令表记"被拒、原因=容量已满"，最后向客户端抛 429 <code>AGENT_CAPACITY_EXCEEDED</code>（"满了，请等会儿再试"）。</li>
+        </ul>
+        <p>上一轮压测的"3 个 Research confirm 同时打进来 → 2 个受理 + 1 个 429"，就是第三件事的现场。</p>
+
+        <h3 id="arch-short-session">4.4 为什么每次办事都要自己拨电话、说完就挂（短 Session）</h3>
+        <p>Repository 每个方法的开头都是同一句：<code>async with self._session_factory() as session, session.begin():</code>。这里的 <code>session</code> 就是"和数据库的一次通话"。工程规定：<strong>每个方法自己拨一次电话，办完立刻挂断，绝不两个协程共用一根线。</strong></p>
+        <p>为什么？回到第 2 章学过的协程模型：一个 Worker 里有很多协程在同一个事件循环里轮流执行，其中包括一个特殊的后台协程——<strong>心跳</strong>：执行中的任务每 20 秒向数据库报一次"我还活着，租约续一下"。如果心跳协程和主执行协程共用同一个 Session：</p>
+        <ul class="check-list">
+          <li><strong>一根电话线不能两个人同时讲</strong>：SQLAlchemy 的 AsyncSession 不保证多个协程交替使用时的安全，事务会互相污染——你的事办到一半，别人的话插进来；</li>
+          <li><strong>占线太久别人打不进来</strong>：事务拖得越久，数据库连接和行锁被占得越久，所有其他请求都要等；</li>
+          <li><strong>挂断 = 结账</strong>：<code>session.begin()</code> 这段结束，要么提交（事情成真）、要么回滚（全部作废），不存在"办到一半的电话线"悬在那。</li>
+        </ul>
+        <p>所以"短 Session"不是细节，它是"唯一 SQL 边界"能安全工作的配套纪律——每一笔裁决都是独立、短促、有明确结局的。</p>
+
+        <h3 id="arch-summary">4.5 这一章背什么</h3>
+        <p>合上页面，你应该能用自己的话说出三句话：</p>
+        <ul class="check-list">
+          <li>全公司只有金库管理员能改账本——<strong>Executor 只引导流程，Store 只归档，能写"根据条件改数据"的 SQL 的只有 Repository 一个文件</strong>；</li>
+          <li>办一件事 = 一口气三件事——<strong>查申请单编号（防重复）、挂牌子（防两人同办）、领车位（防超载）</strong>，三件事在一个事务里，要么全成要么全废；</li>
+          <li>"先看后写"会被插队，所以工程把<strong>检查条件写进写操作本身</strong>（条件 UPDATE、SKIP LOCKED）——检查和写入一步完成，这是对第 2 章 TOCTOU 和丢失更新的工程级回答。</li>
+        </ul>
       </section>
 
       <section id="data-model" class="chapter">
         <div class="chapter-kicker">Chapter 5 · 数据库不是存档柜，而是并发裁判</div>
         <h2>四张表分别回答四个问题</h2>
+
+        <h3 id="data-responsibility">5.0 四张表的职责与来源：为什么是四张而不是一张</h3>
+        <p>第 4 章的 <code>begin_operation()</code> 在一个事务里做了三件事：幂等命令落库、租约条件 UPDATE、容量槽领取。这三件事分别写进三张表；再加上任务本身的事实表，就是本方案的四张表。它们各自回答一个明确的问题：</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>表名</th><th>存储内容</th><th>回答什么问题</th></tr></thead>
+            <tbody>
+              <tr><td><code>agent_task_plans</code></td><td>任务的事实快照、状态、租约（owner/until/fence）、版本号</td><td>这个任务现在是什么状态？谁在执行？第几代？版本多少？</td></tr>
+              <tr><td><code>agent_task_plan_commands</code></td><td>每次 confirm/retry/cancel 的幂等记录、结果、错误码</td><td>这个幂等键以前办过吗？结果是什么？</td></tr>
+              <tr><td><code>agent_task_capacity_slots</code></td><td>集群共享的复杂任务容量槽及其租约</td><td>现在还有 Research/Document 执行名额吗？</td></tr>
+              <tr><td><code>agent_task_plan_runtime_records</code></td><td>Deep Document 的恢复登记元数据（独立版本号、到期时间）</td><td>Deep Document 跑到哪一步了？能否恢复？</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>四张表分别回答的四个问题：</p>
 
         <div class="grid-4">
           <div class="mini-card"><h4>agent_task_plans</h4><p>这个任务当前是什么状态？谁持有执行租约？这是第几代执行者？快照版本是多少？</p></div>
@@ -753,35 +997,14 @@ flowchart TB
           <div class="mini-card"><h4>capacity_slots</h4><p>整个集群当前还有没有 Research 或 Document 执行名额？</p></div>
         </div>
 
-        <h3>5.1 TaskPlan 主表：执行权与业务快照的共同锚点</h3>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>字段</th><th>业务含义</th><th>防止什么问题</th></tr></thead>
-            <tbody>
-              <tr><td><code>task_plan_id</code></td><td>任务稳定主键。</td><td>所有控制动作、命令、Runtime 和容量占用都围绕同一身份。</td></tr>
-              <tr><td><code>status</code></td><td>数据库权威业务状态。</td><td>拒绝非法状态跳转，例如等待确认不能直接完成。</td></tr>
-              <tr><td><code>record_version</code></td><td>TaskPlan 快照 CAS 版本，从 1 单调递增。</td><td>旧快照无法覆盖新快照。</td></tr>
-              <tr><td><code>lease_owner</code></td><td>当前执行者的唯一 worker_id。</td><td>另一个 Worker 不能冒充持有者续租或保存。</td></tr>
-              <tr><td><code>lease_until</code></td><td>数据库时间判定的租约到期点。</td><td>进程崩溃后不会永久锁死任务。</td></tr>
-              <tr><td><code>lease_fence_token</code></td><td>每次成功领取都递增的执行代际。</td><td>旧 Worker 即使“复活”，也不能再写。</td></tr>
-              <tr><td><code>active_operation</code></td><td>当前 execute、confirm、retry 或 cleanup。</td><td>审计当前执行用途。</td></tr>
-              <tr><td><code>capacity_workload_type / slot_no</code></td><td>当前占用的集群容量槽。</td><td>终态释放时能准确归还同一个槽。</td></tr>
-              <tr><td><code>snapshot_json</code></td><td>完整 TaskPlan 当前快照。</td><td>PostgreSQL 成为业务事实，不再从本地 JSON 反推状态。</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <h3>5.2 另外三张表不是重复存储</h3>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>表</th><th>独有字段 / 约束</th><th>为什么不能塞进主表</th></tr></thead>
-            <tbody>
-              <tr><td><code>agent_task_plan_runtime_records</code></td><td>独立 <code>record_version</code>、<code>expires_at</code>、Runtime 快照。</td><td>Deep Agent 的恢复元数据更新频率和生命周期不同，但每次更新仍必须验证父 TaskPlan 租约。</td></tr>
-              <tr><td><code>agent_task_plan_commands</code></td><td><code>(task_plan_id, operation, idempotency_key)</code> 唯一；保存 request_hash、结果和错误。</td><td>一个 TaskPlan 会经历多个用户命令；命令结果需要独立重放和保留。</td></tr>
-              <tr><td><code>agent_task_capacity_slots</code></td><td><code>(workload_type, slot_no)</code> 主键，槽也有 owner、expiry、fence。</td><td>容量是整个集群共享的有限资源，不属于某一个 TaskPlan 的永久属性。</td></tr>
-            </tbody>
-          </table>
-        </div>
+        <h3 id="data-pk-fk-uk">5.1 看图前先认三个缩写：PK / FK / UK</h3>
+        <p>"四张表的身份关系"图里，字段名后跟着 PK、FK、UK 等缩写，含义如下：</p>
+        <ul class="check-list">
+          <li><strong>PK = 主键（Primary Key）</strong>：唯一标识表中一行，非空且全表唯一。主表用 <code>task_plan_id</code> 作主键；</li>
+          <li><strong>FK = 外键（Foreign Key）</strong>：本表某列引用另一张表的主键。数据库强制引用完整性：插入或更新时，外键值必须在被引用表中存在，否则报错，从而杜绝指向不存在行的记录；</li>
+          <li><strong>UK = 唯一约束（Unique Constraint）</strong>：约束一列或一组列的值不允许重复（允许 NULL）；</li>
+          <li><strong>级联删除（ON DELETE CASCADE）</strong>：外键的可选行为——被引用的主表行被删除时，引用它的子表行一并删除，保证不残留悬空外键。</li>
+        </ul>
 
         <div class="mermaid-wrap">
           <p class="diagram-caption">四张表的身份关系</p>
@@ -823,25 +1046,400 @@ erDiagram
           </pre>
         </div>
 
+        <h3 id="data-relations">5.2 身份关系图逐条翻译（这张图在说什么）</h3>
+        <p>图里有三条线，线两头的符号表示数量关系（<code>|</code> = 恰好一个，<code>o</code> = 零或一个，<code>{</code> = 零到多个）。逐条翻译：</p>
+
+        <h4>先看一个完整场景：一次 Document 任务如何依次点亮三条线</h4>
+        <p>场景：用户 A 发起一个 Deep Document 任务，从创建、确认、执行到完成。下图按时间顺序展示每一步写入哪张表、点亮哪条关系线：</p>
+        <div class="mermaid-wrap">
+          <p class="diagram-caption">场景时间线：四张表依次被写入，三条线依次点亮与熄灭</p>
+          <pre class="mermaid">
+flowchart TD
+    S1["① 创建任务<br/>plans 插入一行：status=created<br/>此时其余三张表都为空"]
+    S2["② 用户 confirm<br/>commands 插入一行：confirm / running<br/><b>线②建立</b>"]
+    S3["③ 同一事务内<br/>plans 写 lease_* 字段<br/>slots 的 document-1 槽写入占用<br/><b>线③建立</b>"]
+    S4["④ 执行开始<br/>runtime 插入一行：thread_id、ACL 指纹<br/><b>线①建立</b>"]
+    S5["⑤ 执行推进<br/>plans 与 runtime 的版本各自递增<br/>三条线保持"]
+    S6["⑥ 任务完成<br/>槽归还、Runtime 删除、命令 succeeded<br/><b>线①线③解除 · 线②保持</b>"]
+    S1 --> S2 --> S3 --> S4 --> S5 --> S6
+    style S2 fill:#fff5df,stroke:#a65b00
+    style S3 fill:#fff5df,stroke:#a65b00
+    style S4 fill:#eaf8f3,stroke:#147d64
+    style S6 fill:#eaf8f3,stroke:#147d64
+          </pre>
+        </div>
+        <p>这个场景揭示了一个规律：<strong>线①和线③是"临时"关系</strong>——执行期间建立、终态解除；<strong>线②是"永久"关系</strong>——命令行从创建起终身保留（直到超过保留期被清理），因为幂等重放需要它。图上 "owns runtime" 与 "temporarily occupies" 的措辞正是这两种差别。</p>
+        <p>两个变体场景：</p>
+        <ul>
+          <li><strong>Research 任务</strong>：只有线②、线③被点亮——线①从头到尾都是 0 条（Research 不使用 Deep Document 恢复登记）。这正是线①数量符号为"0 或 1"的原因；</li>
+          <li><strong>任务失败</strong>：线③照常解除（槽必须归还），但线①不解除——Runtime 记录保留并标 <code>failed</code>，供 retry 恢复（对应 5.5 的恢复流程）。</li>
+        </ul>
+
+        <h4>线①：一个任务，至多一条 Runtime 记录</h4>
+        <p class="diagram-note"><code>AGENT_TASK_PLANS ||--o| AGENT_TASK_PLAN_RUNTIME_RECORDS : "owns runtime"</code></p>
+        <p>翻译：<strong>一个任务拥有 0 或 1 条 Runtime 记录；每条 Runtime 记录必须且只属于一个任务。</strong></p>
+        <ul>
+          <li>Research 任务不使用 Deep Document 的恢复登记 → 0 条；Document 任务 → 恰好 1 条；</li>
+          <li>Runtime 表的主键就是 <code>task_plan_id</code> 本身（图上 <code>PK, FK</code>，即主键同时是外键）：主键的唯一性直接保证一个任务最多一条 Runtime 记录；</li>
+          <li>这条关系由数据库强制（外键 + 级联删除）：删除任务行时，对应 Runtime 行一并删除。</li>
+        </ul>
+
+        <h4>线②：一个任务，零到多条命令</h4>
+        <p class="diagram-note"><code>AGENT_TASK_PLANS ||--o{ AGENT_TASK_PLAN_COMMANDS : "receives commands"</code></p>
+        <p>翻译：<strong>一个任务拥有 0 到多条控制命令；每条命令必须属于唯一一个任务。</strong></p>
+        <ul>
+          <li>一个任务在其生命周期内会收到多条命令：confirm、cancel、retry 各可发生多次，每次（同一幂等键除外）都产生一行新记录；</li>
+          <li>刚创建、尚无任何控制操作的任务命令数为 0；</li>
+          <li>命令表的唯一约束是 <code>(task_plan_id, operation, idempotency_key)</code> 三列组合——第 4 章幂等命令落库（<code>on_conflict_do_nothing</code>）依赖的正是这个约束。</li>
+        </ul>
+
+        <h4>线③：一个任务，临时占一个容量槽</h4>
+        <p class="diagram-note"><code>AGENT_TASK_PLANS }o--o| AGENT_TASK_CAPACITY_SLOTS : "temporarily occupies"</code></p>
+        <p>翻译：<strong>一个任务当前占用 0 或 1 个容量槽；一个容量槽在时间维度上先后被 0 到多个任务使用过。</strong>"temporarily" 强调：槽不是任务的持久属性，任务进入终态必须归还。</p>
+        <ul>
+          <li>任务侧 0 或 1：普通 RAG 不占槽（0）；Research/Document 执行中占 1 个，终态释放（1→0）；</li>
+          <li>槽侧 0 到多个：同一时刻只有一个占用者，但跨时间一个槽可先后服务多个任务。槽表 <code>task_plan_id</code> 只记录当前占用者，换人由仓库代码在租约/fence 校验下完成；</li>
+          <li>特别注意：这条线<strong>没有数据库外键强制</strong>——它是使用关系而非归属关系，槽表 <code>task_plan_id</code> 是普通字符串列而非 FK。</li>
+        </ul>
+
+        <p>图里四个实体块中的字段名，逐个翻译：</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>字段名</th><th>含义</th><th>在哪张表</th></tr></thead>
+            <tbody>
+              <tr><td><code>task_plan_id</code></td><td>任务唯一标识（主键）</td><td>全部四张表</td></tr>
+              <tr><td><code>status</code></td><td>任务当前状态值</td><td>主表 / 命令表</td></tr>
+              <tr><td><code>record_version</code></td><td>快照版本号，每次保存 +1（CAS 依据）</td><td>主表 / Runtime</td></tr>
+              <tr><td><code>lease_owner</code></td><td>当前租约持有者 worker_id，NULL = 空闲</td><td>主表 / 容量槽</td></tr>
+              <tr><td><code>lease_until</code></td><td>租约到期时间</td><td>主表 / 容量槽</td></tr>
+              <tr><td><code>lease_fence_token</code></td><td>执行代际，每次成功领取 +1</td><td>主表 / 容量槽</td></tr>
+              <tr><td><code>snapshot_json</code></td><td>任务完整快照（JSONB）</td><td>主表 / Runtime</td></tr>
+              <tr><td><code>command_id</code></td><td>命令记录主键</td><td>命令表</td></tr>
+              <tr><td><code>operation</code></td><td>操作类型：confirm / retry / cancel</td><td>命令表</td></tr>
+              <tr><td><code>idempotency_key</code></td><td>幂等键（唯一约束，防同键重复办理）</td><td>命令表</td></tr>
+              <tr><td><code>request_hash</code></td><td>请求内容 SHA-256（检测同键不同内容）</td><td>命令表</td></tr>
+              <tr><td><code>workload_type</code> + <code>slot_no</code></td><td>复合主键（workload 类型 + 槽序号，如 research/2）</td><td>容量槽</td></tr>
+              <tr><td><code>expires_at</code></td><td>登记信息到期时间，到期作废</td><td>Runtime</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="data-main-fields">5.3 主表逐字段</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>字段</th><th>业务含义</th><th>防止什么问题</th></tr></thead>
+            <tbody>
+              <tr><td><code>task_plan_id</code></td><td>任务稳定主键。</td><td>所有控制动作、命令、Runtime 和容量占用都围绕同一身份。</td></tr>
+              <tr><td><code>status</code></td><td>数据库权威业务状态。</td><td>拒绝非法状态跳转，例如等待确认不能直接完成。</td></tr>
+              <tr><td><code>record_version</code></td><td>TaskPlan 快照 CAS 版本，从 1 单调递增。</td><td>旧快照无法覆盖新快照。</td></tr>
+              <tr><td><code>lease_owner</code></td><td>当前执行者的唯一 worker_id。</td><td>另一个 Worker 不能冒充持有者续租或保存。</td></tr>
+              <tr><td><code>lease_until</code></td><td>数据库时间判定的租约到期点。</td><td>进程崩溃后不会永久锁死任务。</td></tr>
+              <tr><td><code>lease_fence_token</code></td><td>每次成功领取都递增的执行代际。</td><td>旧 Worker 即使“复活”，也不能再写。</td></tr>
+              <tr><td><code>active_operation</code></td><td>当前 execute、confirm、retry 或 cleanup。</td><td>审计当前执行用途。</td></tr>
+              <tr><td><code>capacity_workload_type / slot_no</code></td><td>当前占用的集群容量槽。</td><td>终态释放时能准确归还同一个槽。</td></tr>
+              <tr><td><code>snapshot_json</code></td><td>完整 TaskPlan 当前快照。</td><td>PostgreSQL 成为业务事实，不再从本地 JSON 反推状态。</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>这九个字段其实分成五组记，就好记了：<strong>身份</strong>（task_plan_id）→ <strong>状态与正文</strong>（status、snapshot_json）→ <strong>版本</strong>（record_version）→ <strong>租约</strong>（lease_owner、lease_until、lease_fence_token、active_operation）→ <strong>容量</strong>（capacity_workload_type、slot_no）。前两组回答"任务是什么样"，后三组回答"现在谁在动它"。真实建表代码（<code>src/fast_app/db/agent_task_plan_tables.py</code> L53-114）：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · AgentTaskPlanTable 定义（L53-114 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>class AgentTaskPlanTable(Base):
+    __tablename__ = "agent_task_plans"              # 表名
+
+    task_plan_id: ... = mapped_column(String(128), primary_key=True)  # 身份证号
+    status: ...        = mapped_column(String(32), nullable=False)    # 状态（8 个合法值）
+    record_version: ... = mapped_column(BigInteger, server_default=text("1"))  # 版本从 1 开始
+    lease_owner: ...   = mapped_column(String(160), nullable=True)    # 租约持有人（空 = 空闲）
+    lease_until: ...   = mapped_column(DateTime(timezone=True), nullable=True)  # 租约到期
+    lease_fence_token = mapped_column(BigInteger, server_default=text("0"))  # 第几任，从 0 开始
+    snapshot_json: ... = mapped_column(JSONB, nullable=False)         # 完整快照正文</code></pre>
+        </div>
+        <p>注意建表代码里还带了两条"数据库自带的最后防线"（CheckConstraint，检查约束）：</p>
+        <ul class="check-list">
+          <li><code>status</code> 只能取 8 个合法值——谁写错一个状态名，数据库直接拒绝，连 SQL 手滑都打不回；</li>
+          <li><code>capacity_workload_type</code> 和 <code>capacity_slot_no</code> 要么同时有值、要么同时为空，防止出现"只记录 workload 类型却没记槽号"的不一致数据。</li>
+        </ul>
+
+        <h3 id="data-other-tables">5.4 另外三张表不是重复存储</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>表</th><th>独有字段 / 约束</th><th>为什么不能塞进主表</th></tr></thead>
+            <tbody>
+              <tr><td><code>agent_task_plan_runtime_records</code></td><td>独立 <code>record_version</code>、<code>expires_at</code>、Runtime 快照。</td><td>Deep Agent 的恢复元数据更新频率和生命周期不同，但每次更新仍必须验证父 TaskPlan 租约。</td></tr>
+              <tr><td><code>agent_task_plan_commands</code></td><td><code>(task_plan_id, operation, idempotency_key)</code> 唯一；保存 request_hash、结果和错误。</td><td>一个 TaskPlan 会经历多个用户命令；命令结果需要独立重放和保留。</td></tr>
+              <tr><td><code>agent_task_capacity_slots</code></td><td><code>(workload_type, slot_no)</code> 主键，槽也有 owner、expiry、fence。</td><td>容量是整个集群共享的有限资源，不属于某一个 TaskPlan 的永久属性。</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>"为什么不能塞进主表"这三格，展开成具体理由：</p>
+        <ul>
+          <li><strong>Runtime 记录独立</strong>：只有 Document 任务使用它；它的 <code>record_version</code> 只跟随 Deep Agent 恢复登记的更新节奏增长，与主表快照版本是两条独立的增长线。塞进主表会让所有 Research 任务携带大量无意义的空字段；</li>
+          <li><strong>命令独立</strong>：一个任务一生会收到多条控制命令（confirm、cancel、retry……），每条命令有自己的结果与错误码，需要按行独立保存。塞进主表就只剩"最后一次操作"，无法回答"这个幂等键以前办过吗"，幂等机制失效；</li>
+          <li><strong>容量槽独立</strong>：槽是集群级共享资源，任务进入终态必须归还，槽上只记"当前占用者"。塞进主表等于把共享资源变成任务私有属性，其他任务无法查询全局剩余名额。</li>
+        </ul>
+
+        <h3 id="data-runtime">5.5 Deep Document 恢复登记表：Checkpoint 恢复前的安全门</h3>
+        <p>先划清边界：<code>agent_task_plan_runtime_records</code> <strong>不是</strong> LangGraph checkpoint 本体，两者是两套独立数据。</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th></th><th>LangGraph Checkpoint 本体</th><th>Runtime 登记表</th></tr></thead>
+            <tbody>
+              <tr><td>内容</td><td>Deep Agent 图执行的完整状态（State、消息、虚拟文件、pending writes）</td><td>恢复前安全判断所需的最小事实集 + 指向 checkpoint 的 <code>thread_id</code></td></tr>
+              <tr><td>存储</td><td>官方 <code>PostgresSaver</code> 的 checkpoint 表（AES 加密）</td><td>自建业务表 <code>agent_task_plan_runtime_records</code></td></tr>
+              <tr><td>版本保护</td><td>LangGraph 内部 checkpoint_id / channel version</td><td>自有 <code>record_version</code> 乐观锁，且每次更新必须验证父 TaskPlan 租约</td></tr>
+              <tr><td>职责</td><td>恢复后"接着从哪一步跑"</td><td>回答"能不能安全恢复、从哪个 thread 恢复"</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>这层分工写在模型的 docstring 里（<code>deep_document_runtime.py</code> L174-176）：<em>"这不是 LangGraph State 的副本，而是业务层在恢复前用来做安全判断的最小事实集。record_version 保护的是这条 Store 记录，不是 LangGraph 内部的 checkpoint version。"</em></p>
+
+        <h4>记录里存什么</h4>
+        <p>登记表快照的字段定义在 <code>deep_document_runtime.py</code> L171-208，每项都是恢复判断要用的最小事实：</p>
+        <ul class="check-list">
+          <li><code>thread_id</code>——LangGraph checkpoint 的稳定 thread，由服务端按 <code>f"document:{task_plan_id}"</code> 生成，不信任请求传入（L368-375，注释明确：否则用户可能读取或覆盖其他任务的 checkpoint）；</li>
+          <li><code>acl_fingerprint</code>——执行时用户 ACL 的规范化指纹（SHA-256，L227-253），恢复前比对权限是否变化；</li>
+          <li><code>read_snapshots</code>——已读文档的 doc_id / 路径 / SHA-256，<strong>不含正文</strong>（正文只进加密 checkpoint）；</li>
+          <li><code>candidates</code> / <code>used_tools</code>——受控检索登记的候选事实摘要与已完成工具清单；</li>
+          <li><code>resume_count</code> / <code>status</code> / <code>expires_at</code>——恢复累计次数、运行状态（running/failed/cleanup_pending）、保留截止时间。</li>
+        </ul>
+
+        <p>下面的五个阶段放进同一个完整场景，按时间顺序走一遍：</p>
+        <blockquote>
+          <p><strong>场景</strong>：用户 A 通过 SSE 请求 Deep Document 创建一份文档。执行约 3 分钟后 Worker 进程崩溃，任务中断。用户 A 稍后点击 retry 恢复，最终任务完成。</p>
+        </blockquote>
+
+        <h4>阶段 1 · 启动：创建记录</h4>
+        <p>任务开始执行时，DeepDocumentAgent 调用 <code>create_record()</code>（deep_document_agent.py L1517），在 Runtime 表插入第一行，写入几个初始事实：<code>thread_id</code>（服务端按 <code>"document:{task_plan_id}"</code> 生成，指向 LangGraph 的恢复现场）、<code>acl_fingerprint</code>（当前用户的权限指纹）、<code>status=running</code>、<code>expires_at</code>（保留截止时间）。</p>
+        <p>插入之前，repository 先验证父 TaskPlan 租约——执行权不在自己手里时，连创建记录都不允许（repository L686-697）：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · create_runtime_record() 父租约校验（repository L686-697 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>parent = await session.scalar(
+    select(AgentTaskPlanTable)
+    .where(
+        AgentTaskPlanTable.task_plan_id == lease.task_plan_id,
+        AgentTaskPlanTable.lease_owner == lease.owner,      # 租约还归我吗？
+        AgentTaskPlanTable.lease_fence_token == lease.fence_token,  # 还是我这一代吗？
+        AgentTaskPlanTable.lease_until &gt; func.now(),      # 还没过期吗？
+    )
+    .with_for_update()
+)
+if parent is None:
+    raise AgentTaskPlanLeaseLostError("创建 RuntimeRecord 前 TaskPlan 租约已丢失")</code></pre>
+        </div>
+
+        <h4>阶段 2 · 推进：每完成一段就更新记录</h4>
+        <p>执行过程中每推进一个阶段（检索完成、草稿写入、评审结束），代码把最新事实写回记录：<code>candidates</code>、<code>read_snapshots</code>、<code>used_tools</code>。每次写入都是同一句"双条件 UPDATE"（repository L734-756）：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · update_runtime_record() 双条件 UPDATE（repository L734-756 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>owned = exists(
+    select(1).where(
+        AgentTaskPlanTable.task_plan_id == task_plan_id,
+        AgentTaskPlanTable.lease_owner == lease.owner,          # 条件一：父租约仍归我
+        AgentTaskPlanTable.lease_fence_token == lease.fence_token,
+        AgentTaskPlanTable.lease_until &gt; func.now(),
+        AgentTaskPlanTable.status != AgentTaskPlanStatus.CANCELLED.value,  # 且任务未被取消
+    )
+)
+stmt = (
+    update(AgentTaskPlanRuntimeRecordTable)
+    .where(
+        AgentTaskPlanRuntimeRecordTable.task_plan_id == task_plan_id,
+        AgentTaskPlanRuntimeRecordTable.record_version == expected_version,  # 条件二：版本没被别人动过
+        owned,
+    )
+    .values(record_version=AgentTaskPlanRuntimeRecordTable.record_version + 1, ...)
+)</code></pre>
+        </div>
+        <p>两个 WHERE 条件各有对头：<code>record_version == expected_version</code> 防的是<strong>两个恢复请求并发抢写</strong>——版本对不上的那方收到 <code>DocumentAgentCheckpointConflictError</code>，只有一个能把更新写进去；<code>owned</code> 防的是<strong>执行权已易主</strong>——哪怕记录版本没变，租约丢失或任务被取消的 Worker 也不许再更新。</p>
+
+        <h4>阶段 3 · 崩溃：没有代码运行，现场原样保留</h4>
+        <p>Worker 崩溃时没有任何代码执行清理，结果就是：LangGraph checkpoint（执行现场）和 Runtime 记录（安全判断事实）原样留在 PostgreSQL，记录状态仍是 <code>running</code>。这是设计目标而非疏漏——崩溃不破坏现场，恢复才有依据。需要区分的是：<strong>崩溃时没人改状态；而执行失败（模型报错、评审不通过）会主动把状态改成 <code>failed</code> 保留现场</strong>（L1581 <code>_mark_checkpoint_resumable()</code>），供 retry 找到它。</p>
+
+        <h4>阶段 4 · retry：三道校验全过才恢复</h4>
+        <p>用户点击 retry 后，恢复逻辑（deep_document_agent.py L1452-1502）不会直接进 checkpoint 执行，而是先做三道校验：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · 恢复前校验顺序（deep_document_agent.py L1452-1502 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>if resume and record is not None:
+    # ① ACL 指纹：权限变了 → 不读旧 candidates 和正文，按当前权限重新检索
+    if record.acl_fingerprint != acl_fingerprint:
+        invalidation_reason = "acl_changed"
+    else:
+        # ② 源文档哈希：逐个重读文档并比对 SHA-256
+        for doc_id, snapshot in record.read_snapshots.items():
+            content = await self._document_management_service.read_document_content_current(...)
+            if sha256(content.encode("utf-8")).hexdigest() != snapshot.sha256:
+                invalidation_reason = "source_changed"
+                break
+        # ③ checkpoint 本体存在性：记录在、Saver 里没有 → 报错，不降级重跑
+        if not await self._runtime.has_checkpoint(plan.task_plan_id):
+            raise DocumentAgentCheckpointUnavailableError(
+                "Deep Agent 运行记录存在，但 LangGraph checkpoint 缺失"
+            )
+        # 三道全过：改回 running，resume_count + 1，然后才从 checkpoint 恢复
+        record = await self._runtime.update_record(...)</code></pre>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>校验</th><th>比对什么</th><th>失败结果</th></tr></thead>
+            <tbody>
+              <tr><td>① ACL 指纹</td><td>当前用户权限 vs 上次执行时的权限</td><td>不读旧 candidates/正文，删旧 thread，按当前权限重新检索</td></tr>
+              <tr><td>② 源文档哈希</td><td>逐个重读 <code>read_snapshots</code> 里的文档，重算 SHA-256</td><td><code>source_changed</code>：旧 checkpoint 的推理不再可信，废弃旧现场</td></tr>
+              <tr><td>③ checkpoint 存在</td><td>稳定 thread 在 Saver 中至少有一个可恢复 checkpoint</td><td>报错"checkpoint 不可用"，不静默重跑（避免重复高成本模型调用）</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>三道全过，代码才把记录改回 <code>running</code>、<code>resume_count + 1</code>（L1502-1509），然后从 checkpoint 继续执行。第②道校验单独存在的理由：<strong>ACL 没变不代表文档没变</strong>——任务中断期间若文档被修改，旧 checkpoint 的推理基于旧内容，恢复后的结论不可信，必须废弃旧现场重新执行。</p>
+
+        <h4>阶段 5 · 完成：先删 checkpoint，再删记录</h4>
+        <p>任务终态时调用 <code>release()</code>（deep_document_runtime.py L490-502）：<strong>先删 LangGraph thread，再删业务记录</strong>。顺序不可反——业务记录是管理入口，先删它就会留下无人管理的加密工作区。若删 checkpoint 失败，记录保留并标 <code>cleanup_pending</code>（L1618-1624），由维护命令下次重试，不假装已清理干净。</p>
+
+        <p>五个阶段连起来读：<strong>创建和更新都要过父租约这道门；崩溃不清理现场；恢复前过三道校验；终态先删 checkpoint 再删记录，删不掉挂"清理待办"。</strong></p>
+
+        <h4>补充：一次任务几十次 save 都写快照，checkpoint 还有用吗？</h4>
+        <p>有用，两者不在同一个层次。区分清楚"三个写入动作"是理解这套机制的关键：</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>写入动作</th><th>谁写</th><th>写到哪里</th><th>内容</th><th>写入方式</th></tr></thead>
+            <tbody>
+              <tr><td><code>save()</code>（几十次）</td><td>执行器显式调用</td><td><code>agent_task_plans</code> 表那一行</td><td>业务事实：status、进度摘要、子问题结果、错误</td><td>覆盖式，只保留最新一版</td></tr>
+              <tr><td><code>update_record()</code></td><td>执行器显式调用</td><td><code>agent_task_plan_runtime_records</code> 表</td><td>恢复资格事实：ACL 指纹、源文件 SHA、thread_id 指针</td><td>覆盖式，带独立 CAS</td></tr>
+              <tr><td>checkpoint 写入</td><td>LangGraph 每个节点完成后自动写</td><td>PostgresSaver 的 checkpoint 表（加密）</td><td>图内部执行现场：State、消息历史、虚拟文件、pending writes</td><td>追加式，历史全保留</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>关键差别：<strong>快照里根本没有图内部的 State、虚拟文件、消息历史</strong>——这些只存在于 checkpoint。没有 checkpoint，崩溃后只能从头重跑整个图（所有 Researcher/Writer/Reviewer 的模型调用重新烧一遍）；有 checkpoint，LangGraph 从崩溃前最后一个节点继续执行，已完成的节点不重跑。</p>
+        <p>两条链路的持久化结构不同：</p>
+        <ul class="check-list">
+          <li><strong>Research = 快照单轨</strong>：恢复粒度是子问题——每个子问题完成就 save 一次，子问题结果、证据、工具调用轨迹都落在快照的 <code>worker_checkpoints</code> 里；retry 时已完成子问题直接复用，只重跑未完成的。子问题之间没有需要保留的图中间状态，所以不需要 PostgresSaver；</li>
+          <li><strong>Deep Document = 快照 + RuntimeRecord + checkpoint 三轨</strong>：图内部有几十个节点，节点之间有大量只在内存和虚拟文件里的中间状态，业务检查点密度不够恢复用，所以需要 LangGraph 原生 checkpoint 做节点级续跑，同时需要 RuntimeRecord 做更严的恢复资格校验。</li>
+        </ul>
+        <p>三者的分工一句话：<strong>快照管"任务走到哪一步"，RuntimeRecord 管"有没有资格恢复"，checkpoint 管"从哪个节点继续跑"。</strong></p>
+
+        <h4>补充：TaskPlan 快照的四个作用</h4>
+        <ul class="check-list">
+          <li><strong>控制面事实</strong>：状态机的每次跳转必须落库——<code>save_snapshot</code> 是主表唯一写入入口，状态跳转本身靠它完成（写是刚需，就算没有前端也照样执行）；</li>
+          <li><strong>前端展示</strong>：React 轮询快照显示状态、进度、子问题结果、错误；</li>
+          <li><strong>Research 的恢复数据源</strong>：子问题结果与证据存在快照的 <code>worker_checkpoints</code>，retry 复用；</li>
+          <li><strong>Deep Document 的恢复入口摘要</strong>：快照里的 <code>deep_agent_checkpoint</code> 字段只写展示信息（<code>active / resumable / released</code>、<code>resume_count</code>、保留期限），不复制 candidates、SHA 或 thread_id。</li>
+        </ul>
+        <p>最后一项展开看：前端需要知道"这个失败任务能不能恢复"来决定是否显示恢复按钮，但 ACL 指纹、源文件 SHA、thread_id 这些内部安全数据不应发给浏览器。于是 <code>_set_checkpoint_summary()</code>（<code>deep_document_agent.py</code> L1649-1674）把结论翻译成三个可展示状态写进快照：</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>摘要值</th><th>含义</th><th>前端行为</th></tr></thead>
+            <tbody>
+              <tr><td><code>active</code></td><td>任务正在执行</td><td>不显示恢复按钮</td></tr>
+              <tr><td><code>resumable</code></td><td>失败但现场已保留，可恢复</td><td>显示"恢复"按钮</td></tr>
+              <tr><td><code>released</code></td><td>终态已清理</td><td>不显示恢复按钮</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>完整时间线：执行失败 → RuntimeRecord 标 failed（内部事实）→ 摘要写 <code>resumable</code> → <code>save()</code> 落库 → React 轮询到 <code>resumable</code> 显示恢复按钮 → 用户点击 → 服务端才去查 RuntimeRecord + Saver 做三道校验。页面只消费"结论"，校验资格是服务端在点击之后做的事。</p>
+
         <div class="callout info">
           <span class="callout-title">JSON / Markdown 现在是什么角色？</span>
           <code>AgentTaskPlanStore</code> 从 PostgreSQL 读取和保存业务事实；<code>AgentTaskPlanExportStore</code> 只生成可重建的人工审查导出物。导出失败只记录 warning，不能回滚已经提交的数据库事实，也不能被业务读取当作真相。
         </div>
+
+        <h3 id="data-summary">5.6 这一章背什么</h3>
+        <ul class="check-list">
+          <li>四张表各有唯一职责：<strong>任务事实与租约（plans）、幂等命令（commands）、集群容量槽（slots）、Deep Document 恢复登记（runtime）</strong>；</li>
+          <li>三条关系：<strong>任务拥有至多一条 Runtime、收到零到多条命令、临时占用零或一个容量槽</strong>——前两条由数据库外键强制，第三条是"使用关系"而非"归属关系"；</li>
+          <li>Runtime 表是 checkpoint 恢复前的安全门：<strong>ACL 指纹、源文档哈希、checkpoint 存在性三道校验全过才恢复</strong>；它只存指针与最小事实，checkpoint 本体在 PostgresSaver 加密表里；</li>
+          <li>四张表共同回答四个问题：<strong>任务什么样（plans）、这个幂等键办过吗（commands）、还有名额吗（slots）、能安全恢复吗（runtime）</strong>——正是第 4 章"一口气三件事"加"崩溃恢复"的全部落点。</li>
+        </ul>
       </section>
 
       <section id="state-machine" class="chapter">
         <div class="chapter-kicker">Chapter 6 · 状态名必须表达业务含义</div>
         <h2>完整状态机：确认前“准备材料”，确认后才“执行副作用”</h2>
 
+        <h3 id="state-why">6.1 为什么状态机存在：它不是给前端看的标签，而是给 SQL 用的条件</h3>
+        <p>先接回前两章：第 4 章的条件 UPDATE 里有一个 WHERE 条件是 <code>status.in_(allowed_statuses)</code>，第 5 章的主表里有一个 <code>status</code> 字段。状态机就是<strong>这两个东西的取值规则</strong>——它回答：<code>status</code> 允许取哪些值、从哪个值能变到哪个值。为什么这套规则值得单独一章？因为一句话写错，后果不是页面显示错，而是<strong>某条条件 UPDATE 可能放行一个非法转换</strong>，例如：</p>
+        <ul>
+          <li><code>waiting_confirmation → completed</code>：用户还没点确认，任务就"完成"了——真实副作用（写文件、发 MR、写 ES/Milvus）会在没有人工授权的情况下发生；</li>
+          <li><code>cancelled → executing_confirmed</code>：已取消的任务又被执行——旧执行者"复活"，用户取消的事实被推翻。</li>
+        </ul>
+        <p>所以状态机的本质是：<strong>把"哪些转换合法"编码成数据库可执行的条件</strong>。下面先看完整状态图，再看这张图如何变成代码。</p>
+
+        <h4>先分清一件事：状态机管"转换合不合法"，不是管"多 Worker 抢着写"</h4>
+        <p>状态机回答的问题是：<strong>从一个状态能不能变到另一个状态</strong>。判断依据是业务规则，与"几个人在抢"无关——上面两个非法转换的例子，<strong>单机单 Worker、没有任何并发时同样会发生</strong>。就算全世界只有一个执行者，把状态机删掉，代码照样可能把 <code>waiting_confirmation</code> 直接写成 <code>completed</code>。所以状态机的动机是业务正确性，不是并发控制。</p>
+        <p>防"多个 Worker 争抢覆盖状态"的，是 <code>save_snapshot</code> WHERE 里的另外几个条件。把六个条件按"防什么"分两组看：</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>WHERE 条件</th><th>防什么</th><th>没有并发也会发生吗</th><th>属于哪个机制</th></tr></thead>
+            <tbody>
+              <tr><td><code>record_version == 期望值</code></td><td>旧快照覆盖新快照</td><td>❌ 需要并发</td><td rowspan="4">并发控制（租约 / fence / CAS，见第 7 章）</td></tr>
+              <tr><td><code>lease_owner == 我</code></td><td>执行权已被领走</td><td>❌ 需要并发</td></tr>
+              <tr><td><code>lease_fence_token == 我的代际</code></td><td>旧一代执行者复活写数据</td><td>❌ 需要并发</td></tr>
+              <tr><td><code>lease_until &gt; now()</code></td><td>拿过期租约写</td><td>❌ 需要并发</td></tr>
+              <tr><td><code>status IN (允许的来源)</code></td><td>非法状态跳转</td><td>✅ 单机也会发生</td><td>状态机（业务规则）</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>为什么会把两者混在一起：因为它们共用同一条 UPDATE——状态机字典被翻译成 WHERE 里的 <code>status.in(...)</code>，和版本、租约、fence 条件并列，执行时一起判断、命中 0 行时一起抛同一个 <code>VersionConflictError</code>。<strong>机制上合并了，动机上仍是两回事。</strong></p>
+        <p>一句话总结：<strong>状态机 = 业务规则进数据库，保证"转换本身合法"（有没有并发都成立）；租约 / fence / CAS = 并发控制，保证"写的人有资格、写的内容不过期"（只在并发时才有意义）。</strong>这两个动机合起来，才是 <code>save_snapshot</code> 带六个条件的完整原因——四条管资格，一条管合法性，一条管目标行。</p>
+
         <div class="state-flow" aria-label="TaskPlan 主状态流">
           <span class="state">created</span><span class="arrow">→</span>
           <span class="state">preparing_confirmation</span><span class="arrow">→</span>
           <span class="state">waiting_confirmation</span><span class="arrow">→</span>
           <span class="state">executing_confirmed</span><span class="arrow">→</span>
-          <span class="state terminal">completed / warnings / failed</span>
+          <span class="state terminal">completed / completed_with_warnings / failed</span>
         </div>
-        <p><code>cancelled</code> 是从多个非完成状态可达的独立终态。关键分界点是人工 confirm：它把 <code>waiting_confirmation</code> 原子推进到 <code>executing_confirmed</code>，之后才允许 Document 真实写副作用或 Research 正式执行。</p>
+        <p>这是主干：确认前（准备材料）→ confirm 唯一入口 → 确认后（执行副作用）→ 终态。主干之外还有两条旁路——<code>cancelled</code>（任意非终态可取消进入）和 <code>retry</code>（failed 回到准备或执行阶段）。<strong>每个状态的完整进出规则见下面的卡片</strong>，每张卡列出"能从哪些状态进入"和"能去往哪些状态"：</p>
 
+        <div class="grid-4">
+          <div class="mini-card">
+            <h4>created</h4>
+            <p><strong>进入来源</strong>：无（任务起点，字典中来源集合为空）</p>
+            <p><strong>可去往</strong>：preparing_confirmation · failed · cancelled</p>
+          </div>
+          <div class="mini-card">
+            <h4>preparing_confirmation</h4>
+            <p><strong>进入来源</strong>：created · 自己（阶段内保存进度）· failed（准备期失败后 retry）</p>
+            <p><strong>可去往</strong>：waiting_confirmation · failed · cancelled</p>
+          </div>
+          <div class="mini-card">
+            <h4>waiting_confirmation</h4>
+            <p><strong>进入来源</strong>：preparing_confirmation（材料就绪）</p>
+            <p><strong>可去往</strong>：executing_confirmed · cancelled</p>
+          </div>
+          <div class="mini-card">
+            <h4>executing_confirmed</h4>
+            <p><strong>进入来源</strong>：waiting_confirmation（用户 confirm，唯一入口）· 自己（执行中保存进度）· failed（执行期失败后 retry）· completed_with_warnings（retry 未完成部分）</p>
+            <p><strong>可去往</strong>：completed · completed_with_warnings · failed · cancelled</p>
+          </div>
+          <div class="mini-card">
+            <h4>completed</h4>
+            <p><strong>进入来源</strong>：executing_confirmed</p>
+            <p><strong>可去往</strong>：无（终态）</p>
+          </div>
+          <div class="mini-card">
+            <h4>completed_with_warnings</h4>
+            <p><strong>进入来源</strong>：executing_confirmed</p>
+            <p><strong>可去往</strong>：executing_confirmed（retry 未完成部分）</p>
+          </div>
+          <div class="mini-card">
+            <h4>failed</h4>
+            <p><strong>进入来源</strong>：created · preparing_confirmation · executing_confirmed</p>
+            <p><strong>可去往</strong>：preparing_confirmation（retry）· executing_confirmed（retry）· cancelled</p>
+          </div>
+          <div class="mini-card">
+            <h4>cancelled</h4>
+            <p><strong>进入来源</strong>：created · preparing_confirmation · waiting_confirmation · executing_confirmed · failed（五个非终态都能取消）</p>
+            <p><strong>可去往</strong>：无（终态，取消单向）</p>
+          </div>
+        </div>
+        <p>读这套卡片抓住四点：</p>
+        <ul class="check-list">
+          <li><strong>主干链</strong>：created → preparing → waiting → executing → 终态，confirm 是进入 executing 的唯一入口；</li>
+          <li><strong>cancelled 卡</strong>：进入来源一列有 5 个状态——这正是字典里 <code>CANCELLED</code> 键的全部成员，而"可去往"为空，取消是单向的；</li>
+          <li><strong>failed 卡</strong>：可去往一列有两条 retry 回路（回 preparing 或回 executing），靠 <code>failure_phase</code> 记住失败发生在哪一阶段；</li>
+          <li><strong>两个"自己"</strong>：preparing 和 executing 的进入来源里都有"自己"——执行过程中每完成一个子阶段就保存一次快照，状态不变、版本 +1，这条边就是为反复保存开的。</li>
+        </ul>
+
+        <h3 id="state-table">6.2 八个状态在业务上各自做什么</h3>
         <div class="table-wrap">
           <table>
             <thead><tr><th>状态</th><th>系统正在做什么</th><th>允许真实副作用吗</th><th>为什么需要单独存在</th></tr></thead>
@@ -857,41 +1455,212 @@ erDiagram
             </tbody>
           </table>
         </div>
+        <p>注意一个细节：状态表第一列里没有 <code>running</code>。旧版 TaskPlan 用含糊的 <code>running</code> 同时表示"在准备"和"在执行"，这正是状态机重构要消灭的歧义——现在这两个阶段被拆成 <code>preparing_confirmation</code> 和 <code>executing_confirmed</code> 两个名字，名字本身就说明了"有没有经过人工确认"。</p>
 
-        <h3>状态机不是 UI 标签，而是条件 UPDATE 的一部分</h3>
+        <h3 id="state-dict">6.3 状态图如何变成代码：一张规则字典，两处强制执行</h3>
+        <p>状态机的权威定义是一张字典（<code>src/fast_app/domain/agent_task_execution.py</code> L87-121），按"目标状态 → 允许的来源状态集合"组织。这是完整原文：</p>
         <div class="code-block">
-          <div class="code-label"><span>当前源码核心 · agent_task_execution.py</span><button class="copy-button" type="button">复制</button></div>
+          <div class="code-label"><span>当前源码核心 · ALLOWED_SOURCE_STATUSES_BY_TARGET（L87-121）</span><button class="copy-button" type="button">复制</button></div>
           <pre><code>ALLOWED_SOURCE_STATUSES_BY_TARGET = {
-    PREPARING_CONFIRMATION: {CREATED, PREPARING_CONFIRMATION, FAILED},
-    WAITING_CONFIRMATION: {PREPARING_CONFIRMATION},
-    EXECUTING_CONFIRMED: {
-        WAITING_CONFIRMATION,
-        EXECUTING_CONFIRMED,
-        FAILED,
-        COMPLETED_WITH_WARNINGS,
+    AgentTaskPlanStatus.CREATED: set(),                      # 起始状态，没有任何来源
+    AgentTaskPlanStatus.PREPARING_CONFIRMATION: {
+        AgentTaskPlanStatus.CREATED,                         # 从创建进入准备
+        AgentTaskPlanStatus.PREPARING_CONFIRMATION,          # 准备中反复保存进度
+        AgentTaskPlanStatus.FAILED,                          # 准备阶段失败后 retry
     },
-    COMPLETED: {EXECUTING_CONFIRMED},
-    COMPLETED_WITH_WARNINGS: {EXECUTING_CONFIRMED},
-    FAILED: {CREATED, PREPARING_CONFIRMATION, EXECUTING_CONFIRMED},
-    CANCELLED: {
-        CREATED,
-        PREPARING_CONFIRMATION,
-        WAITING_CONFIRMATION,
-        EXECUTING_CONFIRMED,
-        FAILED,
+    AgentTaskPlanStatus.WAITING_CONFIRMATION: {
+        AgentTaskPlanStatus.PREPARING_CONFIRMATION,          # 材料就绪才进入等待
+    },
+    AgentTaskPlanStatus.EXECUTING_CONFIRMED: {
+        AgentTaskPlanStatus.WAITING_CONFIRMATION,            # 唯一入口：用户 confirm
+        AgentTaskPlanStatus.EXECUTING_CONFIRMED,             # 执行中反复保存进度
+        AgentTaskPlanStatus.FAILED,                          # 执行阶段失败后 retry
+        AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS,         # 有警告时重试未完成部分
+    },
+    AgentTaskPlanStatus.COMPLETED: {
+        AgentTaskPlanStatus.EXECUTING_CONFIRMED,             # 只有确认后的执行能完成
+    },
+    AgentTaskPlanStatus.COMPLETED_WITH_WARNINGS: {
+        AgentTaskPlanStatus.EXECUTING_CONFIRMED,
+    },
+    AgentTaskPlanStatus.FAILED: {
+        AgentTaskPlanStatus.CREATED,
+        AgentTaskPlanStatus.PREPARING_CONFIRMATION,          # 准备阶段可以失败
+        AgentTaskPlanStatus.EXECUTING_CONFIRMED,             # 执行阶段可以失败
+    },
+    AgentTaskPlanStatus.CANCELLED: {
+        AgentTaskPlanStatus.CREATED,
+        AgentTaskPlanStatus.PREPARING_CONFIRMATION,
+        AgentTaskPlanStatus.WAITING_CONFIRMATION,
+        AgentTaskPlanStatus.EXECUTING_CONFIRMED,
+        AgentTaskPlanStatus.FAILED,                          # 失败后仍可取消
     },
 }</code></pre>
         </div>
-        <ol class="code-walk">
-          <li>字典按“目标状态”索引，值是允许的“来源状态”。</li>
-          <li><code>save_snapshot()</code> 把这份规则放进 SQL 的 WHERE，不只是 Python 预检查。</li>
-          <li>因此另一个事务先改成 cancelled 后，旧 runner 的 completed UPDATE 会更新 0 行。</li>
-        </ol>
+        <p>对着 6.1 的状态图看这张字典：图里的每一条箭头，在这里都是一个集合成员。例如 <code>failed → executing_confirmed</code> 那条箭头，就是 <code>EXECUTING_CONFIRMED</code> 集合里的 <code>FAILED</code> 成员。而图上不存在的箭头（如 <code>waiting_confirmation → completed</code>），字典里也不存在——图和字典是同一份规则的两种写法。</p>
 
+        <h3 id="state-save-snapshot">6.4 save_snapshot：把内存里的任务对象写回数据库的唯一入口</h3>
+        <p>先定位它是哪个功能，再看它的内部结构。</p>
+
+        <h4>它在系统里的位置：内存对象 → 数据库行的"写回"动作</h4>
+        <p>一个 TaskPlan 任务同时存在于两个地方：<strong>内存里的 Python 对象</strong>（执行器一直在改它的 <code>status</code>、<code>final_output</code> 等字段）和<strong>数据库 <code>agent_task_plans</code> 表里的一行</strong>（第 5 章的主表）。执行器改的是内存对象，例如 <code>document_task_executor.py</code> L184-192：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · 执行器改内存对象后保存（document_task_executor.py L184-192 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>plan.status = AgentTaskPlanStatus.PREPARING_CONFIRMATION   # 内存里改状态
+plan.error = None
+plan.failure_phase = None
+plan.final_output["document_progress"] = {"stage": "supervising", ...}
+
+await self._task_plan_store.save(plan)     # ← 把内存对象写回数据库那一行</code></pre>
+        </div>
+        <p><code>save(plan)</code> 做的事情就是："内存里的 plan 已经变了，请把数据库里的那一行也更新成同样的内容。"顺着调用链看它内部（<code>agent_task_plan_store.py</code> L179-187）：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · AgentTaskPlanStore.save()（L179-187 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>async def save(self, plan):
+    lease = require_task_plan_lease(plan.task_plan_id)   # ① 从当前执行上下文取出租约句柄
+    plan.updated_at = datetime.now(UTC)
+    await self.repository.save_snapshot(                 # ② 真正写数据库的方法
+        snapshot=plan.model_dump(mode="json"),           #    把 plan 对象序列化成完整 JSON
+        lease=lease,                                     #    连同租约句柄一起传进去
+    )
+    await self._export(plan)                             # ③ 顺便导出审查用的 JSON/MD 文件
+    return plan</code></pre>
+        </div>
+        <p>所以 <code>save_snapshot</code> 的定位是：<strong>把内存中的 plan 对象（新状态 + 完整快照）写入 <code>agent_task_plans</code> 表那一行的函数，也是任务主表唯一允许的写入入口</strong>——全工程 57 处 <code>save()</code> 调用（executor、document executor、research executor、deep_document_agent……）最终都汇到这里。</p>
+
+        <h4>它被执行很多次，不是只在任务结束时一次</h4>
+        <p>执行器每到一个"检查点"就调用一次 save——一个任务的生命周期里有几十次写入：</p>
+        <div class="state-flow" aria-label="保存检查点示例">
+          <span class="state">created</span><span class="arrow">→</span>
+          <span class="state">preparing_confirmation</span><span class="arrow">→</span>
+          <span class="state">dry-run 完成</span><span class="arrow">→</span>
+          <span class="state">waiting_confirmation</span><span class="arrow">→</span>
+          <span class="state">executing_confirmed</span><span class="arrow">→</span>
+          <span class="state">completed</span>
+        </div>
+        <p>上面的箭头每一步都是一次 save；执行途中每完成一个子阶段，还会<strong>状态不变地</strong>再 save 一次（快照内容更新、版本号 +1）——这正是 6.1 卡片里两个"自己→自己"边存在的意义。这样设计有两个目的：</p>
+        <ul class="check-list">
+          <li><strong>进度可见</strong>：任务跑几分钟，如果只在结束时写一次，前端轮询看到的永远是旧状态；每完成一段就写，前端和崩溃恢复才能看到"跑到哪了"；</li>
+          <li><strong>每段都是完整快照</strong>：save 传的是 <code>plan.model_dump()</code> 整个对象，不是"只改哪几个字段"的部分更新——数据库里的 <code>snapshot_json</code> 永远是一个自洽的完整任务状态，恢复时拿来就能直接用。</li>
+        </ul>
+
+        <h4>它内部是一条带六个条件的 UPDATE（repository L387-432）</h4>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · save_snapshot() 完整逻辑（L394-431 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>target_status = AgentTaskPlanStatus(str(snapshot["status"]))   # 从快照读出"要变成什么状态"
+stmt = (
+    update(AgentTaskPlanTable)                                # 更新 agent_task_plans 表
+    .where(
+        AgentTaskPlanTable.task_plan_id == lease.task_plan_id,       # ① 改的是这一行
+        AgentTaskPlanTable.record_version == lease.record_version,   # ② 版本还是我读到的那个
+        AgentTaskPlanTable.lease_owner == lease.owner,               # ③ 执行权还是我的
+        AgentTaskPlanTable.lease_fence_token == lease.fence_token,   # ④ 还是我这一代执行者
+        AgentTaskPlanTable.lease_until &gt; func.now(),                # ⑤ 租约还没过期
+        AgentTaskPlanTable.status.in_(                              # ⑥ 状态跳转合法（状态机在此生效）
+            allowed_source_status_values(target_status)
+        ),
+    )
+    .values(
+        status=target_status.value,                                # 改状态
+        snapshot_json=snapshot,                                    # 整个快照替换
+        record_version=AgentTaskPlanTable.record_version + 1,      # 版本号 +1
+        updated_at=func.now(),
+    )
+    .returning(AgentTaskPlanTable.record_version)                  # 把新版本号带回来
+)
+...
+if version is None:
+    raise AgentTaskPlanVersionConflictError(
+        "TaskPlan 版本、租约或状态转换发生冲突"
+    )
+lease.record_version = int(version)                                # 句柄里的版本跟上新值</code></pre>
+        </div>
+        <p>VALUES 部分就是它做的三件事：<strong>改状态、整个快照替换、版本号 +1</strong>。六个 WHERE 条件的含义是"只有当数据库那一行还是我以为的那个样子时才允许改，否则一行都不改"：</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>条件</th><th>防什么</th><th>什么时候会失败</th></tr></thead>
+            <tbody>
+              <tr><td>② record_version</td><td>别人抢先改过快照</td><td>两个执行者同时写</td></tr>
+              <tr><td>③ lease_owner</td><td>执行权已被领走</td><td>租约过期后 B 接手了</td></tr>
+              <tr><td>④ lease_fence_token</td><td>旧一代执行者"复活"写数据</td><td>A 崩溃→B 接手（fence+1）→A 恢复想写</td></tr>
+              <tr><td>⑤ lease_until</td><td>拿过期租约写</td><td>心跳断了、租约超时</td></tr>
+              <tr><td>⑥ status.in(...)</td><td>非法状态跳转</td><td>想从 waiting_confirmation 直接写 completed</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4>一个完整场景：执行者 A 与用户 cancel 的竞争</h4>
+        <p>把上面的机制放进一个具体时间线——执行者 A 正在跑任务，用户中途点了 cancel：</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>时刻</th><th>发生什么</th><th>数据库里的值</th></tr></thead>
+            <tbody>
+              <tr><td>t1</td><td>A 领取租约，lease 句柄记录当前值</td><td>version=7, fence=12, status=executing_confirmed</td></tr>
+              <tr><td>t2</td><td>A 保存进度若干次（save 命中，RETURNING 把新版本写回句柄）</td><td>version 递增到 10</td></tr>
+              <tr><td>t3</td><td>用户 cancel：cancel_atomic 改行 + fence+1</td><td>version=11, fence=13, status=cancelled</td></tr>
+              <tr><td>t4</td><td>A 跑完，想写 completed，执行 save</td><td>UPDATE 的 WHERE 比对：version 10≠11 ❌、fence 12≠13 ❌、status 不是 executing ❌</td></tr>
+              <tr><td>t5</td><td>命中 0 行 → 抛 VersionConflictError → A 的写入作废</td><td>保持 version=11, status=cancelled</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>关键结论：<strong>A 在 t4 的失败不是因为它主动检查了数据库——它甚至不知道 cancel 发生过。是 UPDATE 的 WHERE 条件替它完成了检查，检查与写入在同一条 SQL 里原子完成。</strong>这正是第 2 章 TOCTOU（先查后写会被插队）的工程级解法：不先查再写，而是把检查条件并进写操作本身。</p>
+        <p>一句话总结：<code>save_snapshot</code> = "把内存里改好的 plan 对象写回数据库那一行"。它做三件事（改状态、替换快照、版本 +1），但只有当数据库行还是"我以为的样子"（版本、执行权、代际、租约、状态跳转都合法）时才写，否则一行不改并报错。</p>
+
+        <h3 id="state-check-constraint">6.5 强制点二：数据库还有一道检查约束</h3>
+        <p>即使有人绕过 Repository 直接写 SQL，数据库也还有最后一道防线（<code>db/agent_task_plan_tables.py</code> L92-99）：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · 主表 status 检查约束（L92-99）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>CheckConstraint(
+    "status IN ("
+    "'created','preparing_confirmation','waiting_confirmation',"
+    "'executing_confirmed','completed',"
+    "'completed_with_warnings','failed','cancelled')",
+    name="ck_agent_task_plans_status",
+)</code></pre>
+        </div>
+        <p>这道约束只保证"值合法"，不保证"转换合法"——它管的是"不许写一个叫 running 的状态"，转换规则仍然由 6.4 的 WHERE 负责。两层一内一外：外层 Repository 管转换，内层数据库管取值。</p>
+
+        <h3 id="state-retry">6.6 retry 如何回到正确位置：failure_phase 记住失败发生在哪一阶段</h3>
+        <p>状态图里 <code>failed</code> 有两条 retry 出路（回 <code>preparing_confirmation</code> 或回 <code>executing_confirmed</code>），代码怎么知道该回哪条？靠快照里的 <code>failure_phase</code> 字段（<code>domain/agent_task_plan.py</code> L321）。它的写入时机在租约模块的兜底收敛处（<code>agent_task_executor.py</code> L402-420 节选）：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · 兜底收敛记录 failure_phase（L402-420 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>latest = await self._task_plan_store.load(task_plan_id)
+if latest.status in {
+    AgentTaskPlanStatus.CREATED,
+    AgentTaskPlanStatus.PREPARING_CONFIRMATION,
+    AgentTaskPlanStatus.EXECUTING_CONFIRMED,
+}:
+    failed_from = latest.status                      # 失败发生在哪个活动状态
+    latest.status = AgentTaskPlanStatus.FAILED
+    ...
+    latest.failure_phase = failed_from.value         # 记进快照，供 retry 定位
+    await self._task_plan_store.save(latest)</code></pre>
+        </div>
+        <p>retry 侧的允许集也按任务类型收紧（<code>agent_task_executor.py</code> L452-464 节选）：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · resume() 按任务类型的 retry 允许集</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>allowed = (
+    {EXECUTING_CONFIRMED, FAILED, COMPLETED_WITH_WARNINGS}   # Research 可重试执行期
+    if is_research
+    else
+    {PREPARING_CONFIRMATION, EXECUTING_CONFIRMED, FAILED}    # Document 还可在准备期重试
+)</code></pre>
+        </div>
+
+        <h3 id="state-two-machines">6.7 两套状态机：TaskPlan 与 Command 各管各的</h3>
         <div class="callout danger">
           <span class="callout-title">TaskPlan 状态与 Command 状态是两套不同状态机</span>
           TaskPlan 不再使用含糊的 <code>running</code>；但命令表仍然需要 <code>running / succeeded / failed / rejected / cancelled</code>，因为它描述的是“一次 HTTP 控制命令的处理情况”，不是整个业务任务生命周期。不能因为 TaskPlan 删除了 running，就把命令表的 running 一并删除。
         </div>
+        <p>两套状态机的对应关系，可以在第 4 章的场景里对出来：一条 confirm 命令从 <code>running</code> 走到 <code>succeeded</code> 的期间，TaskPlan 可能依次走过 <code>waiting_confirmation → executing_confirmed → completed</code>。命令状态回答"这次 HTTP 请求办得怎么样"，任务状态回答"业务走到哪一步"——它们互相引用但不共享取值。</p>
+
+        <h3 id="state-summary">6.8 这一章背什么</h3>
+        <ul class="check-list">
+          <li>状态机的分界线是人工 confirm：<strong>确认前只准备材料（preparing/waiting），确认后才执行副作用（executing_confirmed）</strong>；</li>
+          <li>状态机 = 一张规则字典（目标→允许来源），<strong>图上的每条箭头都是字典里的一个集合成员</strong>；</li>
+          <li>规则有两层强制：<strong>save_snapshot 把来源集合写进 UPDATE 的 WHERE（管转换合法性），数据库 CheckConstraint 管取值合法性</strong>；</li>
+          <li>retry 靠 <code>failure_phase</code> 记住失败阶段，<strong>准备期失败回 preparing、执行期失败回 executing</strong>；TaskPlan 与 Command 是两套独立状态机。</li>
+        </ul>
       </section>
 
       <section id="mechanisms" class="chapter">
@@ -933,6 +1702,168 @@ RETURNING lease_fence_token, record_version;</code></pre>
         </div>
         <p>这里的 SQL 是依据当前 ORM 逻辑改写的教学等价形式。真正实现使用 SQLAlchemy <code>update(...).where(...).returning(...)</code>。</p>
 
+        <h4>为什么租约还需要一个"心跳"——从租约的过期设计说起</h4>
+        <p>租约（lease）有有效期，这个设计解决了一个问题：<strong>执行者崩溃后，任务不能永远锁死</strong>。执行者 A 领取租约 90 秒后，就算 A 的进程突然消失，数据库上的租约也会自动过期，别的执行者可以接手。</p>
+        <p>但这带来了一个矛盾：一个真实任务往往要跑几分钟到十几分钟，而租约只有 90 秒。如果执行者活着、任务还没跑完，租约却到期了，别的执行者就会合法接手——同一个任务出现两个执行者。解决这个矛盾的办法就是<strong>心跳（heartbeat）</strong>：</p>
+        <blockquote>
+          <p><strong>心跳 = 执行者在租约到期之前，定期去数据库把 <code>lease_until</code> 往后推。</strong>每推一次，就相当于对数据库说"我还活着，这个租约继续归我，再给我 90 秒"。</p>
+        </blockquote>
+        <p>当前配置（<code>core/config.py</code> L458-471）：租约 <strong>90 秒</strong>，心跳间隔 <strong>20 秒</strong>。两者必须满足一个硬性比例——配置文件末尾的校验器（L840-842）：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · 心跳间隔必须小于租约三分之一（config.py L840-842）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>if self.agent_task_heartbeat_seconds * 3 &gt;= self.agent_task_lease_seconds:
+    raise ValueError(
+        "AGENT_TASK_HEARTBEAT_SECONDS 必须小于 AGENT_TASK_LEASE_SECONDS 的三分之一"
+    )</code></pre>
+        </div>
+        <p>为什么是"小于三分之一"而不是"小于就行"？为了容错：即使某次心跳因为网络抖动失败，还有两次补推的机会，租约不会立刻过期。20 × 3 = 60 &lt; 90，意味着<strong>至少能容忍连续两次心跳失败</strong>。</p>
+
+        <h4>心跳任务在哪里启动：领取租约成功后立刻创建</h4>
+        <p>心跳的启动点在 <code>AgentTaskLeaseManager.hold()</code>（<code>agent_task_lease_manager.py</code> L90-91）：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · 租约到手后启动心跳任务（L90-91 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>stop = asyncio.Event()                                # 停止信号：执行结束
+heartbeat = asyncio.create_task(self._heartbeat(acquired, stop))  # 心跳协程开始后台运行
+with bind_task_plan_lease(acquired):
+    try:
+        yield acquired                                # 业务执行（分钟级）
+    finally:
+        stop.set()                                    # 业务结束 → 发停止信号
+        heartbeat.cancel()                            # 取消心跳协程
+        await heartbeat                               # 等它真正退出</code></pre>
+        </div>
+        <p>心跳是一个<strong>独立的 asyncio 协程</strong>，与业务执行并行运行（第 2 章学过：它们在同一事件循环里轮流执行）。业务执行期间它每 20 秒醒来一次续租；业务结束时通过 <code>stop</code> 事件通知它退出。</p>
+
+        <h4>读懂这段代码前，先补三个 asyncio 概念和一个 Python 机制</h4>
+        <p><strong>概念一：<code>asyncio.Event</code> 是一个"信号"</strong>，只有两种状态：未设置（初始）和已设置。配套两个方法：<code>event.set()</code> 点亮信号；<code>await event.wait()</code> 挂起等待，直到信号被点亮才继续。</p>
+        <p><strong>概念二：<code>asyncio.create_task(协程)</code> 把协程注册到后台运行</strong>，立即返回一个 Task 对象，协程自己在后台跑。之后用 <code>task.cancel()</code> 取消它、<code>await task</code> 等它真正退出。</p>
+        <p><strong>概念三：<code>asyncio.wait(任务集合, timeout=秒, return_when=FIRST_COMPLETED)</code> 同时等多个任务</strong>，返回两个集合：<code>done</code>（已完成的任务）和 <code>pending</code>（未完成的任务）。三种结局：某任务完成 → done 非空；超时 → done 为空；配合 FIRST_COMPLETED 表示"有一个完成就立刻返回"。</p>
+        <p><strong>机制四：<code>yield</code> + <code>@asynccontextmanager</code> 的"进入/退出"模式</strong>。先用最小例子理解 yield 本身：</p>
+        <div class="code-block">
+          <div class="code-label"><span>教学示例 · 裸生成器：yield = 暂停并把值交出去</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>def demo():
+    print("第一段")
+    yield 100          # 暂停，把 100 交给外面
+    print("第二段")
+
+g = demo()             # 只是创建生成器，一行都还没执行
+x = next(g)            # 第一次驱动：执行到 yield 暂停  → 输出"第一段"
+print("拿到", x)       # 输出：拿到 100（外面的代码在跑）
+next(g)                # 第二次驱动：从 yield 之后继续 → 输出"第二段"</code></pre>
+        </div>
+        <p>核心：<strong>yield 是"暂停 + 交出值"，生成器停在那儿，外面继续跑；外面再次驱动它，它才接着跑。</strong></p>
+        <p>而 <code>with</code> 语句的执行顺序固定是：<code>__enter__()</code> → with 块内代码 → <code>__exit__()</code>，且 <code>as x</code> 的 x = <code>__enter__()</code> 的返回值。<code>@asynccontextmanager</code> 把这两者拼起来——把一个带 yield 的生成器函数自动转换成语境管理器：</p>
+        <div class="code-block">
+          <div class="code-label"><span>教学示例 · yield 前后 = 进入和退出</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>from contextlib import contextmanager
+
+@contextmanager
+def 管理器():
+    print("进入")              # yield 之前 = __enter__()
+    yield "交给 with 块的值"   # yield 的值 = as x 的 x
+    print("退出")              # yield 之后 = __exit__()
+
+with 管理器() as x:
+    print("业务代码，拿到", x)
+print("with 结束")
+# 输出：进入 → 业务代码，拿到 交给 with 块的值 → 退出 → with 结束</code></pre>
+        </div>
+        <p>对照表：<strong>yield 之前的代码 = <code>__enter__()</code>；yield 交出的值 = <code>as x</code> 的 x；yield 之后的代码 = <code>__exit__()</code></strong>。执行顺序就是"进入（yield 前）→ with 块 → 退出（yield 后）"——这就是"执行到 yield 会回到 with 块内业务代码"的原因：yield 是进入阶段和 with 块之间的分界线。</p>
+        <p>把工程代码套进这个骨架：</p>
+        <div class="code-block">
+          <div class="code-label"><span>教学示例 · hold() 的模式骨架</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>@asynccontextmanager
+async def hold():
+    启动心跳                    # yield 之前 = 进入
+    yield 租约句柄              # 暂停，把句柄交给 with 块
+    停止心跳                    # yield 之后 = 退出</code></pre>
+        </div>
+        <p>两个精确细节：① <code>yield acquired</code> 交出去的租约来自函数开头的 <code>acquired = await begin_operation(...)</code>，<code>bind_task_plan_lease</code> 只是把它顺手放进当前协程上下文供深层代码读取，不是它的来源；② <code>__exit__</code> 在业务代码<strong>正常结束、抛异常、被取消</strong>三种情况下都会执行（生成器版上下文管理器里 finally 的价值）——这正是"心跳清理逻辑无论如何都会跑"的保证。</p>
+
+        <h4>心跳协程内部：一个"等 20 秒 → 续一次 → 再等 20 秒"的循环</h4>
+        <p><code>_heartbeat()</code> 的完整逻辑（L112-138）：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · _heartbeat() 循环（L112-138 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>while True:
+    # 等待两个事件之一：stop（业务结束）或 closing（进入终态提交），
+    # 最多等 20 秒（heartbeat_seconds）
+    done, pending = await asyncio.wait(
+        {stop_task, closing_task},
+        timeout=self._settings.agent_task_heartbeat_seconds,
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+    if done:            # stop 或 closing 已触发 → 退出循环，不再续租
+        return
+    # 20 秒到了、没有任何事件 → 去数据库续租一次
+    await self._store.repository.renew_lease(
+        lease,
+        lease_seconds=self._settings.agent_task_lease_seconds,
+    )</code></pre>
+        </div>
+        <p>这个循环做的事：<strong>等 20 秒；如果业务还在跑，就续一次租；再等 20 秒，再续一次</strong>——直到业务结束。注意它在第 2 章学的协程模型下运行：每次 <code>await</code> 都会让出事件循环，所以心跳不影响业务执行。</p>
+
+        <h4>续租这一步在数据库里做了什么：renew_lease 的条件 UPDATE</h4>
+        <p>每次心跳最终调用 <code>renew_lease()</code>（repository L357-385），它是两条条件 UPDATE，分别推后 TaskPlan 行和容量槽行的 <code>lease_until</code>：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · renew_lease() 同时续租两行（L360-385 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code># ① 续 TaskPlan 行的租约
+task_result = await session.execute(
+    update(AgentTaskPlanTable)
+    .where(
+        AgentTaskPlanTable.task_plan_id == lease.task_plan_id,
+        AgentTaskPlanTable.lease_owner == lease.owner,          # 租约还是我的吗？
+        AgentTaskPlanTable.lease_fence_token == lease.fence_token,  # 还是我这一代吗？
+        AgentTaskPlanTable.lease_until &gt; func.now(),             # 租约还没过期吗？
+        AgentTaskPlanTable.status != AgentTaskPlanStatus.CANCELLED.value,  # 任务没被取消吗？
+    )
+    .values(lease_until=_deadline(lease_seconds))               # 往后推 90 秒
+)
+# ② 用同样的条件续容量槽行的租约
+slot_result = await session.execute( update(AgentTaskCapacitySlotTable).where(...).values(...) )
+
+if task_result.rowcount != 1 or slot_result.rowcount != 1:
+    raise AgentTaskPlanLeaseLostError("TaskPlan 或容量槽续租失败")</code></pre>
+        </div>
+        <p>续租不是无条件"改个时间"，而是带着和领取时相同的条件：<strong>租约还是我的、代际还是我的、还没过期、任务没被取消，才允许续</strong>。任何一个条件不满足（比如租约已经过期被别人领走，fence 已经 +1），UPDATE 命中 0 行 → 抛 <code>AgentTaskPlanLeaseLostError</code>。</p>
+
+        <h4>心跳失败后发生了什么：置 lost 标志，主执行路径在每个检查点停下</h4>
+        <p>心跳协程的任何异常都会被捕获并处理（L134-138）：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · 心跳异常置 lost（L132-138 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>except asyncio.CancelledError:
+    raise                     # 正常取消（业务结束），不视为故障
+except BaseException:
+    if lease.closing.is_set():
+        return               # 已经在终态提交阶段，忽略
+    lease.lost.set()         # ← 置"租约已丢失"标志
+    raise</code></pre>
+        </div>
+        <p><code>lease.lost</code> 是一个 <code>asyncio.Event</code>（第 2 章学过的事件对象），它把"租约丢了"这个信号传给主执行路径。主执行协程在<strong>每一个模型调用、工具调用、真实副作用之前</strong>都会调用 <code>require_task_plan_lease().assert_active()</code>（见第 5 章 grep 到的几十处调用点），其实现（<code>domain/agent_task_execution.py</code> L45-49）：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · assert_active()（domain/agent_task_execution.py L45-49）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>def assert_active(self) -&gt; None:
+    if self.lost.is_set():
+        raise AgentTaskPlanLeaseLostError(
+            "Agent TaskPlan 租约已经丢失，旧执行者必须停止"
+        )</code></pre>
+        </div>
+        <p>所以失败信号的传播路径是：<strong>心跳续租失败 → <code>lease.lost.set()</code> → 主执行协程下一个检查点 <code>assert_active()</code> 抛异常 → 旧执行者停下</strong>。它不会在下一毫秒立刻停，而是停在下一个安全边界（下一次模型调用或工具调用之前）——这是刻意设计：宁可多执行一小步到安全点，也不在中途留下半个工具调用的脏状态。</p>
+
+        <h4>完整时间线：一次任务期间心跳的整个生命周期</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>时刻</th><th>发生什么</th><th>数据库租约状态</th></tr></thead>
+            <tbody>
+              <tr><td>t0</td><td>begin_operation 领取租约</td><td>lease_until = t0 + 90s</td></tr>
+              <tr><td>t0+20s</td><td>心跳第 1 次：renew_lease 命中 → 续租</td><td>lease_until = t0+110s</td></tr>
+              <tr><td>t0+40s</td><td>心跳第 2 次续租</td><td>lease_until = t0+130s</td></tr>
+              <tr><td>…</td><td>每 20 秒一次，租约始终"距离到期还有 90 秒"</td><td>持续后推</td></tr>
+              <tr><td>t0+300s</td><td>业务完成 → stop.set() → 心跳退出 → 终态提交</td><td>租约被 finish_success 清空</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>从这个时间线可以看出心跳的效果：<strong>只要执行者活着，租约就永远保持"还有 90 秒"；一旦执行者死了，心跳停止，90 秒后租约自动过期，任务就能被接手。</strong>这就是"有过期时间的跨进程执行权"的完整运转方式——租约负责"不会锁死"，心跳负责"活着就别丢"。</p>
+
         <h4>心跳为什么要同时续租 TaskPlan 和容量槽</h4>
         <p>如果只续 TaskPlan，不续容量槽，长任务运行到一半时槽位会被别人重新领取；如果只续槽位，不续 TaskPlan，旧执行者会继续占着容量却失去业务写权限。<code>renew_lease()</code> 在同一事务中分别更新两行，并要求两次 rowcount 都等于 1，否则抛出 <code>AGENT_TASK_PLAN_LEASE_LOST</code>。</p>
 
@@ -951,6 +1882,74 @@ RETURNING lease_fence_token, record_version;</code></pre>
         </div>
 
         <h3 id="cas">7.4 原子 CAS：防止同一代执行者拿旧快照覆盖新快照</h3>
+        <h4>先回答一个命名问题：为什么把一行 SQL 叫做 CAS？</h4>
+        <p>如果学过线程同步，会先想到自旋锁里的 CAS 指令。两者"长得完全不一样"，但共享同一个本质：<strong>检查与写入合成一个原子动作</strong>。自旋只是内存场景下的配套重试策略，不是 CAS 的本义。</p>
+        <p>把 CAS 三要素在两处对照：</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>CAS 要素</th><th>硬件自旋锁里</th><th>数据库 UPDATE 里</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Compare</strong>（比较）</td><td><code>&amp;lock == 0</code></td><td><code>WHERE record_version = :expected AND lease_owner = :owner ...</code></td></tr>
+              <tr><td><strong>Swap</strong>（交换）</td><td>写入 1</td><td><code>SET record_version = record_version + 1, snapshot_json = ...</code></td></tr>
+              <tr><td>原子性来源</td><td>CPU 指令本身</td><td>数据库行锁（一条 UPDATE 在数据库中不可分割）</td></tr>
+              <tr><td>失败后</td><td><strong>自旋重试</strong>（while 循环再试）</td><td><strong>不重试</strong>：命中 0 行，抛异常交给调用方</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>为什么数据库场景不自旋，三个理由：</p>
+        <ul class="check-list">
+          <li><strong>临界区太长</strong>：自旋锁保护的临界区是纳秒级；一次 save_snapshot 对应的业务"临界区"是分钟级，失败后原地重试等于烧 CPU 干等；</li>
+          <li><strong>失败原因是持久的</strong>：硬件锁失败 = "别人正拿着，马上会放"；数据库 CAS 失败 = "版本已被覆盖 / 执行权已易主 / 已取消"——这些事实不会自己变回来，重试毫无意义，正确动作是放弃并报告（fail-fast）；</li>
+          <li><strong>并发方可能已死</strong>：数据库场景里对手可能是崩溃的进程，自旋重试 = 等一个死人；数据库靠租约过期自动解锁，新执行者一次 CAS 成功接手。</li>
+        </ul>
+        <p>顺带理清名称关系：<strong>数据库 CAS 和"乐观锁"是同一件事的两个名字</strong>——叫 CAS 强调机制（WHERE 里的版本比较 + 原子写入），叫乐观锁强调策略（乐观地假设没人抢，写失败再处理；对比悲观锁 <code>SELECT FOR UPDATE</code> 先锁住再干）。工程里两种都在用：<code>save_snapshot</code> 用 CAS/乐观锁，<code>cancel_atomic</code> 用 <code>SELECT FOR UPDATE</code> 悲观锁。本质上都是第 2 章 TOCTOU 解法——"检查与写入一步完成"——在不同介质上的实现。</p>
+
+        <h4>这章要解决的问题：fence 挡不住的"旧内容覆盖新内容"</h4>
+        <p>先定位问题场景，再引入工具。fence（7.3）挡的是<strong>上一代执行者复活</strong>。但更隐蔽的丢失更新发生在<strong>同一代执行者内部</strong>：</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>时刻</th><th>发生什么</th><th>数据库 record_version</th></tr></thead>
+            <tbody>
+              <tr><td>t1</td><td>执行者 A 读快照到内存对象 plan_x</td><td>= 7（A 读到的是第 7 版）</td></tr>
+              <tr><td>t2</td><td>A 继续执行（几分钟），期间另一写入路径把行更新了一次（如深层组件保存进度）</td><td>= 8</td></tr>
+              <tr><td>t3</td><td>A 跑完，用手里基于第 7 版的 plan_x 调用 save</td><td>若无条件 UPDATE → 第 8 版被第 7 版内容整体覆盖 ❌</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>关键点：<strong>fence 挡不住这个场景</strong>——A 仍是合法的"这一代"执行者，fence 没变。所以需要第二个尺度：<strong>快照版本号</strong>。</p>
+
+        <h4>工具：record_version 是"这一行被写过多少次"</h4>
+        <p>每次 save 成功，<code>record_version + 1</code>。这个数字的含义就是"行被修改的次数"：你手里的 plan_x 是第 7 次写入之后的内容，如果数据库已写到第 8 次，你手里的就是旧内容——<strong>旧内容无权覆盖新内容</strong>。</p>
+
+        <h4>机制：光有版本号不够，比较和写入必须一步完成（这才是 CAS 的主旨）</h4>
+        <p>错误做法是"先查后写"——第 2 章的 TOCTOU：</p>
+        <div class="code-block">
+          <div class="code-label"><span>教学示例 · 错误做法：检查与写入是两个步骤</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code># ❌ 检查之后、写入之前，别人可能已经写成 8
+if 数据库当前版本 == 7:      # 步骤 1：检查
+    UPDATE ... 无条件写入     # 步骤 2：写入（中间可以被插队）</code></pre>
+        </div>
+        <p>正确做法是把"检查"塞进写语句的 WHERE，让数据库原子执行——比较与写入之间没有任何空隙：</p>
+        <div class="code-block">
+          <div class="code-label"><span>教学示例 · 正确做法：比较写进 WHERE，一步完成</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>UPDATE ...
+SET record_version = record_version + 1, ...
+WHERE record_version = 7        -- 比较：不是 7 就一行都不改</code></pre>
+        </div>
+        <p>两种结果：命中 1 行 → 版本还是 7，写入成功、版本变 8；命中 0 行 → 版本已不是 7，什么都不写、抛异常——旧快照没有覆盖任何东西。<strong>Compare（WHERE 比较版本）+ Swap（SET 写新值）合成一个原子动作</strong>，这就是"原子 CAS"这个章节名的完整含义——record_version 只是 Compare 用的那个数字，CAS 才是主角。</p>
+
+        <h4>与 fence 的分工（一句话记牢）</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>机制</th><th>挡谁</th><th>用的数字</th><th>回答的问题</th></tr></thead>
+            <tbody>
+              <tr><td>fencing token</td><td>上一<strong>代</strong>执行者</td><td><code>lease_fence_token</code></td><td>"你还是这一任吗？"</td></tr>
+              <tr><td>record_version CAS</td><td>同一代内的旧<strong>快照</strong></td><td><code>record_version</code></td><td>"你手里的内容还是最新的吗？"</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>两个问题都需要问——这正是 <code>save_snapshot</code> 的 WHERE 里同时有 <code>lease_fence_token = ...</code> 和 <code>record_version = ...</code> 的原因。所以 7.4 想表达的完整版是：<strong>在"执行者合法性"（fence）之外，还需要第二道防线防止"旧内容覆盖新内容"（丢失更新）；做法是给行一个单调递增的版本号，并把版本比较塞进 UPDATE 的 WHERE——让检查与写入一步完成（CAS）。</strong>这也是第 2 章 TOCTOU、第 4 章条件 UPDATE、6.4 save_snapshot 三条学习线在"快照写入"这个点上的汇合。</p>
+
         <p>fencing 防旧执行者，<code>record_version</code> 防旧快照。两者解决的问题不同。当前 <code>save_snapshot()</code> 一次性校验五件事：</p>
         <ol>
           <li>task_plan_id 是目标任务；</li>
@@ -979,7 +1978,61 @@ RETURNING record_version;</code></pre>
         <p><code>update_runtime_record()</code> 的 WHERE 同时要求 Runtime 自己的 <code>record_version</code> 命中，并用 EXISTS 验证父 TaskPlan 当前 owner、fence、expiry 且状态不是 cancelled。即使 Runtime 版本没变，失去父任务执行权的 Worker 也不能更新恢复记录。</p>
 
         <h3 id="idempotency">7.5 幂等命令：网络重试不等于第二次业务操作</h3>
-        <p>客户端为一次 confirm 生成 <code>Idempotency-Key</code>。如果超时后重试，必须复用同一个 key。服务端将 task_plan_id、operation 和 payload 做规范化 JSON，再算 SHA-256 request_hash。</p>
+        <h4>问题场景：一次点击，两次到达</h4>
+        <p>用户在网页上点"确认"，请求发出后<strong>网络超时</strong>，用户没看到结果，于是又点一次（或客户端自动重试）。服务器收到两个"确认"请求——如果两个都当真，任务就执行两遍。<strong>7.5 要解决的问题：网络重试产生的重复请求，不能让服务器重复执行。</strong></p>
+
+        <h4>解法：给每次用户动作一个唯一编号，重试时复用同一个编号</h4>
+        <p>客户端在第一次点击时生成随机编号，放进 HTTP 请求头 <code>Idempotency-Key</code>；同一次动作的所有重试携带同一个编号，另一次新点击才生成新编号。编号的完整旅程分六站：</p>
+
+        <h4>第 1~2 站：编号的诞生与传输</h4>
+        <div class="code-block">
+          <div class="code-label"><span>教学示例 · 前端生成 key，重试复用同一个</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>const key = crypto.randomUUID();   // 第一次点击时生成，例如 "9f2c...a31b"
+// 同一次用户动作的所有重试，永远共用这个 key
+
+// 请求①和请求②（超时重试）的 HTTP 头完全一样：
+POST /agent/task-plans/task_plan_001/confirm
+Idempotency-Key: 9f2c...a31b        &lt;-- 编号放在请求头里，不在请求体</code></pre>
+        </div>
+
+        <h4>第 3 站：FastAPI 用 Header 参数接住它</h4>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · IdempotencyKey Header 定义（api/agent_task_plan_routes.py L45-53）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>IdempotencyKey = Annotated[
+    str,
+    Header(
+        alias="Idempotency-Key",      # 告诉 FastAPI：从请求头里取这个字段
+        min_length=16,
+        max_length=128,
+    ),
+]
+
+async def confirm_agent_task_plan_endpoint(
+    task_plan_id: str,
+    idempotency_key: IdempotencyKey,  # FastAPI 自动把请求头的值填进这个参数
+    ...
+)</code></pre>
+        </div>
+        <p>到这一步，编号从"网络上的一个头"变成"Python 里的一个字符串变量"。</p>
+
+        <h4>第 4 站：编号一路传递，最终到达数据库</h4>
+        <p>endpoint → executor → store → repository，编号只是被层层搬运的字符串，最终写进命令表的 INSERT。它自己不"做"任何事——真正起作用的是下一站。</p>
+
+        <h4>第 5 站：编号起作用的时刻——数据库唯一约束</h4>
+        <p>命令表上的唯一约束（第 5 章学过）：<code>UNIQUE (task_plan_id, operation, idempotency_key)</code>——"同一个任务 + 同一种操作 + 同一个编号"只能存在一行。于是：</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>情况</th><th>数据库行为</th><th>服务器判断</th></tr></thead>
+            <tbody>
+              <tr><td>请求①（第一次带 9f2c...a31b）</td><td>INSERT 成功，插入一行</td><td>"没见过这编号 → 第一次来 → 正常执行"</td></tr>
+              <tr><td>请求②（重试带同样编号）</td><td>INSERT 失败（唯一约束冲突）</td><td>"见过这编号 → 重复请求 → 查老记录按状态回应"</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>关键理解：<strong>key 本身没有逻辑，是"数据库只允许它登记一次"这个约束让它产生了辨别能力</strong>——编号是钥匙，唯一约束是锁。</p>
+
+        <h4>第 6 站：重复请求按老命令状态分五种回应</h4>
+        <p>请求②发现 INSERT 冲突后，<code>begin_operation</code> 查出已有那行命令，看它的 <code>status</code>（repository L156-219）：</p>
 
         <div class="table-wrap">
           <table>
@@ -993,6 +2046,21 @@ RETURNING record_version;</code></pre>
             </tbody>
           </table>
         </div>
+        <p>最后一行补充：服务器把请求内容算 SHA-256 存进命令行的 <code>request_hash</code>。请求②若带着同一编号、但请求体不同（如第一次是 confirm、第二次变成 cancel），哈希对不上 → 拒绝——防止旧编号被挪用到新操作。</p>
+
+        <h4>一个具体数字例子：三次请求、一个编号</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>时刻</th><th>请求</th><th>结果</th></tr></thead>
+            <tbody>
+              <tr><td>t1</td><td>请求① header: K-001</td><td>命令表插入 (task_plan_001, confirm, K-001, running) ✅ → 开始执行</td></tr>
+              <tr><td>t2</td><td>请求② header: K-001（重试）</td><td>INSERT 冲突 → 查出 K-001 是 running 且有租约 → 返回 409 BUSY</td></tr>
+              <tr><td>t3</td><td>执行完成</td><td>命令标 succeeded，response 存入命令行</td></tr>
+              <tr><td>t4</td><td>请求③ header: K-001（又重试）</td><td>INSERT 冲突 → 查出 K-001 是 succeeded → 把 t3 存的 response 原样返回（不重新执行）</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>三次请求、一个编号：一次执行、一次 409、一次重放。<strong>key 的作用就是这三步——让服务器能分辨"这是我见过的那个动作"。</strong>这也是"幂等"的含义：同一个动作做一次和做一百次，效果一样。</p>
 
         <div class="callout warn">
           <span class="callout-title">幂等命令不等于外部网络副作用“恰好一次”</span>
@@ -1000,32 +2068,172 @@ RETURNING record_version;</code></pre>
         </div>
 
         <h3 id="capacity">7.6 全局容量槽：数据库版集群信号量</h3>
-        <p>Research 和 Deep Document 会占用大量模型、连接池和检索资源。Python 的 <code>asyncio.Semaphore(2)</code> 在四 Worker 下会变成 4×2=8 个名额，不是全局 2。容量槽表预先创建固定槽位，领取时用 <code>SELECT ... FOR UPDATE SKIP LOCKED LIMIT 1</code>。</p>
 
+        <h4>问题场景：为什么需要"全局限量"</h4>
+        <p>Research 和 Deep Document 是重任务：单任务要跑几分钟、调用几十次模型、占连接池和检索资源。必须限制"整个集群同时最多跑几个"。当前配置：Research 全局 2 个、Document 全局 1 个（压测方案 §2.3）。</p>
+        <p>为什么 Python 进程内的 <code>asyncio.Semaphore(2)</code> 不够用？回忆第 2 章：每个 Worker 是独立进程，各有一份内存。<code>Semaphore(2)</code> 是进程内对象，四 Worker 部署下会变成 <strong>4 个进程 × 每进程 2 个 = 全局最多 8 个</strong>名额，不是全局 2。所以限量必须放在所有 Worker 共享的地方——数据库。</p>
+
+        <h4>解法：一张"车位表"，车位是预先创建好的固定行</h4>
+        <p>第 5 章的 <code>agent_task_capacity_slots</code> 表就是这个"全局信号量"。关键设计：<strong>槽位不是"有任务才创建"，而是启动时预创建好的固定行</strong>（<code>ensure_capacity_slots()</code>，repository L68-80）：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · 启动时预创建固定槽位（repository L68-80 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>async def ensure_capacity_slots(self, *, workload_type: str, count: int) -&gt; None:
+    values = [
+        {"workload_type": workload_type, "slot_no": slot_no}
+        for slot_no in range(1, count + 1)          # research → 1,2；document → 1
+    ]
+    ...
+    pg_insert(AgentTaskCapacitySlotTable)
+    .values(values)
+    .on_conflict_do_nothing(...)                    # 已存在则跳过（可重复执行）</code></pre>
+        </div>
+        <p>所以数据库里常年躺着这几行：<code>(research, 1)</code>、<code>(research, 2)</code>、<code>(document, 1)</code>。每行就是一个"名额"。任务执行期间占用它，结束后归还它——行不会被删除，只改行的租约字段。</p>
+
+        <h4>代码怎么读：列表不是"存进数据库的数组"</h4>
+        <p>上面的 <code>values</code> 是一个 Python 列表（内存里的中间容器），里面装着 2 个字典。假设 <code>workload_type="research", count=2</code>，它算出的内容是：</p>
+        <div class="code-block">
+          <div class="code-label"><span>教学示例 · 列表展开成多行 INSERT</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>values = [
+    {"workload_type": "research", "slot_no": 1},
+    {"workload_type": "research", "slot_no": 2},
+]
+# .values(values) 喂给 SQLAlchemy 后，生成的是"一次插两行"的 INSERT：
+INSERT INTO agent_task_capacity_slots (workload_type, slot_no)
+VALUES ('research', 1),
+       ('research', 2);</code></pre>
+        </div>
+        <p>关键点：<strong>数组只存在于 Python 内存里，数据库里没有"数组"概念——数据永远是行。</strong>SQLAlchemy 看到"列表里有 2 个字典"，就自动展开成一条多行 INSERT，最终落库的是两行独立记录。以后看到 <code>.values(一个列表)</code> 的写法，记住这个展开规则。</p>
+
+        <h4>槽位数量来自配置，工程关闭后怎么办？</h4>
+        <p><strong>数量来自配置</strong>：槽的数量不写死在代码里，来自 Settings——<code>AGENT_RESEARCH_GLOBAL_CONCURRENCY=2</code> 生成 <code>(research,1)(research,2)</code>，<code>AGENT_DOCUMENT_GLOBAL_CONCURRENCY=1</code> 生成 <code>(document,1)</code>。改配置重启后按新数量补建。</p>
+        <p><strong>工程关闭后槽行不删除</strong>，分三种情况：</p>
+        <ul class="check-list">
+          <li><strong>正常关闭</strong>：槽行原样留在数据库，全部空闲。下次启动 <code>ensure_capacity_slots()</code> 发现已存在 → <code>on_conflict_do_nothing</code> 跳过——不重复创建、不删除、不重置；</li>
+          <li><strong>停机时还有任务在跑</strong>：被占的槽挂着死进程的 <code>lease_owner</code>，<strong>没有清理代码执行</strong>——但槽有自己的租约，90 秒后 <code>lease_until</code> 过期，下次新请求领取时 WHERE 条件 <code>lease_until &lt;= now()</code> 判定"已过期 = 空闲"直接领走。这正是"为什么槽也要配租约"的答案：进程可以随时死，租约到期就是自动解锁，不管死得干不干净；</li>
+          <li><strong>改小配置不会自动删槽</strong>：改成 research=1 后，启动只补"还不存在的"，不会删掉 2 号行；但领取时 <code>slot_no &lt;= capacity_limit</code> 条件限制"只允许领 1 号"，2 号行躺表里但永远领不到——不删它也不会超发，因为限额由 SQL 条件强制，不是靠行数。这就是"配置即上限"的设计。</li>
+        </ul>
+        <p>一句话总结：槽表是"启动时按配置预创建、永久保留、靠租约自动解锁"的固定资源表；工程关闭不影响槽行，异常停机占用的槽 90 秒后自动过期，实际限额由 SQL 的 <code>slot_no &lt;= capacity_limit</code> 强制。</p>
+
+        <h4>槽位行也有自己的租约和代际</h4>
+        <p>每个槽位行带三个字段（第 5 章的表结构）：<code>lease_owner</code>（当前占用者）、<code>lease_until</code>（占用到期时间）、<code>lease_fence_token</code>（第几代占用）。为什么槽也要租约？因为占用者的进程可能崩溃：</p>
+        <ul class="check-list">
+          <li>崩溃后槽的租约到期（90 秒无心跳）→ 槽自动空闲，别人能领——<strong>车位不会永久锁死</strong>；</li>
+          <li>槽的 fence 让"旧占用者复活"时续租/归还都失败——旧人不能动新车位（7.2 学过：心跳同时续 TaskPlan 和槽两行，续的就是这个槽）。</li>
+        </ul>
+
+        <h4>领取动作：在 begin_operation 里，它是第三件事</h4>
+        <p>回顾第 4 章"一口气三件事"：①幂等命令落库 → ②TaskPlan 租约领取 → <strong>③容量槽领取</strong>。第③步的 SQL（repository L259-272）：</p>
         <div class="code-block">
           <div class="code-label"><span>当前源码等价 SQL · 领取一个全局容量槽</span><button class="copy-button" type="button">复制</button></div>
           <pre><code>SELECT *
 FROM agent_task_capacity_slots
-WHERE workload_type = :workload_type
-  AND slot_no &lt;= :capacity_limit
-  AND (lease_until IS NULL OR lease_until &lt;= now())
-ORDER BY slot_no
-FOR UPDATE SKIP LOCKED
+WHERE workload_type = :workload_type        -- 车型要对（research 还是 document）
+  AND slot_no &lt;= :capacity_limit            -- 只找限定的槽号（如 1、2）
+  AND (lease_until IS NULL OR lease_until &lt;= now())   -- 槽要空闲（没人占或已过期）
+ORDER BY slot_no                            -- 从 1 号开始找
+FOR UPDATE SKIP LOCKED                      -- 关键：跳过正被其他事务锁住的行
 LIMIT 1;</code></pre>
         </div>
-        <p><code>SKIP LOCKED</code> 的作用不是跳过“已租用”的槽，而是跳过“正在被另一个数据库事务锁住、尚未提交判定”的行，避免多个领取者在同一槽上排队。找不到槽时，先释放刚领取的 TaskPlan 租约，再把命令标记 rejected，最终返回 429 和 <code>Retry-After</code>。</p>
+        <p><code>SKIP LOCKED</code> 的含义：多个请求同时来抢仅有的 2 个槽时，先到的事务会把看中的槽行"锁住"（FOR UPDATE）；后来的事务看到这行被锁，<strong>不等它解锁，直接跳过找下一个空槽</strong>——不排队、不死锁。这正是三个 confirm 并发时"2 个领到槽、1 个领不到"的机制：两个赢家各自锁住一个槽行，第三个事务跳过两个被锁的行，找不到任何行。</p>
+        <p>注意区分两个"空"：WHERE 里的 <code>lease_until IS NULL OR lease_until &lt;= now()</code> 判断的是<strong>业务上未被占用</strong>；<code>SKIP LOCKED</code> 跳过的是<strong>正被其他事务锁住、尚未提交</strong>的行——两者叠加，才能保证并发下既不超发、也不排队。</p>
+
+        <h4>领到之后：槽行被写入占用信息</h4>
+        <p>找到空槽后（repository L295-344）：槽行写入 <code>lease_owner / lease_until（90 秒）/ lease_fence_token +1 / task_plan_id</code>；主表行回写 <code>capacity_workload_type / capacity_slot_no</code>（记住自己占的是哪个槽，归还时按号还）。执行者手里得到完整句柄：TaskPlan 租约 + 容量槽号 + 槽的 fence。</p>
+
+        <h4>领不到：归还刚拿的租约，命令标 rejected，返回 429</h4>
+        <p>一个空槽都没有时（repository L273-294 + L348-352）：</p>
+        <ol>
+          <li>把刚才第②步领到的 TaskPlan 租约<strong>还掉</strong>（否则任务占着租约却没资格执行）；</li>
+          <li>命令标 <code>rejected</code>，错误码 <code>AGENT_CAPACITY_EXCEEDED</code>；</li>
+          <li>向客户端抛 429，带 <code>retry_after_seconds</code>（告诉前端"满了，等 90 秒再试"）。</li>
+        </ol>
+        <p>429 是"拒绝"不是"排队"——这是本方案的明确选择：宁可让用户稍后重试，也不在服务端堆积长队列（堆积的长任务反而会拖垮所有在线请求）。</p>
+
+        <h4>归还：终态收尾时按号释放</h4>
+        <p>任务结束后，<code>finish_success()</code> / <code>finish_failure()</code> 把槽行清空（第 6 章读过 L465-481）：<code>lease_owner / lease_until / task_plan_id</code> 置空——槽行回到"空闲"，等待下一个任务。而心跳（7.2）在任务运行期间每 20 秒同时续 TaskPlan 和槽两行，保证长任务不会中途丢车位。</p>
+
+        <h4>一个并发例子串起全部机制</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>时刻</th><th>请求</th><th>数据库动作</th><th>结果</th></tr></thead>
+            <tbody>
+              <tr><td>t1</td><td>Research 任务 R1 confirm</td><td>领到 (research,1) 槽，锁住并写入占用</td><td>受理执行 ✅</td></tr>
+              <tr><td>t2</td><td>R2 confirm</td><td>SKIP LOCKED 跳过被锁的 1 号，领到 (research,2)</td><td>受理执行 ✅</td></tr>
+              <tr><td>t3</td><td>R3 confirm</td><td>两个槽行都被锁/被占，找不到空槽</td><td>归还租约 → 429 AGENT_CAPACITY_EXCEEDED</td></tr>
+              <tr><td>t4</td><td>R1 完成</td><td>finish_success 清空 1 号槽</td><td>1 号槽回到空闲</td></tr>
+              <tr><td>t5</td><td>R3 用同一幂等键重试</td><td>命令从 rejected 复活 → 领到 1 号槽</td><td>受理执行 ✅</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>注意 t5：R3 的重试复用同一幂等键（7.5），命令从 rejected 复活，而不是新建一条命令——429 之后的恢复路径和幂等机制在这里衔接。压测报告里"3 个 Research confirm 同时打进来 → 2 受理 + 1 个 429"就是 t1~t3 的现场。</p>
 
         <h3 id="cancel-wins">7.7 取消必胜：cancel 不等正在运行的锁</h3>
-        <p>cancel 故意不进入 <code>_TASK_PLAN_LOCKS.hold()</code>。如果取消请求先排队等待当前任务执行完，执行器永远看不到取消信号。<code>cancel_atomic()</code> 对 TaskPlan 行执行 <code>SELECT FOR UPDATE</code>，在一个事务中完成：</p>
-        <ol>
-          <li>验证任务归属或 system_admin 权限；</li>
-          <li>把 snapshot 和 status 改为 cancelled；</li>
-          <li>record_version + 1，lease_fence_token + 1；</li>
-          <li>清空任务租约并归还容量槽；</li>
-          <li>把其他 running 命令收敛为 cancelled；</li>
-          <li>把 cancel 命令本身记录为 succeeded，并保存可重放响应。</li>
-        </ol>
-        <p>旧执行者随后续租或保存时，owner/fence/status 至少有一个不匹配，无法覆盖 cancelled。执行器在 <code>finish_success()</code> 恰好碰到 cancel 时，会重读数据库；若权威状态已经是 cancelled，就返回 cancelled，而不是误报“执行失败”。</p>
+
+        <h4>为什么 cancel 特殊：它是七个机制里唯一"要和正在跑的任务正面对抗"的操作</h4>
+        <p>前面六个机制都在防"重复/越权/过期"，cancel 却是要<strong>打断</strong>。对比三个控制操作在"任务正在执行中"时的行为：</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>操作</th><th>任务正在执行中时</th><th>行为</th></tr></thead>
+            <tbody>
+              <tr><td>confirm</td><td>第二个 confirm 到来</td><td>被进程内锁/数据库租约挡住 → 409"有人在办"（等不了就拒）</td></tr>
+              <tr><td>retry</td><td>同上</td><td>同样被挡</td></tr>
+              <tr><td><strong>cancel</strong></td><td>任务正在跑，用户要取消</td><td><strong>必须立刻写入"已取消"事实，不能让执行者继续干</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>如果 cancel 也像 confirm 一样先去拿 <code>_TASK_PLAN_LOCKS</code> 进程内锁（第 4 章），会发生互等死锁：cancel 在等任务放锁，任务在等看到 CANCELLED 信号才停——永远取消不掉。所以 cancel 的第一条特殊设计（executor L232 注释原文）：<strong>cancel 故意不进入进程内锁</strong>，跳过排队，直接去数据库原子改写状态。</p>
+
+        <h4>为什么"必胜"必须靠 fence + 状态机：它要对抗一个正在写库的执行者</h4>
+        <p>正在执行的任务每 20 秒心跳续租、每完成一段就 save 快照。如果 cancel 只是"改一下 status"，执行者下一次 save 可能把它覆盖回去——取消就没意义了。cancel 的"必胜"是把 7.3 和 6 章的武器一次打出去：</p>
+        <ul class="check-list">
+          <li><strong><code>lease_fence_token + 1</code></strong>：执行者的所有后续写入（save、续租）都要求 fence 还是自己的旧值——现在变了，全部命中 0 行，执行者失去写权（7.3 的 fencing 武器）；</li>
+          <li><strong><code>record_version + 1</code> + status=cancelled</strong>：执行者的 save 还要求"来源状态合法"——cancelled 不是任何"继续执行"的合法来源（第 6 章状态机），同样命中 0 行（7.4 的 CAS 武器）。</li>
+        </ul>
+        <p>执行者不会立刻停，但它从此<strong>写不进任何东西</strong>；它会在下一个心跳/保存失败时意识到"我输了"，收敛退出。</p>
+
+        <h4>为什么用 SELECT FOR UPDATE（悲观锁），而不是 CAS</h4>
+        <p>cancel 要同时改三张表（任务行、容量槽行、其他命令行），而且必须先读旧值（旧租约 owner、旧槽号）才能正确归还槽。这种"读一行 → 根据读到的内容改多处"的流程，单条条件 UPDATE（CAS）不够用——必须先把任务行锁住，防止读和改之间别人抢先（repository L605-609）。这就是 7.4 提到的"工程里两种都在用"：快照写入用乐观 CAS，cancel 用悲观锁。</p>
+
+        <h4>真实代码逐段走（repository L560-676）</h4>
+        <p><strong>① 幂等命令落库</strong>（L572-603）：与 begin_operation 同款——insert cancel 命令 + <code>on_conflict_do_nothing</code>；同 key 重复 cancel 且已 succeeded 时直接重放响应。</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · ② 锁任务行 + 权限与状态检查（L605-618 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>row = await session.scalar(
+    select(AgentTaskPlanTable)
+    .where(AgentTaskPlanTable.task_plan_id == task_plan_id)
+    .with_for_update()              # ← 锁住这一行，直到事务提交
+)
+if row.owner_user_id != actor_user_id and not can_manage_all:
+    raise ToolPermissionDeniedError(...)   # 只能取消自己的任务（或管理员）
+if row.status in {COMPLETED, COMPLETED_WITH_WARNINGS}:
+    raise AppServiceError("已完成的 Agent TaskPlan 不能取消")</code></pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · ③ 原子改写任务行（L627-637 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>row.status = AgentTaskPlanStatus.CANCELLED.value
+row.record_version += 1      # 旧快照从此失效（CAS 武器）
+row.lease_fence_token += 1   # 旧执行者从此失效（fence 武器）
+row.lease_owner = None       # 清租约
+row.lease_until = None
+row.capacity_workload_type = None
+row.capacity_slot_no = None</code></pre>
+        </div>
+        <p><strong>④ 归还容量槽</strong>（L638-653）：用锁行时读到的旧槽号把槽行清空——cancel 不等执行者自己还槽（它可能永远不还）。</p>
+        <p><strong>⑤ 收敛其他命令</strong>（L654-667）：把同一任务上其他仍在 running 的命令（如正在执行的 confirm）标成 cancelled、错误码 <code>AGENT_TASK_PLAN_CANCELLED</code>——避免留下永远 running 的孤儿命令。</p>
+        <p><strong>⑥ 自己的命令标 succeeded</strong>（L669-676）：cancel 命令本身成功，保存可重放响应。</p>
+
+        <h4>"必胜"的收尾：执行者撞上取消后安静退场</h4>
+        <p>执行者跑完想 <code>finish_success()</code> 时，会先重读数据库（executor L395-398）：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · 执行者收尾时重读权威状态（executor L396-398 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>latest = await self._task_plan_store.load(task_plan_id)
+if latest.status == AgentTaskPlanStatus.CANCELLED:
+    return latest    # 权威已经是 cancelled → 安静返回，不误报"执行失败"</code></pre>
+        </div>
+        <p>所以 cancel 必胜 = 三道保险：<strong>① fence+1 让旧执行者写不进；② 状态机让"继续执行"的转换非法；③ 执行者收尾时重读权威状态，发现被取消就安静退场，不把取消误报成失败。</strong></p>
+
+        <h4>一句话总结</h4>
+        <p>cancel 不等锁（否则死锁）、用悲观锁锁行（因为要读旧值改多处）、一次事务里完成六件事（幂等落库 → 锁行验权 → 改写状态+fence+version → 还槽 → 收敛其他命令 → 自身成功）。它是把第 4、6、7 章所有武器同时打出的"终极大招"——这就是它值得单独一节的原因。</p>
       </section>
 
       <section id="confirm-trace" class="chapter">
@@ -1098,8 +2306,135 @@ sequenceDiagram
         </div>
       </section>
 
+      <section id="cancel-trace" class="chapter">
+        <div class="chapter-kicker">Chapter 9 · 用一个 cancel 请求串起打断与必胜</div>
+        <h2>一次 cancel 从 HTTP 到旧执行者停手的完整过程</h2>
+        <div class="callout warn"><span class="callout-title"><span class="badge example">教学示例</span> 下面的 ID 与数值用于跟踪机制</span>它们不是本轮真实请求，也不是生产数据。真实函数名和状态变化来自当前源码。</div>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>代表值</th><th>初始内容</th><th>用途</th></tr></thead>
+            <tbody>
+              <tr><td><code>task_plan_id</code></td><td><code>task_plan_demo_002</code></td><td>正在被 Worker A 执行的 Document 任务。</td></tr>
+              <tr><td><code>Idempotency-Key</code></td><td><code>cancel-demo-20260815-0001</code></td><td>同一次取消点击重试时复用。</td></tr>
+              <tr><td>执行者 A</td><td><code>hostA:4210:ab12cd34ef56</code></td><td>正在执行 confirm，租约与心跳正常运行。</td></tr>
+              <tr><td>数据库起始状态</td><td><code>executing_confirmed, version=8, fence=13, 占 document-1 槽</code></td><td>用户确认后、真实执行进行中。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <ol class="timeline">
+          <li><strong>FastAPI 接收 cancel 请求</strong><span class="value"><code>POST /agent/task-plans/task_plan_demo_002/cancel</code>，Header 携带 Idempotency-Key。Endpoint 校验当前用户身份后调用 <code>AgentTaskExecutor.cancel()</code>（routes L156-175）。</span></li>
+          <li><strong>cancel 故意不取进程内锁</strong><span class="value">若取 <code>_TASK_PLAN_LOCKS</code>，cancel 会排队等 A 放锁，而 A 在等看到 CANCELLED 信号才停——互等死锁（executor L232 注释原文）。</span></li>
+          <li><strong>幂等命令落库</strong><span class="value"><code>cancel_atomic()</code> 先 INSERT cancel 命令（status=running），<code>on_conflict_do_nothing</code> 防同 key 重复取消（repository L572-588）。</span></li>
+          <li><strong>行锁 + 权限 + 状态检查</strong><span class="value"><code>SELECT ... FOR UPDATE</code> 锁住任务行（L605-609）；校验 owner 或 system_admin（L612-613）；completed 任务拒绝取消（L614-618）。</span></li>
+          <li><strong>原子改写任务行</strong><span class="value">status=cancelled、record_version 8→9、lease_fence_token 13→14、清空 lease_owner/lease_until/active_operation/槽字段（L627-637）。</span></li>
+          <li><strong>归还容量槽</strong><span class="value">用锁行时读到的旧槽号清空 document-1 槽行（L638-653）——cancel 不等执行者自己还槽。</span></li>
+          <li><strong>收敛其他 running 命令</strong><span class="value">A 正在执行的 confirm 命令被标为 cancelled + <code>AGENT_TASK_PLAN_CANCELLED</code>（L654-667），不留永远 running 的孤儿。</span></li>
+          <li><strong>cancel 命令标 succeeded</strong><span class="value">保存 cancelled 快照到 response_json（L669-676），同 key 重试直接重放。</span></li>
+          <li><strong>API 返回可观察结果</strong><span class="value">React 收到 status=cancelled。用户看到任务已取消。</span></li>
+          <li><strong>执行者 A 的下一轮心跳失败</strong><span class="value"><code>renew_lease</code> 的 WHERE 要求 fence=13，库里已是 14 → 0 行 → <code>lease.lost.set()</code>（7.2 的失败传播路径）。</span></li>
+          <li><strong>A 在下一个安全边界停手</strong><span class="value">下一次模型/工具调用前的 <code>assert_active()</code> 抛 <code>AgentTaskPlanLeaseLostError</code>，A 的业务执行停止。</span></li>
+          <li><strong>A 的收尾不覆盖取消</strong><span class="value">若 A 已跑到 <code>finish_success()</code>：fence/status 不匹配 → 失败 → 重读数据库 → 发现 cancelled → 返回 cancelled，不误报"执行失败"（executor L380-388）。</span></li>
+        </ol>
+
+        <div class="mermaid-wrap">
+          <p class="diagram-caption">cancel 请求与执行者 A 竞争的时间线</p>
+          <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant UI as React / Client
+    participant API as cancel_agent_task_plan_endpoint
+    participant RP as AgentTaskPlanRepository.cancel_atomic
+    participant DB as PostgreSQL
+    participant HB as 执行者 A 的心跳
+    participant A as 执行者 A 业务协程
+
+    UI->>API: POST cancel + Idempotency-Key
+    API->>RP: cancel_atomic(task_plan_id, user, key)
+    RP->>DB: cancel 命令 INSERT（幂等）
+    RP->>DB: SELECT FOR UPDATE 锁行 + 权限检查
+    RP->>DB: status=cancelled, version+1, fence+1, 清租约
+    RP->>DB: 归还容量槽 + 收敛其他 running 命令
+    DB-->>RP: cancelled 快照
+    RP-->>API: cancelled plan
+    API-->>UI: status=cancelled
+    HB->>DB: renew_lease（仍带 fence=13）
+    DB-->>HB: 0 行命中 → LeaseLost
+    HB->>A: lease.lost.set()
+    A->>A: assert_active() 抛错 → 停手
+    A->>DB: finish_success 兜底重读
+    DB-->>A: status=cancelled → 返回 cancelled
+          </pre>
+        </div>
+      </section>
+
+      <section id="lease-recovery" class="chapter">
+        <div class="chapter-kicker">Chapter 10 · 用一个租约过期场景串起崩溃恢复</div>
+        <h2>Worker 停顿 → 租约过期 → Worker B 接手 → 从 checkpoint 恢复</h2>
+        <div class="callout warn"><span class="callout-title"><span class="badge example">教学示例</span> 下面的 ID 与数值用于跟踪机制</span>它们不是本轮真实请求，也不是生产数据。真实函数名和状态变化来自当前源码。</div>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>代表值</th><th>初始内容</th><th>用途</th></tr></thead>
+            <tbody>
+              <tr><td><code>task_plan_id</code></td><td><code>task_plan_demo_003</code></td><td>Deep Document 任务，执行中。</td></tr>
+              <tr><td>执行者 A</td><td><code>hostA:4210:.../fence=13, version=8</code></td><td>已领取租约与 document-1 槽，正在执行。</td></tr>
+              <tr><td>租约配置</td><td><code>lease=90s, heartbeat=20s</code></td><td>A 正常时每 20 秒续租任务行 + 槽行。</td></tr>
+              <tr><td>数据库起始状态</td><td><code>executing_confirmed, fence=13, 槽 document-1 被 A 占用</code></td><td>真实执行进行中。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <ol class="timeline">
+          <li><strong>A 正常执行</strong><span class="value">A 领取租约（fence=13）与 document-1 槽，心跳每 20 秒同时续租两行（7.2）。</span></li>
+          <li><strong>A 的事件循环长时间停顿</strong><span class="value">例如 GC 长暂停或宿主机挂起：心跳协程和业务协程都在同一事件循环里，一起停住（第 2 章的协程模型）。</span></li>
+          <li><strong>90 秒后租约过期</strong><span class="value">任务行 lease_until 与槽行 lease_until 都过期。数据库仍显示 executing_confirmed——崩溃时没人改状态（5.5 阶段 3）。</span></li>
+          <li><strong>用户点击 retry</strong><span class="value"><code>POST /agent/task-plans/task_plan_demo_003/retry</code>，新 Idempotency-Key，请求落到 Worker B（A 的进程连 HTTP 都无法处理）。</span></li>
+          <li><strong>B 取进程内锁后进入 begin_operation</strong><span class="value">B 进程的 <code>_TASK_PLAN_LOCKS</code> 空闲（executor L449）；幂等命令落库（retry running）。</span></li>
+          <li><strong>租约领取：过期条件命中</strong><span class="value">WHERE 要求 <code>status ∈ {preparing, executing, failed}</code>（executor L459-463 的 retry 允许集）且 <code>lease_until &lt;= now()</code>——满足 → fence 13→14，owner=B。</span></li>
+          <li><strong>容量槽领取：旧槽也过期</strong><span class="value">B 领到 document-1（A 的占用已过期），槽 fence+1——槽的租约自解锁机制（7.6）。</span></li>
+          <li><strong>B 启动心跳并重读快照</strong><span class="value">新租约绑定 ContextVar，心跳开始。</span></li>
+          <li><strong>恢复路径：三道校验后从 checkpoint 继续</strong><span class="value">Document 走 agentic 恢复（5.5 阶段 4）：ACL 指纹一致 → 源文件 SHA 一致 → checkpoint 存在 → resume_count+1 → 从崩溃前节点继续执行。</span></li>
+          <li><strong>A 恢复运行</strong><span class="value">A 的事件循环恢复，本地代码仍以为自己在执行。</span></li>
+          <li><strong>A 的心跳续租失败</strong><span class="value">fence=13 ≠ 14 → 0 行 → <code>lease.lost.set()</code>。</span></li>
+          <li><strong>A 的任何保存失败</strong><span class="value">save 的 WHERE 要求 owner/fence/version 匹配 → 全不匹配 → 0 行 → A 静默停手，不覆盖 B（6.4 的六条件）。</span></li>
+          <li><strong>B 完成收尾</strong><span class="value">save completed → finish_success 释放租约与槽 → retry 命令 succeeded。A 的旧 confirm 命令成为孤儿，由 <code>expire_stale_running_commands</code>（repository L814）收敛。</span></li>
+        </ol>
+
+        <div class="mermaid-wrap">
+          <p class="diagram-caption">租约过期与恢复执行的完整时间线</p>
+          <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant A as Worker A（执行者）
+    participant HB as A 的心跳
+    participant DB as PostgreSQL
+    participant UI as React / Client
+    participant B as Worker B（恢复者）
+
+    A->>DB: 领取租约 fence=13 + document-1 槽
+    HB->>DB: 每 20 秒续租（任务行 + 槽行）
+    Note over A,HB: A 事件循环停顿，心跳停止
+    Note over DB: 90 秒后租约与槽都过期
+    UI->>B: POST retry（新 Idempotency-Key）
+    B->>DB: 幂等命令落库（retry running）
+    B->>DB: 租约领取：lease_until&lt;=now() → fence=14
+    B->>DB: 容量槽领取：document-1（已过期）
+    B->>DB: 三道校验通过 → resume_count+1
+    B->>DB: 从 checkpoint 恢复执行
+    A->>DB: A 恢复：renew_lease（fence=13）
+    DB-->>A: 0 行 → lease.lost
+    A->>DB: save（旧 owner/fence/version）
+    DB-->>A: 0 行 → 静默停手
+    B->>DB: save completed → finish_success
+    DB-->>B: 释放租约与槽，retry succeeded
+          </pre>
+        </div>
+      </section>
+
       <section id="race-cases" class="chapter">
-        <div class="chapter-kicker">Chapter 9 · 不背术语，用竞态验证设计</div>
+        <div class="chapter-kicker">Chapter 11 · 不背术语，用竞态验证设计</div>
         <h2>四种最值得亲手推演的并发场景</h2>
 
         <details open>
@@ -1136,7 +2471,7 @@ sequenceDiagram
       </section>
 
       <section id="simulator" class="chapter">
-        <div class="chapter-kicker">Chapter 10 · 点按钮观察数据库代际</div>
+        <div class="chapter-kicker">Chapter 12 · 点按钮观察数据库代际</div>
         <h2>交互式 fencing / CAS 模拟器</h2>
         <p>按推荐顺序点击：A 领取 → A 保存 → 租约过期 → B 领取 → A 旧写入 → B 保存。观察 A 为什么永久失去写权。这个模拟器只在浏览器内改变 JavaScript 对象，不连接工程数据库。</p>
 
@@ -1167,7 +2502,7 @@ sequenceDiagram
       </section>
 
       <section id="code-map" class="chapter">
-        <div class="chapter-kicker">Chapter 11 · 按执行顺序读真实代码</div>
+        <div class="chapter-kicker">Chapter 13 · 按执行顺序读真实代码</div>
         <h2>当前工程代码地图：每个文件只承担一个清晰边界</h2>
 
         <div class="table-wrap file-map">
@@ -1189,7 +2524,7 @@ sequenceDiagram
           </table>
         </div>
 
-        <h3>11.1 深读 <code>AgentTaskLeaseManager.hold()</code></h3>
+        <h3>13.1 深读 <code>AgentTaskLeaseManager.hold()</code></h3>
         <p><strong>它拥有的问题：</strong>把一次控制请求从“普通协程”变成“持有数据库权威租约、接受心跳监督的执行链”。</p>
         <ul>
           <li><strong>输入：</strong>task_plan_id、operation、idempotency_key、请求 payload、允许状态和 workload 类型。payload 与 key 属于请求事实；允许状态和容量上限属于服务端策略。</li>
@@ -1199,7 +2534,7 @@ sequenceDiagram
           <li><strong>清理：</strong>finally 必定停止并取消心跳，避免请求结束后后台协程继续续租。</li>
         </ul>
 
-        <h3>11.2 深读 <code>AgentTaskExecutor._run_with_database_lease()</code></h3>
+        <h3>13.2 深读 <code>AgentTaskExecutor._run_with_database_lease()</code></h3>
         <p><strong>它拥有的问题：</strong>Research 与 Document 的业务完全不同，但领取、重放、心跳、权威重读、成功释放和失败收尾应使用同一套控制协议。</p>
         <ul>
           <li>先进入 LeaseManager；Replay 时从 response_json 还原 Plan，不运行 runner。</li>
@@ -1210,15 +2545,15 @@ sequenceDiagram
           <li>其他异常尝试把仍处于活动状态的 Plan 收敛为 failed，然后 finish_failure 释放资源并保留原异常。</li>
         </ul>
 
-        <h3>11.3 深读 <code>DeepDocumentRuntime.update_record()</code></h3>
+        <h3>13.3 深读 <code>DeepDocumentRuntime.update_record()</code></h3>
         <p>本地先比较 version 仍然保留，因为它能快速发现明显旧调用；但真正安全性来自 Repository 的原子 UPDATE。合并 updates 后重新用 Pydantic 模型验证类型和状态，再执行带 expected_version 与父 TaskPlan EXISTS 租约条件的 CAS。数据库返回的新 version 还要与模型中计算的新 version 一致。</p>
       </section>
 
       <section id="verification" class="chapter">
-        <div class="chapter-kicker">Chapter 12 · 测试不是数量，而是每层证明什么</div>
+        <div class="chapter-kicker">Chapter 14 · 测试不是数量，而是每层证明什么</div>
         <h2>当前已有证据，以及不能越界声称的结论</h2>
 
-        <h3>12.1 已经得到的确定性 / 并发证据</h3>
+        <h3>14.1 已经得到的确定性 / 并发证据</h3>
         <div class="table-wrap">
           <table>
             <thead><tr><th>测试</th><th>证明的机制</th><th>已有结果</th><th>不能证明</th></tr></thead>
@@ -1232,7 +2567,7 @@ sequenceDiagram
           </table>
         </div>
 
-        <h3>12.2 正式混合压测为什么仍不能写“通过”</h3>
+        <h3>14.2 正式混合压测为什么仍不能写“通过”</h3>
         <div class="proof-board">
           <div class="proof"><b>15 个全局在途请求</b><span>一次正式 10+3+2 已达到 global peak=15，10 个普通 RAG SSE 协议成功。</span></div>
           <div class="proof"><b>Research 容量控制</b><span>容量 2 下，3 个 confirm 中 2 个进入业务路径、1 个得到预期 429；槽位最终释放。</span></div>
@@ -1245,7 +2580,7 @@ sequenceDiagram
           <code>formal_p2_allowed = false</code>。一致性实现已落地并通过针对性验证，但“10–15 人混合业务场景整体通过”仍未被证明。当前测试按用户指令停止，本页没有重新启动服务、调用模型或运行压力测试。
         </div>
 
-        <h3>12.3 以后需要运行时的 PowerShell 命令</h3>
+        <h3>14.3 以后需要运行时的 PowerShell 命令</h3>
         <p>以下命令是学习和后续验收入口，本次编辑没有执行。运行前需要 PostgreSQL 测试环境和仓库要求的配置。</p>
         <div class="code-block">
           <div class="code-label"><span>PowerShell · 最小到最大的验证顺序</span><button class="copy-button" type="button">复制</button></div>
@@ -1275,7 +2610,7 @@ python -B scripts\tests\document_security\test_agent_task_plan_load_driver.py</c
       </section>
 
       <section id="frontend" class="chapter">
-        <div class="chapter-kicker">Chapter 13 · 后端一致性最终要能被前端正确消费</div>
+        <div class="chapter-kicker">Chapter 15 · 后端一致性最终要能被前端正确消费</div>
         <h2>API、SSE 与 React：用户不应该从自然语言猜任务状态</h2>
 
         <div class="table-wrap">
@@ -1320,7 +2655,7 @@ async function confirmTaskPlan(taskPlanId) {
       </section>
 
       <section id="limits" class="chapter">
-        <div class="chapter-kicker">Chapter 14 · 工程判断来自边界意识</div>
+        <div class="chapter-kicker">Chapter 16 · 工程判断来自边界意识</div>
         <h2>已经解决什么，仍然不能承诺什么</h2>
 
         <h3>14.1 当前方案明确解决</h3>
@@ -1362,7 +2697,7 @@ async function confirmTaskPlan(taskPlanId) {
       </section>
 
       <section id="exercises" class="chapter">
-        <div class="chapter-kicker">Chapter 15 · 把“看懂”变成“会判断”</div>
+        <div class="chapter-kicker">Chapter 17 · 把“看懂”变成“会判断”</div>
         <h2>四组练习：不改生产代码也能建立并发直觉</h2>
 
         <h3>练习 1：纸面模拟 CAS</h3>
@@ -1406,7 +2741,7 @@ async function confirmTaskPlan(taskPlanId) {
       </section>
 
       <section id="summary" class="chapter">
-        <div class="chapter-kicker">Chapter 16 · 把复杂方案压缩成稳定心智模型</div>
+        <div class="chapter-kicker">Chapter 18 · 把复杂方案压缩成稳定心智模型</div>
         <h2>最后只记住一条“六问法”</h2>
         <p>未来再遇到多 Worker 任务问题，不要先问“用什么锁”，按顺序问：</p>
 
@@ -1592,6 +2927,16 @@ async function confirmTaskPlan(taskPlanId) {
         });
       });
     })();
+  </script>
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>
+    // 语法高亮：只处理 .code-block 里的代码，跳过 mermaid 图表源文本。
+    document.addEventListener("DOMContentLoaded", function () {
+      if (typeof hljs === "undefined") return;
+      document.querySelectorAll(".code-block pre code").forEach(function (el) {
+        hljs.highlightElement(el);
+      });
+    });
   </script>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
