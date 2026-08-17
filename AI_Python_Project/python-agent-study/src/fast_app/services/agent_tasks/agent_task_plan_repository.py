@@ -217,7 +217,7 @@ class AgentTaskPlanRepository:
                 existing.error_message = None
                 existing.completed_at = None
                 existing.updated_at = datetime.now(UTC)
-
+            # 重新"领取"租约 + 延长租约状态，共用下面这一段代码
             task_row = (
                 await session.execute(
                     update(AgentTaskPlanTable)
@@ -247,7 +247,7 @@ class AgentTaskPlanRepository:
                     )
                 )
             ).one_or_none()
-            if task_row is None:
+            if task_row is None: # 续租失败，命令表中的状态无法更新到 TaskPlan 信息，Command 表中的状态也无法更新
                 command = await session.get(AgentTaskPlanCommandTable, command_id)
                 if command is not None:
                     command.status = "rejected"
@@ -326,7 +326,7 @@ class AgentTaskPlanRepository:
                             capacity_workload_type=workload_type,
                             capacity_slot_no=slot.slot_no,
                         )
-                    )
+                    ) # 租约成功续租后，更新Command表中的fence快照
                     command = await session.get(AgentTaskPlanCommandTable, command_id)
                     if command is not None:
                         command.lease_fence_token = int(task_row.lease_fence_token)

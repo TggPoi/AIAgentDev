@@ -1621,7 +1621,24 @@ lease.record_version = int(version)                                # 句柄里�
         <p>这道约束只保证"值合法"，不保证"转换合法"——它管的是"不许写一个叫 running 的状态"，转换规则仍然由 6.4 的 WHERE 负责。两层一内一外：外层 Repository 管转换，内层数据库管取值。</p>
 
         <h3 id="state-retry">6.6 retry 如何回到正确位置：failure_phase 记住失败发生在哪一阶段</h3>
-        <p>状态图里 <code>failed</code> 有两条 retry 出路（回 <code>preparing_confirmation</code> 或回 <code>executing_confirmed</code>），代码怎么知道该回哪条？靠快照里的 <code>failure_phase</code> 字段（<code>domain/agent_task_plan.py</code> L321）。它的写入时机在租约模块的兜底收敛处（<code>agent_task_executor.py</code> L402-420 节选）：</p>
+        <p>先看问题：6.2 的状态卡里，<code>failed</code> 有两条 retry 出路——回 <code>preparing_confirmation</code> 或回 <code>executing_confirmed</code>。用户点一次 retry，系统必须知道该走哪条。</p>
+
+        <h4>为什么两条路必须分开</h4>
+        <p>用两个具体失败场景对比：</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th></th><th>场景一：准备期失败</th><th>场景二：执行期失败</th></tr></thead>
+            <tbody>
+              <tr><td>失败时刻的状态</td><td><code>preparing_confirmation</code>（生成 dry-run、Supervisor 决策时崩了）</td><td><code>executing_confirmed</code>（用户已确认，真实执行中崩了）</td></tr>
+              <tr><td>retry 应该做什么</td><td><strong>重新准备</strong>：重跑 Supervisor / dry-run，重新生成确认材料</td><td><strong>恢复执行</strong>：不再重新准备，直接从失败现场继续执行（Document 走 checkpoint 恢复）</td></tr>
+              <tr><td>如果走错路</td><td>拿着没准备好的材料进入执行 → 副作用基于不完整事实</td><td>把已确认的执行推倒重来 → 重复烧 token、重复准备材料</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>所以系统需要在失败时<strong>记住"是从哪个活动状态失败的"</strong>，retry 时据此选择回路。这个记忆就是快照里的 <code>failure_phase</code> 字段（<code>domain/agent_task_plan.py</code> L321）。</p>
+
+        <h4>谁写 failure_phase：失败收敛时</h4>
+        <p>写入时机在租约模块的兜底收敛处（<code>agent_task_executor.py</code> L402-420）——任何异常把任务留在活动状态时，先看它当前在哪个活动状态，再记进 <code>failure_phase</code>：</p>
         <div class="code-block">
           <div class="code-label"><span>当前源码核心 · 兜底收敛记录 failure_phase（L402-420 节选）</span><button class="copy-button" type="button">复制</button></div>
           <pre><code>latest = await self._task_plan_store.load(task_plan_id)
@@ -1630,15 +1647,18 @@ if latest.status in {
     AgentTaskPlanStatus.PREPARING_CONFIRMATION,
     AgentTaskPlanStatus.EXECUTING_CONFIRMED,
 }:
-    failed_from = latest.status                      # 失败发生在哪个活动状态
-    latest.status = AgentTaskPlanStatus.FAILED
+    failed_from = latest.status                      # 失败时任务停在哪个活动状态
+    latest.status = AgentTaskPlanStatus.FAILED       # 改写成 failed
     ...
-    latest.failure_phase = failed_from.value         # 记进快照，供 retry 定位
+    latest.failure_phase = failed_from.value         # 把"从哪失败"记进快照
     await self._task_plan_store.save(latest)</code></pre>
         </div>
-        <p>retry 侧的允许集也按任务类型收紧（<code>agent_task_executor.py</code> L452-464 节选）：</p>
+        <p>人话读法：异常发生时，代码先查数据库"任务现在停在哪个活动状态"，把那个状态写进 <code>failure_phase</code>，再把任务本身改成 <code>failed</code>。这样 failed 快照里永远带着"我从哪里跌下来"的答案。</p>
+
+        <h4>谁读 failure_phase：retry 时决定回路</h4>
+        <p>retry 入口先按任务类型收紧允许集（<code>agent_task_executor.py</code> L452-464）——不是任何状态都能 retry：</p>
         <div class="code-block">
-          <div class="code-label"><span>当前源码核心 · resume() 按任务类型的 retry 允许集</span><button class="copy-button" type="button">复制</button></div>
+          <div class="code-label"><span>当前源码核心 · resume() 按任务类型的 retry 允许集（L452-464 节选）</span><button class="copy-button" type="button">复制</button></div>
           <pre><code>allowed = (
     {EXECUTING_CONFIRMED, FAILED, COMPLETED_WITH_WARNINGS}   # Research 可重试执行期
     if is_research
@@ -1646,6 +1666,36 @@ if latest.status in {
     {PREPARING_CONFIRMATION, EXECUTING_CONFIRMED, FAILED}    # Document 还可在准备期重试
 )</code></pre>
         </div>
+        <p>然后 <code>_resume_locked()</code>（L532-542）读 <code>failure_phase</code> 决定回到哪里：</p>
+        <div class="code-block">
+          <div class="code-label"><span>当前源码核心 · 按 failure_phase 选择恢复路径（L532-542 节选）</span><button class="copy-button" type="button">复制</button></div>
+          <pre><code>failed_phase = plan.failure_phase
+if (
+    plan.status == AgentTaskPlanStatus.EXECUTING_CONFIRMED      # 还在执行态
+    or failed_phase == AgentTaskPlanStatus.EXECUTING_CONFIRMED.value  # 或从执行期失败
+):
+    plan.status = AgentTaskPlanStatus.EXECUTING_CONFIRMED
+    plan.error = None
+    plan.failure_phase = None                                   # 清掉旧记录，重新开始
+    await self._task_plan_store.save(plan)
+    return await self._document_executor.confirm(...)           # 恢复执行（含 checkpoint 恢复）
+# 否则（准备期失败）走下面的 execute() 分支，重新准备</code></pre>
+        </div>
+
+        <h4>一个完整场景串起来</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>时刻</th><th>发生什么</th><th>数据库状态</th></tr></thead>
+            <tbody>
+              <tr><td>t1</td><td>Document 任务在生成 dry-run 时模型调用抛异常</td><td><code>preparing_confirmation</code></td></tr>
+              <tr><td>t2</td><td>兜底收敛：failed_from=preparing → 记 failure_phase → 改 failed</td><td><code>failed, failure_phase=preparing_confirmation</code></td></tr>
+              <tr><td>t3</td><td>用户点 retry → <code>_resume_locked</code> 读 failure_phase</td><td>发现是"准备期失败"</td></tr>
+              <tr><td>t4</td><td>不走 confirm 分支 → 走 execute() 重新准备材料</td><td>回到 <code>preparing_confirmation</code> 重跑 dry-run</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>若 t1 的失败发生在用户确认之后（<code>executing_confirmed</code>），t3 读到的 failure_phase 就是 executing，t4 会走 confirm 恢复分支——Document 任务经三道校验后从 checkpoint 继续执行（5.5），而不是重新准备。</p>
+        <p>一句话总结：<strong>failure_phase 是"失败现场的路标"——失败收敛时写入"从哪个活动状态跌下来"，retry 时读出它选择回路：准备期失败回 preparing 重新准备，执行期失败回 executing 恢复执行。</strong></p>
 
         <h3 id="state-two-machines">6.7 两套状态机：TaskPlan 与 Command 各管各的</h3>
         <div class="callout danger">
