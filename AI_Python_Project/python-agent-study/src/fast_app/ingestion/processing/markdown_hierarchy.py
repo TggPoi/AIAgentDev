@@ -8,11 +8,17 @@ from typing import Any
 import tiktoken
 from markdown_it import MarkdownIt
 
+from fast_app.core.logging import get_logger
 from fast_app.domain.knowledge_models import KnowledgeChunk, LoadedDocument
 from fast_app.ingestion.processing.metadata_models import build_document_metadata
 
 
-MARKDOWN_CHUNK_STRATEGY_VERSION = "markdown_parent_child_v1"
+logger = get_logger(__name__)
+
+
+# v2：空标题章节向后合并 + 父块/子块 content 前置章节面包屑；
+# 版本号参与稳定 ID 哈希，升版即全量 ID 换新，旧记录由增量同步版本闸门清理。
+MARKDOWN_CHUNK_STRATEGY_VERSION = "markdown_parent_child_v2"
 MARKDOWN_CHILD_RECORD_TYPE = "markdown_child"
 MARKDOWN_PARENT_RECORD_TYPE = "markdown_parent"
 
@@ -166,14 +172,18 @@ class MarkdownHierarchyBuilder:
                 "/".join(section.section_path),
                 str(section.occurrence),
             )
+            # 章节面包屑前缀（格式与旧 search_text 一致，保证检索匹配文本逐字等价）。
+            prefix = self._breadcrumb(section.section_path)
+            prefix_tokens = self.token_counter.count(prefix)
+            # 装箱前从父块预算中预留前缀开销，拼接后 content 恰好不超原硬上限。
             parent_groups = self._pack_blocks(
                 section.blocks,
-                target_tokens=options.parent_target_tokens,
-                max_tokens=options.parent_max_tokens,
-                max_chars=options.parent_max_chars,
+                target_tokens=max(1, options.parent_target_tokens - prefix_tokens),
+                max_tokens=max(1, options.parent_max_tokens - prefix_tokens),
+                max_chars=max(1, options.parent_max_chars - len(prefix)),
             )
             for parent_index, parent_blocks in enumerate(parent_groups, start=1):
-                parent_content = self._join_blocks(parent_blocks)
+                parent_content = prefix + self._join_blocks(parent_blocks)
                 parent_id = self._stable_id(
                     "parent",
                     section_key,
@@ -200,9 +210,9 @@ class MarkdownHierarchyBuilder:
                         metadata=parent_metadata,
                     )
                 )
-                child_groups = self._build_child_groups(parent_blocks, options)
+                child_groups = self._build_child_groups(parent_blocks, options, prefix)
                 for child_index, child_blocks in enumerate(child_groups, start=1):
-                    child_content = self._join_blocks(child_blocks)
+                    child_content = prefix + self._join_blocks(child_blocks)
                     child_id = self._stable_id(
                         "chunk",
                         parent_id,
@@ -226,9 +236,9 @@ class MarkdownHierarchyBuilder:
                         KnowledgeChunk(
                             id=child_id,
                             content=child_content,
-                            search_text=self._search_text(
-                                section.section_path, child_content
-                            ),
+                            # content 已含面包屑前缀，search_text 直接复用，
+                            # ES 匹配文本与 embedding 文本保持逐字等价。
+                            search_text=child_content,
                             source=options.source,
                             title=section.section_path[-1],
                             metadata=child_metadata,
@@ -245,11 +255,23 @@ class MarkdownHierarchyBuilder:
         current_path = [self._filename_title(document.source_path)]
         current_level = 0
         current_blocks: list[MarkdownBlock] = []
+        # 仅含标题的“空章节”暂存队列：其标题块等待并入下一个有正文的章节，
+        # 避免产出只有标题行的空壳父块/子块污染索引。
+        pending_heading_blocks: list[MarkdownBlock] = []
 
         def flush() -> None:
-            nonlocal current_blocks
+            nonlocal current_blocks, pending_heading_blocks
             if not current_blocks:
                 return
+            if all(block.kind == "heading" for block in current_blocks):
+                # 仅标题无正文：不产出章节，标题块暂存等待并入下一节。
+                pending_heading_blocks.extend(current_blocks)
+                current_blocks = []
+                return
+            # 把之前累积的空标题块并入本节头部：空标题语义上是“引子”，
+            # 归入它引出的正文章节后，块内容保留完整标题层级且不产生空壳块。
+            blocks = [*pending_heading_blocks, *current_blocks]
+            pending_heading_blocks = []
             key = tuple(current_path)
             occurrences[key] = occurrences.get(key, 0) + 1
             sections.append(
@@ -258,7 +280,7 @@ class MarkdownHierarchyBuilder:
                     section_path=list(current_path),
                     heading_level=current_level,
                     occurrence=occurrences[key],
-                    blocks=current_blocks,
+                    blocks=blocks,
                 )
             )
             current_blocks = []
@@ -300,6 +322,32 @@ class MarkdownHierarchyBuilder:
                     )
             index += 1
         flush()
+        if pending_heading_blocks:
+            if sections:
+                # 文末残留的空标题不引出任何内容，丢弃即可；
+                # 其标题路径信息已经由 heading_stack 体现在前面章节的 section_path 中。
+                logger.warning(
+                    "Markdown 文末空标题章节已丢弃 source_path=%s 标题数=%s",
+                    document.source_path,
+                    len(pending_heading_blocks),
+                )
+            else:
+                # 全文只有空标题：兜底产出，避免整篇文档变成 0 chunk 完全不可检索。
+                logger.warning(
+                    "Markdown 全文仅含标题，按兜底章节产出 source_path=%s",
+                    document.source_path,
+                )
+                key = tuple(current_path)
+                occurrences[key] = occurrences.get(key, 0) + 1
+                sections.append(
+                    MarkdownSection(
+                        section_index=1,
+                        section_path=list(current_path),
+                        heading_level=current_level,
+                        occurrence=occurrences[key],
+                        blocks=pending_heading_blocks,
+                    )
+                )
         return sections
 
     @staticmethod
@@ -349,11 +397,18 @@ class MarkdownHierarchyBuilder:
         self,
         blocks: list[MarkdownBlock],
         options: MarkdownHierarchyOptions,
+        prefix: str,
     ) -> list[list[MarkdownBlock]]:
+        # 面包屑前缀将拼接在每个子块 content 头部，先从子块预算中扣除它的开销，
+        # 保证“前缀 + 正文”不超 child_max_tokens；
+        # child_min / overlap 衡量的是正文本身，不参与扣减。
+        reserved_tokens = self.token_counter.count(prefix)
+        effective_target = max(1, options.child_target_tokens - reserved_tokens)
+        effective_max = max(1, options.child_max_tokens - reserved_tokens)
         groups = self._pack_blocks(
             blocks,
-            target_tokens=options.child_target_tokens,
-            max_tokens=options.child_max_tokens,
+            target_tokens=effective_target,
+            max_tokens=effective_max,
             max_chars=options.parent_max_chars,
         )
         if len(groups) > 1:
@@ -362,7 +417,7 @@ class MarkdownHierarchyBuilder:
             if (
                 self.token_counter.count(tail) < options.child_min_tokens
                 and self.token_counter.count(self._join_blocks(merged_tail))
-                <= options.child_max_tokens
+                <= effective_max
             ):
                 groups[-2:] = [merged_tail]
         if len(groups) <= 1 or options.child_overlap_tokens == 0:
@@ -379,7 +434,7 @@ class MarkdownHierarchyBuilder:
                     break
                 carry = candidate
             candidate = [*carry, *group]
-            if self.token_counter.count(self._join_blocks(candidate)) <= options.child_max_tokens:
+            if self.token_counter.count(self._join_blocks(candidate)) <= effective_max:
                 overlapped.append(candidate)
             else:
                 overlapped.append(group)
@@ -569,8 +624,9 @@ class MarkdownHierarchyBuilder:
         }
 
     @staticmethod
-    def _search_text(section_path: list[str], content: str) -> str:
-        return f"{' > '.join(section_path)}\n\n{content}".strip()
+    def _breadcrumb(section_path: list[str]) -> str:
+        """章节完整路径面包屑，拼接在父块/子块 content 头部；尾随空行与正文分隔。"""
+        return f"{' > '.join(section_path)}\n\n"
 
     @staticmethod
     def _stable_id(prefix: str, *parts: str) -> str:

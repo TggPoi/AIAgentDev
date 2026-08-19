@@ -151,6 +151,63 @@ def test_builder() -> None:
     )
     assert len(no_heading.parents) == len(no_heading.children) == 1
     assert no_heading.children[0].metadata["section_path"] == ["plain"]
+    # 面包屑下沉：父块/子块 content 必须以章节完整路径面包屑开头，
+    # 使 LLM 可见文本（唯一进上下文的字段）自描述所属章节。
+    for parent in result.parents:
+        breadcrumb = " > ".join(parent.metadata["section_path"]) + "\n\n"
+        assert parent.content.startswith(breadcrumb)
+    for child in result.children:
+        breadcrumb = " > ".join(child.metadata["section_path"]) + "\n\n"
+        assert child.content.startswith(breadcrumb)
+        assert child.search_text == child.content
+    assert no_heading.children[0].content.startswith("plain\n\n")
+
+
+def test_empty_heading_sections() -> None:
+    """空标题章节不产出空壳块：标题块并入下一个有正文的章节。"""
+
+    # 用例 A：一级标题无正文，直接接两个二级节。
+    case_a = (
+        "# 部署指南\n"
+        "## 回滚操作\n"
+        "出现问题时执行回滚。\n"
+        "1. 停止服务\n"
+        "## 监控\n"
+        "观察错误率指标。\n"
+    )
+    result_a = MarkdownHierarchyBuilder().build(
+        [document("docs/case-a.md", case_a)], options()
+    )
+    assert len(result_a.parents) == len(result_a.children) == 2
+    # 空壳检查：任何父块/子块的正文部分（去掉面包屑）都不能只剩标题行。
+    for chunk in [*result_a.parents, *result_a.children]:
+        body = chunk.content.split("\n\n", 1)[1]
+        assert not all(line.startswith("#") for line in body.splitlines())
+    # 一级标题块应并入回滚节，而不是独立成空壳章节。
+    rollback_parent = next(
+        parent
+        for parent in result_a.parents
+        if parent.metadata["section_path"] == ["部署指南", "回滚操作"]
+    )
+    assert "# 部署指南" in rollback_parent.content
+
+    # 用例 B：连续多级空标题，全部并入第一个有正文的章节。
+    case_b = "# 一级空\n## 二级空\n### 三级有正文\n这一节才有内容。\n"
+    result_b = MarkdownHierarchyBuilder().build(
+        [document("docs/case-b.md", case_b)], options()
+    )
+    assert len(result_b.parents) == len(result_b.children) == 1
+    parent_b = result_b.parents[0]
+    assert parent_b.metadata["section_path"] == ["一级空", "二级空", "三级有正文"]
+    for heading in ("# 一级空", "## 二级空", "### 三级有正文"):
+        assert heading in parent_b.content
+
+    # 用例 C：全文只有一个空标题，兜底产出避免文档 0 chunk 不可检索。
+    result_c = MarkdownHierarchyBuilder().build(
+        [document("docs/case-c.md", "# 只有一个空标题\n")], options()
+    )
+    assert len(result_c.parents) == len(result_c.children) == 1
+    assert "# 只有一个空标题" in result_c.parents[0].content
 
 
 def test_stable_ids() -> None:
@@ -413,6 +470,7 @@ async def test_expansion_and_context() -> None:
 
 async def main() -> None:
     test_builder()
+    test_empty_heading_sections()
     test_stable_ids()
     test_store_contract()
     await test_expansion_and_context()
