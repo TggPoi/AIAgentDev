@@ -36,9 +36,17 @@
 
 - ChunkBuildOptions
 - MarkdownSection
-- SimpleTokenCounter
 - TextSplitter
 - MarkdownChunkBuilder
+
+`processing/token_counters.py`
+
+负责全工程统一的 token 计数口径（cl100k_base），Markdown 父子分块、
+Office 切块与 RAG 上下文拼装共用同一把尺子，保证 token_count 处处可比。
+
+当前包含：
+
+- TiktokenCounter
 
 `processing/metadata_models.py`
 

@@ -9,6 +9,7 @@ from fast_app.ingestion.processing.metadata_models import (
     build_chunk_metadata,
     build_document_metadata,
 )
+from fast_app.ingestion.processing.token_counters import TiktokenCounter
 
 # 构造chunk的可选配置
 @dataclass(frozen=True)
@@ -30,17 +31,12 @@ class MarkdownSection:
     section_index: int
     content: str
 
-# 先让 ChunkBuilder 具备 token 长度控制入口。后续可以替换成真实 tokenizer
-class SimpleTokenCounter:
-    def count(self, text: str) -> int:
-        ascii_count = sum(1 for char in text if ord(char) < 128)
-        non_ascii_count = len(text) - ascii_count
-        return ascii_count // 4 + non_ascii_count
-
 # 支持 overlap支持 min_chars支持 token 估算边界
 class TextSplitter:
-    def __init__(self, token_counter: SimpleTokenCounter | None = None):
-        self.token_counter = token_counter or SimpleTokenCounter()
+    # 与 Markdown 父子分块共用同一把 cl100k 尺子（TiktokenCounter），
+    # 保证 Office 与 Markdown 两条入库路径的 token 口径处处可比。
+    def __init__(self, token_counter: TiktokenCounter | None = None):
+        self.token_counter = token_counter or TiktokenCounter()
 
     def split(self, text: str, options: ChunkBuildOptions) -> list[str]:
         normalized = text.strip()
