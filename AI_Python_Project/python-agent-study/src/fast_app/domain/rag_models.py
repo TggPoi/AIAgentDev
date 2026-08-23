@@ -18,6 +18,8 @@ class RetrievalFilters:
     user_id: str | None = None
     # 当前用户可读取的部门 code 列表，用于部门级 ACL 过滤。
     department_codes: list[str] = field(default_factory=list)
+    # 数据库 active 跨部门 grant 对应的精确文档 ID，只能由服务端注入。
+    granted_document_ids: list[str] = field(default_factory=list)
     # 是否允许读取公共文档。
     allow_public: bool = True
     # 服务端在请求入口冻结的知识版本；客户端不能直接决定该值。

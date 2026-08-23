@@ -1,4 +1,5 @@
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
@@ -30,6 +31,8 @@ class RagChatRequest(BaseModel):
     _knowledge_version: int | None = PrivateAttr(default=None)
     # Dataset scope 由 RBAC/Grant 在 API 入口绑定；客户端和模型不能构造。
     _nl2sql_authorization: DatasetAuthorization | None = PrivateAttr(default=None)
+    # structured stream 入口统一保存 turn 时置为 True，阻止 RagAgent 内部重复落库。
+    _structured_turn_persistence_managed: bool = PrivateAttr(default=False)
 
     session_id: str | None = Field(
         default=None,
@@ -142,6 +145,15 @@ class RagScoreBreakdown(BaseModel):
 
 # 检索来源
 class RagSource(BaseModel):
+    source_type: Literal["knowledge_document", "web"] = Field(
+        default="knowledge_document",
+        description="稳定来源类型：知识库文档或公开网页。",
+    )
+    href: str | None = Field(
+        default=None,
+        max_length=2048,
+        description="后端校验后的公开 HTTP(S) 网页地址；知识文档来源为空并使用 doc_id 导航。",
+    )
     id: str = Field(
         description="最终送入 LLM 的上下文记录 ID；Markdown 父块扩展成功时为 parent_id，其他情况为原 chunk ID。"
     )
@@ -184,6 +196,23 @@ class RagSource(BaseModel):
     score: float = Field(description="当前最终排序分数")
     scores: RagScoreBreakdown = Field(description="多阶段分数明细")
     content_preview: str = Field(description="命中文档内容预览")
+
+    @model_validator(mode="after")
+    def validate_navigation(self) -> "RagSource":
+        if self.source_type == "knowledge_document":
+            if self.href is not None:
+                raise ValueError("knowledge_document 来源必须通过 doc_id 导航")
+            return self
+        parsed = urlparse(self.href or "")
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or any(ord(char) < 32 for char in (self.href or ""))
+        ):
+            raise ValueError("web 来源 href 必须是无凭据的 HTTP(S) URL")
+        return self
     
 # 最终检索结果
 class RagChatResponse(BaseModel):

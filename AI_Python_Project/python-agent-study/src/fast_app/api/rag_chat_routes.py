@@ -10,8 +10,18 @@ from fast_app.core.error_responses import (
 )
 from fast_app.dependencies.rag_dependencies import get_rag_pipeline
 from fast_app.dependencies.user_context import get_current_user_context
+from fast_app.dependencies.document_access_dependencies import (
+    get_document_access_policy,
+)
+from fast_app.dependencies.conversation_dependencies import (
+    get_structured_conversation_turn_recorder,
+)
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
+from fast_app.schemas.rag_stream_schema import (
+    RagSseEventFrame,
+    normalize_and_validate_sse_event_data,
+)
 from fast_app.services.exceptions import AppServiceError, Nl2SqlLegacyStreamUnsupportedError
 from fast_app.services.exceptions import KnowledgeVersionNotReadyError
 from fast_app.dependencies.rag_dependencies import get_db_session
@@ -21,7 +31,11 @@ from fast_app.services.conversation.conversation_scope import (
     get_request_external_session_id,
     scope_rag_chat_request,
 )
-from fast_app.services.knowledge.knowledge_permission_policy import KnowledgePermissionPolicy
+from fast_app.services.knowledge.document_access_policy import DocumentAccessPolicy
+from fast_app.services.conversation.structured_turn_recorder import (
+    StructuredConversationTurnRecorder,
+    StructuredTurnState,
+)
 from fast_app.services.rag.rag_pipeline_service import RagPipeline
 from fast_app.dependencies.nl2sql_dependencies import get_nl2sql_service
 from fast_app.services.nl2sql.models import Nl2SqlQueryResult
@@ -36,7 +50,6 @@ from fastapi.encoders import jsonable_encoder
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/rag", tags=["rag-chat"])
-knowledge_permission_policy = KnowledgePermissionPolicy()
 
 # pipeline: RagPipeline = Depends(get_rag_pipeline)
 
@@ -51,6 +64,7 @@ async def rag_chat_endpoint(
     pipeline: RagPipeline = Depends(get_rag_pipeline),
     session: AsyncSession = Depends(get_db_session),
     nl2sql_service: Nl2SqlService = Depends(get_nl2sql_service),
+    document_access_policy: DocumentAccessPolicy = Depends(get_document_access_policy),
 ) -> RagChatResponse:
     start_time = perf_counter()
     if req.dataset_id is not None:
@@ -84,7 +98,10 @@ async def rag_chat_endpoint(
     # 生成 scoped conversation id
     repository = GitLabRepository(session)
     scoped_req = await prepare_authorized_rag_request(
-        req=req, user=user, repository=repository
+        req=req,
+        user=user,
+        repository=repository,
+        document_access_policy=document_access_policy,
     )
     logger.info(
         "rag_chat_request %s",
@@ -189,6 +206,7 @@ async def rag_chat_stream_endpoint(
     user: CurrentUserContext = Depends(get_current_user_context),
     pipeline: RagPipeline = Depends(get_rag_pipeline),
     session: AsyncSession = Depends(get_db_session),
+    document_access_policy: DocumentAccessPolicy = Depends(get_document_access_policy),
 ) -> StreamingResponse:
     if req.dataset_id is not None:
         raise Nl2SqlLegacyStreamUnsupportedError(
@@ -198,6 +216,7 @@ async def rag_chat_stream_endpoint(
         req=req,
         user=user,
         repository=GitLabRepository(session),
+        document_access_policy=document_access_policy,
     )
     return StreamingResponse(
         rag_chat_sse_event_generator(scoped_req, pipeline),
@@ -209,9 +228,14 @@ async def rag_chat_stream_endpoint(
 # 当前主线事件包括 sources / answer_delta / guard_sanitized / guard_blocked。
 # sources 里包含 RagSource 这种 Pydantic model, json.dumps() 不能直接序列化 Pydantic model，所以需要先用 jsonable_encoder 转成 dict，再序列化成字符串。
 def format_sse_event(event: str, data: object) -> str:
+    payload = normalize_and_validate_sse_event_data(
+        event,
+        data,
+        request_id=get_request_id(),
+    )
     return (
         f"event: {event}\n"
-        f"data: {json.dumps(jsonable_encoder(data), ensure_ascii=False)}\n\n"
+        f"data: {json.dumps(jsonable_encoder(payload), ensure_ascii=False)}\n\n"
     )
 
 # 结构化 SSE 生成器
@@ -219,10 +243,15 @@ async def rag_chat_structured_sse_event_generator(
     req: RagChatRequest,
     pipeline: RagPipeline,
     repository: GitLabRepository | None = None,
+    turn_recorder: StructuredConversationTurnRecorder | None = None,
 ) -> AsyncGenerator[str, None]:
     source_doc_ids: set[str] = set()
+    turn_state = StructuredTurnState()
+    terminal_status = "aborted"
+    provider = str(getattr(pipeline, "pipeline_provider", "unknown"))
     try:
         async for stream_event in pipeline.stream_events(req):
+            turn_state.observe(stream_event.event, stream_event.data)
             if stream_event.event == "sources":
                 source_doc_ids.update(
                     str(
@@ -250,37 +279,79 @@ async def rag_chat_structured_sse_event_generator(
             else set()
         )
         stale_doc_ids = sorted(source_doc_ids & changed)
-        yield format_sse_event(
-            event="done",
-            data={
-                "status": "done",
-                "knowledge_version": req._knowledge_version or 0,
-                "stale": bool(stale_doc_ids),
-                "stale_doc_ids": stale_doc_ids,
-            },
-        )
+        done_data = {
+            "status": "done",
+            "knowledge_version": req._knowledge_version or 0,
+            "stale": bool(stale_doc_ids),
+            "stale_doc_ids": stale_doc_ids,
+        }
+        terminal_status = "completed"
+        yield format_sse_event(event="done", data=done_data)
 
     except AppServiceError as exc:
+        terminal_status = "error"
+        error_data = build_app_error_response_content(exc)
+        turn_state.observe("error", error_data)
         yield format_sse_event(
             event="error",
-            data=build_app_error_response_content(exc),
+            data=error_data,
         )
 
     except Exception:
+        terminal_status = "error"
         logger.exception("RAG 结构化 SSE 流式输出发生未知异常")
+        error_data = build_internal_error_response_content()
+        turn_state.observe("error", error_data)
         yield format_sse_event(
             event="error",
-            data=build_internal_error_response_content(),
+            data=error_data,
         )
+    finally:
+        if turn_recorder is not None:
+            try:
+                await turn_recorder.record(
+                    request=req,
+                    provider=provider,
+                    state=turn_state,
+                    terminal_status=terminal_status,
+                )
+            except Exception:
+                logger.exception(
+                    "structured stream 会话持久化失败: provider=%s session_id=%s",
+                    provider,
+                    req.session_id,
+                )
 
 
-@router.post("/chat/stream/events")
+@router.post(
+    "/chat/stream/events",
+    responses={
+        200: {
+            "description": "RagAgent 结构化 SSE；每个 data payload 包含 contract_version 和 request_id。",
+            "headers": {
+                "X-Request-ID": {
+                    "description": "与事件 payload request_id 对齐的请求 ID。",
+                    "schema": {"type": "string"},
+                }
+            },
+            "content": {
+                "text/event-stream": {
+                    "schema": RagSseEventFrame.model_json_schema(),
+                }
+            },
+        }
+    },
+)
 async def rag_chat_stream_events_endpoint(
     req: RagChatRequest,
     user: CurrentUserContext = Depends(get_current_user_context),
     pipeline: RagPipeline = Depends(get_rag_pipeline),
     session: AsyncSession = Depends(get_db_session),
     nl2sql_service: Nl2SqlService = Depends(get_nl2sql_service),
+    document_access_policy: DocumentAccessPolicy = Depends(get_document_access_policy),
+    turn_recorder: StructuredConversationTurnRecorder = Depends(
+        get_structured_conversation_turn_recorder
+    ),
 ) -> StreamingResponse:
     if req.dataset_id is not None:
         dataset, req._nl2sql_authorization = await nl2sql_service.authorize_action(
@@ -297,54 +368,88 @@ async def rag_chat_stream_events_endpoint(
                 dataset_id=req.dataset_id,
                 question=req.query,
             )
+            scoped_req = scope_rag_chat_request(req=req, user=user)
+            scoped_req._current_user_context = user
+            scoped_req._structured_turn_persistence_managed = True
             return StreamingResponse(
-                nl2sql_sse_event_generator(result),
+                nl2sql_sse_event_generator(
+                    result,
+                    request=scoped_req,
+                    turn_recorder=turn_recorder,
+                ),
                 media_type="text/event-stream",
             )
     repository = GitLabRepository(session)
     scoped_req = await prepare_authorized_rag_request(
-        req=req, user=user, repository=repository
+        req=req,
+        user=user,
+        repository=repository,
+        document_access_policy=document_access_policy,
     )
+    scoped_req._structured_turn_persistence_managed = True
     return StreamingResponse(
-        rag_chat_structured_sse_event_generator(scoped_req, pipeline, repository),
+        rag_chat_structured_sse_event_generator(
+            scoped_req,
+            pipeline,
+            repository,
+            turn_recorder,
+        ),
         media_type="text/event-stream",
     )
 
 
 async def nl2sql_sse_event_generator(
     result: Nl2SqlQueryResult,
+    request: RagChatRequest | None = None,
+    turn_recorder: StructuredConversationTurnRecorder | None = None,
 ) -> AsyncGenerator[str, None]:
-    yield format_sse_event(
-        event="nl2sql_sql_generated",
-        data={
+    turn_state = StructuredTurnState()
+    sql_data = {
             "query_id": result.query_id,
             "dataset_id": result.dataset_id,
             "parameterized_sql": result.parameterized_sql,
             "attempt_count": result.attempt_count,
-        },
-    )
-    yield format_sse_event(
-        event="nl2sql_result",
-        data=result,
-    )
-    yield format_sse_event(
-        event="done",
-        data={"status": "done", "query_id": result.query_id},
-    )
+    }
+    result_data = result.model_dump(mode="json")
+    terminal_status = "aborted"
+    try:
+        yield format_sse_event(event="nl2sql_sql_generated", data=sql_data)
+        turn_state.observe("nl2sql_result", result_data)
+        yield format_sse_event(event="nl2sql_result", data=result_data)
+        terminal_status = "completed"
+        yield format_sse_event(
+            event="done",
+            data={"status": "done", "query_id": result.query_id},
+        )
+    finally:
+        if request is not None and turn_recorder is not None:
+            try:
+                await turn_recorder.record(
+                    request=request,
+                    provider="nl2sql",
+                    state=turn_state,
+                    terminal_status=terminal_status,
+                )
+            except Exception:
+                logger.exception(
+                    "NL2SQL structured stream 会话持久化失败: session_id=%s",
+                    request.session_id,
+                )
 
 
 async def prepare_authorized_rag_request(
     req: RagChatRequest,
     user: CurrentUserContext,
     repository: GitLabRepository,
+    document_access_policy: DocumentAccessPolicy,
 ) -> RagChatRequest:
     """生成带会话隔离和知识库权限 scope 的内部请求。"""
 
     scoped_req = scope_rag_chat_request(req=req, user=user)
     scoped_req._current_user_context = user
     scoped_req._nl2sql_authorization = req._nl2sql_authorization
-    scoped_req._retrieval_permission_scope = knowledge_permission_policy.build_scope(
-        user
+    scoped_req._retrieval_permission_scope = (
+        await document_access_policy.build_retrieval_scope(user)
     )
     active_version = await repository.get_active_version()
     if (

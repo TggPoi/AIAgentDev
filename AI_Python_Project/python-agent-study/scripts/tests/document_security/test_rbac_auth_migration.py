@@ -64,7 +64,8 @@ async def main() -> None:
                             where table_schema = 'public'
                               and table_name in (
                                   'user_permission_grants',
-                                  'document_access_grants'
+                                  'document_access_grants',
+                                  'user_administration_audits'
                               )
                             """
                         )
@@ -74,6 +75,7 @@ async def main() -> None:
             assert authorization_tables == {
                 "user_permission_grants",
                 "document_access_grants",
+                "user_administration_audits",
             }
             authorization_indexes = set(
                 (
@@ -85,7 +87,8 @@ async def main() -> None:
                             where schemaname = 'public'
                               and tablename in (
                                   'user_permission_grants',
-                                  'document_access_grants'
+                                  'document_access_grants',
+                                  'user_administration_audits'
                               )
                             """
                         )
@@ -94,6 +97,30 @@ async def main() -> None:
             )
             assert "uq_user_permission_grants_active" in authorization_indexes
             assert "uq_document_access_grants_active" in authorization_indexes
+            assert (
+                "idx_user_administration_audits_actor_created"
+                in authorization_indexes
+            )
+            assert (
+                "idx_user_administration_audits_target_created"
+                in authorization_indexes
+            )
+            audit_checks = set(
+                (
+                    await session.execute(
+                        text(
+                            """
+                            select constraint_name
+                            from information_schema.table_constraints
+                            where table_schema = 'public'
+                              and table_name = 'user_administration_audits'
+                              and constraint_type = 'CHECK'
+                            """
+                        )
+                    )
+                ).scalars()
+            )
+            assert "ck_user_administration_audits_action" in audit_checks
             authorization_checks = set(
                 (
                     await session.execute(
@@ -114,6 +141,76 @@ async def main() -> None:
             )
             assert "ck_user_permission_grants_revocation" in authorization_checks
             assert "ck_document_access_grants_revocation" in authorization_checks
+            conversation_columns = set(
+                (
+                    await session.execute(
+                        text(
+                            """
+                            select column_name
+                            from information_schema.columns
+                            where table_schema = 'public'
+                              and table_name = 'conversations'
+                            """
+                        )
+                    )
+                ).scalars()
+            )
+            assert {"external_session_id", "title"}.issubset(
+                conversation_columns
+            )
+            conversation_indexes = set(
+                (
+                    await session.execute(
+                        text(
+                            """
+                            select indexname
+                            from pg_indexes
+                            where schemaname = 'public'
+                              and tablename = 'conversations'
+                            """
+                        )
+                    )
+                ).scalars()
+            )
+            assert (
+                "uq_conversations_user_external_session"
+                in conversation_indexes
+            )
+            assert "idx_conversations_user_updated_id" in conversation_indexes
+            task_plan_columns = set(
+                (
+                    await session.execute(
+                        text(
+                            """
+                            select column_name
+                            from information_schema.columns
+                            where table_schema = 'public'
+                              and table_name = 'agent_task_plans'
+                            """
+                        )
+                    )
+                ).scalars()
+            )
+            assert "session_id" in task_plan_columns
+            task_plan_indexes = set(
+                (
+                    await session.execute(
+                        text(
+                            """
+                            select indexname
+                            from pg_indexes
+                            where schemaname = 'public'
+                              and tablename = 'agent_task_plans'
+                            """
+                        )
+                    )
+                ).scalars()
+            )
+            assert "idx_agent_task_plans_owner_updated_id" in task_plan_indexes
+            assert (
+                "idx_agent_task_plans_owner_session_updated_id"
+                in task_plan_indexes
+            )
             global_role_permissions = set(
                 (
                     await session.execute(

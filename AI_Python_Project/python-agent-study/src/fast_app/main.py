@@ -14,6 +14,9 @@ from fast_app.api.rag_routes import router as rag_router
 from fast_app.api.stream_routes import router as stream_router
 from fast_app.api.error_demo_routes import router as error_demo_router
 from fast_app.api.debug_trace_routes import router as debug_trace_router
+from fast_app.api.document_access_routes import router as document_access_router
+from fast_app.api.conversation_routes import router as conversation_router
+from fast_app.api.knowledge_document_routes import router as knowledge_document_router
 from fast_app.api.gitlab_routes import router as gitlab_router
 from fast_app.api.nl2sql_routes import router as nl2sql_router
 from fast_app.api.user_admin_routes import router as user_admin_router
@@ -189,3 +192,6 @@ app.include_router(debug_trace_router)
 app.include_router(gitlab_router)
 app.include_router(nl2sql_router)
 app.include_router(user_admin_router)
+app.include_router(document_access_router)
+app.include_router(conversation_router)
+app.include_router(knowledge_document_router)

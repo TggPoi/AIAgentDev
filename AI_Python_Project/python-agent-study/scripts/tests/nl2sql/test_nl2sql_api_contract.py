@@ -11,6 +11,9 @@ from fast_app.domain.user_context import CurrentUserContext
 from fast_app.schemas.rag_chat_schema import RagChatRequest
 from fast_app.schemas.rag_chat_schema import RagChatResponse
 from fast_app.services.exceptions import Nl2SqlLegacyStreamUnsupportedError
+from fast_app.services.knowledge.knowledge_permission_policy import (
+    KnowledgePermissionPolicy,
+)
 from fast_app.services.nl2sql.models import (
     DatasetAuthorization,
     DatasetDefinition,
@@ -43,6 +46,11 @@ class Session:
 
     async def scalars(self, _: object) -> EmptyRows:
         return EmptyRows()
+
+
+class AccessPolicy:
+    async def build_retrieval_scope(self, user: CurrentUserContext):
+        return KnowledgePermissionPolicy().build_scope(user)
 
 
 class QueryService:
@@ -102,6 +110,7 @@ async def main() -> None:
         Pipeline(),  # type: ignore[arg-type]
         Session(),  # type: ignore[arg-type]
         QueryService(),  # type: ignore[arg-type]
+        AccessPolicy(),  # type: ignore[arg-type]
     )
     assert response.route_intent == "structured_data_query"
     assert response.route_source == "model"
@@ -123,6 +132,7 @@ async def main() -> None:
             user,
             Pipeline(),  # type: ignore[arg-type]
             object(),  # type: ignore[arg-type]
+            AccessPolicy(),  # type: ignore[arg-type]
         )
     except Nl2SqlLegacyStreamUnsupportedError:
         pass

@@ -78,6 +78,18 @@ from fast_app.services.agent_tasks.deep_document_agent import (
     DocumentWebResearchInput,
 )
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
+from fast_app.schemas.rag_stream_schema import (
+    RagAnswerDeltaEventData,
+    RagDoneEventData,
+    RagErrorEventData,
+    RagGuardEventData,
+    RagSourcesEventData,
+    RagSseEventFrame,
+)
+from fast_app.schemas.agent_task_plan_schema import (
+    AgentTaskPlanListItem,
+    AgentTaskPlanListResponse,
+)
 from fast_app.schemas.auth_schema import (
     ChangePasswordRequest,
     ChangePasswordResponse,
@@ -86,13 +98,41 @@ from fast_app.schemas.auth_schema import (
     LogoutResponse,
     UserCapabilitiesResponse,
 )
+from fast_app.schemas.document_access_schema import (
+    CreateDocumentAccessGrantsRequest,
+    CreateDocumentAccessGrantsResponse,
+    DocumentAccessGrantItem,
+    DocumentAccessGrantListResponse,
+    DocumentAccessGrantUser,
+)
+from fast_app.schemas.conversation_schema import (
+    ConversationItem,
+    ConversationListResponse,
+    ConversationMessageItem,
+    ConversationMessageListResponse,
+    CreateConversationRequest,
+    UpdateConversationRequest,
+)
+from fast_app.schemas.knowledge_document_schema import (
+    KnowledgeDocumentContentResponse,
+    KnowledgeDocumentDetail,
+    KnowledgeDocumentItem,
+    KnowledgeDocumentListResponse,
+)
 from fast_app.schemas.user_admin_schema import (
     AccessCatalogItem,
     AccessCatalogResponse,
+    CreateManagedUserRequest,
     ManagedDepartmentAccess,
+    ManagedDepartmentAccessInput,
     ManagedUserDetail,
     ManagedUserListResponse,
+    ManagedUserPasswordResetResponse,
+    ManagedUserStatusResponse,
     ManagedUserSummary,
+    ReplaceManagedUserAccessRequest,
+    ResetManagedUserPasswordRequest,
+    UpdateManagedUserStatusRequest,
 )
 from fast_app.services.nl2sql.models import (
     Nl2SqlDatasetItem,
@@ -125,6 +165,8 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     AgentTaskRequirement,
     AgentTaskPlanConfirmResponse,
     AgentTaskPlanControlResponse,
+    AgentTaskPlanListItem,
+    AgentTaskPlanListResponse,
     AgentTaskSubQuestionResult,
     AgentTaskToolSelectionPayload,
     DocumentChangeProposal,
@@ -147,12 +189,32 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     EvalRetrievalFilters,
     ExpectedSource,
     KnowledgeDocumentReplacement,
+    KnowledgeDocumentContentResponse,
+    KnowledgeDocumentDetail,
+    KnowledgeDocumentItem,
+    KnowledgeDocumentListResponse,
     KnowledgeImportJobListResponse,
     KnowledgeImportJobResponse,
+    CreateDocumentAccessGrantsRequest,
+    CreateDocumentAccessGrantsResponse,
+    ConversationItem,
+    ConversationListResponse,
+    ConversationMessageItem,
+    ConversationMessageListResponse,
+    CreateConversationRequest,
+    CreateManagedUserRequest,
+    DocumentAccessGrantItem,
+    DocumentAccessGrantListResponse,
+    DocumentAccessGrantUser,
     ManagedDepartmentAccess,
+    ManagedDepartmentAccessInput,
     ManagedUserDetail,
     ManagedUserListResponse,
+    ManagedUserPasswordResetResponse,
+    ManagedUserStatusResponse,
     ManagedUserSummary,
+    ReplaceManagedUserAccessRequest,
+    ResetManagedUserPasswordRequest,
     QueryRewriteResult,
     QueryResolutionDecision,
     RagEvalCase,
@@ -171,6 +233,12 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     RagStreamExecutionResult,
     RagChatRequest,
     RagChatResponse,
+    RagAnswerDeltaEventData,
+    RagDoneEventData,
+    RagErrorEventData,
+    RagGuardEventData,
+    RagSourcesEventData,
+    RagSseEventFrame,
     ResearchEvidenceEvaluation,
     Nl2SqlDatasetItem,
     Nl2SqlQueryRequest,
@@ -196,6 +264,8 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     ResearchWorkerProgress,
     RequiredKeyFact,
     UserCapabilitiesResponse,
+    UpdateManagedUserStatusRequest,
+    UpdateConversationRequest,
 )
 
 

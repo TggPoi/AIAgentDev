@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from time import perf_counter
 from typing import Any
+from urllib.parse import urlparse
 
 from fast_app.components.llms.base import BaseLLMClient
 from fast_app.components.retrievers.base import BaseRetriever
@@ -481,6 +482,10 @@ def build_content_preview(
 def docs_to_sources(docs: list[RetrievedDoc]) -> list[RagSource]:
     return [
         RagSource(
+            source_type=(
+                "web" if _validated_public_source_url(doc.metadata) else "knowledge_document"
+            ),
+            href=_validated_public_source_url(doc.metadata),
             id=str(doc.metadata.get("logical_record_id") or doc.id),
             doc_id=(
                 str(doc.metadata["doc_id"])
@@ -538,6 +543,26 @@ def docs_to_sources(docs: list[RetrievedDoc]) -> list[RagSource]:
     ]
 
 
+def _validated_public_source_url(metadata: dict[str, Any]) -> str | None:
+    """只公开无凭据 HTTP(S) URL，拒绝脚本协议、控制字符和异常长地址。"""
+
+    raw_url = metadata.get("url")
+    if not isinstance(raw_url, str):
+        return None
+    url = raw_url.strip()
+    if not url or len(url) > 2048 or any(ord(char) < 32 for char in url):
+        return None
+    parsed = urlparse(url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        return None
+    return url
+
+
 def _public_source_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     """移除版本化物理主键，避免 React 把内部存储 ID 当成稳定身份。"""
 
@@ -547,6 +572,7 @@ def _public_source_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
         "parent_id",
         "chunk_id",
         "matched_child_ids",
+        "url",
     }
     return {
         key: value
