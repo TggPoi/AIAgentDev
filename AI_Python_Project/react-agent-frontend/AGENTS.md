@@ -8,9 +8,10 @@ Before planning, creating dependencies, or changing frontend behavior:
 
 1. Read `docs/SPEC.md` completely.
 2. Read `docs/ARCHITECTURE.md` completely.
-3. Read `docs/features/README.md`.
-4. Read every `docs/features/<feature>/feature.md` affected by the task.
-5. Inspect the existing implementation, types, tests, package manifest, and lock file when they exist.
+3. Read `docs/DEVELOPMENT.md` for the verified toolchain and commands.
+4. Read `docs/features/README.md`.
+5. Read every `docs/features/<feature>/feature.md` affected by the task.
+6. Inspect the existing implementation, types, tests, package manifest, and lock file when they exist.
 
 Treat the current specification and the relevant feature document as the product contract. Treat the current backend route, schema, OpenAPI, and tested behavior as the network-contract truth.
 
@@ -21,7 +22,7 @@ If code, frontend documentation, and backend behavior conflict:
 - update the specification or backend contract only after the user confirms the intended behavior;
 - never hide a backend gap by calling a development or compatibility endpoint.
 
-Honor the status gate at the top of `docs/SPEC.md`. If it says the documents are awaiting user confirmation, do not create the React application, install dependencies, or implement pages until the user explicitly approves them.
+Honor the status gate at the top of `docs/SPEC.md`. The development environment may be maintained because the user explicitly authorized it, but this does not authorize business features. Do not implement pages, API clients, or feature behavior until the user explicitly approves the corresponding scope.
 
 ## 2. Locked Product Boundaries
 

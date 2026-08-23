@@ -6,7 +6,7 @@
 
 生成时间：2026-08-24。
 
-当前状态：后端 P0 全部完成；React `SPEC.md`、`ARCHITECTURE.md` 和 10 个 feature 规范已按真实契约重新生成，等待用户确认。尚未创建 React 源码或安装依赖。
+当前状态：后端 P0 全部完成；React 规范已按真实契约重新生成。用户随后明确授权只搭建开发环境，React/Vite/TypeScript/测试工具链已验证；尚未开始任何业务模块。
 
 ## 2. 压缩后读取顺序
 
@@ -31,15 +31,16 @@ python-agent-study/docs/BACKEND_INTERFACE_TODO.md
 
 TodoList 当前记录 10 个原有可复用接口和 28 个 P0 项；28 个 P0 项已经全部标记为 ✅。后续若发现真实契约缺陷，必须重新记录上下文、实现和验证，不能只修改状态符号。
 
-### 3.2 前端文档已重新生成，等待确认
+### 3.2 前端文档已重新生成，环境已搭建
 
 `react-agent-frontend/docs/` 下 `SPEC.md`、`ARCHITECTURE.md` 和 10 个 `features/*/feature.md` 已在后端 P0 完成后依据真实路由、schema、SSE 与权限边界重新生成。
 
 当前处理规则：
 
-1. 用户确认前，不创建 React 工程、不安装前端依赖、不实现页面。
-2. 用户确认后，以这些新文档作为 React 实现基线。
-3. 若当前代码与文档发生冲突，先报告并修订规范，不能静默选择其中一个。
+1. 用户已经单独授权开发环境搭建，该工作已完成并验证。
+2. 环境授权不等于业务授权；未确认对应范围前不实现业务页面、API client 或 feature 行为。
+3. 后续以这些新文档作为 React 实现基线。
+4. 若当前代码与文档发生冲突，先报告并修订规范，不能静默选择其中一个。
 
 ## 4. 已确认且不可自行改变的决策
 
@@ -146,7 +147,7 @@ git status --short
 
 ## 7. 压缩后第一个工作批次
 
-当前进度（2026-08-24）：全部后端 P0 已完成；共享 Document Access Policy 已统一页面、下载、RAG、TaskPlan、ES、Milvus 和父块检索。React 总规范、架构规范和 10 个 feature 规范已重新生成，下一步等待用户确认；不要重复后端 interface 或提前开始 React 编码。
+当前进度（2026-08-24）：全部后端 P0 已完成；共享 Document Access Policy 已统一页面、下载、RAG、TaskPlan、ES、Milvus 和父块检索。React 总规范、架构规范和 10 个 feature 规范已重新生成，开发环境也已按用户指令验证；下一步仍需用户明确业务实现范围。
 
 不要一次实现全部 28 项。第一个批次只建立后续管理接口依赖的身份和授权事实基础。
 
@@ -249,8 +250,8 @@ TodoList 当前无 ❌ P0 项；若出现新缺口，先补充 Todo 上下文再
 - TodoList 位于后端 `docs/BACKEND_INTERFACE_TODO.md`。
 - 前端 TodoList 副本不存在。
 - 后端 P0 28/28 已完成。
-- 当前未创建 React 源码、package.json 或依赖。
-- 前端现有规范已按真实后端契约重新生成，等待用户确认。
+- React 开发环境已创建 package.json、pnpm lockfile、最小环境检查页和测试基础设施。
+- 前端现有规范已按真实后端契约重新生成；业务模块尚未开始。
 
 ## 12. 2026-08-24 手动压缩前的最新工作区快照
 
@@ -530,4 +531,31 @@ src/fast_app/services/auth/user_administration_service.py
 
 ### 19.3 下一准确切片
 
-等待用户审阅并确认新的 `SPEC.md`、`ARCHITECTURE.md` 和 feature 规范。确认前不得创建 React 源码、`package.json` 或安装依赖；确认后再按文档从应用骨架、认证与共享 HTTP/SSE 基础设施开始实现。
+本节的“先搭环境”限制已由用户后续明确指令取代；实际环境完成事实见第 20 节。业务实现仍需用户另行批准。
+
+## 20. 2026-08-24 React 开发环境交接
+
+### 20.1 授权边界
+
+用户在后端和文档分批提交并推送完成后，明确要求先构建 React 开发环境、确保稳定，不直接开始业务开发。本切片只装配工具链、Provider 基础、测试设施和环境检查页。
+
+### 20.2 已完成内容
+
+- 使用 pnpm 10、React 19、TypeScript 6、Vite 8、React Router 7 和 TanStack Query 5 建立基础工程。
+- 使用 Vitest 4、jsdom 29、Testing Library、MSW 2 和 Oxlint 建立测试与质量检查。
+- 固定 Node/pnpm engines、pnpm lockfile、依赖 build-script allowlist、LF、忽略规则和非秘密 `.env.example`。
+- `src/app/App.tsx` 只显示开发环境就绪，不包含任何业务路由或接口。
+- 新增 `react-agent-frontend/docs/DEVELOPMENT.md` 记录版本、命令、已知兼容边界和验证结果。
+
+### 20.3 实际验证
+
+- 最新 jsdom 30 因要求 Node 24.15 而被严格 engine 检查拒绝；选择兼容当前 Node 24.14 的 jsdom 29.1.1 后安装通过。
+- `pnpm install --frozen-lockfile` 通过。
+- `pnpm check` 通过：Oxlint、TypeScript、1 个 Vitest、Vite production build 全部成功。
+- `pnpm audit --audit-level high` 返回 0 个已知漏洞。
+- Vite dev server 220 ms 启动，`http://127.0.0.1:5173/` 返回 HTTP 200；验证后服务已停止。
+- 本地浏览器确认 React 已挂载、环境标题和业务边界提示可见，console 无 warning/error；验证标签页已关闭。
+
+### 20.4 下一准确切片
+
+不要继续业务开发。等待用户明确批准下一业务模块；恢复时先读取前端 `AGENTS.md`、`SPEC.md`、`ARCHITECTURE.md`、`DEVELOPMENT.md` 和对应 feature 文档。
