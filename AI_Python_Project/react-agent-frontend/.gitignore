@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build and test output
+dist/
+coverage/
+
+# Local environment overrides
+.env
+.env.*
+!.env.example
+
+# Tool caches and logs
+.vite/
+*.local
+*.log
+pnpm-debug.log*
+npm-debug.log*
+
+# Editors and operating systems
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
