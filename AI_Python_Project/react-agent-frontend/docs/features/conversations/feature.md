@@ -2,63 +2,48 @@
 
 ## 1. 目标
 
-为当前用户提供可恢复的 RAG / Agent 会话容器，包括新建、分页列表、选择、重命名、删除和历史消息读取。
+为当前用户提供可恢复的 Agent 会话：新建、游标分页、选择、重命名、删除和历史消息读取。外部 `session_id` 只在当前用户命名空间内有效。
 
-## 2. 当前后端现状
+## 2. 后端契约
 
-PostgreSQL 已有 Conversation / Message 持久化模型和按用户查询能力，但尚未开放前端 CRUD 接口。前端只依赖 `/rag/chat/stream/events` 产生新消息，不接入其他 RAG 问答接口。
+| 接口 | 用途 |
+| --- | --- |
+| `GET /conversations?cursor&limit` | 按最近更新时间读取会话页 |
+| `POST /conversations` | 创建稳定 `session_id`，可提交可选标题 |
+| `PATCH /conversations/{session_id}` | 修改标题 |
+| `DELETE /conversations/{session_id}` | 幂等删除会话、消息与近期上下文，返回 204 |
+| `GET /conversations/{session_id}/messages?cursor&limit` | 按稳定 sequence 读取消息页 |
 
-## 3. 核心数据
+会话项字段：`session_id`、`title`、`created_at`、`updated_at`、`message_count`、`last_message_role`、`last_message_preview`。消息字段：`message_id`、`sequence_no`、`role`、`content`、`sources`、`agent_task_plan_id`、`agent_task_status`、`terminal_status`、`created_at`。分页响应使用不透明 `next_cursor`。
 
-```text
-ConversationSummary
-  session_id
-  title
-  created_at
-  updated_at
-  last_message_preview
+## 3. 用户流程
 
-ConversationMessage
-  id
-  role
-  content
-  created_at
-  sources
-  task_plan_id
-  status
-```
+1. 应用加载最近会话；继续滚动才请求下一游标。
+2. 点击新建先调用创建接口，再导航 `/chat/{session_id}`。
+3. 打开历史会话后加载消息，按 `sequence_no` 正序渲染。
+4. 用户可显式重命名；当前后端不会自动用首条问题改写默认标题。
+5. 删除需要二次确认；成功后从缓存移除并导航到下一会话或 `/chat`。
 
-外部 `session_id` 只在当前用户命名空间内有效；后端负责映射为内部 scoped conversation ID。
+## 4. 与聊天流的关系
 
-## 4. 用户流程
+新消息只由 `POST /rag/chat/stream/events` 主链路产生并在服务端持久化。流完成后失效当前会话消息与会话列表 Query，以服务端记录校正本地临时消息。流以 `error` 结束或浏览器中断时也要重新读取历史，因为服务端可能已经保存部分终态。
 
-1. 进入系统后加载第一页会话。
-2. 新建会话后立即获得稳定 `session_id` 并进入空对话页。
-3. 首条问题成功后，后端可用问题摘要更新默认标题；用户仍可手动重命名。
-4. 打开历史会话时分页读取消息，按稳定 sequence 正序展示。
-5. 删除前二次确认；成功后跳转到下一个会话或创建空会话。
+UI 可在发送时显示本地 pending 用户消息，但不能把它当作永久记录。刷新后始终以后端 `messages` 为准。
 
-## 5. 前端 interface
+## 5. 一致性与失败处理
 
-```text
-listConversations(cursor) -> Page<ConversationSummary>
-createConversation(title?) -> ConversationSummary
-renameConversation(sessionId, title) -> ConversationSummary
-deleteConversation(sessionId) -> void
-listMessages(sessionId, cursor) -> Page<ConversationMessage>
-```
+- 不解析或修改不透明 cursor，也不把内部 scoped ID 暴露为路由。
+- 列表翻页按返回顺序追加并按 `session_id` 去重；不在客户端重新排序破坏 keyset 语义。
+- 重命名成功会改变 `updated_at` 和列表位置，应失效全部 conversation list 页。
+- `404` 统一显示“会话不可用”，不判断是不存在还是不属于当前用户。
+- 删除不做乐观更新；失败时保留当前页面。
+- 相同外部 session ID 在不同账号下不得共享任何本地缓存 key。
 
-## 6. 一致性要求
+## 6. 验收测试
 
-- 删除必须同时清理 PostgreSQL 会话、消息、摘要和 Redis/内存近期窗口。
-- 前端不能通过修改 session ID 读取其他用户会话。
-- SSE 本轮完成后，历史接口最终必须能读到用户问题、回答、来源和 TaskPlan 引用。
-- 对话持久化失败必须形成结构化错误或可观察告警，不能让 UI 永久显示一条刷新后消失的“已保存”消息。
-
-## 7. 验收标准
-
-1. 两个用户使用相同外部 session ID 时数据仍完全隔离。
-2. 刷新页面后能恢复会话顺序和消息。
-3. 重命名不改变 session ID。
-4. 删除后不能读取历史，复用旧 ID 也不会继承 Redis 上下文。
-5. 分页过程中新增消息不会造成重复或漏读。
+1. 两个用户使用相同 `session_id` 时缓存和服务端数据均隔离。
+2. 刷新可恢复消息、来源、TaskPlan 引用与终止状态。
+3. 重命名不改变 session ID，并按后端顺序更新列表。
+4. 删除后历史不可读取，旧 ID 不继承近期上下文。
+5. 游标分页遇到新增消息不会重复渲染已有 message ID。
+6. 流中断后重新加载能与服务端最终记录收敛。
