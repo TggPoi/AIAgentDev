@@ -12,7 +12,7 @@
 状态规则：
 
 - `❌`：缺失、契约不完整、尚未测试，或尚未通过对应 feature 验收。
-- `✅`：实现完成、权限与失败路径测试通过、OpenAPI/事件契约已核对、对应 feature 文档已同步。
+- `✅`：实现完成、权限与失败路径测试通过、OpenAPI/事件契约已核对、实施记录已更新。前端 feature 文档统一在后端 P0 全部完成后重新生成。
 
 不能因为路由文件已经创建就标记 ✅。每完成一项，必须在“实施记录”填写日期、变更文件和实际运行的验证命令。
 
@@ -43,7 +43,7 @@ POST /nl2sql/query
 
 ## 3. P0：身份与能力
 
-### ❌ `GET /auth/me` 前端身份字段扩展
+### ✅ `GET /auth/me` 前端身份字段扩展
 
 上下文：现有响应可确认用户 ID、全局角色、全局权限和部门，但缺少稳定的 `username`、三类账号类型和完整部门作用域权限视图。
 
@@ -59,9 +59,9 @@ POST /nl2sql/query
 
 验收：三类用户的响应与数据库角色事实一致，不能通过 JWT 客户端 payload 伪造。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。新增 `20260824_0015` 迁移、`department_manager` 角色、用户直接权限事实表和可审计文档授权事实表；扩展 `CurrentUserContext`、`AuthService` 与 `CurrentUserResponse`，由数据库 RBAC 实时推导 `username`、`account_type` 和 `department_permission_codes`。已运行身份 HTTP 契约、Schema 字段说明、RBAC 数据库集成、迁移 downgrade/upgrade 往返、现有 Agent Tool 权限回归和主应用 OpenAPI 检查，均通过。
 
-### ❌ `GET /auth/capabilities`
+### ✅ `GET /auth/capabilities`
 
 上下文：React 需要决定是否显示用户管理、跨部门授权、联网搜索、NL2SQL 和文档操作入口，当前只能硬编码 permission code。
 
@@ -83,9 +83,9 @@ can_manage_documents
 
 验收：capability 与实际接口 403 结果一致；前端隐藏入口后，伪造请求仍被后端拒绝。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。新增 `capability_service.py`，从可信账号类型、全局有效权限和部门作用域权限生成七项非敏感 capability；匿名身份返回统一 401，三类账号策略、响应字段说明及 OpenAPI 路径已通过回归。Capability 只控制前端展示，后续管理写接口仍必须复用相同服务端身份策略独立鉴权。
 
-### ❌ `POST /auth/logout`
+### ✅ `POST /auth/logout`
 
 上下文：前端只删除本地 token 不能撤销仍然有效的 refresh token。
 
@@ -97,9 +97,9 @@ can_manage_documents
 
 验收：注销后原 refresh token 无法换取新 access token。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。新增归属校验后的 refresh token 服务端撤销，当前用户重复注销同一 revoked token 幂等成功，伪造或其他用户 token 返回统一 `AUTHENTICATION_FAILED`。已通过数据库凭证失效测试、HTTP 200/401 契约和主应用 OpenAPI 检查。
 
-### ❌ `POST /auth/change-password`
+### ✅ `POST /auth/change-password`
 
 上下文：账号只能由管理员创建，用户仍需要在登录后修改初始密码。
 
@@ -111,11 +111,11 @@ can_manage_documents
 
 验收：修改后旧密码登录失败，新密码成功，旧 refresh token 按策略失效。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。新增 12–128 位且同时包含大小写字母、数字和符号的新密码策略；错误当前密码返回 `AUTH_CURRENT_PASSWORD_INVALID`，相同或弱密码返回 `AUTH_PASSWORD_POLICY_FAILED`。密码 hash 更新和该用户全部 active refresh token 撤销位于同一事务；已验证旧密码、旧 refresh token 失效及新密码登录成功。
 
 ## 4. P0：用户与功能权限管理
 
-### ❌ `GET /admin/access/catalog`
+### ✅ `GET /admin/access/catalog`
 
 上下文：创建和编辑用户时需要部门、账号类型及可下放权限目录。
 
@@ -127,9 +127,9 @@ can_manage_documents
 
 验收：部门主管响应中不包含管理员角色、主管角色或不可下放权限。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。新增用户管理深模块，管理员获得全部三类账号、全部部门及四项可直接下放功能权限；主管目录固定为自己的主部门、employee 账号和不含高风险 MCP 的可下放权限。普通员工/匿名 actor 由模块策略返回稳定 403。Schema 字段说明、OpenAPI 和目录裁剪测试通过。
 
-### ❌ `GET /admin/users`
+### ✅ `GET /admin/users`
 
 上下文：缺少管理范围内用户的分页列表。
 
@@ -141,9 +141,9 @@ can_manage_documents
 
 验收：跨部门数据隔离、分页无重复、禁用用户可筛选。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。实现 `updated_at + user_id` 不透明 keyset cursor、1–100 limit、文本/状态/部门筛选；主管部门由服务端固定，并在 PostgreSQL 查询中排除管理员和其他主管。非法 cursor 和主管扩大部门范围具有稳定错误码；真实 PostgreSQL adapter 查询与模块 interface 测试通过。
 
-### ❌ `GET /admin/users/{user_id}`
+### ✅ `GET /admin/users/{user_id}`
 
 上下文：编辑页面需要目标用户的基本信息、账号类型、部门、直接授权和有效权限。
 
@@ -155,7 +155,7 @@ can_manage_documents
 
 验收：主管不能通过已知 user ID 查看其他部门或高权限账号。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。详情聚合基本身份、服务端推导账号类型、全局角色、active 直接权限、有效全局权限及各部门角色/权限。管理员可查看全部；主管仅可查看自己主部门 employee，外部门或高权限目标返回 403，缺失目标返回 404。OpenAPI、Schema 和模块 interface 测试通过。
 
 ### ❌ `POST /admin/users`
 
@@ -476,12 +476,12 @@ can_manage_documents
 | 分组 | 已完成 | 待完成 |
 | --- | ---: | ---: |
 | 可复用现有 interface | 10 | 0 |
-| 身份与能力 | 0 | 4 |
-| 用户与功能权限 | 0 | 7 |
+| 身份与能力 | 4 | 0 |
+| 用户与功能权限 | 3 | 4 |
 | 跨部门文档授权 | 0 | 4 |
 | 会话管理 | 0 | 6 |
 | 知识文档 | 0 | 4 |
 | TaskPlan 恢复 | 0 | 1 |
 | 结构化流与来源契约 | 0 | 2 |
 
-最后更新：2026-08-24，当前阶段仅完成规范整理，未修改后端或 React 代码。
+最后更新：2026-08-24，身份与能力 4/4、用户与功能权限管理 3/7；下一切片实现用户创建、access 原子替换、状态和重置密码。React 文档仍是待后端 P0 完成后重新生成的草案。

@@ -31,6 +31,41 @@ class AuthenticationError(AppServiceError):
     status_code = 401
 
 
+class CurrentPasswordInvalidError(AppServiceError):
+    """修改密码时当前密码校验失败。"""
+
+    error_code = "AUTH_CURRENT_PASSWORD_INVALID"
+    status_code = 400
+
+
+class PasswordPolicyError(AppServiceError):
+    """新密码不满足服务端强度策略或与当前密码相同。"""
+
+    error_code = "AUTH_PASSWORD_POLICY_FAILED"
+    status_code = 400
+
+
+class AccessManagementPermissionDeniedError(AppServiceError):
+    """当前 actor 不具备目标账号管理范围。"""
+
+    error_code = "ACCESS_MANAGEMENT_PERMISSION_DENIED"
+    status_code = 403
+
+
+class ManagedUserNotFoundError(AppServiceError):
+    """管理范围内不存在目标账号。"""
+
+    error_code = "MANAGED_USER_NOT_FOUND"
+    status_code = 404
+
+
+class UserListCursorInvalidError(AppServiceError):
+    """用户列表 cursor 无法解析。"""
+
+    error_code = "USER_LIST_CURSOR_INVALID"
+    status_code = 400
+
+
 class PromptInjectionBlockedError(AppServiceError):
     """Prompt Injection 或敏感信息窃取请求被安全策略拦截。"""
 

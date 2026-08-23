@@ -18,6 +18,7 @@ from fast_app.core.config import get_settings
 from fast_app.db.session import create_database_engine, create_session_factory
 from fast_app.dependencies.user_context import get_current_user_context
 from fast_app.domain.agent_tool_permissions import PermissionCode, RoleCode
+from fast_app.domain.auth_models import AccountType, DepartmentCode
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.auth.auth_crypto import hash_password
 from fast_app.services.auth.auth_service import AuthService
@@ -29,6 +30,7 @@ from fast_app.services.exceptions import AuthenticationError
 
 
 TEST_USER_ID = "user_rbac_auth_migration"
+TEST_MANAGER_USER_ID = "user_department_manager_migration"
 
 
 async def main() -> None:
@@ -52,6 +54,66 @@ async def main() -> None:
             )
             assert "role" not in columns
             assert "permissions_json" not in columns
+            authorization_tables = set(
+                (
+                    await session.execute(
+                        text(
+                            """
+                            select table_name
+                            from information_schema.tables
+                            where table_schema = 'public'
+                              and table_name in (
+                                  'user_permission_grants',
+                                  'document_access_grants'
+                              )
+                            """
+                        )
+                    )
+                ).scalars()
+            )
+            assert authorization_tables == {
+                "user_permission_grants",
+                "document_access_grants",
+            }
+            authorization_indexes = set(
+                (
+                    await session.execute(
+                        text(
+                            """
+                            select indexname
+                            from pg_indexes
+                            where schemaname = 'public'
+                              and tablename in (
+                                  'user_permission_grants',
+                                  'document_access_grants'
+                              )
+                            """
+                        )
+                    )
+                ).scalars()
+            )
+            assert "uq_user_permission_grants_active" in authorization_indexes
+            assert "uq_document_access_grants_active" in authorization_indexes
+            authorization_checks = set(
+                (
+                    await session.execute(
+                        text(
+                            """
+                            select constraint_name
+                            from information_schema.table_constraints
+                            where table_schema = 'public'
+                              and table_name in (
+                                  'user_permission_grants',
+                                  'document_access_grants'
+                              )
+                              and constraint_type = 'CHECK'
+                            """
+                        )
+                    )
+                ).scalars()
+            )
+            assert "ck_user_permission_grants_revocation" in authorization_checks
+            assert "ck_document_access_grants_revocation" in authorization_checks
             global_role_permissions = set(
                 (
                     await session.execute(
@@ -65,7 +127,8 @@ async def main() -> None:
                             where roles.code in (
                                 'knowledge_global_reader',
                                 'agent_tool_operator',
-                                'gitlab_manager'
+                                'gitlab_manager',
+                                'department_manager'
                             )
                             """
                         )
@@ -88,16 +151,30 @@ async def main() -> None:
                 "gitlab_manager",
                 PermissionCode.GITLAB_SOURCE_MANAGE.value,
             ) in global_role_permissions
+            assert (
+                RoleCode.DEPARTMENT_MANAGER.value,
+                PermissionCode.KNOWLEDGE_DOCUMENT_DELETE.value,
+            ) in global_role_permissions
 
             initial_user_count = int(
                 await session.scalar(text("select count(*) from users")) or 0
             )
             await session.execute(
                 text(
-                    "delete from users "
-                    "where id = :user_id or username = 'rbac_auth_migration'"
+                    "delete from user_permission_grants "
+                    "where user_id = any(:user_ids) "
+                    "or granted_by_user_id = any(:user_ids) "
+                    "or revoked_by_user_id = any(:user_ids)"
                 ),
-                {"user_id": TEST_USER_ID},
+                {"user_ids": [TEST_USER_ID, TEST_MANAGER_USER_ID]},
+            )
+            await session.execute(
+                text(
+                    "delete from users "
+                    "where id = any(:user_ids) "
+                    "or username in ('rbac_auth_migration', 'department_manager_migration')"
+                ),
+                {"user_ids": [TEST_USER_ID, TEST_MANAGER_USER_ID]},
             )
             await session.execute(
                 text(
@@ -111,6 +188,20 @@ async def main() -> None:
                 {
                     "id": TEST_USER_ID,
                     "password_hash": hash_password("RbacMigration123!"),
+                },
+            )
+            await session.execute(
+                text(
+                    """
+                    insert into users
+                        (id, username, password_hash, status)
+                    values
+                        (:id, 'department_manager_migration', :password_hash, 'active')
+                    """
+                ),
+                {
+                    "id": TEST_MANAGER_USER_ID,
+                    "password_hash": hash_password("DepartmentManager123!"),
                 },
             )
             await session.commit()
@@ -129,6 +220,21 @@ async def main() -> None:
             await permission_repository.add_user_role(
                 TEST_USER_ID,
                 RoleCode.SYSTEM_ADMIN.value,
+            )
+            await user_repository.add_user_department(
+                user_id=TEST_MANAGER_USER_ID,
+                department_code=DepartmentCode.DEVELOPMENT,
+                is_primary=True,
+            )
+            await permission_repository.add_user_department_role(
+                TEST_MANAGER_USER_ID,
+                "development",
+                RoleCode.DEPARTMENT_MANAGER.value,
+            )
+            await permission_repository.add_user_permission(
+                TEST_MANAGER_USER_ID,
+                PermissionCode.AGENT_TOOL_WEB_SEARCH.value,
+                granted_by_user_id=TEST_USER_ID,
             )
             access_token, _expires_in, _token_id = JwtService(
                 settings
@@ -157,6 +263,22 @@ async def main() -> None:
             assert api_key_context.has_global_role(RoleCode.SYSTEM_ADMIN.value)
             assert api_key_context.has_global_permission(
                 PermissionCode.KNOWLEDGE_READ_ALL.value
+            )
+
+            manager_user = await user_repository.get_user_by_id(TEST_MANAGER_USER_ID)
+            assert manager_user is not None
+            manager_context = await auth_service.build_current_user_context(
+                manager_user,
+                auth_source="jwt",
+            )
+            assert manager_context.username == "department_manager_migration"
+            assert manager_context.account_type == AccountType.DEPARTMENT_MANAGER
+            assert manager_context.has_global_permission(
+                PermissionCode.AGENT_TOOL_WEB_SEARCH.value
+            )
+            assert manager_context.has_department_permission(
+                "development",
+                PermissionCode.KNOWLEDGE_DOCUMENT_DELETE.value,
             )
 
             try:
@@ -202,8 +324,19 @@ async def main() -> None:
     finally:
         async with session_factory() as cleanup_session:
             await cleanup_session.execute(
-                text("delete from users where id = :user_id"),
-                {"user_id": TEST_USER_ID},
+                text(
+                    "delete from user_permission_grants "
+                    "where user_id = any(:user_ids) "
+                    "or granted_by_user_id = any(:user_ids) "
+                    "or revoked_by_user_id = any(:user_ids)"
+                ),
+                {"user_ids": [TEST_USER_ID, TEST_MANAGER_USER_ID]},
+            )
+            await cleanup_session.execute(
+                text(
+                    "delete from users where id = any(:user_ids)"
+                ),
+                {"user_ids": [TEST_USER_ID, TEST_MANAGER_USER_ID]},
             )
             await cleanup_session.commit()
         await engine.dispose()

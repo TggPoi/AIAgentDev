@@ -78,6 +78,22 @@ from fast_app.services.agent_tasks.deep_document_agent import (
     DocumentWebResearchInput,
 )
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
+from fast_app.schemas.auth_schema import (
+    ChangePasswordRequest,
+    ChangePasswordResponse,
+    CurrentUserResponse,
+    LogoutRequest,
+    LogoutResponse,
+    UserCapabilitiesResponse,
+)
+from fast_app.schemas.user_admin_schema import (
+    AccessCatalogItem,
+    AccessCatalogResponse,
+    ManagedDepartmentAccess,
+    ManagedUserDetail,
+    ManagedUserListResponse,
+    ManagedUserSummary,
+)
 from fast_app.services.nl2sql.models import (
     Nl2SqlDatasetItem,
     Nl2SqlQueryRequest,
@@ -96,6 +112,8 @@ from fast_app.services.rag.direct_web_search_planner import (
 
 
 SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
+    AccessCatalogItem,
+    AccessCatalogResponse,
     AgentResearchPolicy,
     AgentRouteDecision,
     AgentTaskDatasetScope,
@@ -131,6 +149,10 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     KnowledgeDocumentReplacement,
     KnowledgeImportJobListResponse,
     KnowledgeImportJobResponse,
+    ManagedDepartmentAccess,
+    ManagedUserDetail,
+    ManagedUserListResponse,
+    ManagedUserSummary,
     QueryRewriteResult,
     QueryResolutionDecision,
     RagEvalCase,
@@ -155,6 +177,11 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     Nl2SqlQueryResult,
     SqlGenerationResult,
     CapabilitySnapshotPublicView,
+    ChangePasswordRequest,
+    ChangePasswordResponse,
+    CurrentUserResponse,
+    LogoutRequest,
+    LogoutResponse,
     RequirementSourcePolicy,
     ResolvedPlanningRequest,
     ResearchTaskPolicy,
@@ -168,6 +195,7 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     ResearchWorkerCheckpointUpdate,
     ResearchWorkerProgress,
     RequiredKeyFact,
+    UserCapabilitiesResponse,
 )
 
 

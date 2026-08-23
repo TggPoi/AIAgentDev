@@ -51,6 +51,8 @@ class RoleCode(StrEnum):
     AGENT_TOOL_OPERATOR = "agent_tool_operator"
     # GitLab 文档源管理员，可以管理同步任务并读取全部知识变更。
     GITLAB_MANAGER = "gitlab_manager"
+    # 部门主管，在主归属部门内管理普通员工、部门文档和跨部门读取授权。
+    DEPARTMENT_MANAGER = "department_manager"
     # 部门只读角色，只能读取本部门文档。
     DEPARTMENT_READER = "department_reader"
     # 部门编辑角色，可以更新本部门文档。
@@ -124,7 +126,7 @@ class EffectivePermissionSet(BaseModel):
     )
     global_permission_codes: set[PermissionCode] = Field(
         default_factory=set,
-        description="由全局角色展开得到的全局权限集合。",
+        description="由全局角色和 active 用户直接授权合并得到的全局权限集合。",
     )
     department_scopes: list[DepartmentPermissionScope] = Field(
         default_factory=list,

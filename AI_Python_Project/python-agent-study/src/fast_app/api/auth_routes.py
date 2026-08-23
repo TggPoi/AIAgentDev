@@ -5,15 +5,22 @@ from fast_app.dependencies.user_context import get_current_user_context
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.schemas.auth_schema import (
     ApiKeySummary,
+    ChangePasswordRequest,
+    ChangePasswordResponse,
     CreateApiKeyRequest,
     CreateApiKeyResponse,
     CurrentUserResponse,
     LoginRequest,
+    LogoutRequest,
+    LogoutResponse,
     RefreshTokenRequest,
     RevokeApiKeyResponse,
     TokenPairResponse,
+    UserCapabilitiesResponse,
 )
 from fast_app.services.auth.auth_service import AuthService
+from fast_app.services.auth.capability_service import resolve_auth_capabilities
+from fast_app.services.exceptions import AuthenticationError
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -44,13 +51,69 @@ async def refresh_token_endpoint(
     return TokenPairResponse.model_validate(token_pair.model_dump())
 
 
+@router.post("/logout", response_model=LogoutResponse)
+async def logout_endpoint(
+    req: LogoutRequest,
+    user: CurrentUserContext = Depends(get_current_user_context),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> LogoutResponse:
+    """撤销当前用户提交的 refresh token；重复注销同一 token 幂等成功。"""
+
+    _require_authenticated_user(user)
+    logged_out = await auth_service.logout(
+        current_user=user,
+        refresh_token=req.refresh_token,
+    )
+    return LogoutResponse(logged_out=logged_out)
+
+
+@router.post("/change-password", response_model=ChangePasswordResponse)
+async def change_password_endpoint(
+    req: ChangePasswordRequest,
+    user: CurrentUserContext = Depends(get_current_user_context),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> ChangePasswordResponse:
+    """修改当前用户密码，并原子撤销该用户全部 active refresh token。"""
+
+    _require_authenticated_user(user)
+    revoked_count = await auth_service.change_password(
+        current_user=user,
+        current_password=req.current_password,
+        new_password=req.new_password,
+    )
+    return ChangePasswordResponse(
+        password_changed=True,
+        revoked_refresh_token_count=revoked_count,
+    )
+
+
 @router.get("/me", response_model=CurrentUserResponse)
 async def me_endpoint(
     user: CurrentUserContext = Depends(get_current_user_context),
 ) -> CurrentUserResponse:
     """返回当前请求解析出的统一用户上下文。"""
 
+    _require_authenticated_user(user)
     return CurrentUserResponse.model_validate(user.model_dump())
+
+
+@router.get("/capabilities", response_model=UserCapabilitiesResponse)
+async def capabilities_endpoint(
+    user: CurrentUserContext = Depends(get_current_user_context),
+) -> UserCapabilitiesResponse:
+    """返回 React 展示控制所需的非敏感能力；业务接口仍独立鉴权。"""
+
+    _require_authenticated_user(user)
+    snapshot = resolve_auth_capabilities(user)
+    return UserCapabilitiesResponse(
+        can_manage_users=snapshot.can_manage_users,
+        user_management_scope=snapshot.user_management_scope,
+        can_manage_document_grants=snapshot.can_manage_document_grants,
+        can_use_web_search=snapshot.can_use_web_search,
+        can_use_nl2sql=snapshot.can_use_nl2sql,
+        can_read_documents=snapshot.can_read_documents,
+        can_manage_documents=snapshot.can_manage_documents,
+    )
 
 
 @router.post("/api-keys", response_model=CreateApiKeyResponse)
@@ -106,6 +169,11 @@ async def revoke_api_key_endpoint(
         api_key_id=api_key_id,
     )
     return RevokeApiKeyResponse(api_key_id=api_key_id, revoked=revoked)
+
+
+def _require_authenticated_user(user: CurrentUserContext) -> None:
+    if not user.is_authenticated:
+        raise AuthenticationError("该身份接口只允许已认证用户访问")
 
 
 __all__ = ["router"]

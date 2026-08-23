@@ -10,6 +10,7 @@ from fast_app.db.auth_tables import (
     RolePermissionTable,
     RoleTable,
     UserDepartmentRoleTable,
+    UserPermissionGrantTable,
     UserRoleTable,
 )
 
@@ -40,6 +41,23 @@ class PermissionRepository:
             .join(RoleTable, RoleTable.id == RolePermissionTable.role_id)
             .join(UserRoleTable, UserRoleTable.role_id == RoleTable.id)
             .where(UserRoleTable.user_id == user_id)
+        )
+        return set((await self._session.scalars(stmt)).all())
+
+    async def list_direct_permissions_for_user(self, user_id: str) -> set[str]:
+        """读取用户当前 active 的直接功能权限，不包含角色展开结果。"""
+
+        stmt: Select[tuple[str]] = (
+            select(PermissionTable.code)
+            .join(
+                UserPermissionGrantTable,
+                UserPermissionGrantTable.permission_id == PermissionTable.id,
+            )
+            .where(
+                UserPermissionGrantTable.user_id == user_id,
+                UserPermissionGrantTable.status == "active",
+                UserPermissionGrantTable.revoked_at.is_(None),
+            )
         )
         return set((await self._session.scalars(stmt)).all())
 
@@ -105,6 +123,25 @@ class PermissionRepository:
         self._session.add(row)
         await self._commit_or_rollback()
 
+    async def add_user_permission(
+        self,
+        user_id: str,
+        permission_code: str,
+        *,
+        granted_by_user_id: str,
+    ) -> None:
+        """新增一条 active 用户直接权限；管理接口负责更高层幂等策略。"""
+
+        permission = await self._get_permission_by_code(permission_code)
+        row = UserPermissionGrantTable(
+            id=f"user_permission_{uuid4().hex}",
+            user_id=user_id,
+            permission_id=permission.id,
+            granted_by_user_id=granted_by_user_id,
+        )
+        self._session.add(row)
+        await self._commit_or_rollback()
+
     async def _get_role_by_code(self, role_code: str) -> RoleTable:
         stmt: Select[tuple[RoleTable]] = select(RoleTable).where(
             RoleTable.code == role_code
@@ -112,6 +149,15 @@ class PermissionRepository:
         row = await self._session.scalar(stmt)
         if row is None:
             raise ValueError(f"未知角色: {role_code}")
+        return row
+
+    async def _get_permission_by_code(self, permission_code: str) -> PermissionTable:
+        stmt: Select[tuple[PermissionTable]] = select(PermissionTable).where(
+            PermissionTable.code == permission_code
+        )
+        row = await self._session.scalar(stmt)
+        if row is None:
+            raise ValueError(f"未知权限: {permission_code}")
         return row
 
     async def _commit_or_rollback(self) -> None:

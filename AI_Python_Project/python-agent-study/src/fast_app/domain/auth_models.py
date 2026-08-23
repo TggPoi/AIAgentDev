@@ -15,6 +15,22 @@ class UserStatus(StrEnum):
     DISABLED = "disabled"
 
 
+class AccountType(StrEnum):
+    """前端稳定使用的三类账号身份，由服务端 RBAC 事实推导。"""
+
+    ADMIN = "admin"
+    DEPARTMENT_MANAGER = "department_manager"
+    EMPLOYEE = "employee"
+
+
+class UserManagementScope(StrEnum):
+    """当前用户可管理账号的组织范围。"""
+
+    ALL = "all"
+    OWN_DEPARTMENT = "own_department"
+    NONE = "none"
+
+
 class CredentialStatus(StrEnum):
     """API Key / refresh token 的状态。"""
 
@@ -143,6 +159,7 @@ class CreatedApiKey(BaseModel):
 
 
 __all__ = [
+    "AccountType",
     "ApiKeyCredential",
     "AuthUser",
     "CreatedApiKey",
@@ -153,5 +170,6 @@ __all__ = [
     "RefreshTokenRecord",
     "TokenSubject",
     "UserDepartment",
+    "UserManagementScope",
     "UserStatus",
 ]

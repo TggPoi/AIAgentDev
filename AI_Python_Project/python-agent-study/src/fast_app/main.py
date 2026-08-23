@@ -16,6 +16,7 @@ from fast_app.api.error_demo_routes import router as error_demo_router
 from fast_app.api.debug_trace_routes import router as debug_trace_router
 from fast_app.api.gitlab_routes import router as gitlab_router
 from fast_app.api.nl2sql_routes import router as nl2sql_router
+from fast_app.api.user_admin_routes import router as user_admin_router
 from fast_app.core.config import get_settings
 from fast_app.core.langsmith import configure_langsmith
 from fast_app.core.logging import get_logger, setup_logging
@@ -187,3 +188,4 @@ app.include_router(error_demo_router)
 app.include_router(debug_trace_router)
 app.include_router(gitlab_router)
 app.include_router(nl2sql_router)
+app.include_router(user_admin_router)

@@ -14,6 +14,7 @@ from fast_app.domain.auth_models import (
 )
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.auth.permission_service import PermissionService
+from fast_app.services.auth.capability_service import resolve_account_type
 from fast_app.services.auth.auth_crypto import (
     build_api_key_prefix,
     fingerprint_api_key,
@@ -24,10 +25,16 @@ from fast_app.services.auth.auth_crypto import (
     hash_api_key,
     hash_password,
     hash_refresh_token,
+    validate_password_strength,
     verify_api_key_hash,
     verify_password,
 )
-from fast_app.services.exceptions import AppServiceError, AuthenticationError
+from fast_app.services.exceptions import (
+    AppServiceError,
+    AuthenticationError,
+    CurrentPasswordInvalidError,
+    PasswordPolicyError,
+)
 from fast_app.services.auth.jwt_service import JwtService
 from fast_app.services.auth.user_repository import UserRepository
 
@@ -110,6 +117,59 @@ class AuthService:
         await self._repository.mark_refresh_token_used(record.id)
         await self._repository.revoke_refresh_token(record.id)
         return await self._issue_token_pair(user)
+
+    async def logout(
+        self,
+        *,
+        current_user: CurrentUserContext,
+        refresh_token: str,
+    ) -> bool:
+        """撤销属于当前用户的 refresh token；重复撤销保持幂等。"""
+
+        if not current_user.is_authenticated:
+            raise AuthenticationError("只有认证用户才能注销")
+
+        token_hash = hash_refresh_token(
+            refresh_token,
+            self._settings.api_key_pepper,
+        )
+        record = await self._repository.get_refresh_token_by_hash(token_hash)
+        if record is None or record.user_id != current_user.user_id:
+            raise AuthenticationError("Refresh token 无效或不属于当前用户")
+
+        if record.status == CredentialStatus.REVOKED:
+            return True
+
+        await self._repository.revoke_refresh_token(record.id)
+        return True
+
+    async def change_password(
+        self,
+        *,
+        current_user: CurrentUserContext,
+        current_password: str,
+        new_password: str,
+    ) -> int:
+        """校验当前密码后更新 Argon2 hash，并撤销用户全部 refresh token。"""
+
+        if not current_user.is_authenticated:
+            raise AuthenticationError("只有认证用户才能修改密码")
+
+        user = await self._repository.get_user_by_id(current_user.user_id)
+        if user is None:
+            raise AuthenticationError("当前用户不存在")
+        self._ensure_active_user(user)
+
+        if not verify_password(current_password, user.password_hash):
+            raise CurrentPasswordInvalidError("当前密码不正确")
+        if verify_password(new_password, user.password_hash):
+            raise PasswordPolicyError("新密码不能与当前密码相同")
+
+        validate_password_strength(new_password)
+        return await self._repository.update_password_and_revoke_refresh_tokens(
+            user_id=user.id,
+            password_hash=hash_password(new_password),
+        )
 
     async def authenticate_api_key(
         self,
@@ -240,26 +300,38 @@ class AuthService:
         token_id: str | None = None,
         api_key_id: str | None = None,
     ) -> CurrentUserContext:
-        """把数据库用户和实时 RBAC 全局权限转换为统一请求上下文。"""
+        """把数据库用户和实时 RBAC/直接授权事实转换为统一请求上下文。"""
 
         effective = await self._permission_service.get_effective_permissions(user.id)
+        primary_department_code = (
+            user.primary_department_code.value
+            if user.primary_department_code is not None
+            else None
+        )
         return CurrentUserContext(
             user_id=user.id,
+            username=user.username,
+            account_type=resolve_account_type(
+                effective,
+                primary_department_code=primary_department_code,
+            ),
             is_authenticated=True,
             auth_source=auth_source,  # type: ignore[arg-type]
             global_role_codes=list(effective.global_role_codes),
             global_permission_codes=sorted(
                 permission.value for permission in effective.global_permission_codes
             ),
+            department_permission_codes={
+                scope.department_code: sorted(
+                    permission.value for permission in scope.permission_codes
+                )
+                for scope in effective.department_scopes
+            },
             department_codes=[
                 department_code.value
                 for department_code in user.department_codes
             ],
-            primary_department_code=(
-                user.primary_department_code.value
-                if user.primary_department_code is not None
-                else None
-            ),
+            primary_department_code=primary_department_code,
             email=user.email,
             display_name=user.display_name,
             token_id=token_id,

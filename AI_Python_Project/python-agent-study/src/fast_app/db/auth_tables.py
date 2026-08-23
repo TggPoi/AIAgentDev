@@ -3,7 +3,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -319,6 +330,72 @@ class UserDepartmentRoleTable(Base):
     )
 
 
+class UserPermissionGrantTable(Base):
+    """用户直接功能权限授权；角色权限之外的精确授权事实。"""
+
+    __tablename__ = "user_permission_grants"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    permission_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("permissions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    granted_by_user_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        server_default=text("'active'"),
+    )
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    revoked_by_user_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'revoked')",
+            name="ck_user_permission_grants_status",
+        ),
+        CheckConstraint(
+            "(status = 'active' AND revoked_by_user_id IS NULL AND revoked_at IS NULL) "
+            "OR (status = 'revoked' AND revoked_by_user_id IS NOT NULL AND revoked_at IS NOT NULL)",
+            name="ck_user_permission_grants_revocation",
+        ),
+        Index(
+            "idx_user_permission_grants_user_status",
+            "user_id",
+            "status",
+        ),
+        Index(
+            "uq_user_permission_grants_active",
+            "user_id",
+            "permission_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+
 class ApiKeyTable(Base):
     """api_keys 表：程序化访问凭证，只保存 hash 和审计字段。"""
 
@@ -425,6 +502,7 @@ __all__ = [
     "RoleTable",
     "UserDepartmentTable",
     "UserDepartmentRoleTable",
+    "UserPermissionGrantTable",
     "UserRoleTable",
     "UserTable",
 ]

@@ -20,6 +20,7 @@ from fast_app.db.base import Base  # noqa: E402
 from fast_app.db import agent_task_plan_tables  # noqa: F401,E402
 from fast_app.db import auth_tables  # noqa: F401,E402
 from fast_app.db import conversation_tables  # noqa: F401,E402
+from fast_app.db import document_access_tables  # noqa: F401,E402
 from fast_app.db import ingestion_tables  # noqa: F401,E402
 from fast_app.db import gitlab_tables  # noqa: F401,E402
 from fast_app.db import nl2sql_tables  # noqa: F401,E402

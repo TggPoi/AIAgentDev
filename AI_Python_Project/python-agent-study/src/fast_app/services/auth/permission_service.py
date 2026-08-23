@@ -18,8 +18,14 @@ class PermissionService:
         """加载全局角色、全局权限和部门作用域权限。"""
 
         global_role_codes = await self._repository.list_global_roles_for_user(user_id)
+        role_permission_codes = await self._repository.list_global_permissions_for_user(
+            user_id
+        )
+        direct_permission_codes = (
+            await self._repository.list_direct_permissions_for_user(user_id)
+        )
         global_permission_codes = _to_permission_codes(
-            await self._repository.list_global_permissions_for_user(user_id)
+            role_permission_codes | direct_permission_codes
         )
         department_roles = await self._repository.list_department_role_codes_for_user(
             user_id

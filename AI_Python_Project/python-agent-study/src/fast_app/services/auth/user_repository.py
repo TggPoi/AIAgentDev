@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fast_app.db.auth_tables import (
@@ -239,6 +239,36 @@ class UserRepository:
         row.status = CredentialStatus.REVOKED.value
         row.revoked_at = datetime.now(UTC)
         await self._commit_or_rollback()
+
+    async def update_password_and_revoke_refresh_tokens(
+        self,
+        *,
+        user_id: str,
+        password_hash: str,
+    ) -> int:
+        """在一个事务内更新密码并撤销该用户所有 active refresh token。"""
+
+        row = await self._session.get(UserTable, user_id)
+        if row is None:
+            return 0
+
+        now = datetime.now(UTC)
+        row.password_hash = password_hash
+        row.updated_at = now
+        result = await self._session.execute(
+            update(RefreshTokenTable)
+            .where(
+                RefreshTokenTable.user_id == user_id,
+                RefreshTokenTable.status == CredentialStatus.ACTIVE.value,
+            )
+            .values(
+                status=CredentialStatus.REVOKED.value,
+                revoked_at=now,
+            )
+        )
+        revoked_count = int(result.rowcount or 0)
+        await self._commit_or_rollback()
+        return revoked_count
 
     # 事务处理
     async def _commit_or_rollback(self) -> None:

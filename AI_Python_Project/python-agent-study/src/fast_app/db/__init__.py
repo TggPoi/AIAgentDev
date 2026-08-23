@@ -19,9 +19,11 @@ from fast_app.db.auth_tables import (
     RoleTable,
     UserDepartmentTable,
     UserDepartmentRoleTable,
+    UserPermissionGrantTable,
     UserRoleTable,
     UserTable,
 )
+from fast_app.db.document_access_tables import DocumentAccessGrantTable
 from fast_app.db.conversation_tables import (
     ConversationMessageTable,
     ConversationSummaryTable,
@@ -60,6 +62,7 @@ __all__ = [
     "ConversationSummaryTable",
     "ConversationTable",
     "DepartmentTable",
+    "DocumentAccessGrantTable",
     "KnowledgeDocumentTable",
     "KnowledgeExcelImportProfileTable",
     "KnowledgeIngestionJobTable",
@@ -80,6 +83,7 @@ __all__ = [
     "RoleTable",
     "UserDepartmentTable",
     "UserDepartmentRoleTable",
+    "UserPermissionGrantTable",
     "UserRoleTable",
     "UserTable",
     "create_database_engine",

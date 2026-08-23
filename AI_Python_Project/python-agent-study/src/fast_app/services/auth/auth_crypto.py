@@ -7,7 +7,7 @@ import secrets
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError, VerificationError
 
-from fast_app.services.exceptions import AppServiceError
+from fast_app.services.exceptions import AppServiceError, PasswordPolicyError
 
 
 _PASSWORD_HASHER = PasswordHasher()
@@ -29,6 +29,22 @@ def verify_password(password: str, password_hash: str) -> bool:
         return _PASSWORD_HASHER.verify(password_hash, password)
     except (InvalidHashError, VerifyMismatchError, VerificationError):
         return False
+
+
+def validate_password_strength(password: str) -> None:
+    """校验管理端和用户改密共用的新密码强度策略。"""
+
+    if len(password) < 12 or len(password) > 128:
+        raise PasswordPolicyError("新密码长度必须在 12 到 128 个字符之间")
+
+    character_requirements = (
+        any(character.islower() for character in password),
+        any(character.isupper() for character in password),
+        any(character.isdigit() for character in password),
+        any(not character.isalnum() for character in password),
+    )
+    if not all(character_requirements):
+        raise PasswordPolicyError("新密码必须同时包含大写字母、小写字母、数字和符号")
 
 
 def generate_api_key() -> str:
@@ -119,4 +135,5 @@ __all__ = [
     "hash_refresh_token",
     "verify_api_key_hash",
     "verify_password",
+    "validate_password_strength",
 ]

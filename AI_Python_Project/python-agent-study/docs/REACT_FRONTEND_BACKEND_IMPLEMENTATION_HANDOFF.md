@@ -6,7 +6,7 @@
 
 生成时间：2026-08-24。
 
-当前状态：只完成检查、需求澄清和待办文档；尚未实现任何 TodoList 中的 ❌ 项。
+当前状态：身份与能力 4/4、用户与功能权限管理 3/7 已完成；用户管理只读目录、分页列表和详情已落地，下一切片实现四个管理写 interface。
 
 ## 2. 压缩后读取顺序
 
@@ -32,7 +32,7 @@ python-agent-study/docs/BACKEND_INTERFACE_TODO.md
 TodoList 当前记录：
 
 - 10 个已确认可复用的 ✅ interface。
-- 28 个尚未完成的 ❌ interface/契约任务。
+- 21 个尚未完成的 ❌ interface/契约任务。
 - 任何任务只有在实现、权限/失败路径测试、OpenAPI 或 SSE contract 核对、实施记录更新后才能改为 ✅。
 
 ### 3.2 前端文档当前不具备实施效力
@@ -120,11 +120,11 @@ employee
 
 ### 5.2 已确认缺口
 
-- 没有 `department_manager` 管理角色及其管理策略。
-- 没有 capability interface。
-- 没有 logout、change-password 和管理员 reset-password interface。
+- 已有 `department_manager` 部门作用域角色和账号类型推导，但用户管理写接口尚未实现。
+- 已有 capability interface；后续管理接口必须复用相同身份策略执行真实授权。
+- 已有 logout 和 change-password；管理员 reset-password 随用户管理阶段实现。
 - 没有用户管理路由和可下放权限目录。
-- 没有跨部门 `doc_id` grant 事实表和授权 interface。
+- 已有跨部门 `doc_id` grant 事实表，但授权 interface、共享读取策略和检索下推尚未实现。
 - 没有面向用户的 GitLab 文档列表、详情、预览、下载 interface。
 - 没有会话 CRUD 和历史消息路由。
 - 没有当前用户 TaskPlan 列表。
@@ -150,6 +150,8 @@ git status --short
 不要依赖本文中的工作树快照判断最新状态。
 
 ## 7. 压缩后第一个工作批次
+
+当前进度（2026-08-24）：身份与能力 4/4、用户与功能权限管理 3/7 已完成。用户管理深模块已提供 catalog、keyset 用户列表和完整详情，主管范围固定在服务端。下一切片从 `POST /admin/users` 开始，继续实现 access 原子替换、状态切换和 reset-password；不要重复已完成只读 interface。
 
 不要一次实现全部 28 项。第一个批次只建立后续管理接口依赖的身份和授权事实基础。
 
@@ -196,7 +198,7 @@ scripts/tests/agent_research/test_schema_field_descriptions.py
 5. 运行聚焦测试和 OpenAPI/schema 检查。
 6. 只把真实完成的 Todo 项更新为 ✅；未完成项保持 ❌。
 
-logout/change-password 可以作为同一身份阶段的下一个独立切片，不要与迁移失败一次混合排查。
+logout/change-password 已作为独立切片完成并通过数据库与 HTTP 契约验证。
 
 ## 8. 验证与 Todo 更新规则
 
@@ -244,13 +246,116 @@ docs/REACT_FRONTEND_BACKEND_IMPLEMENTATION_HANDOFF.md、
 docs/BACKEND_INTERFACE_TODO.md。
 检查 git status 和目标 diff。
 不要使用当前前端 docs 指导实现。
-从第 7 节第一个后端切片继续。
+从 TodoList 当前第一个 ❌ 项继续；本交接第 7 节首个切片已经完成。
 ```
 
 ## 11. 本交接完成时的验证事实
 
 - TodoList 位于后端 `docs/BACKEND_INTERFACE_TODO.md`。
 - 前端 TodoList 副本不存在。
-- 当前未开始任何后端 interface 实现。
+- 当前身份与能力分组 4/4 已完成，其余后端 interface 按 TodoList 状态继续。
 - 当前未创建 React 源码、package.json 或依赖。
 - 前端现有规范已明确为待后端完成后重新生成的草案。
+
+## 12. 2026-08-24 手动压缩前的最新工作区快照
+
+本节是本次手动上下文压缩后的首要恢复依据；若前文中的“第一个工作批次”与本节冲突，以本节和 `BACKEND_INTERFACE_TODO.md` 的实时状态为准。
+
+### 12.1 Git 与数据库基线
+
+- 后端仓库当前本地 `HEAD` 与 `origin/master` 均为 `9d697ca6973cd32b472f0e13c8fb89c0a66cda4b`，提交说明为“补充多模态文档摄取与前后端接口规划”。
+- 该提交是开始补接口前由用户要求创建并推送的干净基线。
+- 本轮身份、能力和用户管理只读接口代码均未提交。压缩恢复后不得提交、重置、清理或覆盖这些改动，除非用户再次明确要求。
+- 本地 PostgreSQL 的 Alembic 版本已在 `20260824_0015 (head)`；迁移 `20260824_0015_add_identity_authorization_facts.py` 已完成升级、降级再升级验证。
+
+### 12.2 当前未提交文件
+
+已修改：
+
+```text
+alembic/env.py
+docs/BACKEND_INTERFACE_TODO.md
+docs/REACT_FRONTEND_BACKEND_IMPLEMENTATION_HANDOFF.md
+scripts/tests/agent_research/test_schema_field_descriptions.py
+scripts/tests/document_security/test_rbac_auth_migration.py
+src/fast_app/api/auth_routes.py
+src/fast_app/db/__init__.py
+src/fast_app/db/auth_tables.py
+src/fast_app/domain/agent_tool_permissions.py
+src/fast_app/domain/auth_models.py
+src/fast_app/domain/user_context.py
+src/fast_app/main.py
+src/fast_app/schemas/auth_schema.py
+src/fast_app/services/auth/auth_crypto.py
+src/fast_app/services/auth/auth_service.py
+src/fast_app/services/auth/permission_repository.py
+src/fast_app/services/auth/permission_service.py
+src/fast_app/services/auth/user_repository.py
+src/fast_app/services/exceptions.py
+```
+
+新增且未跟踪：
+
+```text
+alembic/versions/20260824_0015_add_identity_authorization_facts.py
+scripts/tests/document_security/test_auth_identity_capabilities.py
+scripts/tests/document_security/test_auth_session_security.py
+scripts/tests/document_security/test_user_administration_read.py
+src/fast_app/api/user_admin_routes.py
+src/fast_app/db/document_access_tables.py
+src/fast_app/dependencies/user_admin_dependencies.py
+src/fast_app/schemas/user_admin_schema.py
+src/fast_app/services/auth/capability_service.py
+src/fast_app/services/auth/user_administration_repository.py
+src/fast_app/services/auth/user_administration_service.py
+```
+
+恢复时仍须先执行 `git status --short`，因为以上列表只代表压缩前瞬间状态。
+
+### 12.3 已完成并验证的接口
+
+身份与能力分组 4/4：
+
+- `GET /auth/me`：返回 `username`、服务器推导的 `account_type` 和部门作用域权限。
+- `GET /auth/capabilities`：返回前端功能开关及用户管理范围。
+- `POST /auth/logout`：校验 refresh token 归属，支持同一用户的幂等登出。
+- `POST /auth/change-password`：验证旧密码和密码强度，在同一事务中更新 Argon2 hash 并撤销全部 refresh token。
+
+用户与功能权限管理分组 3/7：
+
+- `GET /admin/access/catalog`。
+- `GET /admin/users`，使用 `updated_at + user_id` keyset cursor，主管范围由服务端固定为本部门员工。
+- `GET /admin/users/{user_id}`，返回账号、部门角色、直接权限和有效权限聚合结果。
+
+已实际通过：迁移升级/降级、RBAC migration、identity/capabilities、session security、Agent Tool permission policy、user administration read、schema descriptions、相关 OpenAPI 路由检查、`compileall` 和目标 diff check。
+
+验证边界：当前虚拟环境没有安装 `ruff`；`alembic check` 仍会报告由 LangGraph 外部创建且未进入本项目 ORM metadata 的既有表差异，这不是本迁移产生的失败。
+
+### 12.4 压缩后的准确恢复顺序
+
+1. 读取仓库根 `AGENTS.md`。
+2. 读取 `learning-docs/教学讲解规范.md`。
+3. 完整读取本文和 `docs/BACKEND_INTERFACE_TODO.md`。
+4. 执行 `git status --short`、`git diff --stat`，并检查用户管理相关目标 diff。
+5. 不重复实现或重新设计第 12.3 节已经完成的 7 个接口。
+6. 从 TodoList 中用户管理分组剩余的第一个 `❌` 接口继续。
+
+### 12.5 下一切片：四个用户管理写接口
+
+只实现以下四项，完成前不要进入跨部门文档授权接口：
+
+1. `POST /admin/users`。
+2. `PUT /admin/users/{user_id}/access`。
+3. `PATCH /admin/users/{user_id}/status`。
+4. `POST /admin/users/{user_id}/reset-password`。
+
+实现顺序：
+
+1. 新增独立的 `0016` 审计迁移，保留已经应用和验证过的 `0015` 不再改写。
+2. 定义四个命令的 request/response schema，并为所有公共字段补 `Field(description=...)`。
+3. 在现有 `UserAdministrationRepository` 中加入不自行提交的原子写方法。
+4. 在 `UserAdministrationService` 集中完成范围、角色、权限和状态策略，路由保持薄层。
+5. 每个写操作在同一数据库事务内写业务事实和统一审计事实。
+6. 覆盖成功、403 越权、404、409 并发/重复、自我保护、最后一个管理员保护、事务回滚和密码安全测试。
+
+必须坚持的业务边界：账号类型由服务端角色推导；部门主管只能管理本部门普通员工；跨部门文档访问只能由文档所属部门主管或系统管理员对精确 `doc_id` 授权；前端最终只接入 `/rag/chat/stream/events`；后端 P0 未全部完成前不得重新生成前端规范或开始 React 编码。
