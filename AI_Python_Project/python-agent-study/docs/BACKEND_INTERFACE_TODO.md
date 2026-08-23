@@ -1,9 +1,9 @@
 # React 前端后端接口 TodoList
 
 > 上下文压缩或新会话开始时，先读取同目录的
-> `REACT_FRONTEND_BACKEND_IMPLEMENTATION_HANDOFF.md`。当前前端工程中的
-> `SPEC.md`、`ARCHITECTURE.md` 和 feature 文档只是后端接口完成前的草案，
-> 不能用于开始 React 编码；后端 P0 完成后必须基于真实契约重新生成。
+> `REACT_FRONTEND_BACKEND_IMPLEMENTATION_HANDOFF.md`。后端 P0 已全部完成；
+> 前端工程中的 `SPEC.md`、`ARCHITECTURE.md` 和全部 feature 文档已基于
+> 真实契约重新生成，当前等待用户确认，确认前不开始 React 编码。
 
 ## 1. 用途
 
@@ -157,7 +157,7 @@ can_manage_documents
 
 实施记录：2026-08-24 完成。详情聚合基本身份、服务端推导账号类型、全局角色、active 直接权限、有效全局权限及各部门角色/权限。管理员可查看全部；主管仅可查看自己主部门 employee，外部门或高权限目标返回 403，缺失目标返回 404。OpenAPI、Schema 和模块 interface 测试通过。
 
-### ❌ `POST /admin/users`
+### ✅ `POST /admin/users`
 
 上下文：当前 `AuthService.create_user()` 仅供初始化脚本或内部复用，没有管理路由和三类账号约束。
 
@@ -169,9 +169,9 @@ can_manage_documents
 
 验收：任何后续授权写入失败时，用户记录也回滚；主管不能伪造 department/account_type。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。新增严格请求 Schema，在单事务中规范化用户名/邮箱、校验共享密码策略、创建 Argon2 hash 用户、完整部门成员关系、账号类型角色、active 直接权限和 `create_user` 审计事实。管理员可创建三类账号；主管只能创建自己主部门 employee。真实 PostgreSQL 已验证三类账号推导、重复用户名 409、主管越权 403，以及后续授权写入故障时用户记录和审计全部回滚；响应不返回密码。
 
-### ❌ `PUT /admin/users/{user_id}/access`
+### ✅ `PUT /admin/users/{user_id}/access`
 
 上下文：功能、Agent Tool 和部门文档操作权限需要可重复保存的编辑 interface。
 
@@ -183,9 +183,9 @@ can_manage_documents
 
 验收：失败回滚、重复提交幂等、越权字段不能静默忽略。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。请求提交与详情响应对称的完整 `department_access`、账号类型和直接权限快照；服务端要求唯一主部门、拒绝重复/未知/不可下放 code，并在目标用户行锁与 system_admin 角色锁保护下原子替换。直接权限移除保留 revoked 审计事实；账号类型仍由角色实时推导。禁止修改自己；最后一个 active 管理员不能被降级；主管只能管理仅属于自己主部门的 employee，多部门账号必须交由管理员处理。数据库、403/409、完整快照和审计前后值回归通过。
 
-### ❌ `PATCH /admin/users/{user_id}/status`
+### ✅ `PATCH /admin/users/{user_id}/status`
 
 上下文：需要启用和禁用账号。
 
@@ -197,9 +197,9 @@ can_manage_documents
 
 验收：禁用用户已有 access/refresh/API Key 按策略停止工作，重新启用不恢复已撤销凭证。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。只接受 `active / disabled`；目标用户行锁后读取最新角色和状态，禁用时在同一事务撤销全部 active refresh token 与 API Key，并记录 actor、request ID、前后状态和撤销数量。access token 每次认证仍查询用户 active 状态，因此立即失效；重新启用不会恢复已撤销凭证。重复状态提交保持资源状态幂等；自我禁用和最后一个 active 管理员禁用返回稳定 409。真实凭证状态与事务测试通过。
 
-### ❌ `POST /admin/users/{user_id}/reset-password`
+### ✅ `POST /admin/users/{user_id}/reset-password`
 
 上下文：无自助找回密码，管理员或主管需要为管理范围内账号重置初始密码。
 
@@ -211,11 +211,11 @@ can_manage_documents
 
 验收：越权重置失败，旧密码与旧 refresh token 均失效。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。复用 12–128 位大小写字母、数字和符号密码策略；在目标用户行锁和管理范围校验后，同事务更新 Argon2 hash、撤销 active refresh token/API Key 并写 `reset_password` 审计。禁止通过管理接口重置自己；主管不能查看或重置管理员、其他主管和非本部门/多部门账号。数据库验证旧密码失效、新密码匹配、旧凭证保持 revoked，审计 JSON 与响应均不包含明文密码。
 
 ## 5. P0：跨部门文档授权
 
-### ❌ `GET /admin/document-access/grants`
+### ✅ `GET /admin/document-access/grants`
 
 上下文：目标文档所属部门主管需要查看自己部门文档已经授予哪些外部门用户。
 
@@ -227,9 +227,9 @@ can_manage_documents
 
 验收：主管列表中只出现自己部门拥有文档的 grant。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。新增独立 grant repository/service/router，使用 `granted_at + grant_id` keyset cursor，支持目标账号、精确 `doc_id`、状态和文档所属部门筛选。部门主管的部门条件由服务端强制固定为主部门，管理员才能跨部门查询；响应只包含被授权用户最小身份、文档路径/归属部门和授权/撤销审计事实。真实 PostgreSQL 与 HTTP 契约验证主管不可见其他部门 grant。
 
-### ❌ `POST /admin/document-access/grants`
+### ✅ `POST /admin/document-access/grants`
 
 上下文：用户访问其他部门文档时，需要由文档所属部门主管单独授权。
 
@@ -241,9 +241,9 @@ can_manage_documents
 
 验收：授权后目标用户仅获得指定 doc_id，文档列表、详情、下载和 RAG 同时生效。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。目标账号按规范化后的精确用户名或邮箱解析且必须 active；文档归属只使用 `gitlab_documents.source_id -> gitlab_sources.department_code` 服务端事实。一次请求原子校验 1–100 个 active 文档，拒绝主管授权其他部门文档，也拒绝目标用户已通过 public、所属部门或原始 `allowed_users` ACL 可读的冗余授权。重复 active grant 幂等复用，并发唯一约束冲突稳定返回 409；授权人和时间保存在 grant 事实中。
 
-### ❌ `DELETE /admin/document-access/grants/{grant_id}`
+### ✅ `DELETE /admin/document-access/grants/{grant_id}`
 
 上下文：跨部门访问必须可撤销。
 
@@ -255,9 +255,9 @@ can_manage_documents
 
 验收：撤销后列表、详情、下载和 RAG 权限立即同时失效，历史审计仍存在。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。撤销时对 grant 行加锁，管理员或文档所属部门主管可幂等写入 `revoked_by_user_id/revoked_at`，不物理删除。运行时只查询 active 且文档/source 仍 active 的 grant；数据库集成测试确认错误部门主管为 403、重复撤销保持第一次审计事实、撤销后目标 `doc_id` 立即退出检索 scope。
 
-### ❌ Document Access Policy 与检索下推
+### ✅ Document Access Policy 与检索下推
 
 上下文：这不是新 URL，但决定上述 grant 是否真正影响 RAG。
 
@@ -267,11 +267,11 @@ can_manage_documents
 
 验收：使用同一组测试数据同时验证列表、详情、下载、Keyword、Vector、Hybrid 和父块扩展。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。`DocumentAccessPolicy` 合并管理员全读、public、所属部门、原始 `allowed_users` 和 active grant，并返回可展示的授权来源。`/rag/chat/stream/events` 及兼容 RAG 路由在入口冻结可信 scope，TaskPlan 恢复时重新读取 active grant；ES 使用 `metadata.doc_id terms`、Milvus 使用顶层 `doc_id in`，父块扩展复用同一 ES filter。知识文档列表在 SQL 层使用同一 scope，详情、预览和下载再通过同一单文档裁决。真实 grant 数据验证授权与撤销会同时改变页面读取、下载和检索范围，ES/Milvus/父块、Agent Task 恢复及 NL2SQL/RAG 契约回归均通过。
 
 ## 6. P0：会话管理
 
-### ❌ `GET /conversations`
+### ✅ `GET /conversations`
 
 上下文：侧边栏需要当前用户自己的持久化会话列表。
 
@@ -283,9 +283,9 @@ can_manage_documents
 
 验收：不同用户会话完全隔离，翻页期间无重复或漏项。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。新增当前用户会话目录查询，使用 `updated_at + internal id` keyset 倒序分页；SQL 同时聚合消息数、最后消息角色和有界摘要，不加载完整消息正文。相同外部 `session_id` 按用户映射到不同内部 ID，真实 PostgreSQL 与 HTTP 测试验证用户隔离、稳定翻页和无跨用户泄露。
 
-### ❌ `POST /conversations`
+### ✅ `POST /conversations`
 
 上下文：发送第一条消息前需要稳定外部 `session_id`。
 
@@ -297,9 +297,9 @@ can_manage_documents
 
 验收：并发创建 ID 唯一，新会话可立即读取。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。服务端生成 `conv_` 外部 ID，并通过 user ID 构建内部 scoped ID；标题经过 Schema 归一化，唯一冲突有限重试。新会话立即进入当前用户目录，数据库唯一约束和 HTTP 契约已验证。
 
-### ❌ `PATCH /conversations/{session_id}`
+### ✅ `PATCH /conversations/{session_id}`
 
 上下文：用户需要重命名侧边栏会话。
 
@@ -311,9 +311,9 @@ can_manage_documents
 
 验收：越权失败，重命名后列表顺序和消息不受影响。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。只允许当前用户按外部 session ID 更新非空有界标题，未知或他人会话统一按不可见资源处理；重命名不改 `updated_at`，因此不改变列表顺序，也不修改任何消息。合法、空白 422、越权和排序保持均已验证。
 
-### ❌ `DELETE /conversations/{session_id}`
+### ✅ `DELETE /conversations/{session_id}`
 
 上下文：删除 PostgreSQL 会话而保留 Redis 近期窗口会让复用 ID 继承旧上下文。
 
@@ -325,9 +325,9 @@ can_manage_documents
 
 验收：删除后历史接口为空/404，复用旧 ID 不读取旧近期消息。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。当前契约采用幂等硬删除：PostgreSQL conversation 删除级联 message/summary，同时通过统一 `ConversationMemoryStore.delete_conversation()` 清除 Redis 或进程内近期窗口。删除不存在/不可见会话不暴露资源事实；复用同一外部 session ID 不会继承旧上下文。
 
-### ❌ `GET /conversations/{session_id}/messages`
+### ✅ `GET /conversations/{session_id}/messages`
 
 上下文：刷新和历史滚动需要读取持久化消息。
 
@@ -339,23 +339,23 @@ can_manage_documents
 
 验收：消息顺序稳定，两个用户的同名 session 不会串数据。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。按数据库 `sequence_no` 正序及不透明 cursor 分页，公开 user/assistant 正文、有效来源、TaskPlan ID/状态、终态和创建时间；无效 cursor 使用稳定错误。真实数据库验证顺序、翻页、同名 session 用户隔离及来源/任务状态恢复。
 
-### ❌ 统一 `/rag/chat/stream/events` 会话落库契约
+### ✅ 统一 `/rag/chat/stream/events` 会话落库契约
 
-上下文：React 只调用结构化流接口，因此只需保证这条入口无论内部选择哪个 pipeline provider，都能形成一致的持久化 turn。
+上下文：React 只调用结构化流接口，当前主业务配置固定为 `RAG_PIPELINE_PROVIDER=rag_agent`；Classic 和普通 LangGraph 是保留实现，不是 Agent Router 的动态状态，也不属于本次前端主链路验收。
 
-为什么需要：前端不接其他 RAG 接口，但结构化流内部 provider 变化不能导致历史行为漂移。
+为什么需要：`rag_agent` 内部会进入 simple RAG、复杂 Research TaskPlan、文档管理、Direct Web、NL2SQL 或澄清分支，这些分支必须形成一致、可恢复的聊天 turn。
 
-实现方案：在结构化流应用边界集中定义一次 turn 的保存时点、字段和幂等键；避免与现有 RagAgent 内部持久化重复写入。
+实现方案：在结构化流应用边界集中定义一次 turn 的保存时点、字段和固定幂等键；汇总 answer delta、来源、TaskPlan ID/状态和 error，并阻止 RagAgent 内部重复持久化。
 
-验收：针对结构化流分别验证当前支持的 provider，完成、error、abort 和 TaskPlan 等路径的历史结果符合明确契约。
+验收：针对当前 `rag_agent` 主业务验证 Router 意图分流，以及完成、error、abort、TaskPlan 和固定 turn 重试路径的历史结果符合明确契约。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。新增 `StructuredConversationTurnRecorder`，只在 `/rag/chat/stream/events` 应用边界汇总并持久化当前 turn；固定 turn ID 派生确定性 message ID，PostgreSQL `ON CONFLICT` 与 Memory Store 去重共同保证重试幂等。正常完成保存 user/assistant、sources 和任务事实；error 保存错误终态及已有内容；abort 不伪造空 assistant。敏感 NL2SQL 直出路径也复用同一 recorder。`rag_agent` Router、澄清、会话上下文和会话 HTTP/数据库契约测试通过；Classic/普通 LangGraph 不作为本次前端主链路验收。
 
 ## 7. P0：知识文档读取
 
-### ❌ `GET /knowledge/documents`
+### ✅ `GET /knowledge/documents`
 
 上下文：GitLab 文档事实表存在，但没有面向用户的 ACL 文档目录。
 
@@ -367,9 +367,9 @@ can_manage_documents
 
 验收：同部门全量可见，其他部门只有 explicit grant 文档可见。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。新增 `KnowledgeDocumentReadRepository/Service`，使用 `updated_at + doc_id` keyset cursor，支持路径/doc_id 文本、文档所属部门和六类文档格式筛选。只查询 active document/source，并把管理员、public、source 所属部门、原始 `allowed_users` 和 active grant 组合成 PostgreSQL ACL 条件；客户端筛选在 ACL 之后继续收窄。真实数据库验证普通用户仅看到本部门、public、原始单用户 ACL 和精确 grant，管理员全量可见，分页无重复遗漏。
 
-### ❌ `GET /knowledge/documents/{doc_id}`
+### ✅ `GET /knowledge/documents/{doc_id}`
 
 上下文：现有 `/rag/documents/{doc_id}` 是未接真实 GitLab ACL 的开发接口，不能供 React 使用。
 
@@ -381,9 +381,9 @@ can_manage_documents
 
 验收：已知 doc ID 不能绕过列表 ACL。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。详情从正式 manifest 与 source 聚合可信文件名/标题、仓库路径、所属部门、格式、固定 revision、更新时间、Project 路径、visibility 和当前授权来源。已知 `doc_id` 必须再次通过 `DocumentAccessPolicy`；不存在、inactive 和不可见统一返回 `KNOWLEDGE_DOCUMENT_NOT_FOUND` 404，避免暴露资源存在性。真实数据库验证隐藏文档不能绕过列表 ACL。
 
-### ❌ `GET /knowledge/documents/{doc_id}/content`
+### ✅ `GET /knowledge/documents/{doc_id}/content`
 
 上下文：前端需要阅读 Markdown/TXT 和 Office/PDF 文档，但不能直接拿 GitLab Token。
 
@@ -395,9 +395,9 @@ can_manage_documents
 
 验收：预览 revision 与详情一致，超限和不支持格式返回稳定错误。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。后端使用 GitLab Source 的只读 sync token，严格按 manifest 中的 repository path 与 source revision 获取 bytes，并校验配置大小上限和 Git blob ID。Markdown/TXT 只接受 UTF-8；PDF/DOCX/PPTX/XLSX 复用现有 loader 生成最多 200000 字符的 extracted text，Office/PDF 解析前复用 ZIP Bomb、加密、签名、页数和结构校验。响应返回 `render_mode`、固定 revision、`truncated` 和稳定 warning code；HTML 不在支持类型内。格式、超限、解析和 GitLab 失败均有稳定错误。
 
-### ❌ `GET /knowledge/documents/{doc_id}/download`
+### ✅ `GET /knowledge/documents/{doc_id}/download`
 
 上下文：用户需要下载 GitLab 源文件。
 
@@ -409,11 +409,11 @@ can_manage_documents
 
 验收：越权下载失败，文件名无 header/path traversal，内容与 revision 一致。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。下载复用与 content 完全相同的 ACL、固定 revision、大小和 blob 校验，不接受客户端 path/ref/header 覆盖。响应使用服务端净化 basename、ASCII fallback 与 RFC 5987 UTF-8 filename、固定格式 MIME、`nosniff`、private no-store 和 source revision header。真实数据库验证跨部门 grant 可下载、撤销后立即统一 404、内容与固定 revision 一致，HTTP 测试验证中文/引号文件名不会产生 CRLF 或路径/header 注入。
 
 ## 8. P0：TaskPlan 恢复
 
-### ❌ `GET /agent/task-plans`
+### ✅ `GET /agent/task-plans`
 
 上下文：当前只能按已知 ID 查询，刷新页面后无法发现未完成计划。
 
@@ -425,11 +425,11 @@ can_manage_documents
 
 验收：刷新后能找回 waiting/executing/failed 任务，计划内部敏感事实不泄露。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。新增 `20260824_0018`，在 TaskPlan 事实表保存创建它的外部 `session_id`，并增加 `owner + updated_at + task_plan_id` 与 `owner + session + updated_at + task_plan_id` 索引；RagAgent 创建计划时从服务端 state 绑定该字段。列表始终按当前认证 `owner_user_id` 查询，即使管理员也不会默认跨用户；支持 status/session 筛选和稳定 keyset 分页。SQL 只投影 ID、类型、状态、会话、目标摘要、公开错误码与时间，不读取或返回完整 snapshot、工具输入、租约、命令、RuntimeRecord 或 checkpoint。真实 PostgreSQL 验证同时间游标、用户隔离、筛选、摘要限制和内部字段防泄漏；HTTP 200、非法 cursor 400、参数 422、OpenAPI、Schema 描述、Research Public View 回归和 0018 downgrade/upgrade 往返均通过。
 
 ## 9. P0：结构化流与来源契约
 
-### ❌ `POST /rag/chat/stream/events` 前端契约固化
+### ✅ `POST /rag/chat/stream/events` 前端契约固化
 
 上下文：路由已经存在，但 StreamingResponse 的事件 payload 不能仅靠前端阅读实现代码猜测。
 
@@ -446,9 +446,9 @@ can_manage_documents
 
 验收：前端 fixture 来自真实后端 schema/测试样例，不手写另一套漂移协议。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。新增公开 SSE Schema 和 `contract_version=1.0`；所有 event 的 JSON data 都携带版本与 request ID，核心 `agent_route_selected`、`sources`、`answer_delta`、Guard、TaskPlan、NL2SQL、`done` 和 `error` 在写入 wire 前执行 Pydantic 必需字段校验。保持现有 `event:`/`data:` wire 向后兼容，未知新增事件保留公共字段并允许前端安全忽略。正常流固定以唯一 `done` 终止，错误流以 `error` 终止且不再发送 done；HTTP/OpenAPI 明确声明 `X-Request-ID` header 和逻辑 frame。专用契约测试验证当前 `rag_agent` 顺序、完成/error、核心字段拒绝、未知事件兼容和 header/payload request ID 对齐；澄清、NL2SQL、会话持久化与 Schema 描述回归通过，未运行 Classic、普通 LangGraph 或 Provider Matrix。
 
-### ❌ `RagSource` 稳定导航字段
+### ✅ `RagSource` 稳定导航字段
 
 上下文：当前 `doc_id` 已存在，但网页 URL 主要依赖无类型 metadata，前端会被迫猜 key。
 
@@ -458,7 +458,7 @@ can_manage_documents
 
 验收：前端不读取任意 metadata URL；文档和网页来源均有 contract test。
 
-实施记录：未开始。
+实施记录：2026-08-24 完成。`RagSource` 向后兼容增加 `source_type: knowledge_document | web` 和 `href`。知识文档通过稳定 `doc_id` 导航并保持 href 为空；Web 只接受长度受限、无控制字符、无用户名密码的 HTTP(S) URL。`docs_to_sources()` 是唯一转换出口：可信 URL 进入 href，原始 `metadata.url` 不再公开；脚本协议、带凭据或无效 URL 不会成为可点击 Web 来源。契约测试覆盖知识文档、合法 Web、恶意 URL、字段说明和 SSE sources payload。
 
 ## 10. 实施顺序
 
@@ -477,11 +477,11 @@ can_manage_documents
 | --- | ---: | ---: |
 | 可复用现有 interface | 10 | 0 |
 | 身份与能力 | 4 | 0 |
-| 用户与功能权限 | 3 | 4 |
-| 跨部门文档授权 | 0 | 4 |
-| 会话管理 | 0 | 6 |
-| 知识文档 | 0 | 4 |
-| TaskPlan 恢复 | 0 | 1 |
-| 结构化流与来源契约 | 0 | 2 |
+| 用户与功能权限 | 7 | 0 |
+| 跨部门文档授权 | 4 | 0 |
+| 会话管理 | 6 | 0 |
+| 知识文档 | 4 | 0 |
+| TaskPlan 恢复 | 1 | 0 |
+| 结构化流与来源契约 | 2 | 0 |
 
-最后更新：2026-08-24，身份与能力 4/4、用户与功能权限管理 3/7；下一切片实现用户创建、access 原子替换、状态和重置密码。React 文档仍是待后端 P0 完成后重新生成的草案。
+最后更新：2026-08-24，全部后端 P0 已完成：身份与能力 4/4、用户与功能权限管理 7/7、跨部门文档授权 4/4、会话管理 6/6、知识文档 4/4、TaskPlan 恢复 1/1、结构化流与来源契约 2/2。下一阶段必须基于当前 OpenAPI、SSE Schema 和权限事实重新生成 React `docs/SPEC.md`、`docs/ARCHITECTURE.md` 及 `docs/features/*/feature.md`；旧草案仍不能直接用于编码。
