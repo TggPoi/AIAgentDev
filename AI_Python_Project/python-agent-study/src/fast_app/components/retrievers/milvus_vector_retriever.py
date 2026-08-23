@@ -126,6 +126,16 @@ def build_milvus_permission_filter_expr(filters: RetrievalFilters) -> str | None
             f'array_contains({MILVUS_METADATA_FIELD}["allowed_users"], "{user_id}")'
         )
 
+    if filters.granted_document_ids:
+        # doc_id 是 Milvus 顶层 scalar 字段；精确 grant 与 public/部门条件做 OR。
+        quoted_doc_ids = ", ".join(
+            f'"{escape_milvus_string(doc_id)}"'
+            for doc_id in filters.granted_document_ids
+        )
+        permission_expressions.append(
+            f"{MILVUS_DOC_ID_FIELD} in [{quoted_doc_ids}]"
+        )
+
     if not permission_expressions:
         # 没有任何可访问范围时，返回一个必定不命中的表达式，避免误放开权限。
         return f'{MILVUS_METADATA_FIELD}["visibility"] == "__deny_all__"'

@@ -1,4 +1,4 @@
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from fast_app.domain.knowledge_permissions import RetrievalPermissionScope
@@ -17,7 +17,12 @@ class KnowledgePermissionPolicy:
     不直接访问 ES / Milvus，也不读取客户端传入的权限字段。
     """
 
-    def build_scope(self, user: CurrentUserContext) -> RetrievalPermissionScope:
+    def build_scope(
+        self,
+        user: CurrentUserContext,
+        *,
+        granted_document_ids: Iterable[str] = (),
+    ) -> RetrievalPermissionScope:
         """根据当前用户身份生成服务端检索权限范围。"""
 
         can_read_all = (
@@ -30,6 +35,7 @@ class KnowledgePermissionPolicy:
                 can_read_all=True,
                 user_id=user.user_id,
                 department_codes=[],
+                granted_document_ids=[],
                 allow_public=True,
             )
 
@@ -37,6 +43,7 @@ class KnowledgePermissionPolicy:
             can_read_all=False,
             user_id=user.user_id if user.is_authenticated else None,
             department_codes=list(user.department_codes),
+            granted_document_ids=sorted(set(granted_document_ids)),
             allow_public=True,
         )
 
@@ -66,6 +73,13 @@ def build_retrieval_filters_from_mapping(
         else []
     )
 
+    raw_granted_document_ids = filters.get("granted_document_ids") or []
+    granted_document_ids = (
+        [str(item) for item in raw_granted_document_ids]
+        if isinstance(raw_granted_document_ids, list)
+        else []
+    )
+
     source_path = filters.get("source_path")
     user_id = filters.get("user_id")
 
@@ -75,6 +89,7 @@ def build_retrieval_filters_from_mapping(
         can_read_all=bool(filters.get("can_read_all", False)),
         user_id=str(user_id) if user_id else None,
         department_codes=department_codes,
+        granted_document_ids=granted_document_ids,
         allow_public=bool(filters.get("allow_public", True)),
         knowledge_version=(
             int(filters["knowledge_version"])

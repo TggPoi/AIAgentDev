@@ -46,7 +46,7 @@ from fast_app.domain.research_task_plan import (
 )
 from fast_app.domain.rag_models import RetrievalFilters
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.domain.agent_tool_permissions import PermissionCode, RoleCode
+from fast_app.domain.agent_tool_permissions import RoleCode
 from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
 from fast_app.services.agent_tasks.agent_task_lease_manager import (
     AgentTaskLeaseManager,
@@ -70,6 +70,10 @@ from fast_app.services.exceptions import (
 )
 from fast_app.services.knowledge.knowledge_document_management_service import (
     KnowledgeDocumentManagementService,
+)
+from fast_app.services.knowledge.document_access_policy import DocumentAccessPolicy
+from fast_app.services.knowledge.knowledge_permission_policy import (
+    KnowledgePermissionPolicy,
 )
 from fast_app.services.research.research_evidence_evaluator import ResearchEvidenceEvaluator
 from fast_app.services.research.research_tool_loop import (
@@ -167,6 +171,7 @@ class AgentTaskExecutor:
         research_executor: AgenticResearchExecutor | None = None,
         document_executor: DocumentTaskExecutor | None = None,
         capability_service: AgentTaskCapabilityService | None = None,
+        document_access_policy: DocumentAccessPolicy | None = None,
         prompt_guard=None,
     ) -> None:
         """装配专用执行器；可注入协作者，旧脚本仍可传原有依赖。
@@ -181,6 +186,7 @@ class AgentTaskExecutor:
         self._task_plan_store = task_plan_store
         self._lease_manager = lease_manager
         self._capability_service = capability_service
+        self._document_access_policy = document_access_policy
         self._plan_validator = AgentTaskPlanValidator()
         if research_executor is None:
             # Research 三层依赖方向固定：ToolLoop 执行一轮工具，Worker 负责
@@ -559,7 +565,7 @@ class AgentTaskExecutor:
                 min_score=policy.min_score,
                 # source/section 来自已保存策略，用户/部门/全局读权限则从
                 # 当前 user 重新构造，不复用 TaskPlan 创建时的旧 ACL。
-                filters=self._current_filters(
+                filters=await self._current_filters(
                     user,
                     source_path=policy.source_path,
                     section_path=policy.section_path,
@@ -579,7 +585,7 @@ class AgentTaskExecutor:
             top_k=self._settings.rag_default_top_k,
             candidate_k=None,
             min_score=self._settings.rag_default_min_score,
-            filters=self._current_filters(user),
+            filters=await self._current_filters(user),
             langchain_config_factory=langchain_config_factory,
         )
 
@@ -695,7 +701,7 @@ class AgentTaskExecutor:
             top_k=policy.top_k,
             candidate_k=policy.candidate_k,
             min_score=policy.min_score,
-            filters=self._current_filters(
+            filters=await self._current_filters(
                 user,
                 source_path=policy.source_path,
                 section_path=policy.section_path,
@@ -742,8 +748,8 @@ class AgentTaskExecutor:
             )
         plan.capability_snapshot = capability
 
-    @staticmethod
-    def _current_filters(
+    async def _current_filters(
+        self,
         user: CurrentUserContext,
         *,
         source_path: str | None = None,
@@ -756,18 +762,19 @@ class AgentTaskExecutor:
         ``CurrentUserContext`` 重新计算，不使用 TaskPlan 创建时的旧 ACL。
         """
 
-        # system_admin 或显式 knowledge:read:all 可跨部门读取；否则
-        # Retriever 必须使用 user_id/department_codes/allow_public 实施数据层过滤。
+        scope = (
+            await self._document_access_policy.build_retrieval_scope(user)
+            if self._document_access_policy is not None
+            else KnowledgePermissionPolicy().build_scope(user)
+        )
         return RetrievalFilters(
             source_path=source_path,
             section_path=section_path or [],
-            user_id=user.user_id,
-            department_codes=list(user.department_codes),
-            can_read_all=(
-                user.has_global_role(RoleCode.SYSTEM_ADMIN.value)
-                or user.has_global_permission(PermissionCode.KNOWLEDGE_READ_ALL.value)
-            ),
-            allow_public=True,
+            user_id=scope.user_id,
+            department_codes=scope.department_codes,
+            granted_document_ids=scope.granted_document_ids,
+            can_read_all=scope.can_read_all,
+            allow_public=scope.allow_public,
         )
 
 

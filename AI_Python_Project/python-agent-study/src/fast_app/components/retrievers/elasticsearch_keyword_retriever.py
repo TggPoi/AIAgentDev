@@ -19,6 +19,7 @@ from fast_app.ingestion.stores.rag_store_schema import (
     ES_IK_SEARCH_ANALYZER,
     ES_METADATA_ALLOWED_DEPARTMENTS_FIELD,
     ES_METADATA_ALLOWED_USERS_FIELD,
+    ES_METADATA_DOC_ID_FIELD,
     ES_METADATA_FIELD,
     ES_METADATA_SECTION_PATH_FIELD,
     ES_METADATA_SOURCE_PATH_FIELD,
@@ -120,6 +121,16 @@ def build_es_permission_filter(filters: RetrievalFilters) -> dict[str, Any] | No
     if filters.user_id:
         # allowed_users 支持把单篇文档显式共享给某个用户。
         should_clauses.append({"term": {ES_METADATA_ALLOWED_USERS_FIELD: filters.user_id}})
+
+    if filters.granted_document_ids:
+        # 数据库 grant 是运行时事实，不改写 GitLab ACL；按精确 doc_id 独立放入 OR。
+        should_clauses.append(
+            {
+                "terms": {
+                    ES_METADATA_DOC_ID_FIELD: filters.granted_document_ids
+                }
+            }
+        )
 
     if not should_clauses:
         # 没有任何可访问范围时，构造一个必定无法命中的条件，避免放开检索边界。

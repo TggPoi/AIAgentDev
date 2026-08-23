@@ -56,6 +56,10 @@ from fast_app.services.agent_tasks.agent_task_capability_service import (
     AgentTaskCapabilityService,
 )
 from fast_app.services.agent_tasks.agent_tool_audit_service import AgentToolAuditService
+from fast_app.services.knowledge.document_access_policy import DocumentAccessPolicy
+from fast_app.services.knowledge.document_access_repository import (
+    DocumentAccessRepository,
+)
 from fast_app.services.agent_tasks.agent_tool_permission_service import AgentToolPermissionService
 from fast_app.integrations.gitlab.agent_change_service import GitLabAgentChangeService
 from fast_app.integrations.gitlab.repository import GitLabRepository
@@ -480,6 +484,9 @@ def get_agent_task_executor(
         research_executor=research_executor,
         document_executor=document_executor,
         capability_service=capability_service,
+        document_access_policy=DocumentAccessPolicy(
+            DocumentAccessRepository(session)
+        ),
         prompt_guard=prompt_guard,
     )
 
