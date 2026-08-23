@@ -1,56 +1,60 @@
 # 用户与功能权限 Feature
 
-## 1. 目标
+## 1. 目标与角色边界
 
-让管理员管理全部账号，让部门主管创建和管理本部门普通员工，并在服务端允许范围内分配功能、Agent Tool 和部门文档操作权限。
+管理员管理全平台账号；部门主管只创建和管理自己主部门内的普通员工；员工没有用户管理能力。跨部门文档读取授权由独立 feature 处理。
 
-跨部门文档读取授权不在本 feature 中处理，见 `../document-access-grants/feature.md`。
-
-## 2. 账号类型
-
-| 类型 | 管理范围 |
+| 账号类型 | 管理范围 |
 | --- | --- |
-| `admin` | 全平台用户、部门和授权 |
-| `department_manager` | 自己主部门的普通员工 |
-| `employee` | 无用户管理能力 |
+| `admin` | 可管理全平台允许的账号、部门和权限 |
+| `department_manager` | 仅自己主部门内的 employee |
+| `employee` | 无管理范围 |
 
-部门主管不能创建管理员、其他主管或其他部门账号，也不能修改管理员/主管账号。
+前端不复制这套规则作为授权器；以 `/auth/capabilities`、服务端裁剪后的 catalog 及每次 mutation 结果为准。
 
-## 3. 页面
+## 2. 后端契约
 
-- 用户分页列表：关键词、状态、部门筛选。
-- 创建用户：用户名、邮箱、显示名、初始密码、账号类型、部门。
-- 用户详情：基本信息、状态、角色、有效权限、直接授权。
-- 权限编辑：使用服务端目录生成复选项，提交完整 access snapshot。
-- 启用/禁用和重置密码：高风险操作二次确认。
+| 接口 | 说明 |
+| --- | --- |
+| `GET /admin/access/catalog` | 当前 actor 可选择的部门、账号类型、直接权限、部门角色 |
+| `GET /admin/users` | `query`、`status`、`department_code`、`cursor`、`limit` |
+| `GET /admin/users/{user_id}` | 目标账号完整访问快照 |
+| `POST /admin/users` | 创建账号与初始访问快照，返回 201 |
+| `PUT /admin/users/{user_id}/access` | 原子替换账号类型、部门、部门角色和直接权限 |
+| `PATCH /admin/users/{user_id}/status` | `active|disabled`；禁用会撤销凭证 |
+| `POST /admin/users/{user_id}/reset-password` | 设置新密码并撤销现有凭证 |
 
-## 4. 前端 interface
+列表摘要包含账号类型、状态、部门、主部门与 `updated_at`。详情区分全局角色、直接权限、有效全局权限，以及各部门的成员关系、角色和有效权限。
 
-```text
-getAccessCatalog() -> AccessCatalog
-listManagedUsers(filters, cursor) -> Page<ManagedUser>
-getManagedUser(id) -> ManagedUserDetail
-createManagedUser(input) -> ManagedUserDetail
-replaceUserAccess(id, snapshot) -> ManagedUserDetail
-setUserStatus(id, status) -> ManagedUserDetail
-resetUserPassword(id, newPassword) -> PasswordResetResult
-```
+## 3. 表单模型
 
-`AccessCatalog` 由后端根据当前管理者裁剪。前端不能维护“哪些权限允许主管下放”的硬编码副本。
+创建表单提交 `username`、`password`、可选 `email/display_name`、`account_type`、`department_access[]`、`direct_permission_codes[]`。每个 department access 包含 `department_code`、`is_primary`、`role_codes`，整个快照必须且只能有一个主部门。
 
-## 5. 后端实现要求
+Access 编辑使用 PUT 完整快照，不做多个小 mutation。所有选择项按服务端 catalog 生成；catalog 变化后清理已不在允许集合中的草稿项，并要求用户重新确认，不能偷偷提交旧 code。
 
-- 创建用户及角色、部门、直接权限写入必须在一个事务内完成。
-- 更新 access 使用完整 snapshot 原子替换，避免多接口部分成功。
-- 禁用用户后，认证层立即拒绝新请求，并按确定策略撤销 refresh token/API Key。
-- 用户名和邮箱冲突返回稳定 409 code。
-- 所有管理写操作记录 actor、target、变更前后摘要和 request ID。
+## 4. 页面与交互
 
-## 6. 验收标准
+- `/admin/users`：关键词、状态、部门筛选和游标分页。
+- `/admin/users/:id`：基本信息、角色/权限来源、编辑 access、状态和密码重置。
+- 创建与 access 编辑用分步或分组表单展示主部门约束及直接权限风险等级。
+- 禁用、重置密码和改变账号类型需要二次确认；提交中锁定按钮。
+- 密码仅存在于当前表单内，成功或失败后立即清空。
 
-1. 管理员能创建三类账号并在全平台管理。
-2. 部门主管只能创建自己部门普通员工。
-3. 部门主管不能把自己没有或不可下放的权限授予员工。
-4. 普通员工无法访问任何管理接口。
-5. access 更新失败时不留下部分角色或权限。
-6. 禁用账号不能继续 refresh 或调用业务接口。
+Mutation 不做乐观更新。成功后用响应替换 detail 并失效列表；禁用/重置响应展示被撤销的 refresh token/API Key 数量，但不展示凭证内容。
+
+## 5. 失败与安全处理
+
+- `409` 用户名/邮箱冲突或最后管理员/自操作保护：显示服务端稳定消息并刷新目标详情。
+- `403/404`：actor 已失去管理范围时关闭编辑并返回列表。
+- `422`：字段级错误映射到账号、主部门、角色或权限字段。
+- 前端不能提供任意 code 输入框，也不能允许主管通过改请求构造其他部门。
+- 所有写入由后端事务和审计保证；UI 不声称本地表单就是最终权限事实。
+
+## 6. 验收测试
+
+1. 管理员能按 catalog 创建三类账号并管理全平台范围。
+2. 主管只能看到和创建自己主部门员工，不能分配不可下放项。
+3. 普通员工没有入口且请求被后端拒绝。
+4. access 更新要么完整成功，要么 UI 保留旧服务端快照。
+5. 禁用和重置密码后旧 refresh/API Key 失效。
+6. 自操作和最后管理员保护冲突能安全恢复页面状态。
