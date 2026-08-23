@@ -66,6 +66,133 @@ class UserListCursorInvalidError(AppServiceError):
     status_code = 400
 
 
+class ManagedUserConflictError(AppServiceError):
+    """用户名、邮箱或并发账号状态与当前写请求冲突。"""
+
+    error_code = "MANAGED_USER_CONFLICT"
+    status_code = 409
+
+
+class ManagedUserAccessInvalidError(AppServiceError):
+    """账号访问快照不满足服务端目录或组织约束。"""
+
+    error_code = "MANAGED_USER_ACCESS_INVALID"
+    status_code = 422
+
+
+class ManagedUserSelfOperationError(AppServiceError):
+    """高风险用户管理写操作不能以当前 actor 自身为目标。"""
+
+    error_code = "MANAGED_USER_SELF_OPERATION_FORBIDDEN"
+    status_code = 409
+
+
+class LastSystemAdminProtectedError(AppServiceError):
+    """操作会使系统失去最后一个 active 系统管理员。"""
+
+    error_code = "LAST_SYSTEM_ADMIN_PROTECTED"
+    status_code = 409
+
+
+class DocumentAccessPermissionDeniedError(AppServiceError):
+    """当前 actor 不具备目标文档所属部门的 grant 管理权限。"""
+
+    error_code = "DOCUMENT_ACCESS_PERMISSION_DENIED"
+    status_code = 403
+
+
+class DocumentAccessGrantNotFoundError(AppServiceError):
+    """目标账号、文档或 grant 不存在于可操作范围。"""
+
+    error_code = "DOCUMENT_ACCESS_GRANT_NOT_FOUND"
+    status_code = 404
+
+
+class DocumentAccessGrantInvalidError(AppServiceError):
+    """grant 请求不满足跨部门精确文档授权语义。"""
+
+    error_code = "DOCUMENT_ACCESS_GRANT_INVALID"
+    status_code = 422
+
+
+class DocumentAccessGrantConflictError(AppServiceError):
+    """并发请求已经创建相同 active 文档授权。"""
+
+    error_code = "DOCUMENT_ACCESS_GRANT_CONFLICT"
+    status_code = 409
+
+
+class KnowledgeDocumentNotFoundError(AppServiceError):
+    """文档不存在或当前用户不可见；统一隐藏资源存在性。"""
+
+    error_code = "KNOWLEDGE_DOCUMENT_NOT_FOUND"
+    status_code = 404
+
+
+class KnowledgeDocumentCursorInvalidError(AppServiceError):
+    """知识文档列表 cursor 无法解析。"""
+
+    error_code = "KNOWLEDGE_DOCUMENT_CURSOR_INVALID"
+    status_code = 400
+
+
+class KnowledgeDocumentContentTooLargeError(AppServiceError):
+    """固定 revision 的源文件超过服务端读取上限。"""
+
+    error_code = "KNOWLEDGE_DOCUMENT_CONTENT_TOO_LARGE"
+    status_code = 413
+
+
+class KnowledgeDocumentPreviewUnsupportedError(AppServiceError):
+    """源文件类型不能生成安全文本预览。"""
+
+    error_code = "KNOWLEDGE_DOCUMENT_PREVIEW_UNSUPPORTED"
+    status_code = 415
+
+
+class KnowledgeDocumentPreviewFailedError(AppServiceError):
+    """受支持格式的源文件无法安全解析为文本预览。"""
+
+    error_code = "KNOWLEDGE_DOCUMENT_PREVIEW_FAILED"
+    status_code = 422
+
+
+class KnowledgeDocumentContentUnavailableError(AppServiceError):
+    """manifest 固定 revision 与 GitLab 文件内容无法一致读取。"""
+
+    error_code = "KNOWLEDGE_DOCUMENT_CONTENT_UNAVAILABLE"
+    status_code = 409
+
+
+class KnowledgeDocumentSourceUnavailableError(AppServiceError):
+    """GitLab 读取或文档解析服务当前不可用。"""
+
+    error_code = "KNOWLEDGE_DOCUMENT_SOURCE_UNAVAILABLE"
+    error_category = "external_service_error"
+    status_code = 503
+
+
+class ConversationNotFoundError(AppServiceError):
+    """当前用户命名空间内不存在目标会话。"""
+
+    error_code = "CONVERSATION_NOT_FOUND"
+    status_code = 404
+
+
+class ConversationCursorInvalidError(AppServiceError):
+    """会话或消息 cursor 无法解析。"""
+
+    error_code = "CONVERSATION_CURSOR_INVALID"
+    status_code = 400
+
+
+class ConversationConflictError(AppServiceError):
+    """会话 ID 或并发持久化事实冲突。"""
+
+    error_code = "CONVERSATION_CONFLICT"
+    status_code = 409
+
+
 class PromptInjectionBlockedError(AppServiceError):
     """Prompt Injection 或敏感信息窃取请求被安全策略拦截。"""
 
@@ -92,6 +219,13 @@ class AgentTaskPlanBusyError(AppServiceError):
 
     error_code = "AGENT_TASK_PLAN_BUSY"
     status_code = 409
+
+
+class AgentTaskPlanCursorInvalidError(AppServiceError):
+    """TaskPlan 列表 cursor 无法解析。"""
+
+    error_code = "AGENT_TASK_PLAN_CURSOR_INVALID"
+    status_code = 400
 
 
 class AgentTaskPlanLeaseLostError(AppServiceError):
