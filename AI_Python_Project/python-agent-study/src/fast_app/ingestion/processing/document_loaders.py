@@ -16,6 +16,8 @@ from fast_app.domain.knowledge_models import (
     LoadedExcelDocument,
     LoadedPowerPointDocument,
     PowerPointSlide,
+    VisionImageContent,
+    VisionImageOccurrence,
 )
 from fast_app.ingestion.processing.metadata_models import build_document_metadata
 
@@ -87,6 +89,15 @@ class TextDocumentLoader:
 class PowerPointDocumentLoader:
     """把 PPTX 的可检索文本转换为单个 Markdown-like 文档。"""
 
+    def __init__(
+        self,
+        *,
+        max_image_bytes: int | None = None,
+        max_image_pixels: int | None = None,
+    ) -> None:
+        self._max_image_bytes = max_image_bytes
+        self._max_image_pixels = max_image_pixels
+
     def load(self, base_dir: str) -> list[LoadedDocument]:
         """按路径稳定排序，递归读取目录中的所有 PPTX 文件。"""
 
@@ -142,8 +153,16 @@ class PowerPointDocumentLoader:
         file_path = Path(path)
         source = source_path or file_path.as_posix()
         presentation = Presentation(file_path)
+        metadata = build_document_metadata(
+            source_path=source,
+            document_type="powerpoint",
+            knowledge_base_dir=knowledge_base_dir,
+        )
+        doc_id = str(metadata["doc_id"])
         warnings: set[str] = set()
         slides: list[PowerPointSlide] = []
+        vision_contents: dict[str, VisionImageContent] = {}
+        vision_occurrences: list[VisionImageOccurrence] = []
 
         for slide_index, slide in enumerate(presentation.slides, start=1):
             title_shape = slide.shapes.title
@@ -154,9 +173,20 @@ class PowerPointDocumentLoader:
             # 标题已经写入 section 标题，后续遍历时跳过，避免同一文本重复入库。
             skip_ids = {title_shape.shape_id} if title_shape is not None else set()
             slide_warnings: set[str] = set()
+            slide_occurrences: list[VisionImageOccurrence] = []
             body = _extract_powerpoint_shapes(
-                slide.shapes, skip_ids, slide_warnings
+                slide.shapes,
+                skip_ids,
+                slide_warnings,
+                doc_id=doc_id,
+                slide_id=int(getattr(slide, "slide_id", slide_index)),
+                slide_number=slide_index,
+                vision_contents=vision_contents,
+                vision_occurrences=slide_occurrences,
+                max_image_bytes=self._max_image_bytes,
+                max_image_pixels=self._max_image_pixels,
             )
+            vision_occurrences.extend(slide_occurrences)
             warnings.update(slide_warnings)
 
             # 先判断 has_notes_slide，避免访问 slide.notes_slide 时隐式创建备注页。
@@ -174,21 +204,22 @@ class PowerPointDocumentLoader:
                     content="\n\n".join(part for part in body if part),
                     notes=notes,
                     warnings=tuple(sorted(slide_warnings)),
+                    vision_occurrence_ids=tuple(
+                        occurrence.occurrence_id for occurrence in slide_occurrences
+                    ),
                 )
             )
 
-        metadata = build_document_metadata(
-            source_path=source,
-            document_type="powerpoint",
-            knowledge_base_dir=knowledge_base_dir,
-        )
         metadata.update(
             slide_count=len(presentation.slides),
+            image_occurrence_count=len(vision_occurrences),
             extraction_warnings=sorted(warnings),
         )
         return LoadedPowerPointDocument(
             source_path=source,
             slides=slides,
+            vision_contents=vision_contents,
+            vision_occurrences=vision_occurrences,
             metadata=metadata,
         )
 
@@ -197,6 +228,14 @@ def _extract_powerpoint_shapes(
     shapes,
     skip_shape_ids: set[int],
     warnings: set[str],
+    *,
+    doc_id: str,
+    slide_id: int,
+    slide_number: int,
+    vision_contents: dict[str, VisionImageContent],
+    vision_occurrences: list[VisionImageOccurrence],
+    max_image_bytes: int | None,
+    max_image_pixels: int | None,
 ) -> list[str]:
     """按视觉位置遍历一层 Shape Tree，并递归提取组合图形的内容。"""
 
@@ -211,7 +250,20 @@ def _extract_powerpoint_shapes(
             continue
         if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
             # GroupShape 自身也是 Shape Tree；每一层都重新排序后递归处理。
-            result.extend(_extract_powerpoint_shapes(shape.shapes, skip_shape_ids, warnings))
+            result.extend(
+                _extract_powerpoint_shapes(
+                    shape.shapes,
+                    skip_shape_ids,
+                    warnings,
+                    doc_id=doc_id,
+                    slide_id=slide_id,
+                    slide_number=slide_number,
+                    vision_contents=vision_contents,
+                    vision_occurrences=vision_occurrences,
+                    max_image_bytes=max_image_bytes,
+                    max_image_pixels=max_image_pixels,
+                )
+            )
             continue
         if getattr(shape, "has_table", False):
             result.append(_powerpoint_table_to_markdown(shape.table))
@@ -221,13 +273,44 @@ def _extract_powerpoint_shapes(
             if text:
                 result.append(text)
             continue
+        if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+            try:
+                raw = bytes(shape.image.blob)
+                content = VisionImageContent.from_raw(
+                    raw,
+                    media_type=str(
+                        getattr(shape.image, "content_type", "")
+                        or "application/octet-stream"
+                    ),
+                    max_bytes=max_image_bytes,
+                    max_pixels=max_image_pixels,
+                )
+                vision_contents.setdefault(content.content_id, content)
+                occurrence_index = len(vision_occurrences) + 1
+                vision_occurrences.append(
+                    VisionImageOccurrence(
+                        occurrence_id=(
+                            f"imgocc:ppt:{doc_id}:{slide_id}:{shape.shape_id}:"
+                            f"{content.content_id}"
+                        ),
+                        content_id=content.content_id,
+                        source_locator=(
+                            f"slide[{slide_number}]/shape[{int(shape.shape_id)}]"
+                        ),
+                        page_or_slide_number=slide_number,
+                        anchor_id=str(shape.shape_id),
+                        occurrence_index=occurrence_index,
+                    )
+                )
+            except Exception:
+                warnings.add("PPT_IMAGE_EXTRACTION_FAILED")
+            continue
         if shape.shape_type in {
-            MSO_SHAPE_TYPE.PICTURE,
             MSO_SHAPE_TYPE.CHART,
             MSO_SHAPE_TYPE.DIAGRAM,
             MSO_SHAPE_TYPE.MEDIA,
         }:
-            warnings.add("pptx_visual_content_skipped")
+            warnings.add("PPT_UNSUPPORTED_VISUAL_SKIPPED")
     return result
 
 

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from fast_app.core.config import Settings, get_secret_env_value, get_settings
 from fast_app.core.logging import format_log_fields, get_logger, setup_logging
 from fast_app.db.session import create_database_engine, create_session_factory
+from fast_app.ingestion.stores.store_mutation_lock import StoreMutationLock
 from fast_app.ingestion.cli import (
     apply_arg_overrides,
     build_elasticsearch_client,
@@ -236,6 +237,7 @@ async def run_worker(*, once: bool, use_mock_embeddings: bool) -> int:
             embedding_client=build_embedding_client(settings, use_mock_embeddings),
             elasticsearch_client=elasticsearch_client,
             milvus_client=milvus_client,
+            store_mutation_lock=StoreMutationLock(engine),
         ),
         worker_id=f"{socket.gethostname()}:{os.getpid()}",
     )

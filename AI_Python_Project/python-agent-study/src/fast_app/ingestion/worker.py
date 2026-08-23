@@ -6,7 +6,7 @@ import hashlib
 import os
 import shutil
 import socket
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from elasticsearch import AsyncElasticsearch
@@ -50,7 +50,11 @@ from fast_app.ingestion.stores.incremental_store import (
     verify_chunk_convergence,
 )
 from fast_app.ingestion.validation.ingestion_validation import validate_ingestion_result
-from fast_app.ingestion.validation.ooxml_validation import OOXMLValidationError, validate_ooxml_package
+from fast_app.ingestion.validation.document_validation import (
+    DocumentPackageValidationError,
+    KnowledgeDocumentValidationLimits,
+    validate_knowledge_document_package,
+)
 from fast_app.ingestion.processing.office_chunk_builders import (
     ExcelChunkBuilder,
     ExcelConfigurationRequired,
@@ -58,11 +62,16 @@ from fast_app.ingestion.processing.office_chunk_builders import (
     build_embedding_fingerprint,
     build_excel_preview,
 )
+from fast_app.ingestion.processing.structured_document_processor import (
+    DocumentProcessingError,
+    StructuredDocumentProcessor,
+)
 from fast_app.ingestion.stores.rag_store_writer import (
     delete_es_docs_by_doc_ids,
     delete_milvus_docs_by_doc_ids,
     replace_docs_rag_stores,
 )
+from fast_app.ingestion.stores.store_mutation_lock import StoreMutationLock
 
 
 logger = get_logger(__name__)
@@ -103,6 +112,7 @@ class KnowledgeImportWorker:
         elasticsearch_client: AsyncElasticsearch,
         milvus_client: MilvusClient,
         worker_id: str,
+        store_mutation_lock: StoreMutationLock | None = None,
     ) -> None:
         """注入数据库、Embedding 和两个检索存储客户端。"""
 
@@ -112,6 +122,8 @@ class KnowledgeImportWorker:
         self.elasticsearch_client = elasticsearch_client
         self.milvus_client = milvus_client
         self.worker_id = worker_id
+        self.store_mutation_lock = store_mutation_lock
+        self.document_processor = StructuredDocumentProcessor(settings=settings)
 
     async def run_once(self) -> bool:
         """至多领取并处理一个任务；返回值表示本轮是否领到任务。"""
@@ -284,20 +296,19 @@ class KnowledgeImportWorker:
             )
         await self._assert_document_version(job)
         try:
-            await asyncio.to_thread(validate_ooxml_package, staged_path)
-        except OOXMLValidationError as exc:
+            await asyncio.to_thread(
+                validate_knowledge_document_package,
+                staged_path,
+                document_type=job.document_type,
+                limits=KnowledgeDocumentValidationLimits(
+                    max_file_bytes=self.settings.max_upload_file_bytes,
+                    max_pdf_pages=self.settings.pdf_max_pages,
+                ),
+            )
+        except DocumentPackageValidationError as exc:
             raise PermanentImportError(exc.code, str(exc)) from exc
 
         await self._phase(job.id, "extracting", lease_lost)
-        try:
-            document = await asyncio.to_thread(self._load_document, job)
-        except (ValueError, KeyError, TypeError) as exc:
-            raise PermanentImportError(
-                "KNOWLEDGE_IMPORT_PARSE_FAILED",
-                "Office 文档解析失败",
-            ) from exc
-
-        await self._phase(job.id, "chunking", lease_lost)
         options = ChunkBuildOptions(
             source=self.settings.ingestion_source_name,
             max_chars=self.settings.markdown_chunk_max_chars,
@@ -306,12 +317,10 @@ class KnowledgeImportWorker:
             min_chars=self.settings.markdown_chunk_min_chars,
         )
         fingerprint = build_embedding_fingerprint(self.settings)
+        processing_warnings: list[dict[str, str]] = []
         try:
-            if job.document_type == "powerpoint":
-                chunks = PowerPointChunkBuilder().build(
-                    document, options, embedding_fingerprint=fingerprint
-                )
-            else:
+            if job.document_type == "spreadsheet":
+                document = await asyncio.to_thread(self._load_document, job)
                 profile = job.excel_profile_snapshot_json
                 if profile is None:
                     preview = await asyncio.to_thread(build_excel_preview, document)
@@ -323,9 +332,45 @@ class KnowledgeImportWorker:
                     profile=profile,
                     embedding_fingerprint=fingerprint,
                 )
+            else:
+                processed = await self.document_processor.process_file(
+                    staged_path,
+                    document_type=job.document_type,
+                    source_path=job.target_path,
+                    options=options,
+                    document_metadata={
+                        "visibility": "department",
+                        "allowed_departments": [job.department_code],
+                        "allowed_users": [],
+                        "permission_source": "import_job_department",
+                    },
+                    before_external_call=lambda: self._assert_lease(
+                        job.id, lease_lost
+                    ),
+                )
+                chunks = processed.chunks
+                processing_warnings = [
+                    {"code": warning.code, "message": warning.message}
+                    for warning in processed.warnings
+                ]
+                document = LoadedDocument(
+                    source_path=job.target_path,
+                    content="\n".join(chunk.content for chunk in chunks),
+                    document_type=job.document_type,
+                    metadata=(dict(chunks[0].metadata) if chunks else {}),
+                )
         except ExcelConfigurationRequired as exc:
             await self._pause_for_excel_configuration(job, exc.preview)
             raise ImportAwaitingConfiguration() from exc
+        except DocumentProcessingError as exc:
+            raise PermanentImportError(exc.code, str(exc)) from exc
+        except (ValueError, KeyError, TypeError) as exc:
+            raise PermanentImportError(
+                "KNOWLEDGE_IMPORT_PARSE_FAILED",
+                "Office 文档解析失败",
+            ) from exc
+
+        await self._phase(job.id, "chunking", lease_lost)
 
         compatibility_document = LoadedDocument(
             source_path=document.source_path,
@@ -348,6 +393,7 @@ class KnowledgeImportWorker:
             {"code": code, "message": code}
             for code in document.metadata.get("extraction_warnings", [])
         )
+        warnings.extend(processing_warnings)
 
         doc_id = str(job.doc_id)
         await self._phase(job.id, "loading_existing_chunks", lease_lost)
@@ -381,40 +427,43 @@ class KnowledgeImportWorker:
         ):
             raise RuntimeError("embedding 数量或维度不匹配")
 
-        await self._phase(job.id, "indexing", lease_lost)
-        await self._assert_lease(job.id, lease_lost)
-        await apply_chunk_diff(
-            elasticsearch_client=self.elasticsearch_client,
-            milvus_client=self.milvus_client,
-            settings=self.settings,
-            diff=diff,
-            embedded_vectors=vectors,
-        )
-        await self._phase(job.id, "verifying", lease_lost)
-        await verify_chunk_convergence(
-            elasticsearch_client=self.elasticsearch_client,
-            milvus_client=self.milvus_client,
-            settings=self.settings,
-            chunks=chunks,
-        )
-
-        # 检索存储先收敛；文件始终在最后一个共享提交阶段原子发布。
-        await self._phase(job.id, "publishing", lease_lost)
-        await self._assert_document_version(job)
-        await self._assert_lease(job.id, lease_lost)
-        await asyncio.to_thread(_publish_file, job, self.settings.knowledge_base_dir)
-
-        async with self.session_factory() as session:
-            succeeded = await KnowledgeImportJobRepository(session).mark_succeeded(
-                job.id,
-                self.worker_id,
-                document_count=1,
-                chunk_count=len(chunks),
-                warnings=warnings,
-                diff_counts=diff.counts,
+        async with self._store_mutation_guard():
+            # 等待全局锁可能跨越多个 heartbeat 周期，进入共享 mutation 前必须
+            # 重新证明当前 Worker 仍然拥有任务。
+            await self._phase(job.id, "indexing", lease_lost)
+            await self._assert_lease(job.id, lease_lost)
+            await apply_chunk_diff(
+                elasticsearch_client=self.elasticsearch_client,
+                milvus_client=self.milvus_client,
+                settings=self.settings,
+                diff=diff,
+                embedded_vectors=vectors,
             )
-        if not succeeded:
-            raise ImportLeaseLostError("完成任务前租约已丢失")
+            await self._phase(job.id, "verifying", lease_lost)
+            await verify_chunk_convergence(
+                elasticsearch_client=self.elasticsearch_client,
+                milvus_client=self.milvus_client,
+                settings=self.settings,
+                chunks=chunks,
+            )
+
+            # 检索存储、文件和任务事实处于同一全局 mutation 临界区。
+            await self._phase(job.id, "publishing", lease_lost)
+            await self._assert_document_version(job)
+            await self._assert_lease(job.id, lease_lost)
+            await asyncio.to_thread(_publish_file, job, self.settings.knowledge_base_dir)
+
+            async with self.session_factory() as session:
+                succeeded = await KnowledgeImportJobRepository(session).mark_succeeded(
+                    job.id,
+                    self.worker_id,
+                    document_count=1,
+                    chunk_count=len(chunks),
+                    warnings=warnings,
+                    diff_counts=diff.counts,
+                )
+            if not succeeded:
+                raise ImportLeaseLostError("完成任务前租约已丢失")
         staged_path.unlink(missing_ok=True)
         return 1, len(chunks), warnings
 
@@ -672,7 +721,6 @@ class KnowledgeImportWorker:
     ) -> tuple[list, list[dict[str, str]]]:
         """解析指定版本并全量替换双存储，供终态回滚和提交后向前修复。"""
 
-        document = await asyncio.to_thread(self._load_document_path, job, path)
         options = ChunkBuildOptions(
             source=self.settings.ingestion_source_name,
             max_chars=self.settings.markdown_chunk_max_chars,
@@ -681,11 +729,9 @@ class KnowledgeImportWorker:
             min_chars=self.settings.markdown_chunk_min_chars,
         )
         fingerprint = build_embedding_fingerprint(self.settings)
-        if job.document_type == "powerpoint":
-            chunks = PowerPointChunkBuilder().build(
-                document, options, embedding_fingerprint=fingerprint
-            )
-        else:
+        processing_warnings: list[dict[str, str]] = []
+        if job.document_type == "spreadsheet":
+            document = await asyncio.to_thread(self._load_document_path, job, path)
             if profile is None:
                 raise RuntimeError("Excel 修复缺少 Profile")
             chunks = ExcelChunkBuilder().build(
@@ -694,6 +740,25 @@ class KnowledgeImportWorker:
                 profile=profile,
                 embedding_fingerprint=fingerprint,
             )
+        else:
+            processed = await self.document_processor.process_file(
+                path,
+                document_type=job.document_type,
+                source_path=job.target_path,
+                options=options,
+                document_metadata={
+                    "visibility": "department",
+                    "allowed_departments": [job.department_code],
+                    "allowed_users": [],
+                    "permission_source": "import_job_department",
+                },
+                before_external_call=lambda: self._assert_lease(job.id, lease_lost),
+            )
+            chunks = processed.chunks
+            processing_warnings = [
+                {"code": warning.code, "message": warning.message}
+                for warning in processed.warnings
+            ]
         vectors = await self.embedding_client.embed_documents(
             [chunk.content for chunk in chunks]
         )
@@ -701,24 +766,30 @@ class KnowledgeImportWorker:
             len(vector) != self.settings.embedding_dim for vector in vectors
         ):
             raise RuntimeError("修复 Embedding 数量或维度不匹配")
-        await self._assert_lease(job.id, lease_lost)
-        await replace_docs_rag_stores(
-            elasticsearch_client=self.elasticsearch_client,
-            milvus_client=self.milvus_client,
-            settings=self.settings,
-            chunks=chunks,
-            vectors=vectors,
-        )
-        await verify_chunk_convergence(
-            elasticsearch_client=self.elasticsearch_client,
-            milvus_client=self.milvus_client,
-            settings=self.settings,
-            chunks=chunks,
-        )
+        async with self._store_mutation_guard():
+            await self._assert_lease(job.id, lease_lost)
+            await replace_docs_rag_stores(
+                elasticsearch_client=self.elasticsearch_client,
+                milvus_client=self.milvus_client,
+                settings=self.settings,
+                chunks=chunks,
+                vectors=vectors,
+            )
+            await verify_chunk_convergence(
+                elasticsearch_client=self.elasticsearch_client,
+                milvus_client=self.milvus_client,
+                settings=self.settings,
+                chunks=chunks,
+            )
         warnings = [
             {"code": code, "message": code}
-            for code in document.metadata.get("extraction_warnings", [])
+            for code in (
+                document.metadata.get("extraction_warnings", [])
+                if job.document_type == "spreadsheet"
+                else []
+            )
         ]
+        warnings.extend(processing_warnings)
         return chunks, warnings
 
     async def _cleanup_created_outputs(
@@ -728,19 +799,28 @@ class KnowledgeImportWorker:
     ) -> None:
         """仅 Create 失败允许删除新文件和该 doc_id 的全部 Chunk。"""
 
-        await self._assert_lease(job.id, lease_lost)
-        target = _physical_target(job.target_path, self.settings.knowledge_base_dir)
-        if (
-            target.is_file()
-            and await asyncio.to_thread(_sha256_file, target) == job.sha256
-        ):
-            target.unlink(missing_ok=True)
-        await delete_es_docs_by_doc_ids(
-            self.elasticsearch_client, self.settings, [str(job.doc_id)]
-        )
-        delete_milvus_docs_by_doc_ids(
-            self.milvus_client, self.settings, [str(job.doc_id)]
-        )
+        async with self._store_mutation_guard():
+            await self._assert_lease(job.id, lease_lost)
+            target = _physical_target(job.target_path, self.settings.knowledge_base_dir)
+            if (
+                target.is_file()
+                and await asyncio.to_thread(_sha256_file, target) == job.sha256
+            ):
+                target.unlink(missing_ok=True)
+            await delete_es_docs_by_doc_ids(
+                self.elasticsearch_client, self.settings, [str(job.doc_id)]
+            )
+            delete_milvus_docs_by_doc_ids(
+                self.milvus_client, self.settings, [str(job.doc_id)]
+            )
+
+    @asynccontextmanager
+    async def _store_mutation_guard(self):
+        if self.store_mutation_lock is None:
+            yield
+            return
+        async with self.store_mutation_lock.hold():
+            yield
 
 
 def _publish_file(job: KnowledgeIngestionJobTable, knowledge_base_dir: str) -> None:
@@ -839,6 +919,7 @@ async def run_worker(*, once: bool, use_mock_embeddings: bool) -> int:
         elasticsearch_client=elasticsearch_client,
         milvus_client=milvus_client,
         worker_id=f"{socket.gethostname()}:{os.getpid()}",
+        store_mutation_lock=StoreMutationLock(engine),
     )
     try:
         if once:

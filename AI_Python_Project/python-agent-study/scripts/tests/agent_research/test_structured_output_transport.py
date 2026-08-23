@@ -71,6 +71,12 @@ class FakeModel:
         return await BoundTransport(self, "strict_json").ainvoke(_messages, config)
 
 
+class ProviderStatusError(RuntimeError):
+    def __init__(self, status_code: int) -> None:
+        super().__init__(f"provider status {status_code}")
+        self.status_code = status_code
+
+
 async def main() -> None:
     # 未缓存的结构化协议收到确定性 HTTP 400 时，不能原样重试同一个请求；
     # 真实 qwen3.7-max 会依次拒绝前三种协议，必须有界降级到 strict_json。
@@ -161,6 +167,79 @@ async def main() -> None:
     assert "上一次结构化响应未通过 Schema 校验" in correcting_model.messages[1][0].content
     assert "value" in correcting_model.messages[1][0].content
     assert "fail" not in correcting_model.messages[1][0].content
+
+    # ownership hook 在每次 Provider 调用前执行；hook 失败不能被 transport
+    # fallback 或 retry 吞掉，也不能启动新的 Provider 请求。
+    structured_output._TRANSPORT_CACHE.clear()
+    hook_model = FakeModel(
+        {
+            "json_schema": Payload(value="never"),
+            "function_calling": Payload(value="unused"),
+            "json_mode": Payload(value="unused"),
+            "strict_json": Payload(value="unused"),
+        }
+    )
+    hook_calls = 0
+
+    async def lost_lease() -> None:
+        nonlocal hook_calls
+        hook_calls += 1
+        raise RuntimeError("lease lost")
+
+    try:
+        await structured_output.invoke_structured_model(
+            model=hook_model,
+            schema=Payload,
+            messages=[],
+            before_provider_call=lost_lease,
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "lease lost"
+    else:
+        raise AssertionError("ownership hook 失败必须直接传播")
+    assert hook_calls == 1
+    assert hook_model.calls == []
+
+    # 429/5xx 只在当前 transport 内有限重试；全局调用预算是最终保险丝。
+    structured_output._TRANSPORT_CACHE.clear()
+    retry_model = FakeModel(
+        {
+            "json_schema": [ProviderStatusError(429), Payload(value="retry-ok")],
+            "function_calling": Payload(value="unused"),
+            "json_mode": Payload(value="unused"),
+            "strict_json": Payload(value="unused"),
+        }
+    )
+    retry_value = await structured_output.invoke_structured_model(
+        model=retry_model,
+        schema=Payload,
+        messages=[],
+        max_provider_calls=2,
+        retry_base_delay_seconds=0,
+    )
+    assert retry_value.value == "retry-ok"
+    assert retry_model.calls == ["json_schema", "json_schema"]
+
+    structured_output._TRANSPORT_CACHE.clear()
+    client_error_model = FakeModel(
+        {
+            "json_schema": ProviderStatusError(422),
+            "function_calling": Payload(value="must-not-run"),
+            "json_mode": Payload(value="unused"),
+            "strict_json": Payload(value="unused"),
+        }
+    )
+    try:
+        await structured_output.invoke_structured_model(
+            model=client_error_model,
+            schema=Payload,
+            messages=[],
+        )
+    except ProviderStatusError as exc:
+        assert exc.status_code == 422
+    else:
+        raise AssertionError("非 transport 4xx 必须直接失败")
+    assert client_error_model.calls == ["json_schema"]
 
     print("structured_output_transport=passed")
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -25,6 +26,7 @@ from fast_app.ingestion.processing.markdown_hierarchy import (
 )
 from fast_app.ingestion.processing.metadata_models import (
     PERMISSION_RULES_FILE_NAME,
+    apply_local_corpus_ownership,
     build_document_metadata,
     normalize_permission_metadata,
 )
@@ -38,6 +40,7 @@ from fast_app.services.exceptions import (
     AppServiceError,
     ToolExecutionRequiresConfirmationError,
 )
+from fast_app.ingestion.stores.store_mutation_lock import StoreMutationLock
 
 if TYPE_CHECKING:
     from fast_app.integrations.gitlab.agent_change_service import (
@@ -99,6 +102,7 @@ class KnowledgeDocumentManagementService:
         chunk_builder: MarkdownChunkBuilder | None = None,
         hierarchy_builder: MarkdownHierarchyBuilder | None = None,
         gitlab_change_service: GitLabAgentChangeService | None = None,
+        store_mutation_lock: StoreMutationLock | None = None,
     ):
         # settings 控制工具是否启用、是否只允许 dry-run、允许编辑的后缀和内容大小等安全边界。
         self.settings = settings
@@ -110,6 +114,7 @@ class KnowledgeDocumentManagementService:
         self.chunk_builder = chunk_builder or MarkdownChunkBuilder()
         self.hierarchy_builder = hierarchy_builder or MarkdownHierarchyBuilder()
         self.gitlab_change_service = gitlab_change_service
+        self.store_mutation_lock = store_mutation_lock
 
     async def plan_action(
         self,
@@ -332,12 +337,12 @@ class KnowledgeDocumentManagementService:
             old_parents, old_chunks = self._build_artifacts(
                 target=target,
                 content=before_content or "",
-                permission_metadata=permission,
+                document_metadata=permission,
             )
             new_parents, new_chunks = self._build_artifacts(
                 target=target,
                 content=request.content or "",
-                permission_metadata=permission,
+                document_metadata=permission,
             ) if request.operation != KnowledgeDocumentOperation.DELETE else ([], [])
             # embedding 也属于预计算：任何向量生成失败都会发生在真实写入之前。
             old_vectors = await self.embedding_client.embed_documents(
@@ -363,37 +368,44 @@ class KnowledgeDocumentManagementService:
             )
 
         results: list[KnowledgeDocumentActionResult] = []
-        try:
-            # 第二阶段严格按 TaskPlan 顺序执行，不并行，保证结果和人工确认步骤一致。
+        async with self._store_mutation_guard():
+            # 预计算可能在等待全局锁期间过期；进入临界区后重新验证文件事实。
             for item in prepared:
-                await self._apply_prepared_mutation(item)
-                results.append(
-                    KnowledgeDocumentActionResult(
-                        operation=item.request.operation,
-                        target_path=item.request.target_path,
-                        dry_run=False,
-                        executed=True,
-                        preview=item.preview,
-                        message="已同步更新知识库源文件、Elasticsearch 和 Milvus。",
+                current = self._read_text_if_exists(item.target.absolute_path)
+                current_hash = self._sha256_text(current) if current else None
+                if current_hash != item.preview.before_hash:
+                    raise AppServiceError("目标文档在等待 Store 写锁期间发生变化")
+            try:
+                # 第二阶段严格按 TaskPlan 顺序执行，不并行，保证结果和人工确认步骤一致。
+                for item in prepared:
+                    await self._apply_prepared_mutation(item)
+                    results.append(
+                        KnowledgeDocumentActionResult(
+                            operation=item.request.operation,
+                            target_path=item.request.target_path,
+                            dry_run=False,
+                            executed=True,
+                            preview=item.preview,
+                            message="已同步更新知识库源文件、Elasticsearch 和 Milvus。",
+                        )
                     )
-                )
-            return results
-        except Exception as exc:
-            rollback_errors: list[str] = []
-            # 补偿按执行顺序的反方向进行，尽量恢复源文件、sidecar 和检索存储的旧快照。
-            for item in reversed(prepared):
-                try:
-                    await self._restore_prepared_mutation(item)
-                except Exception as rollback_exc:
-                    rollback_errors.append(
-                        f"{item.preview.affected_doc_id}:{type(rollback_exc).__name__}:{rollback_exc}"
-                    )
-            if rollback_errors:
-                raise AppServiceError(
-                    "repair_required：文档批量执行失败且补偿未完全成功；需要修复 doc_id: "
-                    + "; ".join(rollback_errors)
-                ) from exc
-            raise AppServiceError("文档批量执行失败，已完成补偿回滚") from exc
+                return results
+            except Exception as exc:
+                rollback_errors: list[str] = []
+                # 补偿在同一 Store 临界区逆序执行，避免其他 Writer 看到中间状态。
+                for item in reversed(prepared):
+                    try:
+                        await self._restore_prepared_mutation(item)
+                    except Exception as rollback_exc:
+                        rollback_errors.append(
+                            f"{item.preview.affected_doc_id}:{type(rollback_exc).__name__}:{rollback_exc}"
+                        )
+                if rollback_errors:
+                    raise AppServiceError(
+                        "repair_required：文档批量执行失败且补偿未完全成功；需要修复 doc_id: "
+                        + "; ".join(rollback_errors)
+                    ) from exc
+                raise AppServiceError("文档批量执行失败，已完成补偿回滚") from exc
 
     async def _apply_prepared_mutation(self, item: PreparedDocumentMutation) -> None:
         """把已预计算的单项变更写入源文件，并同步 ES/Milvus。"""
@@ -675,7 +687,7 @@ class KnowledgeDocumentManagementService:
         parents, chunks = self._build_artifacts(
             target=target,
             content=preview_content,
-            permission_metadata=normalize_permission_metadata(metadata),
+            document_metadata=metadata,
         )
         # warnings 不阻断执行，只给 plan review / 前端确认页展示潜在风险。
         warnings = self._build_warnings(
@@ -725,7 +737,7 @@ class KnowledgeDocumentManagementService:
         self,
         target: SafeDocumentTarget,
         content: str,
-        permission_metadata: dict[str, Any],
+        document_metadata: dict[str, Any],
     ) -> tuple[list[MarkdownParentChunk], list[KnowledgeChunk]]:
         """使用统一 metadata 和 chunk 配置构造可写入检索存储的 chunks。"""
 
@@ -737,7 +749,13 @@ class KnowledgeDocumentManagementService:
             document_type=target.document_type,
             knowledge_base_dir=self.settings.knowledge_base_dir,
         )
-        metadata.update(permission_metadata)
+        metadata.update(document_metadata)
+        if not metadata.get("source_id"):
+            metadata = apply_local_corpus_ownership(
+                metadata,
+                local_corpus_id=self.settings.local_corpus_id,
+                source_revision=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            )
         document = LoadedDocument(
             source_path=target.source_path,
             content=content,
@@ -854,6 +872,16 @@ class KnowledgeDocumentManagementService:
             KnowledgeDocumentOperation.UPDATE,
             KnowledgeDocumentOperation.DELETE,
         }
+
+    @asynccontextmanager
+    async def _store_mutation_guard(self):
+        """生产装配使用 PostgreSQL 锁；纯文件测试可显式省略 Store clients。"""
+
+        if self.store_mutation_lock is None:
+            yield
+            return
+        async with self.store_mutation_lock.hold():
+            yield
 
     def _read_text_if_exists(self, path: Path) -> str | None:
         """读取已有目标文件；不存在时返回 None，供 create 场景使用。"""

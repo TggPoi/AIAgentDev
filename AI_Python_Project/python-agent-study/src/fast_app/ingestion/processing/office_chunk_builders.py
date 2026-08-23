@@ -13,13 +13,19 @@ from fast_app.domain.knowledge_models import (
     ExcelSheet,
     KnowledgeChunk,
     LoadedExcelDocument,
+    LoadedPdfDocument,
     LoadedPowerPointDocument,
+    LoadedWordDocument,
+    PdfPage,
+    VisionAnalysisResult,
+    WordBlock,
 )
 from fast_app.ingestion.processing.chunk_builders import ChunkBuildOptions, TextSplitter
+from fast_app.ingestion.processing.document_vision import render_vision_result
 from fast_app.ingestion.processing.metadata_models import build_chunk_metadata
 
 
-BUILDER_SCHEMA_VERSION = "office-v1"
+BUILDER_SCHEMA_VERSION = "office-vision-v2"
 
 
 class ExcelConfigurationRequired(ValueError):
@@ -75,6 +81,8 @@ class PowerPointChunkBuilder:
         options: ChunkBuildOptions,
         *,
         embedding_fingerprint: str,
+        vision_results: dict[str, VisionAnalysisResult] | None = None,
+        vision_strategy_fingerprint: str = "vision-disabled",
     ) -> list[KnowledgeChunk]:
         """把每页内容切为局部 Chunk，页码变化只影响 index_hash。"""
 
@@ -83,12 +91,18 @@ class PowerPointChunkBuilder:
         for slide in document.slides:
             identity_key = f"ppt:slide:{slide.slide_id}"
             title = slide.title or f"Slide {slide.slide_number}"
+            vision_texts = [
+                render_vision_result(vision_results[occurrence_id])
+                for occurrence_id in slide.vision_occurrence_ids
+                if vision_results and occurrence_id in vision_results
+            ]
             content = "\n\n".join(
                 part
                 for part in (
                     title,
                     slide.content,
                     f"Notes: {slide.notes}" if slide.notes else "",
+                    *vision_texts,
                 )
                 if part
             )
@@ -111,6 +125,10 @@ class PowerPointChunkBuilder:
                     slide_number=slide.slide_number,
                     slide_warnings=list(slide.warnings),
                     slide_chunk_index=local_index,
+                    has_vision_content=bool(vision_texts),
+                    vision_occurrence_ids=list(slide.vision_occurrence_ids),
+                    vision_warning_codes=list(slide.warnings),
+                    vision_strategy_fingerprint=vision_strategy_fingerprint,
                 )
                 _add_hashes(metadata, part, embedding_fingerprint)
                 chunks.append(
@@ -119,6 +137,188 @@ class PowerPointChunkBuilder:
                         content=part,
                         source=options.source,
                         title=title,
+                        metadata=metadata,
+                    )
+                )
+        return chunks
+
+
+class WordChunkBuilder:
+    """优先按完整 DOCX block 装箱，只在单 block 超限时块内拆分。"""
+
+    def __init__(self, splitter: TextSplitter | None = None) -> None:
+        self.splitter = splitter or TextSplitter()
+
+    def build(
+        self,
+        document: LoadedWordDocument,
+        options: ChunkBuildOptions,
+        *,
+        embedding_fingerprint: str,
+        vision_results: dict[str, VisionAnalysisResult] | None = None,
+        vision_strategy_fingerprint: str = "vision-disabled",
+    ) -> list[KnowledgeChunk]:
+        rendered = [
+            (block, self._block_parts(block, options, vision_results or {}))
+            for block in document.blocks
+        ]
+        units: list[tuple[WordBlock, int, str]] = [
+            (block, part_index, part)
+            for block, parts in rendered
+            for part_index, part in enumerate(parts, start=1)
+            if part.strip()
+        ]
+        packed: list[list[tuple[WordBlock, int, str]]] = []
+        current: list[tuple[WordBlock, int, str]] = []
+        for item in units:
+            candidate = "\n\n".join(
+                [*(text for _, _, text in current), item[2]]
+            )
+            same_section = not current or current[-1][0].section_id == item[0].section_id
+            if current and (
+                not same_section
+                or len(candidate) > options.max_chars
+                or self.splitter.token_counter.count(candidate) > options.max_tokens
+            ):
+                packed.append(current)
+                current = []
+            current.append(item)
+        if current:
+            packed.append(current)
+
+        chunks: list[KnowledgeChunk] = []
+        doc_id = str(document.metadata["doc_id"])
+        for chunk_index, group in enumerate(packed, start=1):
+            first_block = group[0][0]
+            first_part_index = group[0][1]
+            content = "\n\n".join(text for _, _, text in group)
+            identity_key = (
+                f"docx:section:{first_block.section_id}:block:{first_block.block_id}:"
+                f"part:{first_part_index}"
+            )
+            chunk_id = _office_chunk_id(doc_id, identity_key, 1)
+            occurrence_ids = [
+                occurrence_id
+                for block, _, _ in group
+                for occurrence_id in block.vision_occurrence_ids
+            ]
+            metadata = build_chunk_metadata(
+                document_metadata=document.metadata,
+                chunk_id=chunk_id,
+                title=first_block.section_title,
+                section_path=[first_block.section_title],
+                heading_level=first_block.heading_level,
+                section_index=chunk_index,
+                chunk_index=chunk_index,
+            )
+            metadata.update(
+                identity_key=identity_key,
+                block_ids=[block.block_id for block, _, _ in group],
+                has_vision_content=any(
+                    occurrence_id in (vision_results or {})
+                    for occurrence_id in occurrence_ids
+                ),
+                vision_occurrence_ids=occurrence_ids,
+                vision_warning_codes=list(document.warnings),
+                vision_strategy_fingerprint=vision_strategy_fingerprint,
+            )
+            _add_hashes(metadata, content, embedding_fingerprint)
+            chunks.append(
+                KnowledgeChunk(
+                    id=chunk_id,
+                    content=content,
+                    source=options.source,
+                    title=first_block.section_title,
+                    metadata=metadata,
+                )
+            )
+        return chunks
+
+    def _block_parts(
+        self,
+        block: WordBlock,
+        options: ChunkBuildOptions,
+        vision_results: dict[str, VisionAnalysisResult],
+    ) -> list[str]:
+        vision = "\n\n".join(
+            render_vision_result(vision_results[occurrence_id])
+            for occurrence_id in block.vision_occurrence_ids
+            if occurrence_id in vision_results
+        )
+        combined = "\n\n".join(part for part in (block.text, vision) if part)
+        if (
+            len(combined) <= options.max_chars
+            and self.splitter.token_counter.count(combined) <= options.max_tokens
+        ):
+            return [combined] if combined else []
+        if not vision:
+            return self.splitter.split(block.text, options)
+        available_chars = max(options.min_chars, options.max_chars - len(vision) - 2)
+        adjusted = ChunkBuildOptions(
+            source=options.source,
+            max_chars=available_chars,
+            overlap_chars=min(options.overlap_chars, max(0, available_chars - 1)),
+            max_tokens=max(1, options.max_tokens - self.splitter.token_counter.count(vision)),
+            min_chars=min(options.min_chars, available_chars),
+        )
+        text_parts = self.splitter.split(block.text, adjusted) or [""]
+        return ["\n\n".join(part for part in (text, vision) if part) for text in text_parts]
+
+
+class PdfChunkBuilder:
+    """按 PDF 页构造 Chunk，扫描页只消费 full-page Vision 结果。"""
+
+    def __init__(self, splitter: TextSplitter | None = None) -> None:
+        self.splitter = splitter or TextSplitter()
+
+    def build(
+        self,
+        document: LoadedPdfDocument,
+        options: ChunkBuildOptions,
+        *,
+        embedding_fingerprint: str,
+        vision_results: dict[str, VisionAnalysisResult] | None = None,
+        vision_strategy_fingerprint: str = "vision-disabled",
+    ) -> list[KnowledgeChunk]:
+        chunks: list[KnowledgeChunk] = []
+        doc_id = str(document.metadata["doc_id"])
+        for page in document.pages:
+            vision_texts = [
+                render_vision_result(vision_results[occurrence_id])
+                for occurrence_id in page.vision_occurrence_ids
+                if vision_results and occurrence_id in vision_results
+            ]
+            content = "\n\n".join(
+                part for part in (page.native_text, *vision_texts) if part
+            )
+            for local_index, part in enumerate(self.splitter.split(content, options), start=1):
+                identity_key = f"pdf:page:{page.page_number}"
+                chunk_id = _office_chunk_id(doc_id, identity_key, local_index)
+                metadata = build_chunk_metadata(
+                    document_metadata=document.metadata,
+                    chunk_id=chunk_id,
+                    title=f"Page {page.page_number}",
+                    section_path=[f"Page {page.page_number}"],
+                    heading_level=1,
+                    section_index=page.page_number,
+                    chunk_index=local_index,
+                )
+                metadata.update(
+                    identity_key=identity_key,
+                    page_number=page.page_number,
+                    scanned_candidate=page.scanned_candidate,
+                    has_vision_content=bool(vision_texts),
+                    vision_occurrence_ids=list(page.vision_occurrence_ids),
+                    vision_warning_codes=list(page.warnings),
+                    vision_strategy_fingerprint=vision_strategy_fingerprint,
+                )
+                _add_hashes(metadata, part, embedding_fingerprint)
+                chunks.append(
+                    KnowledgeChunk(
+                        id=chunk_id,
+                        content=part,
+                        source=options.source,
+                        title=f"Page {page.page_number}",
                         metadata=metadata,
                     )
                 )
@@ -636,17 +836,24 @@ def _add_hashes(
             key: metadata[key]
             for key in (
                 "slide_number",
+                "page_number",
                 "row_number",
                 "row_start",
                 "row_end",
                 "field_coordinates",
                 "source_columns",
                 "sheet_structure_hash",
+                "block_ids",
+                "vision_occurrence_ids",
+                "vision_content_ids",
             )
             if key in metadata
         },
         "builder_schema_version": BUILDER_SCHEMA_VERSION,
         "embedding_fingerprint": embedding_fingerprint,
+        "vision_strategy_fingerprint": metadata.get(
+            "vision_strategy_fingerprint", "vision-disabled"
+        ),
     }
     metadata.update(
         content_hash=content_hash,
@@ -696,6 +903,8 @@ __all__ = [
     "ExcelChunkBuilder",
     "ExcelConfigurationRequired",
     "PowerPointChunkBuilder",
+    "PdfChunkBuilder",
+    "WordChunkBuilder",
     "build_embedding_fingerprint",
     "build_excel_preview",
 ]

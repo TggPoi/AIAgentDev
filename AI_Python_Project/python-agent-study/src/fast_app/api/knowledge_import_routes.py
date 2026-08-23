@@ -33,7 +33,11 @@ from fast_app.ingestion.import_jobs import (
     validate_department_code,
 )
 from fast_app.ingestion.processing.metadata_models import build_doc_id
-from fast_app.ingestion.validation.ooxml_validation import OOXMLValidationError, validate_ooxml_package
+from fast_app.ingestion.validation.document_validation import (
+    DocumentPackageValidationError,
+    KnowledgeDocumentValidationLimits,
+    validate_knowledge_document_package,
+)
 from fast_app.services.exceptions import AuthenticationError, ToolPermissionDeniedError
 from fast_app.services.auth.permission_service import PermissionService
 
@@ -454,8 +458,16 @@ async def _stage_and_create_job(
             file, staged_path, max_bytes=settings.max_upload_file_bytes
         )
         try:
-            await asyncio.to_thread(validate_ooxml_package, staged_path)
-        except OOXMLValidationError as exc:
+            await asyncio.to_thread(
+                validate_knowledge_document_package,
+                staged_path,
+                document_type=document_type,
+                limits=KnowledgeDocumentValidationLimits(
+                    max_file_bytes=settings.max_upload_file_bytes,
+                    max_pdf_pages=settings.pdf_max_pages,
+                ),
+            )
+        except DocumentPackageValidationError as exc:
             raise ImportJobValidationError(str(exc), error_code=exc.code) from exc
         snapshot = None
         profile_id = None

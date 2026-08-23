@@ -15,7 +15,7 @@
 | 结构化路由 | `simple_rag`、`question_decomposition`、`knowledge_document_management`、`web_research`、`structured_data_query`、`clarification_required` |
 | Agentic Research | Planner / Reviewer / 确定性 Validator、依赖感知并行 Worker、证据聚合、预算与失败收敛 |
 | 文档多 Agent | Coordinator / Researcher / Writer / Reviewer、PostgreSQL checkpoint、人工确认、恢复与取消 |
-| 文档与知识库 | Markdown / Text CLI ingestion；PPTX / XLSX 异步导入、父子 Chunk、ACL metadata、版本化发布 |
+| 文档与知识库 | Markdown / Text、PPTX / XLSX / DOCX / PDF；Office/PDF 图片 Vision、父子 Chunk、ACL、版本化发布与 scoped rebuild |
 | Web 检索 | Bocha 搜索、指定站点/URL、正文抓取、重定向约束、Sitemap rescue、多来源结果 |
 | NL2SQL | Dataset 绑定、RBAC/Grant、只读 SQL Policy、参数化查询、RLS 与敏感值处理 |
 | 认证与授权 | JWT、数据库 API Key、全局/部门 RBAC、知识检索 ACL、Agent Tool 权限与审计 |

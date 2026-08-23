@@ -25,7 +25,7 @@ REQUIRED_METADATA_KEYS = [
     "chunk_index",
 ]
 
-ALLOWED_DOCUMENT_TYPES = {"markdown", "text", "pdf", "powerpoint", "spreadsheet"}
+ALLOWED_DOCUMENT_TYPES = {"markdown", "text", "pdf", "powerpoint", "spreadsheet", "word"}
 
 
 @dataclass(frozen=True)

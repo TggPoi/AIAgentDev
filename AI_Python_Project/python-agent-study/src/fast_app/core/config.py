@@ -668,6 +668,36 @@ class Settings(BaseSettings):
     )
     llm_timeout_seconds: float = Field(default=60.0, alias="LLM_TIMEOUT_SECONDS")
     embedding_timeout_seconds: float = Field(default=30.0, alias="EMBEDDING_TIMEOUT_SECONDS")
+
+    vision_enabled: bool = Field(default=False, alias="VISION_ENABLED")
+    vision_model_name: str = Field(
+        default="qwen3.7-plus-2026-05-26", alias="VISION_MODEL_NAME"
+    )
+    vision_max_image_bytes: int = Field(default=12 * 1024 * 1024, gt=0, alias="VISION_MAX_IMAGE_BYTES")
+    vision_max_image_pixels: int = Field(default=16_000_000, gt=0, alias="VISION_MAX_IMAGE_PIXELS")
+    vision_max_images_per_document: int = Field(default=50, gt=0, alias="VISION_MAX_IMAGES_PER_DOCUMENT")
+    vision_max_total_normalized_bytes_per_document: int = Field(
+        default=64 * 1024 * 1024,
+        gt=0,
+        alias="VISION_MAX_TOTAL_NORMALIZED_BYTES_PER_DOCUMENT",
+    )
+    vision_max_scanned_pages: int = Field(default=50, gt=0, alias="VISION_MAX_SCANNED_PAGES")
+    vision_max_concurrency: int = Field(default=2, gt=0, alias="VISION_MAX_CONCURRENCY")
+    vision_timeout_seconds: float = Field(default=90.0, gt=0, alias="VISION_TIMEOUT_SECONDS")
+    vision_max_retries: int = Field(default=1, ge=0, le=3, alias="VISION_MAX_RETRIES")
+    vision_max_provider_calls: int = Field(default=5, gt=0, le=10, alias="VISION_MAX_PROVIDER_CALLS")
+    vision_prompt_version: str = Field(default="vision_prompt.v1", alias="VISION_PROMPT_VERSION")
+    vision_preprocess_version: str = Field(default="vision_preprocess.v1", alias="VISION_PREPROCESS_VERSION")
+    vision_schema_version: str = Field(default="vision_schema.v1", alias="VISION_SCHEMA_VERSION")
+    vision_cache_enabled: bool = Field(default=False, alias="VISION_CACHE_ENABLED")
+    vision_cache_dir: str = Field(default="runtime/vision-cache", alias="VISION_CACHE_DIR")
+    vision_cache_retention_days: int = Field(default=30, gt=0, alias="VISION_CACHE_RETENTION_DAYS")
+    vision_cache_max_bytes: int = Field(default=512 * 1024 * 1024, gt=0, alias="VISION_CACHE_MAX_BYTES")
+    pdf_scanned_text_threshold: int = Field(default=40, ge=0, alias="PDF_SCANNED_TEXT_THRESHOLD")
+    pdf_render_scale: float = Field(default=2.0, gt=0, alias="PDF_RENDER_SCALE")
+    pdf_min_render_scale: float = Field(default=0.5, gt=0, alias="PDF_MIN_RENDER_SCALE")
+    pdf_max_pages: int = Field(default=500, gt=0, alias="PDF_MAX_PAGES")
+    local_corpus_id: str = Field(default="local-knowledge-base", alias="LOCAL_CORPUS_ID")
     # 容错，超时相关配置 end
 
 

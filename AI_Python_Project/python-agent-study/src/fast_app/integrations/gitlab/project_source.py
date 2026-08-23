@@ -17,6 +17,8 @@ SUPPORTED_DOCUMENT_TYPES = {
     ".txt": "text",
     ".pptx": "powerpoint",
     ".xlsx": "spreadsheet",
+    ".docx": "word",
+    ".pdf": "pdf",
 }
 
 

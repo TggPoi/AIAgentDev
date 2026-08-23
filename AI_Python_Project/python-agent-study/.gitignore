@@ -15,3 +15,7 @@ learning-docs/
 # Local RAG eval launcher containing judge/auth secrets
 run_rag_eval_local.ps1
 .tmp/rag_eval_api_keys.json
+
+# Sensitive derived document content; raw images/Base64 are never persisted here.
+runtime/vision-cache/
+runtime/local-corpus/

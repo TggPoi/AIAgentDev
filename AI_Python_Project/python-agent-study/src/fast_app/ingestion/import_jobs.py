@@ -557,10 +557,15 @@ def normalize_upload_filename(filename: str | None) -> tuple[str, str]:
         raise ImportJobValidationError("文件名使用了 Windows 保留名称")
 
     extension = Path(normalized).suffix.lower()
-    document_types = {".pptx": "powerpoint", ".xlsx": "spreadsheet"}
+    document_types = {
+        ".pptx": "powerpoint",
+        ".xlsx": "spreadsheet",
+        ".docx": "word",
+        ".pdf": "pdf",
+    }
     document_type = document_types.get(extension)
     if document_type is None:
-        raise ImportJobValidationError("只允许上传 .pptx 或 .xlsx 文件")
+        raise ImportJobValidationError("只允许上传 .pptx、.xlsx、.docx 或 .pdf 文件")
     return normalized, document_type
 
 

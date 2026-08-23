@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from contextlib import asynccontextmanager
+import hashlib
 
 from elasticsearch import AsyncElasticsearch
 from pymilvus import MilvusClient
@@ -16,6 +18,8 @@ from fast_app.ingestion.processing.document_loaders import (
     BaseDocumentLoader,
     build_default_document_loader,
 )
+from fast_app.ingestion.processing.metadata_models import apply_local_corpus_ownership
+from fast_app.ingestion.stores.store_mutation_lock import StoreMutationLock
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,7 @@ class MarkdownIngestionService:
         document_loader: BaseDocumentLoader | None = None,
         chunk_builder: MarkdownChunkBuilder | None = None,
         hierarchy_builder: MarkdownHierarchyBuilder | None = None,
+        store_mutation_lock: StoreMutationLock | None = None,
     ):
         # settings 是本次导入使用的配置来源，例如知识库目录、chunk 大小、
         # ES index 名称、Milvus collection 名称、写入模式等。
@@ -69,11 +74,20 @@ class MarkdownIngestionService:
         # 主流程只消费它的结果，不在这里写具体切分规则。
         self.chunk_builder = chunk_builder or MarkdownChunkBuilder()
         self.hierarchy_builder = hierarchy_builder or MarkdownHierarchyBuilder()
+        self.store_mutation_lock = store_mutation_lock
 
     async def ingest(self) -> MarkdownIngestionResult:
         # 第一步：从配置中的知识库目录读取原始文档。
         # 返回值是 KnowledgeDocument 列表，里面包含文档内容和基础元数据。
         documents = self.document_loader.load(self.settings.knowledge_base_dir)
+        for document in documents:
+            document.metadata = apply_local_corpus_ownership(
+                document.metadata,
+                local_corpus_id=self.settings.local_corpus_id,
+                source_revision=hashlib.sha256(
+                    document.content.encode("utf-8")
+                ).hexdigest(),
+            )
 
         # 第二步：把文档拆成可检索、可向量化的 chunk。
         # ChunkBuildOptions 把配置层的参数集中传给 chunk_builder，
@@ -123,14 +137,15 @@ class MarkdownIngestionService:
         # 第五步：把 chunks 和 vectors 交给统一写入函数。
         # write_rag_stores 内部会根据 settings.ingestion_write_mode 决定是 recreate、
         # upsert，还是 replace_docs，并分别完成 ES 与 Milvus 的写入。
-        store_write_result = await write_rag_stores(
-            elasticsearch_client=self.elasticsearch_client,
-            milvus_client=self.milvus_client,
-            settings=self.settings,
-            chunks=chunks,
-            vectors=vectors,
-            parents=hierarchy.parents,
-        )
+        async with self._store_mutation_guard():
+            store_write_result = await write_rag_stores(
+                elasticsearch_client=self.elasticsearch_client,
+                milvus_client=self.milvus_client,
+                settings=self.settings,
+                chunks=chunks,
+                vectors=vectors,
+                parents=hierarchy.parents,
+            )
 
         # 第六步：把底层写入结果整理成上层更容易理解的导入结果。
         return MarkdownIngestionResult(
@@ -140,6 +155,14 @@ class MarkdownIngestionService:
             es_success_count=store_write_result.es.success_count,
             milvus_insert_result=store_write_result.milvus.detail,
         )
+
+    @asynccontextmanager
+    async def _store_mutation_guard(self):
+        if self.store_mutation_lock is None:
+            yield
+            return
+        async with self.store_mutation_lock.hold():
+            yield
 
     def _validate_vectors(
         self,

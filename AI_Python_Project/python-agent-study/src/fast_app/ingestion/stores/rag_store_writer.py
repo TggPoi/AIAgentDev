@@ -951,6 +951,7 @@ async def replace_docs_rag_stores(
     chunks: list[KnowledgeChunk],
     vectors: list[list[float]],
     parents: list[MarkdownParentChunk] | None = None,
+    verify_convergence: bool = True,
 ) -> DualStoreWriteResult:
     validate_store_write_inputs(chunks, vectors)
     validate_parent_write_inputs(parents or [])

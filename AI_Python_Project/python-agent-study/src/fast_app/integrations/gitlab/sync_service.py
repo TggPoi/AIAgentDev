@@ -5,9 +5,11 @@ import io
 import json
 import tarfile
 import tempfile
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
+from collections.abc import Awaitable, Callable
 
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_scan
@@ -25,10 +27,6 @@ from fast_app.ingestion.processing.chunk_builders import (
     ChunkBuildOptions,
     MarkdownChunkBuilder,
 )
-from fast_app.ingestion.processing.document_loaders import (
-    ExcelDocumentLoader,
-    PowerPointDocumentLoader,
-)
 from fast_app.ingestion.processing.markdown_hierarchy import (
     MarkdownHierarchyBuilder,
     MarkdownHierarchyOptions,
@@ -38,15 +36,17 @@ from fast_app.ingestion.processing.metadata_models import (
     build_permission_metadata,
     normalize_permission_metadata,
 )
-from fast_app.ingestion.processing.office_chunk_builders import (
-    ExcelChunkBuilder,
-    PowerPointChunkBuilder,
-    build_embedding_fingerprint,
+from fast_app.ingestion.processing.structured_document_processor import (
+    StructuredDocumentProcessor,
+)
+from fast_app.ingestion.validation.document_validation import (
+    validate_knowledge_document_package,
 )
 from fast_app.ingestion.stores.rag_store_writer import (
     close_rag_docs_for_version,
     upsert_rag_stores,
 )
+from fast_app.ingestion.stores.store_mutation_lock import StoreMutationLock
 from fast_app.integrations.gitlab.client import GitLabClient
 from fast_app.integrations.gitlab.project_source import (
     GitLabProjectSource,
@@ -79,13 +79,16 @@ class GitDocumentSyncService:
         embedding_client: BaseEmbeddingClient,
         elasticsearch_client: AsyncElasticsearch,
         milvus_client: MilvusClient,
+        store_mutation_lock: StoreMutationLock | None = None,
     ) -> None:
         self.settings = settings
         self.embedding_client = embedding_client
         self.elasticsearch_client = elasticsearch_client
         self.milvus_client = milvus_client
+        self.store_mutation_lock = store_mutation_lock
         self.markdown_builder = MarkdownHierarchyBuilder()
         self.text_builder = MarkdownChunkBuilder()
+        self.document_processor = StructuredDocumentProcessor(settings=settings)
 
     async def run(
         self,
@@ -104,9 +107,25 @@ class GitDocumentSyncService:
             job_id=job.id, worker_id=worker_id, phase="fetching"
         )
         prepared = (
-            await self._prepare_incremental(client, source, job, existing)
+            await self._prepare_incremental(
+                client,
+                source,
+                job,
+                existing,
+                before_external_call=lambda: repository.assert_job_owned(
+                    job.id, worker_id
+                ),
+            )
             if job.mode == "incremental" and job.base_sha
-            else await self._prepare_full(client, source, job, existing)
+            else await self._prepare_full(
+                client,
+                source,
+                job,
+                existing,
+                before_external_call=lambda: repository.assert_job_owned(
+                    job.id, worker_id
+                ),
+            )
         )
         if not prepared.changes:
             await repository.complete_noop(
@@ -132,52 +151,52 @@ class GitDocumentSyncService:
             prepared.chunks,
             publication.version,
         )
-        await repository.assert_job_owned(job.id, worker_id)
-        # 修改/删除文档时不物理删除旧记录，而是把旧记录的有效结束版本设为 N。
-        # 正在使用 N-1 的请求仍可完成；新请求在正式指针切换后只看到 N。
-        await close_rag_docs_for_version(
-            elasticsearch_client=self.elasticsearch_client,
-            milvus_client=self.milvus_client,
-            settings=self.settings,
-            doc_ids=prepared.changed_doc_ids,
-            valid_to_version=publication.version,
-        )
-        if chunks:
+        async with self._store_mutation_guard():
+            # 等待全局锁后重新检查租约，失租 Worker 不得开始 Store mutation。
             await repository.assert_job_owned(job.id, worker_id)
-            await upsert_rag_stores(
+            # 修改/删除文档时不物理删除旧记录，而是把旧记录的有效结束版本设为 N。
+            await close_rag_docs_for_version(
                 elasticsearch_client=self.elasticsearch_client,
                 milvus_client=self.milvus_client,
                 settings=self.settings,
-                chunks=chunks,
-                vectors=prepared.vectors,
-                parents=parents,
-                verify_convergence=False,
+                doc_ids=prepared.changed_doc_ids,
+                valid_to_version=publication.version,
             )
-        # 只有 ES 父子集合、Milvus 子块集合、版本字段和父子引用全部收敛，
-        # 才允许下方 publish() 把 PostgreSQL 正式版本指针切到候选版本。
-        await self._verify_candidate(
-            source_id=source.id,
-            version=publication.version,
-            parents=parents,
-            chunks=chunks,
-        )
-        await repository.assert_job_owned(job.id, worker_id)
-        await repository.publish(
-            job_id=job.id,
-            source_id=source.id,
-            version=publication.version,
-            target_sha=job.target_sha,
-            manifests=prepared.manifests,
-            changes=prepared.changes,
-            parent_count=len(parents),
-            child_count=len(chunks),
-            validation={
-                "es_parent_count": len(parents),
-                "es_child_count": len(chunks),
-                "milvus_child_count": len(chunks),
-            },
-            worker_id=worker_id,
-        )
+            if chunks:
+                await repository.assert_job_owned(job.id, worker_id)
+                await upsert_rag_stores(
+                    elasticsearch_client=self.elasticsearch_client,
+                    milvus_client=self.milvus_client,
+                    settings=self.settings,
+                    chunks=chunks,
+                    vectors=prepared.vectors,
+                    parents=parents,
+                    verify_convergence=False,
+                )
+            # 只有 ES/Milvus 候选版本收敛，才允许切换 PostgreSQL 正式指针。
+            await self._verify_candidate(
+                source_id=source.id,
+                version=publication.version,
+                parents=parents,
+                chunks=chunks,
+            )
+            await repository.assert_job_owned(job.id, worker_id)
+            await repository.publish(
+                job_id=job.id,
+                source_id=source.id,
+                version=publication.version,
+                target_sha=job.target_sha,
+                manifests=prepared.manifests,
+                changes=prepared.changes,
+                parent_count=len(parents),
+                child_count=len(chunks),
+                validation={
+                    "es_parent_count": len(parents),
+                    "es_child_count": len(chunks),
+                    "milvus_child_count": len(chunks),
+                },
+                worker_id=worker_id,
+            )
         return publication.version
 
     async def bootstrap_all(
@@ -205,6 +224,9 @@ class GitDocumentSyncService:
                 source=source,
                 target_sha=target_shas[source.id],
                 existing=existing,
+                before_external_call=lambda: repository.assert_job_owned(
+                    job.id, worker_id
+                ),
             )
             entries.append((source, target_shas[source.id], prepared))
 
@@ -226,51 +248,52 @@ class GitDocumentSyncService:
             all_chunks.extend(chunks)
             all_vectors.extend(prepared.vectors)
 
-        await repository.assert_job_owned(job.id, worker_id)
-        if all_chunks:
-            await upsert_rag_stores(
-                elasticsearch_client=self.elasticsearch_client,
-                milvus_client=self.milvus_client,
-                settings=self.settings,
-                chunks=all_chunks,
-                vectors=all_vectors,
-                parents=all_parents,
-                verify_convergence=False,
-            )
-        for source, _, prepared in entries:
-            source_parents = [
-                parent
-                for parent in all_parents
-                if parent.metadata.get("source_id") == source.id
-            ]
-            source_chunks = [
-                chunk
-                for chunk in all_chunks
-                if chunk.metadata.get("source_id") == source.id
-            ]
-            await self._verify_candidate(
-                source_id=source.id,
+        async with self._store_mutation_guard():
+            await repository.assert_job_owned(job.id, worker_id)
+            if all_chunks:
+                await upsert_rag_stores(
+                    elasticsearch_client=self.elasticsearch_client,
+                    milvus_client=self.milvus_client,
+                    settings=self.settings,
+                    chunks=all_chunks,
+                    vectors=all_vectors,
+                    parents=all_parents,
+                    verify_convergence=False,
+                )
+            for source, _, prepared in entries:
+                source_parents = [
+                    parent
+                    for parent in all_parents
+                    if parent.metadata.get("source_id") == source.id
+                ]
+                source_chunks = [
+                    chunk
+                    for chunk in all_chunks
+                    if chunk.metadata.get("source_id") == source.id
+                ]
+                await self._verify_candidate(
+                    source_id=source.id,
+                    version=publication.version,
+                    parents=source_parents,
+                    chunks=source_chunks,
+                )
+            await repository.assert_job_owned(job.id, worker_id)
+            await repository.publish_bootstrap(
+                job_id=job.id,
+                worker_id=worker_id,
                 version=publication.version,
-                parents=source_parents,
-                chunks=source_chunks,
+                entries=[
+                    {
+                        "source": source,
+                        "target_sha": target_sha,
+                        "manifests": prepared.manifests,
+                        "changes": prepared.changes,
+                    }
+                    for source, target_sha, prepared in entries
+                ],
+                parent_count=len(all_parents),
+                child_count=len(all_chunks),
             )
-        await repository.assert_job_owned(job.id, worker_id)
-        await repository.publish_bootstrap(
-            job_id=job.id,
-            worker_id=worker_id,
-            version=publication.version,
-            entries=[
-                {
-                    "source": source,
-                    "target_sha": target_sha,
-                    "manifests": prepared.manifests,
-                    "changes": prepared.changes,
-                }
-                for source, target_sha, prepared in entries
-            ],
-            parent_count=len(all_parents),
-            child_count=len(all_chunks),
-        )
         return publication.version
 
     async def _prepare_full(
@@ -279,12 +302,14 @@ class GitDocumentSyncService:
         source: GitLabSourceTable,
         job: GitLabSyncJobTable,
         existing: dict[str, GitLabDocumentTable],
+        before_external_call: Callable[[], Awaitable[None]] | None = None,
     ) -> PreparedSync:
         return await self._prepare_full_at_sha(
             client=client,
             source=source,
             target_sha=job.target_sha,
             existing=existing,
+            before_external_call=before_external_call,
         )
 
     async def _prepare_full_at_sha(
@@ -294,6 +319,7 @@ class GitDocumentSyncService:
         source: GitLabSourceTable,
         target_sha: str,
         existing: dict[str, GitLabDocumentTable],
+        before_external_call: Callable[[], Awaitable[None]] | None = None,
     ) -> PreparedSync:
         archive = await client.download_archive(source.project_id, target_sha)
         if len(archive) > self.settings.gitlab_archive_max_bytes:
@@ -306,11 +332,6 @@ class GitDocumentSyncService:
                 max_bytes=self.settings.gitlab_archive_max_bytes,
                 max_file_bytes=self.settings.gitlab_source_file_max_bytes,
             )
-            if any(
-                path.is_file() and path.suffix.lower() == ".pdf"
-                for path in root.rglob("*")
-            ):
-                raise ValueError("GitLab 文档同步本阶段不支持 PDF")
             paths = sorted(
                 path
                 for path in root.rglob("*")
@@ -326,6 +347,7 @@ class GitDocumentSyncService:
                 current_paths=current_paths,
                 existing=existing,
                 root=root,
+                before_external_call=before_external_call,
             )
 
     async def _prepare_incremental(
@@ -334,6 +356,7 @@ class GitDocumentSyncService:
         source: GitLabSourceTable,
         job: GitLabSyncJobTable,
         existing: dict[str, GitLabDocumentTable],
+        before_external_call: Callable[[], Awaitable[None]] | None = None,
     ) -> PreparedSync:
         compare = await client.compare(
             source.project_id,
@@ -343,27 +366,28 @@ class GitDocumentSyncService:
         # GitLab 明确告诉我们 Compare 超时或截断时，增量结果不可信；
         # 自动退回固定 target_sha 的 Archive 全量同步，正确性优先于少下载数据。
         if compare.compare_timeout or compare.overflow:
-            return await self._prepare_full(client, source, job, existing)
+            return await self._prepare_full(
+                client, source, job, existing, before_external_call=before_external_call
+            )
         changed_paths: set[str] = set()
         deleted_paths: set[str] = set()
         for diff in compare.diffs:
             old_path = _normalize_repository_path(diff.old_path)
             new_path = _normalize_repository_path(diff.new_path)
-            if (
-                not diff.deleted_file
-                and PurePosixPath(new_path).suffix.lower() == ".pdf"
-            ):
-                raise ValueError("GitLab 文档同步本阶段不支持 PDF")
             if _is_policy_path(old_path) or _is_policy_path(new_path):
                 # 权限规则或 Sidecar 可能影响不止一个正文文件，无法只凭当前 diff
                 # 准确列出受影响文档，因此回退全量 Manifest 对账。
-                return await self._prepare_full(client, source, job, existing)
+                return await self._prepare_full(
+                    client, source, job, existing, before_external_call=before_external_call
+                )
             if diff.deleted_file or diff.renamed_file:
                 if _is_supported(old_path):
                     deleted_paths.add(old_path)
             if not diff.deleted_file and _is_supported(new_path):
                 if PurePosixPath(new_path).suffix.lower() == ".xlsx":
-                    return await self._prepare_full(client, source, job, existing)
+                    return await self._prepare_full(
+                        client, source, job, existing, before_external_call=before_external_call
+                    )
                 changed_paths.add(new_path)
 
         with tempfile.TemporaryDirectory(prefix="rag-gitlab-incremental-") as temp_dir:
@@ -404,6 +428,7 @@ class GitDocumentSyncService:
                 root=root,
                 preserve_unmentioned=True,
                 explicit_deleted=deleted_paths,
+                before_external_call=before_external_call,
             )
             return prepared
 
@@ -417,6 +442,7 @@ class GitDocumentSyncService:
         root: Path,
         preserve_unmentioned: bool = False,
         explicit_deleted: set[str] | None = None,
+        before_external_call: Callable[[], Awaitable[None]] | None = None,
     ) -> PreparedSync:
         adapter = GitLabProjectSource(
             host_id=source.host_id,
@@ -462,11 +488,12 @@ class GitDocumentSyncService:
                 root=root,
             )
             acl_hash = _stable_hash(acl)
-            strategy_version = (
-                adapter.chunk_strategy_version
-                if document_type == "markdown"
-                else f"{document_type}_builder_v1"
-            )
+            if document_type == "markdown":
+                strategy_version = adapter.chunk_strategy_version
+            elif document_type in {"powerpoint", "word", "pdf"}:
+                strategy_version = f"{document_type}_builder_office_vision_v2"
+            else:
+                strategy_version = f"{document_type}_builder_v1"
             config_fingerprint = adapter.chunk_config_fingerprint(
                 self._chunk_config(document_type)
             )
@@ -485,13 +512,14 @@ class GitDocumentSyncService:
                 continue
 
             doc_id = adapter.doc_id(path)
-            doc_parents, doc_chunks = self._build_artifacts(
+            doc_parents, doc_chunks = await self._build_artifacts(
                 adapter=adapter,
                 repository_path=path,
                 file_path=file_path,
                 raw=raw,
                 target_sha=target_sha,
                 acl=acl,
+                before_external_call=before_external_call,
             )
             parents.extend(doc_parents)
             chunks.extend(doc_chunks)
@@ -531,7 +559,7 @@ class GitDocumentSyncService:
             vectors=vectors,
         )
 
-    def _build_artifacts(
+    async def _build_artifacts(
         self,
         *,
         adapter: GitLabProjectSource,
@@ -540,6 +568,7 @@ class GitDocumentSyncService:
         raw: bytes,
         target_sha: str,
         acl: dict[str, Any],
+        before_external_call: Callable[[], Awaitable[None]] | None = None,
     ) -> tuple[list[MarkdownParentChunk], list[KnowledgeChunk]]:
         document_type = adapter.document_type(repository_path)
         options = self._chunk_options()
@@ -580,18 +609,10 @@ class GitDocumentSyncService:
             "file_extension": PurePosixPath(repository_path).suffix,
             **acl,
         }
-        fingerprint = build_embedding_fingerprint(self.settings)
-        if document_type == "powerpoint":
-            document = PowerPointDocumentLoader().load_structured_file(
-                file_path,
-                source_path=repository_path,
-            )
-            document.metadata.update(metadata)
-            return [], PowerPointChunkBuilder().build(
-                document,
-                options,
-                embedding_fingerprint=fingerprint,
-            )
+        validate_knowledge_document_package(
+            file_path, document_type=document_type
+        )
+        profile = None
         if document_type == "spreadsheet":
             profile_path = Path(f"{file_path}{PROFILE_SUFFIX}")
             if not profile_path.is_file():
@@ -599,18 +620,26 @@ class GitDocumentSyncService:
                     f"XLSX 缺少随仓库版本化的 Profile: {repository_path}{PROFILE_SUFFIX}"
                 )
             profile = json.loads(profile_path.read_text(encoding="utf-8"))
-            document = ExcelDocumentLoader().load_structured_file(
+        if document_type in {"powerpoint", "spreadsheet", "word", "pdf"}:
+            processed = await self.document_processor.process_file(
                 file_path,
+                document_type=document_type,
                 source_path=repository_path,
+                options=options,
+                document_metadata=metadata,
+                excel_profile=profile,
+                before_external_call=before_external_call,
             )
-            document.metadata.update(metadata)
-            return [], ExcelChunkBuilder().build(
-                document,
-                options,
-                profile=profile,
-                embedding_fingerprint=fingerprint,
-            )
+            return processed.parents, processed.chunks
         raise ValueError(f"不支持的 GitLab 文档类型: {repository_path}")
+
+    @asynccontextmanager
+    async def _store_mutation_guard(self):
+        if self.store_mutation_lock is None:
+            yield
+            return
+        async with self.store_mutation_lock.hold():
+            yield
 
     def _chunk_options(self) -> ChunkBuildOptions:
         return ChunkBuildOptions(
@@ -637,6 +666,16 @@ class GitDocumentSyncService:
                 child_max=self.settings.markdown_child_max_tokens,
                 child_min=self.settings.markdown_child_min_tokens,
                 child_overlap=self.settings.markdown_child_overlap_tokens,
+            )
+        if document_type in {"powerpoint", "word", "pdf"}:
+            values.update(
+                builder_schema_version="office-vision-v2",
+                vision_enabled=self.settings.vision_enabled,
+                vision_model=self.settings.vision_model_name,
+                vision_prompt=self.settings.vision_prompt_version,
+                vision_preprocess=self.settings.vision_preprocess_version,
+                vision_schema=self.settings.vision_schema_version,
+                pdf_scanned_text_threshold=self.settings.pdf_scanned_text_threshold,
             )
         return values
 

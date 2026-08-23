@@ -109,6 +109,8 @@ def test_identity_version_and_filters() -> None:
         department_code="art",
         default_visibility="department",
     )
+    assert source.document_type("docs/manual.docx") == "word"
+    assert source.document_type("docs/manual.pdf") == "pdf"
     assert source.doc_id("docs/a.md") == source.doc_id("docs/a.md")
     assert source.doc_id("docs/a.md") != source.doc_id("docs/b.md")
     document = source.build_text_document(

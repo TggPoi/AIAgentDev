@@ -1,11 +1,45 @@
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from fast_app.domain.knowledge_models import DocumentType
 
 PERMISSION_RULES_FILE_NAME = ".permission-rules.json"
+
+
+def apply_local_corpus_ownership(
+    metadata: dict[str, Any] | Any,
+    *,
+    local_corpus_id: str,
+    source_revision: str,
+) -> dict[str, Any]:
+    """为本地语料写入稳定 ownership，并拒绝接管其他来源。"""
+
+    corpus_id = local_corpus_id.strip()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", corpus_id):
+        raise ValueError("local_corpus_id 格式不合法")
+    revision = source_revision.strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", revision):
+        raise ValueError("source_revision 必须是 SHA256")
+    result = dict(metadata)
+    expected_source_id = f"local:{corpus_id}"
+    existing_source_id = str(result.get("source_id") or "")
+    if existing_source_id and existing_source_id != expected_source_id:
+        raise ValueError("不能用 local corpus ownership 覆盖非本地 source_id")
+    ownership_type = str(result.get("ownership_type") or "")
+    if ownership_type and ownership_type != "local_corpus":
+        raise ValueError("不能用 local corpus ownership 覆盖非本地 ownership_type")
+    result.update(
+        ownership_type="local_corpus",
+        local_corpus_id=corpus_id,
+        source_id=expected_source_id,
+        source_revision=revision,
+        valid_from_version=0,
+        valid_to_version=0,
+    )
+    return result
 
 
 def normalize_source_path(source_path: str) -> str:

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-from typing import TypeVar
+from typing import Awaitable, Callable, TypeVar
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, SystemMessage
@@ -24,8 +25,19 @@ async def invoke_structured_model(
     schema: type[StructuredModel],
     messages: list[BaseMessage],
     config: RunnableConfig | None = None,
+    before_provider_call: Callable[[], Awaitable[None]] | None = None,
+    max_provider_calls: int = 5,
+    max_attempts_per_transport: int = 2,
+    retry_base_delay_seconds: float = 0.0,
 ) -> StructuredModel:
-    """使用最近成功 transport，最多五次技术调用后返回 Pydantic 模型。"""
+    """使用最近成功 transport，并在一个共享预算内有限重试和回退。"""
+
+    if max_provider_calls < 1:
+        raise ValueError("max_provider_calls 必须大于零")
+    if max_attempts_per_transport < 1:
+        raise ValueError("max_attempts_per_transport 必须大于零")
+    if retry_base_delay_seconds < 0:
+        raise ValueError("retry_base_delay_seconds 不能为负数")
 
     key = (
         type(model).__name__,
@@ -43,8 +55,12 @@ async def invoke_structured_model(
     for transport in transports:
         attempts = 0
         retry_messages = messages
-        while attempts < 2 and calls < 5:
+        while attempts < max_attempts_per_transport and calls < max_provider_calls:
             attempts += 1
+            # ownership/cancellation hook 不属于 Provider 技术失败。它必须在真实
+            # 调用前执行，并原样传播，不能被 fallback/retry 吞掉。
+            if before_provider_call is not None:
+                await before_provider_call()
             calls += 1
             try:
                 value = await _invoke_transport(
@@ -78,7 +94,9 @@ async def invoke_structured_model(
                     if _TRANSPORT_CACHE.get(key) == transport:
                         _TRANSPORT_CACHE.pop(key, None)
                     break
-                if isinstance(exc, ValidationError) and attempts == 1:
+                if http_status is not None and 400 <= http_status < 500 and http_status != 429:
+                    raise
+                if isinstance(exc, ValidationError) and attempts < max_attempts_per_transport:
                     details = "; ".join(
                         (
                             f"{'.'.join(map(str, item['loc'])) or '<root>'}: "
@@ -95,8 +113,25 @@ async def invoke_structured_model(
                             )
                         ),
                     ]
-                if attempts == 2:
+                retryable = (
+                    isinstance(exc, (TimeoutError, ValidationError))
+                    or http_status == 429
+                    or (http_status is not None and http_status >= 500)
+                    # 保持旧调用者的兼容语义：没有 HTTP 状态的技术异常在当前
+                    # transport 中仍允许一次有限重试。
+                    or http_status is None
+                )
+                if (
+                    not retryable
+                    or attempts >= max_attempts_per_transport
+                    or calls >= max_provider_calls
+                ):
                     raise
+                delay = retry_base_delay_seconds * (2 ** (attempts - 1))
+                if delay > 0:
+                    await asyncio.sleep(delay)
+        if calls >= max_provider_calls:
+            break
     raise RuntimeError("模型不支持可用的 structured-output transport") from last_error
 
 

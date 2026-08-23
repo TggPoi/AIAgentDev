@@ -9,9 +9,6 @@ The final system must support a React-based web frontend for visual operations. 
 Before doing project work, read these files in order:
 
 1. `learning-docs\教学讲解规范.md`
-4. `learning-docs\总学习路线_归档参考.md`
-
-`总学习路线_归档参考.md` is archived reference only.
 
 Do not replace the explicit LangGraph RAG pipeline with `create_agent()` unless the user explicitly asks and a design review has been completed.
 

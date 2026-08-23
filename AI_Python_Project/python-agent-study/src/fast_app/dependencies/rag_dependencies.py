@@ -59,6 +59,7 @@ from fast_app.services.agent_tasks.agent_tool_audit_service import AgentToolAudi
 from fast_app.services.agent_tasks.agent_tool_permission_service import AgentToolPermissionService
 from fast_app.integrations.gitlab.agent_change_service import GitLabAgentChangeService
 from fast_app.integrations.gitlab.repository import GitLabRepository
+from fast_app.ingestion.stores.store_mutation_lock import StoreMutationLock
 from fast_app.services.nl2sql.registry import DatasetRegistry
 from fast_app.services.nl2sql.service import Nl2SqlService
 from fast_app.services.nl2sql.authorization import Nl2SqlAuthorizationService
@@ -358,6 +359,7 @@ def get_knowledge_document_management_service(
             settings=settings,
             repository=GitLabRepository(session),
         ),
+        store_mutation_lock=StoreMutationLock(request.app.state.db_engine),
     )
 
 

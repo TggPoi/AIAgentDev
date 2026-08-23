@@ -27,6 +27,8 @@ from fast_app.ingestion.processing.document_loaders import (
 from fast_app.ingestion.markdown_ingestion_service import MarkdownIngestionService
 from fast_app.ingestion.validation.ingestion_validation import validate_ingestion_result
 from fast_app.ingestion.stores.rag_store_admin import StoreResetOptions, reset_rag_stores
+from fast_app.db.session import create_database_engine
+from fast_app.ingestion.stores.store_mutation_lock import StoreMutationLock
 
 
 def apply_arg_overrides(args: argparse.Namespace) -> None:
@@ -272,6 +274,7 @@ async def run_ingest(args: argparse.Namespace, settings: Settings) -> int:
 
     elasticsearch_client = build_elasticsearch_client(settings)
     milvus_client = build_milvus_client(settings)
+    engine = create_database_engine(settings)
 
     try:
         # CLI 只负责创建依赖和调用 service。
@@ -284,6 +287,7 @@ async def run_ingest(args: argparse.Namespace, settings: Settings) -> int:
             ),
             elasticsearch_client=elasticsearch_client,
             milvus_client=milvus_client,
+            store_mutation_lock=StoreMutationLock(engine),
         )
         result = await service.ingest()
 
@@ -302,6 +306,7 @@ async def run_ingest(args: argparse.Namespace, settings: Settings) -> int:
         # MilvusClient 是同步客户端，直接 close。
         await elasticsearch_client.close()
         milvus_client.close()
+        await engine.dispose()
 
 
 async def run_reset_stores(args: argparse.Namespace, settings: Settings) -> int:
@@ -312,20 +317,22 @@ async def run_reset_stores(args: argparse.Namespace, settings: Settings) -> int:
 
     elasticsearch_client = build_elasticsearch_client(settings)
     milvus_client = build_milvus_client(settings)
+    engine = create_database_engine(settings)
 
     try:
         # CLI 不直接调用 indices.delete 或 drop_collection。
         # 结构级危险操作统一交给 rag_store_admin.reset_rag_stores。
-        result = await reset_rag_stores(
-            elasticsearch_client=elasticsearch_client,
-            milvus_client=milvus_client,
-            settings=settings,
-            options=StoreResetOptions(
-                target=args.target,
-                recreate_schema=not args.drop_only,
-                confirm=True,
-            ),
-        )
+        async with StoreMutationLock(engine).hold():
+            result = await reset_rag_stores(
+                elasticsearch_client=elasticsearch_client,
+                milvus_client=milvus_client,
+                settings=settings,
+                options=StoreResetOptions(
+                    target=args.target,
+                    recreate_schema=not args.drop_only,
+                    confirm=True,
+                ),
+            )
 
         print_json(
             {
@@ -340,6 +347,7 @@ async def run_reset_stores(args: argparse.Namespace, settings: Settings) -> int:
     finally:
         await elasticsearch_client.close()
         milvus_client.close()
+        await engine.dispose()
 
 
 def add_ingestion_common_args(parser: argparse.ArgumentParser) -> None:

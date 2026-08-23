@@ -50,6 +50,7 @@ from fast_app.domain.knowledge_models import (
     LoadedExcelDocument,
     LoadedPowerPointDocument,
     PowerPointSlide,
+    LoadedDocument,
 )
 from fast_app.db.ingestion_tables import KnowledgeDocumentTable, KnowledgeIngestionJobTable
 from fast_app.db.auth_tables import UserTable
@@ -79,6 +80,10 @@ from fast_app.ingestion.stores.incremental_store import (
     verify_chunk_convergence,
 )
 from fast_app.ingestion.processing.metadata_models import build_doc_id, build_document_metadata
+from fast_app.ingestion.processing.markdown_hierarchy import (
+    MarkdownHierarchyBuilder,
+    MarkdownHierarchyOptions,
+)
 from fast_app.ingestion.validation.ooxml_validation import OOXMLValidationError, validate_ooxml_package
 from fast_app.ingestion.processing.office_chunk_builders import (
     ExcelChunkBuilder,
@@ -700,7 +705,10 @@ def test_office_loaders_and_stable_chunks(root: Path) -> None:
         text in pptx_document.content
         for text in ("Product Plan", "Body", "Grouped", "Nested", "Server", "Speaker notes")
     )
-    assert "pptx_visual_content_skipped" in pptx_document.metadata["extraction_warnings"]
+    structured_pptx = PowerPointDocumentLoader().load_structured_file(pptx_path)
+    assert len(structured_pptx.vision_occurrences) == 1
+    assert len(structured_pptx.vision_contents) == 1
+    assert "pptx_visual_content_skipped" not in pptx_document.metadata["extraction_warnings"]
 
     no_placeholder = Presentation()
     slide = no_placeholder.slides.add_slide(no_placeholder.slide_layouts[6])
@@ -802,7 +810,9 @@ def test_filename_and_request_limits() -> None:
     """验证安全文件名以及普通请求与上传请求使用不同全局上限。"""
 
     assert normalize_upload_filename("资产列表.xlsx") == ("资产列表.xlsx", "spreadsheet")
-    for filename in ("../bad.xlsx", "CON.xlsx", ".hidden.pptx", "bad.pdf"):
+    assert normalize_upload_filename("manual.docx") == ("manual.docx", "word")
+    assert normalize_upload_filename("manual.pdf") == ("manual.pdf", "pdf")
+    for filename in ("../bad.xlsx", "CON.xlsx", ".hidden.pptx", "bad.exe"):
         try:
             normalize_upload_filename(filename)
             raise AssertionError(f"unsafe filename accepted: {filename}")
@@ -1084,6 +1094,73 @@ async def test_replace_docs_idempotency(root: Path) -> None:
     expected_ids = {chunk.id for chunk in chunks}
     assert set(es_store) == expected_ids
     assert set(milvus_store) == expected_ids
+
+
+async def test_replace_docs_with_markdown_parents_verifies_convergence() -> None:
+    document_metadata = build_document_metadata(
+        source_path="docs/parent-regression.md", document_type="markdown"
+    )
+    document_metadata.update(
+        doc_id="doc-parent-regression",
+        visibility="public",
+        allowed_departments=[],
+        allowed_users=[],
+    )
+    hierarchy = MarkdownHierarchyBuilder().build(
+        [
+            LoadedDocument(
+                source_path="docs/parent-regression.md",
+                content="# Parent\n\n## Child\n\nA sufficiently long child body.",
+                document_type="markdown",
+                metadata=document_metadata,
+            )
+        ],
+        MarkdownHierarchyOptions(
+            source="test",
+            parent_target_tokens=100,
+            parent_max_tokens=200,
+            parent_max_chars=1000,
+            child_target_tokens=20,
+            child_max_tokens=50,
+            child_min_tokens=1,
+            child_overlap_tokens=0,
+        ),
+    )
+    settings = Settings(_env_file=None, EMBEDDING_DIM=3)
+    vectors = [[0.0, 0.0, 0.0] for _ in hierarchy.children]
+    calls: list[str] = []
+
+    async def fake_replace_es(*, client, settings, chunks, parents):
+        assert parents == hierarchy.parents
+        return len(chunks) + len(parents), {"deleted": 0}
+
+    def fake_replace_milvus(*, client, settings, chunks, vectors):
+        return {"upsert_count": len(chunks)}, {"delete_count": 0}
+
+    async def fake_verify(**kwargs):
+        assert kwargs["parents"] == hierarchy.parents
+        calls.append("verified")
+
+    with (
+        patch("fast_app.ingestion.stores.rag_store_writer.replace_docs_es_index", fake_replace_es),
+        patch(
+            "fast_app.ingestion.stores.rag_store_writer.replace_docs_milvus_collection",
+            fake_replace_milvus,
+        ),
+        patch(
+            "fast_app.ingestion.stores.rag_store_writer.verify_markdown_store_convergence",
+            fake_verify,
+        ),
+    ):
+        await replace_docs_rag_stores(
+            None,
+            None,
+            settings,
+            hierarchy.children,
+            vectors,
+            parents=hierarchy.parents,
+        )
+    assert calls == ["verified"]
 
 
 async def test_real_incremental_stores() -> None:
@@ -1532,6 +1609,7 @@ async def main() -> None:
         test_filename_and_request_limits()
         test_api_contract(root)
         await test_replace_docs_idempotency(root)
+        await test_replace_docs_with_markdown_parents_verifies_convergence()
         await test_periodic_heartbeat()
         test_worker_department_acl(root)
     if "--real-db" in sys.argv:

@@ -13,6 +13,11 @@ OOXML_CORE_FILES = {
         "_rels/.rels",
         "xl/workbook.xml",
     },
+    ".docx": {
+        "[Content_Types].xml",
+        "_rels/.rels",
+        "word/document.xml",
+    },
 }
 
 
@@ -33,7 +38,7 @@ def validate_ooxml_package(
     max_entries: int = 10_000,
     max_compression_ratio: float = 100.0,
 ) -> None:
-    """校验 PPTX/XLSX ZIP 结构及解压资源上限，不解压文件到磁盘。"""
+    """校验 PPTX/XLSX/DOCX ZIP 结构及解压资源上限，不解压到磁盘。"""
 
     file_path = Path(path)
     extension = file_path.suffix.lower()
@@ -41,7 +46,7 @@ def validate_ooxml_package(
     if required_files is None:
         raise OOXMLValidationError(
             "UNSUPPORTED_DOCUMENT_TYPE",
-            "只允许上传 .pptx 或 .xlsx 文件",
+            "只允许上传 .pptx、.xlsx 或 .docx 文件",
         )
 
     try:
