@@ -3,19 +3,35 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+from dataclasses import dataclass
 from datetime import datetime
 
-from fast_app.db.auth_tables import UserTable
+from sqlalchemy.exc import IntegrityError
+
+from fast_app.core.request_context import get_request_id
+from fast_app.db.auth_tables import PermissionTable, RoleTable, UserTable
 from fast_app.domain.agent_tool_permissions import PermissionCode, RoleCode
 from fast_app.domain.auth_models import AccountType, UserStatus
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.schemas.user_admin_schema import (
     AccessCatalogItem,
     AccessCatalogResponse,
+    CreateManagedUserRequest,
     ManagedDepartmentAccess,
+    ManagedDepartmentAccessInput,
     ManagedUserDetail,
     ManagedUserListResponse,
+    ManagedUserPasswordResetResponse,
+    ManagedUserStatusResponse,
     ManagedUserSummary,
+    ReplaceManagedUserAccessRequest,
+    ResetManagedUserPasswordRequest,
+    UpdateManagedUserStatusRequest,
+)
+from fast_app.services.auth.auth_crypto import (
+    generate_user_id,
+    hash_password,
+    validate_password_strength,
 )
 from fast_app.services.auth.capability_service import resolve_account_type
 from fast_app.services.auth.permission_service import PermissionService
@@ -24,7 +40,11 @@ from fast_app.services.auth.user_administration_repository import (
 )
 from fast_app.services.exceptions import (
     AccessManagementPermissionDeniedError,
+    LastSystemAdminProtectedError,
+    ManagedUserAccessInvalidError,
+    ManagedUserConflictError,
     ManagedUserNotFoundError,
+    ManagedUserSelfOperationError,
     UserListCursorInvalidError,
 )
 
@@ -43,6 +63,14 @@ EMPLOYEE_DEPARTMENT_ROLE_CODES = {
     RoleCode.DEPARTMENT_EDITOR.value,
     RoleCode.DEPARTMENT_DOCUMENT_MANAGER.value,
 }
+
+
+@dataclass(frozen=True)
+class _ValidatedAccessSnapshot:
+    departments: list[tuple[str, bool, set[str]]]
+    roles_by_code: dict[str, RoleTable]
+    permission_codes: set[str]
+    permissions_by_code: dict[str, PermissionTable]
 
 
 class UserAdministrationService:
@@ -171,9 +199,10 @@ class UserAdministrationService:
         if not is_admin and (
             account_type != AccountType.EMPLOYEE
             or primary_department != manager_department
+            or len(departments) != 1
         ):
             raise AccessManagementPermissionDeniedError(
-                "部门主管只能查看自己主部门的普通员工"
+                "部门主管只能管理仅属于自己主部门的普通员工"
             )
 
         department_roles = await self._repository.list_department_role_codes(user_id)
@@ -211,6 +240,350 @@ class UserAdministrationService:
             created_at=row.created_at,
             updated_at=row.updated_at,
             last_login_at=row.last_login_at,
+        )
+
+    async def create_user(
+        self,
+        actor: CurrentUserContext,
+        request: CreateManagedUserRequest,
+    ) -> ManagedUserDetail:
+        """在一个事务内创建账号、完整访问快照和安全审计事实。"""
+
+        is_admin, manager_department = self._management_scope(actor)
+        validated = await self._validate_access_snapshot(
+            actor_is_admin=is_admin,
+            manager_department=manager_department,
+            account_type=request.account_type,
+            department_access=request.department_access,
+            direct_permission_codes=request.direct_permission_codes,
+        )
+        username = request.username.strip().lower()
+        email = request.email.strip().lower() if request.email and request.email.strip() else None
+        display_name = (
+            request.display_name.strip()
+            if request.display_name and request.display_name.strip()
+            else None
+        )
+        if not username:
+            raise ManagedUserAccessInvalidError("用户名不能只包含空白字符")
+        validate_password_strength(request.password)
+        user_id = generate_user_id()
+        try:
+            await self._repository.create_user(
+                user_id=user_id,
+                username=username,
+                email=email,
+                display_name=display_name,
+                password_hash=hash_password(request.password),
+            )
+            await self._apply_access_snapshot(
+                actor_user_id=actor.user_id,
+                target_user_id=user_id,
+                account_type=request.account_type,
+                validated=validated,
+            )
+            await self._repository.add_audit(
+                action="create_user",
+                actor_user_id=actor.user_id,
+                target_user_id=user_id,
+                request_id=get_request_id(),
+                details={
+                    "username": username,
+                    "access": _safe_access_snapshot(request.account_type, validated),
+                },
+            )
+            await self._repository.commit()
+        except IntegrityError as exc:
+            await self._repository.rollback()
+            raise ManagedUserConflictError("用户名或邮箱已经存在") from exc
+        except Exception:
+            await self._repository.rollback()
+            raise
+        return await self.get_user(actor, user_id)
+
+    async def replace_user_access(
+        self,
+        actor: CurrentUserContext,
+        user_id: str,
+        request: ReplaceManagedUserAccessRequest,
+    ) -> ManagedUserDetail:
+        """原子替换账号类型、完整部门作用域和 active 直接权限。"""
+
+        if actor.user_id == user_id:
+            raise ManagedUserSelfOperationError("不能通过用户管理接口修改自己的访问权限")
+        is_admin, manager_department = self._management_scope(actor)
+        validated = await self._validate_access_snapshot(
+            actor_is_admin=is_admin,
+            manager_department=manager_department,
+            account_type=request.account_type,
+            department_access=request.department_access,
+            direct_permission_codes=request.direct_permission_codes,
+        )
+        try:
+            row = await self._repository.get_user_for_update(user_id)
+            if row is None:
+                raise ManagedUserNotFoundError("管理范围内不存在目标用户")
+            current = await self.get_user(actor, user_id)
+            system_admin_role = await self._repository.lock_system_admin_role()
+            if (
+                current.account_type == AccountType.ADMIN
+                and current.status == UserStatus.ACTIVE
+                and request.account_type != AccountType.ADMIN
+                and await self._repository.count_active_system_admins(
+                    system_admin_role.id
+                )
+                <= 1
+            ):
+                raise LastSystemAdminProtectedError("不能移除最后一个 active 系统管理员")
+            await self._apply_access_snapshot(
+                actor_user_id=actor.user_id,
+                target_user_id=user_id,
+                account_type=request.account_type,
+                validated=validated,
+                system_admin_role=system_admin_role,
+            )
+            await self._repository.touch_user(row)
+            await self._repository.add_audit(
+                action="replace_access",
+                actor_user_id=actor.user_id,
+                target_user_id=user_id,
+                request_id=get_request_id(),
+                details={
+                    "before": _safe_detail_access(current),
+                    "after": _safe_access_snapshot(request.account_type, validated),
+                },
+            )
+            await self._repository.commit()
+        except IntegrityError as exc:
+            await self._repository.rollback()
+            raise ManagedUserConflictError("访问权限替换与当前数据库状态冲突") from exc
+        except Exception:
+            await self._repository.rollback()
+            raise
+        return await self.get_user(actor, user_id)
+
+    async def update_user_status(
+        self,
+        actor: CurrentUserContext,
+        user_id: str,
+        request: UpdateManagedUserStatusRequest,
+    ) -> ManagedUserStatusResponse:
+        """切换账号状态；禁用时不可逆地撤销当前 refresh token 和 API Key。"""
+
+        if actor.user_id == user_id and request.status == UserStatus.DISABLED:
+            raise ManagedUserSelfOperationError("不能禁用当前登录账号")
+        revoked_refresh = 0
+        revoked_api_keys = 0
+        try:
+            row = await self._repository.get_user_for_update(user_id)
+            if row is None:
+                raise ManagedUserNotFoundError("管理范围内不存在目标用户")
+            current = await self.get_user(actor, user_id)
+            if current.status != request.status:
+                if (
+                    current.account_type == AccountType.ADMIN
+                    and current.status == UserStatus.ACTIVE
+                    and request.status == UserStatus.DISABLED
+                ):
+                    system_admin_role = await self._repository.lock_system_admin_role()
+                    if (
+                        await self._repository.count_active_system_admins(
+                            system_admin_role.id
+                        )
+                        <= 1
+                    ):
+                        raise LastSystemAdminProtectedError(
+                            "不能禁用最后一个 active 系统管理员"
+                        )
+                await self._repository.update_user_status(row, request.status.value)
+                if request.status == UserStatus.DISABLED:
+                    revoked_refresh, revoked_api_keys = (
+                        await self._repository.revoke_active_credentials(user_id)
+                    )
+            await self._repository.add_audit(
+                action="update_status",
+                actor_user_id=actor.user_id,
+                target_user_id=user_id,
+                request_id=get_request_id(),
+                details={
+                    "before": current.status.value,
+                    "after": request.status.value,
+                    "revoked_refresh_token_count": revoked_refresh,
+                    "revoked_api_key_count": revoked_api_keys,
+                },
+            )
+            await self._repository.commit()
+        except Exception:
+            await self._repository.rollback()
+            raise
+        return ManagedUserStatusResponse(
+            user=await self.get_user(actor, user_id),
+            revoked_refresh_token_count=revoked_refresh,
+            revoked_api_key_count=revoked_api_keys,
+        )
+
+    async def reset_user_password(
+        self,
+        actor: CurrentUserContext,
+        user_id: str,
+        request: ResetManagedUserPasswordRequest,
+    ) -> ManagedUserPasswordResetResponse:
+        """重置管理范围内账号密码，并在同一事务撤销现有凭证。"""
+
+        if actor.user_id == user_id:
+            raise ManagedUserSelfOperationError("请使用修改当前密码接口处理自己的账号")
+        validate_password_strength(request.new_password)
+        try:
+            row = await self._repository.get_user_for_update(user_id)
+            if row is None:
+                raise ManagedUserNotFoundError("管理范围内不存在目标用户")
+            await self.get_user(actor, user_id)
+            await self._repository.update_password_hash(
+                row,
+                hash_password(request.new_password),
+            )
+            revoked_refresh, revoked_api_keys = (
+                await self._repository.revoke_active_credentials(user_id)
+            )
+            await self._repository.add_audit(
+                action="reset_password",
+                actor_user_id=actor.user_id,
+                target_user_id=user_id,
+                request_id=get_request_id(),
+                details={
+                    "revoked_refresh_token_count": revoked_refresh,
+                    "revoked_api_key_count": revoked_api_keys,
+                },
+            )
+            await self._repository.commit()
+        except Exception:
+            await self._repository.rollback()
+            raise
+        return ManagedUserPasswordResetResponse(
+            password_reset=True,
+            revoked_refresh_token_count=revoked_refresh,
+            revoked_api_key_count=revoked_api_keys,
+        )
+
+    async def _validate_access_snapshot(
+        self,
+        *,
+        actor_is_admin: bool,
+        manager_department: str,
+        account_type: AccountType,
+        department_access: list[ManagedDepartmentAccessInput],
+        direct_permission_codes: list[str],
+    ) -> _ValidatedAccessSnapshot:
+        if not actor_is_admin and account_type != AccountType.EMPLOYEE:
+            raise AccessManagementPermissionDeniedError(
+                "部门主管只能创建或管理普通员工"
+            )
+        department_items = list(department_access)
+        department_codes = [item.department_code for item in department_items]
+        if len(set(department_codes)) != len(department_codes):
+            raise ManagedUserAccessInvalidError("部门作用域不能包含重复 department_code")
+        primary_items = [item for item in department_items if item.is_primary]
+        if len(primary_items) != 1:
+            raise ManagedUserAccessInvalidError("部门作用域必须且只能包含一个主部门")
+        if any(
+            len(set(item.role_codes)) != len(item.role_codes)
+            for item in department_items
+        ):
+            raise ManagedUserAccessInvalidError("同一部门的角色不能包含重复 code")
+        if not actor_is_admin and set(department_codes) != {manager_department}:
+            raise AccessManagementPermissionDeniedError(
+                "部门主管只能管理自己主部门的普通员工"
+            )
+        departments_by_code = await self._repository.get_departments_by_codes(
+            set(department_codes)
+        )
+        if set(departments_by_code) != set(department_codes):
+            raise ManagedUserAccessInvalidError("部门作用域包含未知 department_code")
+
+        submitted_role_codes = {
+            role_code
+            for item in department_items
+            for role_code in item.role_codes
+        }
+        if not submitted_role_codes <= EMPLOYEE_DEPARTMENT_ROLE_CODES:
+            raise ManagedUserAccessInvalidError("部门角色不在可分配目录中")
+        if account_type == AccountType.DEPARTMENT_MANAGER:
+            if len(department_items) != 1 or submitted_role_codes:
+                raise ManagedUserAccessInvalidError(
+                    "部门主管账号必须只有一个主部门，且主管角色由服务端自动绑定"
+                )
+        required_role_codes = set(submitted_role_codes)
+        if account_type == AccountType.DEPARTMENT_MANAGER:
+            required_role_codes.add(RoleCode.DEPARTMENT_MANAGER.value)
+        if account_type == AccountType.ADMIN:
+            required_role_codes.add(RoleCode.SYSTEM_ADMIN.value)
+        roles_by_code = await self._repository.get_roles_by_codes(required_role_codes)
+        if set(roles_by_code) != required_role_codes:
+            raise ManagedUserAccessInvalidError("系统角色目录不完整，无法保存访问快照")
+
+        permission_codes = set(direct_permission_codes)
+        if len(permission_codes) != len(direct_permission_codes):
+            raise ManagedUserAccessInvalidError("直接权限不能包含重复 code")
+        actor_assignable_permissions = (
+            DIRECT_PERMISSION_CODES_ADMIN
+            if actor_is_admin
+            else DIRECT_PERMISSION_CODES_MANAGER
+        )
+        if not permission_codes <= actor_assignable_permissions:
+            raise AccessManagementPermissionDeniedError(
+                "直接权限包含当前 actor 不可下放的 code"
+            )
+        permissions_by_code = await self._repository.get_permissions_by_codes(
+            permission_codes
+        )
+        if set(permissions_by_code) != permission_codes:
+            raise ManagedUserAccessInvalidError("直接权限包含未知 code")
+
+        normalized_departments: list[tuple[str, bool, set[str]]] = []
+        for item in department_items:
+            role_codes = set(item.role_codes)
+            if account_type == AccountType.DEPARTMENT_MANAGER and item.is_primary:
+                role_codes.add(RoleCode.DEPARTMENT_MANAGER.value)
+            normalized_departments.append(
+                (item.department_code, item.is_primary, role_codes)
+            )
+        return _ValidatedAccessSnapshot(
+            departments=normalized_departments,
+            roles_by_code=roles_by_code,
+            permission_codes=permission_codes,
+            permissions_by_code=permissions_by_code,
+        )
+
+    async def _apply_access_snapshot(
+        self,
+        *,
+        actor_user_id: str,
+        target_user_id: str,
+        account_type: AccountType,
+        validated: _ValidatedAccessSnapshot,
+        system_admin_role: RoleTable | None = None,
+    ) -> None:
+        roles_by_code = validated.roles_by_code
+        if system_admin_role is None:
+            if account_type == AccountType.ADMIN:
+                system_admin_role = roles_by_code[RoleCode.SYSTEM_ADMIN.value]
+            else:
+                system_admin_role = await self._repository.lock_system_admin_role()
+        await self._repository.replace_system_admin_role(
+            user_id=target_user_id,
+            enabled=account_type == AccountType.ADMIN,
+            role=system_admin_role,
+        )
+        await self._repository.replace_department_access(
+            user_id=target_user_id,
+            departments=validated.departments,
+            roles_by_code=roles_by_code,
+        )
+        await self._repository.replace_direct_permissions(
+            user_id=target_user_id,
+            permission_codes=validated.permission_codes,
+            permissions_by_code=validated.permissions_by_code,
+            actor_user_id=actor_user_id,
         )
 
     async def _build_summary(self, row: UserTable) -> ManagedUserSummary:
@@ -280,6 +653,39 @@ def _decode_cursor(cursor: str | None) -> tuple[datetime | None, str | None]:
         json.JSONDecodeError,
     ) as exc:
         raise UserListCursorInvalidError("用户列表 cursor 无效") from exc
+
+
+def _safe_access_snapshot(
+    account_type: AccountType,
+    validated: _ValidatedAccessSnapshot,
+) -> dict[str, object]:
+    return {
+        "account_type": account_type.value,
+        "department_access": [
+            {
+                "department_code": department_code,
+                "is_primary": is_primary,
+                "role_codes": sorted(role_codes),
+            }
+            for department_code, is_primary, role_codes in validated.departments
+        ],
+        "direct_permission_codes": sorted(validated.permission_codes),
+    }
+
+
+def _safe_detail_access(detail: ManagedUserDetail) -> dict[str, object]:
+    return {
+        "account_type": detail.account_type.value,
+        "department_access": [
+            {
+                "department_code": item.department_code,
+                "is_primary": item.is_primary,
+                "role_codes": list(item.role_codes),
+            }
+            for item in detail.department_access
+        ],
+        "direct_permission_codes": list(detail.direct_permission_codes),
+    }
 
 
 __all__ = [

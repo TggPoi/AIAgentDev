@@ -396,6 +396,54 @@ class UserPermissionGrantTable(Base):
     )
 
 
+class UserAdministrationAuditTable(Base):
+    """用户管理成功写操作的安全审计事实，不保存任何明文凭证。"""
+
+    __tablename__ = "user_administration_audits"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    actor_user_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    target_user_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    request_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    details_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('create_user', 'replace_access', 'update_status', 'reset_password')",
+            name="ck_user_administration_audits_action",
+        ),
+        Index(
+            "idx_user_administration_audits_actor_created",
+            "actor_user_id",
+            "created_at",
+        ),
+        Index(
+            "idx_user_administration_audits_target_created",
+            "target_user_id",
+            "created_at",
+        ),
+    )
+
+
 class ApiKeyTable(Base):
     """api_keys 表：程序化访问凭证，只保存 hash 和审计字段。"""
 
@@ -502,6 +550,7 @@ __all__ = [
     "RoleTable",
     "UserDepartmentTable",
     "UserDepartmentRoleTable",
+    "UserAdministrationAuditTable",
     "UserPermissionGrantTable",
     "UserRoleTable",
     "UserTable",
