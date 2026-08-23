@@ -66,6 +66,18 @@ class Conversation(BaseModel):
         max_length=128,
         description="会话归属用户 ID；匿名或未认证场景可为空。",
     )
+    external_session_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="当前用户命名空间内对外公开的稳定 session ID。",
+    )
+    title: str = Field(
+        default="新会话",
+        min_length=1,
+        max_length=160,
+        description="侧边栏会话标题，不伪装成聊天消息。",
+    )
     created_at: datetime = Field(default_factory=utc_now, description="会话创建时间。")
     updated_at: datetime = Field(default_factory=utc_now, description="会话最近更新时间。")
     metadata: dict[str, object] = Field(default_factory=dict, description="会话附加元数据。")

@@ -464,7 +464,11 @@ class RagAgentPipeline:
     ) -> None:
         """把当前轮 user / assistant 消息写入短期 memory，供下一轮 rewrite 使用。"""
 
-        if req.session_id is None or self.conversation_memory_store is None:
+        if (
+            req.session_id is None
+            or self.conversation_memory_store is None
+            or req._structured_turn_persistence_managed
+        ):
             return
 
         metadata = {
@@ -541,7 +545,11 @@ class RagAgentPipeline:
         已经完成的 token-only / stream_events SSE 协议。
         """
 
-        if req.session_id is None or self.conversation_persistence is None:
+        if (
+            req.session_id is None
+            or self.conversation_persistence is None
+            or req._structured_turn_persistence_managed
+        ):
             return
 
         metadata = {

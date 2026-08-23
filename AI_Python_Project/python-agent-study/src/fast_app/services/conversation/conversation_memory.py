@@ -26,6 +26,10 @@ class ConversationMemoryStore(Protocol):
         """按创建顺序返回指定会话最近 limit 条消息。"""
         ...
 
+    async def delete_conversation(self, conversation_id: str) -> None:
+        """删除会话的全部短期消息。"""
+        ...
+
 
 class InMemoryConversationMemoryStore:
     """内存版会话消息存储。
@@ -42,7 +46,10 @@ class InMemoryConversationMemoryStore:
 
     async def append_message(self, message: ConversationMessage) -> None:
         async with self._lock:
-            self._messages_by_conversation[message.conversation_id].append(message)
+            messages = self._messages_by_conversation[message.conversation_id]
+            if any(item.id == message.id for item in messages):
+                return
+            messages.append(message)
 
     async def list_recent_messages(
         self,
@@ -55,6 +62,10 @@ class InMemoryConversationMemoryStore:
         async with self._lock:
             messages = self._messages_by_conversation.get(conversation_id, [])
             return list(messages[-limit:])
+
+    async def delete_conversation(self, conversation_id: str) -> None:
+        async with self._lock:
+            self._messages_by_conversation.pop(conversation_id, None)
 
 
 class RedisConversationMemoryStore:
@@ -82,6 +93,8 @@ class RedisConversationMemoryStore:
         payload = message.model_dump_json()
 
         pipeline = self.redis_client.pipeline()
+        # 同一 turn 重试时先移除完全相同的消息 JSON，再追加，保持 List 幂等。
+        pipeline.lrem(key, 0, payload)
         pipeline.rpush(key, payload)
         pipeline.ltrim(key, -self.max_messages, -1)
         pipeline.expire(key, self.ttl_seconds)
@@ -103,6 +116,9 @@ class RedisConversationMemoryStore:
             ConversationMessage.model_validate_json(raw_item)
             for raw_item in raw_items
         ]
+
+    async def delete_conversation(self, conversation_id: str) -> None:
+        await self.redis_client.delete(self._messages_key(conversation_id))
 
 
 __all__ = [

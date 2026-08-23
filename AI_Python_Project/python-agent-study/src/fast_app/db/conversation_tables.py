@@ -28,6 +28,12 @@ class ConversationTable(Base):
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     user_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    external_session_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    title: Mapped[str] = mapped_column(
+        String(160),
+        nullable=False,
+        server_default=text("'新会话'"),
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -54,6 +60,21 @@ class ConversationTable(Base):
     summaries: Mapped[list[ConversationSummaryTable]] = relationship(
         back_populates="conversation",
         cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        Index(
+            "uq_conversations_user_external_session",
+            "user_id",
+            "external_session_id",
+            unique=True,
+        ),
+        Index(
+            "idx_conversations_user_updated_id",
+            "user_id",
+            updated_at.desc(),
+            id.desc(),
+        ),
     )
 
 

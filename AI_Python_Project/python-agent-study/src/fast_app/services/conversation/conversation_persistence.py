@@ -31,6 +31,12 @@ class ConversationPersistenceService:
         conversation = Conversation(
             id=conversation_id,
             user_id=user_id,
+            external_session_id=(
+                str(metadata["external_session_id"])
+                if metadata.get("external_session_id")
+                else conversation_id
+            ),
+            title=_default_conversation_title(user_content),
             updated_at=now,
             metadata={
                 "last_query_rewrite_reason": metadata.get("query_rewrite_reason"),
@@ -61,3 +67,8 @@ class ConversationPersistenceService:
 
 
 __all__ = ["ConversationPersistenceService"]
+
+
+def _default_conversation_title(content: str) -> str:
+    normalized = " ".join(content.split())
+    return (normalized[:60] or "新会话")
