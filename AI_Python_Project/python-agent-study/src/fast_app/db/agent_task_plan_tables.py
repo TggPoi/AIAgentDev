@@ -60,6 +60,7 @@ class AgentTaskPlanTable(Base):
     task_kind: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     owner_user_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    session_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     record_version: Mapped[int] = mapped_column(
         BigInteger, nullable=False, server_default=text("1")
     )
@@ -109,6 +110,19 @@ class AgentTaskPlanTable(Base):
             name="ck_agent_task_plans_capacity_pair",
         ),
         Index("idx_agent_task_plans_owner_created", "owner_user_id", "created_at"),
+        Index(
+            "idx_agent_task_plans_owner_updated_id",
+            "owner_user_id",
+            updated_at.desc(),
+            task_plan_id.desc(),
+        ),
+        Index(
+            "idx_agent_task_plans_owner_session_updated_id",
+            "owner_user_id",
+            "session_id",
+            updated_at.desc(),
+            task_plan_id.desc(),
+        ),
         Index("idx_agent_task_plans_status_updated", "status", "updated_at"),
         Index("idx_agent_task_plans_lease_until", "lease_until"),
     )

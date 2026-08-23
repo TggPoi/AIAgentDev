@@ -623,6 +623,7 @@ def create_next_action_decision_node(
 
             # 任务已生成，开始执行 拆解后的子任务
             if task_plan is not None:
+                task_plan.session_id = state.get("session_id")
                 route: RagAgentRoute = "execute_task_plan"
                 step_count = state["step_count"] + 1
                 result = {

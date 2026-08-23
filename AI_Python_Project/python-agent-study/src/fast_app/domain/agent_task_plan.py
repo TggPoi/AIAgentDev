@@ -292,6 +292,11 @@ class AgentTaskPlan(BaseModel):
         default=None,
         description="创建该任务计划的用户 ID，用于查询和审计。",
     )
+    session_id: str | None = Field(
+        default=None,
+        max_length=128,
+        description="创建该计划的外部会话 ID；旧计划或非会话任务为空。",
+    )
     original_query: str = Field(description="用户输入的原始复杂问题。")
     objective: str = Field(description="用户最终希望完成的目标。")
     task_type: AgentTaskType = Field(description="复杂问题的任务类型。")

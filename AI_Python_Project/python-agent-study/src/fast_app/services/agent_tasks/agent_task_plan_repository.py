@@ -8,11 +8,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Collection
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import delete, exists, func, or_, select, text, update
+from sqlalchemy import and_, delete, exists, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -44,6 +45,20 @@ from fast_app.services.exceptions import (
 
 
 SnapshotMutator = Callable[[dict[str, Any]], dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class TaskPlanCatalogRecord:
+    """TaskPlan 列表所需的安全投影，不承载完整内部 snapshot。"""
+
+    task_plan_id: str
+    task_kind: str
+    status: str
+    session_id: str | None
+    summary: str
+    error_code: str | None
+    created_at: datetime
+    updated_at: datetime
 
 
 def _deadline(seconds: int):
@@ -93,6 +108,11 @@ class AgentTaskPlanRepository:
                 task_kind=str(snapshot["task_kind"]),
                 status=str(snapshot["status"]),
                 owner_user_id=owner_user_id,
+                session_id=(
+                    str(snapshot["session_id"])
+                    if snapshot.get("session_id")
+                    else None
+                ),
                 record_version=1,
                 snapshot_json=snapshot,
                 created_at=_as_datetime(snapshot["created_at"]),
@@ -115,6 +135,72 @@ class AgentTaskPlanRepository:
             if row is None:
                 raise AppServiceError("Agent task plan 不存在")
             return dict(row.snapshot_json), int(row.record_version)
+
+    async def list_owned_plans(
+        self,
+        *,
+        owner_user_id: str,
+        limit: int,
+        status: str | None,
+        session_id: str | None,
+        cursor_updated_at: datetime | None,
+        cursor_task_plan_id: str | None,
+    ) -> tuple[list[TaskPlanCatalogRecord], bool]:
+        """按 owner 和稳定 cursor 返回列表投影，不读取租约或工具内部事实。"""
+
+        conditions = [AgentTaskPlanTable.owner_user_id == owner_user_id]
+        if status is not None:
+            conditions.append(AgentTaskPlanTable.status == status)
+        if session_id is not None:
+            conditions.append(AgentTaskPlanTable.session_id == session_id)
+        if cursor_updated_at is not None and cursor_task_plan_id is not None:
+            conditions.append(
+                or_(
+                    AgentTaskPlanTable.updated_at < cursor_updated_at,
+                    and_(
+                        AgentTaskPlanTable.updated_at == cursor_updated_at,
+                        AgentTaskPlanTable.task_plan_id < cursor_task_plan_id,
+                    ),
+                )
+            )
+
+        objective = AgentTaskPlanTable.snapshot_json["objective"].astext
+        error_code = AgentTaskPlanTable.snapshot_json["error_code"].astext
+        stmt = (
+            select(
+                AgentTaskPlanTable.task_plan_id,
+                AgentTaskPlanTable.task_kind,
+                AgentTaskPlanTable.status,
+                AgentTaskPlanTable.session_id,
+                func.coalesce(objective, "").label("summary"),
+                error_code.label("error_code"),
+                AgentTaskPlanTable.created_at,
+                AgentTaskPlanTable.updated_at,
+            )
+            .where(*conditions)
+            .order_by(
+                AgentTaskPlanTable.updated_at.desc(),
+                AgentTaskPlanTable.task_plan_id.desc(),
+            )
+            .limit(limit + 1)
+        )
+        async with self._session_factory() as session:
+            rows = (await session.execute(stmt)).all()
+
+        has_more = len(rows) > limit
+        return [
+            TaskPlanCatalogRecord(
+                task_plan_id=row.task_plan_id,
+                task_kind=row.task_kind,
+                status=row.status,
+                session_id=row.session_id,
+                summary=row.summary,
+                error_code=row.error_code,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+            for row in rows[:limit]
+        ], has_more
 
     async def begin_operation(
         self,
@@ -853,4 +939,4 @@ class AgentTaskPlanRepository:
             return int(result.rowcount or 0)
 
 
-__all__ = ["AgentTaskPlanRepository"]
+__all__ = ["AgentTaskPlanRepository", "TaskPlanCatalogRecord"]

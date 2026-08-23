@@ -3,7 +3,7 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -22,6 +22,7 @@ from fast_app.dependencies.rag_dependencies import (
     get_prompt_guard_service,
 )
 from fast_app.dependencies.user_context import get_current_user_context
+from fast_app.domain.agent_task_plan import AgentTaskPlanStatus
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.domain.agent_tool_permissions import RoleCode
 from fast_app.domain.research_task_plan import (
@@ -29,7 +30,11 @@ from fast_app.domain.research_task_plan import (
     build_research_task_plan_public_view,
 )
 from fast_app.services.agent_tasks.agent_task_executor import AgentTaskExecutor
+from fast_app.services.agent_tasks.agent_task_plan_catalog_service import (
+    AgentTaskPlanCatalogService,
+)
 from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
+from fast_app.schemas.agent_task_plan_schema import AgentTaskPlanListResponse
 from fast_app.services.exceptions import AppServiceError, ToolPermissionDeniedError
 from fast_app.services.rag.guarded_streaming import (
     GuardedStreamState,
@@ -81,6 +86,42 @@ class AgentTaskPlanControlResponse(BaseModel):
     message: str = Field(description="供前端展示的控制操作结果摘要。")
     request_id: str | None = Field(default=None, description="本次控制请求 ID。")
     trace_id: str | None = Field(default=None, description="本次控制链路追踪 ID。")
+
+
+@router.get("", response_model=AgentTaskPlanListResponse)
+async def list_agent_task_plans_endpoint(
+    cursor: str | None = Query(
+        default=None,
+        description="上一页返回的不透明 TaskPlan cursor。",
+    ),
+    limit: int = Query(
+        default=20,
+        ge=1,
+        le=100,
+        description="本页最多返回的 TaskPlan 数量。",
+    ),
+    status: AgentTaskPlanStatus | None = Query(
+        default=None,
+        description="只返回指定生命周期状态的 TaskPlan。",
+    ),
+    session_id: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="只返回指定外部会话创建的 TaskPlan。",
+    ),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    task_plan_store: AgentTaskPlanStore = Depends(get_agent_task_plan_store),
+) -> AgentTaskPlanListResponse:
+    """分页读取当前用户自己的 TaskPlan 安全摘要。"""
+
+    return await AgentTaskPlanCatalogService(task_plan_store).list_plans(
+        user,
+        cursor=cursor,
+        limit=limit,
+        status=status,
+        session_id=session_id,
+    )
 
 
 def _agent_task_plan_trace(

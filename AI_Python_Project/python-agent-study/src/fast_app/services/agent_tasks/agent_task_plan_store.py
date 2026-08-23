@@ -39,6 +39,7 @@ from fast_app.domain.research_task_plan import ResearchTaskPlan
 from fast_app.domain.user_context import CurrentUserContext
 from fast_app.services.agent_tasks.agent_task_plan_repository import (
     AgentTaskPlanRepository,
+    TaskPlanCatalogRecord,
 )
 from fast_app.services.exceptions import AgentTaskPlanSchemaUnsupportedError, AppServiceError
 
@@ -175,6 +176,27 @@ class AgentTaskPlanStore:
     async def load_markdown(self, task_plan_id: str) -> str:
         plan = await self.load(task_plan_id)
         return _render_task_plan_markdown(plan)
+
+    async def list_owned(
+        self,
+        *,
+        owner_user_id: str,
+        limit: int,
+        status: str | None,
+        session_id: str | None,
+        cursor_updated_at: datetime | None,
+        cursor_task_plan_id: str | None,
+    ) -> tuple[list[TaskPlanCatalogRecord], bool]:
+        """读取当前用户的安全目录投影，不反序列化完整 TaskPlan。"""
+
+        return await self.repository.list_owned_plans(
+            owner_user_id=owner_user_id,
+            limit=limit,
+            status=status,
+            session_id=session_id,
+            cursor_updated_at=cursor_updated_at,
+            cursor_task_plan_id=cursor_task_plan_id,
+        )
 
     async def save(self, plan: StoredAgentTaskPlan) -> StoredAgentTaskPlan:
         lease = require_task_plan_lease(plan.task_plan_id)

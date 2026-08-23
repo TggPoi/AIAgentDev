@@ -794,6 +794,11 @@ class ResearchTaskPlan(BaseModel):
     task_kind: Literal["question_decomposition"] = Field(default="question_decomposition", description="服务端绑定的研究任务类型。")
     task_type: Literal["analysis"] = Field(default="analysis", description="兼容展示类型，不参与 Router 决策。")
     user_id: str = Field(description="创建计划的认证用户 ID。")
+    session_id: str | None = Field(
+        default=None,
+        max_length=128,
+        description="创建该计划的外部会话 ID；旧计划或非会话任务为空。",
+    )
     original_query: str = Field(description="用户当前原始问题，仅保存在内部模型。")
     source_query: str = Field(description="服务端绑定的 resolved query。")
     objective: str = Field(description="服务端从 resolved query 派生的研究目标。")
@@ -874,6 +879,11 @@ class ResearchTaskPlanPublicView(BaseModel):
     task_plan_id: str = Field(description="TaskPlan ID。")
     task_kind: Literal["question_decomposition"] = Field(description="研究任务类型。")
     task_type: Literal["analysis"] = Field(description="展示任务类型。")
+    session_id: str | None = Field(
+        default=None,
+        max_length=128,
+        description="创建该计划的外部会话 ID；旧计划或非会话任务为空。",
+    )
     source_query: str = Field(description="服务端解析后的当前任务语义。")
     objective: str = Field(description="研究目标。")
     final_synthesis_instruction: str = Field(description="最终综合约束。")
@@ -903,6 +913,7 @@ def build_research_task_plan_public_view(plan: ResearchTaskPlan) -> ResearchTask
         task_plan_id=plan.task_plan_id,
         task_kind=plan.task_kind,
         task_type=plan.task_type,
+        session_id=plan.session_id,
         source_query=plan.source_query,
         objective=plan.objective,
         final_synthesis_instruction=plan.final_synthesis_instruction,

@@ -369,12 +369,18 @@ async def main() -> None:
         task_planner=planner,
     )(
         build_rag_agent_initial_state(
-            RagChatRequest(query="请删除刚才找到的文档", mode="hybrid", top_k=3),
+            RagChatRequest(
+                query="请删除刚才找到的文档",
+                mode="hybrid",
+                top_k=3,
+                session_id="router-session",
+            ),
             operation="run",
         )
     )
     assert document_update["route"] == "execute_task_plan"
     assert document_update["agent_task_plan"].steps == []
+    assert document_update["agent_task_plan"].session_id == "router-session"
     assert route_after_loop_check({**initial_state, "route": "direct_web"}) == "direct_web"
 
     web_settings = build_settings(BOCHA_API_KEY="configured")
