@@ -8,13 +8,13 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 2 - Authentication Lifecycle and AuthProvider
 
-Current Step: Slice 2 Auth contract re-verification found blocking Contract Gap CG001
+Current Step: Context Recovery 已重新确认 CG001；执行已授权的受限 backend 422 contract 修复
 
-Next Action: User decides whether to separately authorize the recommended backend 422 contract fix or approve a frontend product-spec relaxation
+Next Action: 先增加 Auth HTTP 422/OpenAPI expected-red regression test，再实现安全公共 validation error contract
 
 Blocking Issues:
 
-- CG001 - Auth 422 field-error contract conflicts with runtime; Slice 2 cannot satisfy field-level validation behavior without backend or product-scope authorization.
+- CG001 - Auth 422 field-error contract conflicts with runtime；用户已授权严格受限的 backend remediation，修复并重新验证前 Slice 2 保持 BLOCKED。
 
 Last Updated: 2026-08-25 (Asia/Shanghai)
 
@@ -418,11 +418,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 2 因 CG001 停止受影响实现；尚未创建 AuthProvider、认证表单或 token lifecycle code。
+- Slice 2 因 CG001 仍保持 BLOCKED；用户已授权严格受限的 backend remediation，尚未创建 AuthProvider、认证表单或 token lifecycle code。
 
 Next Action:
 
-- 等待用户在“单独授权推荐的 backend 422 contract fix”与“批准降低前端 field-error 产品要求”之间作出决定；推荐前者。
+- 在 Auth HTTP 422 runtime 与 Auth Route OpenAPI 公共 seam 增加 expected-red regression test，再实现 allowlisted 安全字段投影；backend fix 独立 checkpoint 后重新生成 frontend contract artifacts 并复核关闭 CG001。
 
 Relevant Files:
 
@@ -440,15 +440,16 @@ Relevant Files:
 - `../python-agent-study/src/fast_app/api/auth_routes.py`
 - `../python-agent-study/src/fast_app/schemas/auth_schema.py`
 
-Context Recovery Evidence (verified 2026-08-25):
+Context Recovery Evidence (verified 2026-08-25 after manual context compaction):
 
-- Confirmed HEAD before this plan transition: `dfa5b7a`。
-- `git status --short --branch`: `master...origin/master`，无工作树修改。
-- `git diff --stat`、完整 unstaged diff、`git diff --cached --stat` 与完整 staged diff：全部为空。
-- 当前源码仍只有环境检查页、基础 Provider/MSW 与一个测试；没有 Slice 1 protocol 实现。
-- Node `v24.14.0`、pnpm `10.32.1`；package/lockfile 未包含 `openapi-typescript`。
-- `pnpm check`: lint、typecheck、1/1 Vitest、production build 全部通过。
-- Blocking Issues: None。
+- 恢复开始时 confirmed HEAD 为 `6d3bc71`；frontend 与 backend 位于同一 Git root `D:/AI_Agent_Project`，branch 为 `master...origin/master [ahead 3]`。
+- `git status --short --branch` 除 branch 行外无输出；`git diff --stat`、完整 unstaged diff、`git diff --cached --stat` 与完整 staged diff 全部为空。
+- Slice 0 文档治理 checkpoint 为 `dfa5b7a`，计划批准/进入 Slice 1 的状态转换 checkpoint 为 `768b6d8`；Slice 1 checkpoint 为 `7cdbcaa`；CG001 blocker checkpoint 为 `6d3bc71`。
+- Slice 1 protocol infrastructure 真实存在：`contracts/backend-openapi.json`、generated transport types、generated drift script、共享 HTTP/error/media-type seam、SSE byte framer、Public Event validation/safe projection/terminal semantics 及其 deterministic tests 均在 Repository 中；`package.json` 精确包含 `openapi-typescript` `7.13.0` 和 contract scripts。
+- `pnpm contracts:check` 通过；`pnpm test` 为 4 files / 17 tests 全部通过。
+- 后端 `test_auth_identity_capabilities.py` 通过；`test_auth_session_security.py::assert_http_contract` 通过。首次缺少 `PYTHONPATH=src` 的命令环境错误已按后端文档修正后重跑，不作为代码失败。
+- 真实 Auth router + 全局 exception handler + overridden external AuthService seam 对空 `/auth/login` JSON 返回 `422` 和 `REQUEST_VALIDATION_ERROR`，runtime keys 只有 `code/error_category/message/request_id/trace_id`；三个 Auth route 的 OpenAPI `422` 仍引用带 `detail` 的 `HTTPValidationError`。
+- Current Slice/Status 与 blocker checkpoint 一致：Slice 2 / BLOCKED；CG001 仍真实存在。用户已在本次恢复条件满足后授权推荐 backend fix；唯一 Next Action 是 test-first 修复该 contract，不扩大 backend scope。
 
 ## Decision Log
 
@@ -571,23 +572,22 @@ Source:
 
 ## Known Issues
 
-### KI001 - Business Implementation Has Not Started
+### KI001 - Business Implementation Had Not Started
 
-Status: EXPECTED / NON-BLOCKING
+Status: RESOLVED / SUPERSEDED
 
 Evidence:
 
-- `src/app/App.tsx` 仍是环境检查页。
-- MSW handlers 为空。
-- 只有 `App.test.tsx` 一个环境测试。
+- Slice 1 已在 checkpoint `7cdbcaa` 完成 contract snapshot、generated transport types、共享 HTTP/error seam 与 SSE protocol infrastructure，并以 4 files / 17 tests 和 `pnpm check` 验证。
+- Slice 2 已进入 Authentication contract verification；尚未创建 AuthProvider、认证表单或 token lifecycle code，是因为真实 Contract Gap CG001，而不是所有业务 Slice 仍为 `NOT_STARTED`。
 
 Impact:
 
-- 所有业务 Slice 均必须保持 `NOT_STARTED`，不能从示例或 conversation history 推断为 Slice 2。
+- 原“所有业务 Slice 均 NOT_STARTED”的实施前警示不再适用；当前进度由本计划的 Slice 状态、Git checkpoints 和实际测试共同证明。
 
 Resolution:
 
-- 审核并完成 Slice 0 后，从 Slice 1 开始。
+- 由 Slice 1 checkpoint `7cdbcaa` supersede；当前按 Slice 2 / BLOCKED 与 CG001 remediation 继续。
 
 ### KI002 - OpenAPI Type Generator Is Not Installed
 
@@ -658,7 +658,7 @@ Resolution:
 
 #### CG001 - Auth 422 Field Error Schema Does Not Match Runtime
 
-Status: BLOCKING SLICE 2 / USER DECISION REQUIRED
+Status: BLOCKING SLICE 2 / REMEDIATION AUTHORIZED
 
 Evidence:
 
@@ -680,10 +680,11 @@ Recommended Backend Change:
 - `handle_request_validation_error()` 从 Pydantic/FastAPI `exc.errors()` 只投影公开请求字段，不回显 input、密码、token 或任意 context；所有其他位置保留 form-level error。
 - 为相关 Route 显式声明同一 `422` response model，使 OpenAPI 与 runtime 一致，并增加 Auth HTTP contract regression tests；随后重新导出 frontend snapshot/generated types。
 
-Decision Required:
+Decision:
 
-- 推荐：用户单独授权修改 `python-agent-study` 的 backend validation error contract、OpenAPI 与测试，然后恢复 Slice 2。
-- 备选：用户明确批准产品行为变更，把无法定位的服务端 `422` 降级为 form-level error，并同步修改 Authentication spec；未经批准不得采用。
+- 用户已于 2026-08-25 批准推荐方案，并把 backend 修改范围严格限定为安全公共 RequestValidationError schema、全局 handler 的 allowlisted field projection、Auth route 422 OpenAPI 声明与对应 tests。
+- 禁止回显 `input`、password、token、secret 或任意敏感值；field 只能来自明确公开请求字段 allowlist，无法安全映射的错误保留 form-level。
+- backend fix 必须独立 checkpoint；随后重新导出 frontend OpenAPI snapshot/generated types、运行 drift check、验证 OpenAPI/runtime/tests 一致后才能将 CG001 标为 RESOLVED 并恢复 Slice 2。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
