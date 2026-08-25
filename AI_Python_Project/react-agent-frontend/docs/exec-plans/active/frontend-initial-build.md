@@ -8,13 +8,13 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 2 - Authentication Lifecycle and AuthProvider
 
-Current Step: Slice 1 Gate verified; Slice 2 authentication authority and backend contract are being re-verified
+Current Step: Slice 2 Auth contract re-verification found blocking Contract Gap CG001
 
-Next Action: Read Authentication/Application Shell specs and verify current backend Auth Route, Schema, OpenAPI and deterministic tests
+Next Action: User decides whether to separately authorize the recommended backend 422 contract fix or approve a frontend product-spec relaxation
 
 Blocking Issues:
 
-- None
+- CG001 - Auth 422 field-error contract conflicts with runtime; Slice 2 cannot satisfy field-level validation behavior without backend or product-scope authorization.
 
 Last Updated: 2026-08-25 (Asia/Shanghai)
 
@@ -142,11 +142,11 @@ Explicit Boundary:
 
 ### Slice 2 - Authentication Lifecycle and AuthProvider
 
-Status: IN_PROGRESS
+Status: BLOCKED
 
 Goal: 完成认证 Bootstrap Snapshot、token 生命周期、共享 refresh coordination 和认证页面，使后续 Feature 只依赖一个稳定 AuthProvider Interface。
 
-- [ ] 读取 Authentication 与 Application Shell specs，并复核后端 Auth Route/Schema/OpenAPI/测试。
+- [x] 读取 Authentication 与 Application Shell specs，并复核后端 Auth Route/Schema/OpenAPI/测试。
 - [ ] 实现 access token memory storage 与 refresh token tab-scoped `sessionStorage` lifecycle。
 - [ ] 实现 single-flight refresh；eligible 请求最多 replay 一次，login/refresh/logout/already-replayed 不递归刷新。
 - [ ] 将共享 authorized fetch 与 AuthProvider token/refresh Interface 对接，不复制 token 或 refresh 状态。
@@ -412,14 +412,17 @@ Completed in Current Slice:
 - `pnpm audit --audit-level high`：No known vulnerabilities found。
 - Slice 1 是纯 protocol Slice，browser manual smoke 不适用；没有修改现有环境检查 UI。
 - 完整 diff、generated header、禁止 runtime endpoint 和敏感 OpenAPI default 已检查；唯一 sensitive-name default 是公开的 `TokenPairResponse.token_type`，不是凭证值。
+- Slice 2 已完整读取 Authentication/Application Shell specs，并核对 `auth_routes.py`、`auth_schema.py`、OpenAPI 与当前 TestClient runtime。
+- 后端 `test_auth_identity_capabilities.py` 和 `test_auth_session_security.py::assert_http_contract` 均通过；frontend `src/api/http-client.test.ts` baseline 7/7 通过。
+- 复核发现 CG001：认证 `422` 的 OpenAPI schema 与实际全局异常 handler 响应冲突，且 runtime 缺少 Feature spec 所需的字段位置。
 
 Currently Working On:
 
-- Slice 2 Authentication/Application Shell 文档复读和当前后端 Auth contract 核对。
+- Slice 2 因 CG001 停止受影响实现；尚未创建 AuthProvider、认证表单或 token lifecycle code。
 
 Next Action:
 
-- 读取 Authentication 与 Application Shell specs，并核对 Auth Route、Schema、OpenAPI 与 deterministic tests，建立 Slice 2 focused baseline。
+- 等待用户在“单独授权推荐的 backend 422 contract fix”与“批准降低前端 field-error 产品要求”之间作出决定；推荐前者。
 
 Relevant Files:
 
@@ -432,6 +435,10 @@ Relevant Files:
 - `src/api/http-client.ts`
 - `src/app/AppProviders.tsx`
 - `src/features/auth/`
+- `../python-agent-study/src/fast_app/core/exception_handlers.py`
+- `../python-agent-study/src/fast_app/core/error_responses.py`
+- `../python-agent-study/src/fast_app/api/auth_routes.py`
+- `../python-agent-study/src/fast_app/schemas/auth_schema.py`
 
 Context Recovery Evidence (verified 2026-08-25):
 
@@ -649,8 +656,36 @@ Resolution:
 
 ### Contract Gaps
 
-- 当前没有已知的阻塞性 Backend Contract Gap；Slice 1 已核对 Route/Schema/OpenAPI/SSE contract test。
-- 每个业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
+#### CG001 - Auth 422 Field Error Schema Does Not Match Runtime
+
+Status: BLOCKING SLICE 2 / USER DECISION REQUIRED
+
+Evidence:
+
+- `docs/features/authentication/feature.md` 第 5 节要求 `422` 字段错误显示在对应输入框。
+- 当前 OpenAPI 对 `/auth/login`、`/auth/refresh`、`/auth/change-password` 的 `422` response 都引用 `#/components/schemas/HTTPValidationError`；该 schema 的 `detail[]` 声明了 `loc`、`msg` 和 `type`。
+- 当前 `fast_app.core.exception_handlers.handle_request_validation_error()` 调用 `build_error_response_content()`，实际 runtime 只返回 `code`、`message`、`error_category`、`request_id`、`trace_id`。
+- 2026-08-25 TestClient 对 `POST /auth/login` 提交空 JSON 得到 `422`、`code=REQUEST_VALIDATION_ERROR`，响应 keys 正是上述五项，`detail`/字段位置不存在。
+- 后端 `test_auth_identity_capabilities.py` 与 `test_auth_session_security.py::assert_http_contract` 通过，但它们不覆盖 validation field locations；因此现有成功测试不能证明 Feature spec 的 field mapping contract。
+
+Impact:
+
+- React 无法从服务端 `422` 确定 `username_or_email`、`password`、`current_password` 或 `new_password` 中哪个字段失败。
+- 按 OpenAPI generated type 读取 `HTTPValidationError.detail` 会与 runtime 不符；改为猜测字段或仅显示 form-level error 都不能满足当前已批准 Feature spec。
+- Slice 2 Gate 要求后端 Route/Schema/OpenAPI/tested behavior 无未解决 Contract Gap，因此当前不得进入 AuthProvider/表单实现或 Slice 3。
+
+Recommended Backend Change:
+
+- 在后端定义稳定、前端安全的公共 validation error response schema，为每个可展示字段提供 allowlisted `field`、`code`、`message`，同时保留顶层 `code/message/error_category/request_id/trace_id`。
+- `handle_request_validation_error()` 从 Pydantic/FastAPI `exc.errors()` 只投影公开请求字段，不回显 input、密码、token 或任意 context；所有其他位置保留 form-level error。
+- 为相关 Route 显式声明同一 `422` response model，使 OpenAPI 与 runtime 一致，并增加 Auth HTTP contract regression tests；随后重新导出 frontend snapshot/generated types。
+
+Decision Required:
+
+- 推荐：用户单独授权修改 `python-agent-study` 的 backend validation error contract、OpenAPI 与测试，然后恢复 Slice 2。
+- 备选：用户明确批准产品行为变更，把无法定位的服务端 `422` 降级为 form-level error，并同步修改 Authentication spec；未经批准不得采用。
+
+每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
 ## Completion
 
