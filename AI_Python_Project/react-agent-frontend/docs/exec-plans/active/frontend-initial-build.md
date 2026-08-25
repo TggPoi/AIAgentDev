@@ -6,11 +6,11 @@ Status: ACTIVE
 
 Plan Approval: APPROVED BY USER ON 2026-08-25
 
-Current Slice: 2 - Authentication Lifecycle and AuthProvider
+Current Slice: 3 - Shared UI Foundations and Application Shell
 
-Current Step: CG001 已关闭；开始 Slice 2 token storage 与 authorized refresh lifecycle 的 test-first 实现
+Current Step: Slice 2 Gate 已通过；开始 Slice 3 规范复核与 shared UI / shell 边界检查
 
-Next Action: 检查现有 HTTP client seam 与 Auth feature 空边界，增加 access/refresh storage 和 single-flight refresh 的首个 deterministic expected-red test
+Next Action: 重新读取 SPEC 视觉规则、Architecture 第 3/11/12/13/14 节和 Application Shell spec，并检查现有全局样式、路由与 AuthProvider interface
 
 Blocking Issues:
 
@@ -142,21 +142,28 @@ Explicit Boundary:
 
 ### Slice 2 - Authentication Lifecycle and AuthProvider
 
-Status: IN_PROGRESS
+Status: COMPLETED
 
 Goal: 完成认证 Bootstrap Snapshot、token 生命周期、共享 refresh coordination 和认证页面，使后续 Feature 只依赖一个稳定 AuthProvider Interface。
 
 - [x] 读取 Authentication 与 Application Shell specs，并复核后端 Auth Route/Schema/OpenAPI/测试。
-- [ ] 实现 access token memory storage 与 refresh token tab-scoped `sessionStorage` lifecycle。
-- [ ] 实现 single-flight refresh；eligible 请求最多 replay 一次，login/refresh/logout/already-replayed 不递归刷新。
-- [ ] 将共享 authorized fetch 与 AuthProvider token/refresh Interface 对接，不复制 token 或 refresh 状态。
-- [ ] 实现 `CurrentUser + Capabilities` 原子 Bootstrap Snapshot，二者不进入 TanStack Query。
-- [ ] 实现 `authGeneration`/epoch stale-response rejection，包括并发 reload、logout、identity change、refresh failure 和 lifecycle reset。
-- [ ] 实现 identity change 时 abort 活动流并清空全部私有 Query Cache。
-- [ ] 实现登录、启动恢复、注销、修改密码和安全 return-path 校验。
-- [ ] 实现认证相关 loading/error/field validation，禁止密码和 token 泄漏。
-- [ ] 增加并发 401、reload A/B 乱序、logout 后旧 reload、refresh failure、cache clear、return path 和表单测试。
-- [ ] 完成 Slice Gate 并创建独立 Git checkpoint。
+- [x] 实现 access token memory storage 与 refresh token tab-scoped `sessionStorage` lifecycle。
+- [x] 实现 single-flight refresh；eligible 请求最多 replay 一次，login/refresh/logout/already-replayed 不递归刷新。
+- [x] 将共享 authorized fetch 与 AuthProvider token/refresh Interface 对接，不复制 token 或 refresh 状态。
+- [x] 实现 `CurrentUser + Capabilities` 原子 Bootstrap Snapshot，二者不进入 TanStack Query。
+- [x] 实现 `authGeneration`/epoch stale-response rejection，包括并发 reload、logout、identity change、refresh failure 和 lifecycle reset。
+- [x] 实现 identity change 时 abort 活动流并清空全部私有 Query Cache。
+- [x] 实现登录、启动恢复、注销、修改密码和安全 return-path 校验。
+- [x] 实现认证相关 loading/error/field validation，禁止密码和 token 泄漏。
+- [x] 增加并发 401、reload A/B 乱序、logout 后旧 reload、refresh failure、cache clear、return path 和表单测试。
+- [x] 完成 Slice Gate 并创建独立 Git checkpoint。
+
+Exit Evidence:
+
+- 独立 frontend checkpoint：`265e900`。
+- `pnpm check` 通过 generated drift、lint、typecheck、10 files / 47 tests 与 production build。
+- 浏览器人工 smoke 验证登录页桌面与 360px 窄屏布局、无横向溢出、表单语义、焦点样式和 console 无 warning/error；验证标签页与 dev server 已清理。
+- staged diff check、禁止 React endpoint 搜索与最终工作树检查通过；未修改 package/lockfile，沿用 Slice 1 同 lockfile 的 successful audit evidence。
 
 Explicit Boundary:
 
@@ -165,7 +172,7 @@ Explicit Boundary:
 
 ### Slice 3 - Shared UI Foundations and Application Shell
 
-Status: NOT_STARTED
+Status: IN_PROGRESS
 
 Goal: 建立服从蓝白产品视觉的最小 Shared UI、路由装配层、布局与 guards，为后续页面提供一致 Interface。
 
@@ -398,7 +405,7 @@ Goal: 在不扩大 Scope 的前提下完成跨 Feature 集成、可访问性、�
 
 Current Slice:
 
-- 2 - Authentication Lifecycle and AuthProvider
+- 3 - Shared UI Foundations and Application Shell
 
 Completed in Current Slice:
 
@@ -419,14 +426,16 @@ Completed in Current Slice:
 - backend Auth validation expected-red/green、identity/capabilities、session HTTP、schema descriptions 与 RAG/TaskPlan stream contract tests 通过；runtime 与 OpenAPI 均验证一致。
 - frontend OpenAPI snapshot 已从 backend `313d634` 重新导出为 OpenAPI `3.1.0` / 58 paths / 88 schemas，generated transport types 已重新生成；`pnpm contracts:check` 与 `pnpm typecheck` 通过。
 - 本次 contract sync 的 `pnpm check` 通过：generated drift、lint、typecheck、4 files / 17 tests、production build 全部成功；lockfile 未变化，沿用 Slice 1 同 lockfile 的 successful audit evidence，纯 contract artifact 无新增 browser manual smoke。
+- Slice 2 已在 checkpoint `265e900` 完成：AuthProvider 独占 access/refresh token、single-flight replay、原子身份/能力快照、epoch stale-response rejection、私有 cache/activity 清理、登录/注销/修改密码与安全 return path。
+- Slice 2 的 `pnpm check` 为 10 files / 47 tests 全部通过，production build 成功；browser manual smoke 覆盖桌面与 360px 登录页、无横向溢出、表单语义、焦点样式和无 console warning/error。
 
 Currently Working On:
 
-- Slice 2 已解除 CG001 blocker 并恢复 IN_PROGRESS；尚未创建 AuthProvider、认证表单或 token lifecycle code。
+- Slice 3 已进入 IN_PROGRESS；尚未开始完整 Application Shell 或 shared UI primitive 实现。
 
 Next Action:
 
-- 检查现有 HTTP client seam 与 Auth feature 空边界，在 access/refresh storage 和 single-flight authorized replay 公共 seam 增加首个 deterministic expected-red test。
+- 重新读取 SPEC 视觉规则、Architecture 第 3/11/12/13/14 节和 Application Shell spec，并检查现有全局样式、路由与 AuthProvider interface。
 
 Relevant Files:
 
@@ -434,15 +443,13 @@ Relevant Files:
 - `docs/exec-plans/active/frontend-initial-build.md`
 - `docs/SPEC.md`
 - `docs/ARCHITECTURE.md`
-- `docs/features/authentication/feature.md`
 - `docs/features/application-shell/feature.md`
-- `src/api/http-client.ts`
+- `src/styles/index.css`
+- `src/app/App.tsx`
 - `src/app/AppProviders.tsx`
-- `src/features/auth/`
-- `../python-agent-study/src/fast_app/core/exception_handlers.py`
-- `../python-agent-study/src/fast_app/core/error_responses.py`
-- `../python-agent-study/src/fast_app/api/auth_routes.py`
-- `../python-agent-study/src/fast_app/schemas/auth_schema.py`
+- `src/features/auth/AuthProvider.tsx`
+- `src/components/ui/`
+- `src/pages/`
 
 Context Recovery Evidence (verified 2026-08-25 after manual context compaction):
 
@@ -455,6 +462,7 @@ Context Recovery Evidence (verified 2026-08-25 after manual context compaction):
 - 真实 Auth router + 全局 exception handler + overridden external AuthService seam 对空 `/auth/login` JSON 返回 `422` 和 `REQUEST_VALIDATION_ERROR`，runtime keys 只有 `code/error_category/message/request_id/trace_id`；三个 Auth route 的 OpenAPI `422` 仍引用带 `detail` 的 `HTTPValidationError`。
 - Current Slice/Status 与 blocker checkpoint 一致：Slice 2 / BLOCKED；CG001 仍真实存在。用户已在本次恢复条件满足后授权推荐 backend fix；唯一 Next Action 是 test-first 修复该 contract，不扩大 backend scope。
 - 恢复后的文档 checkpoint 为 `1ae0d57`；独立 backend CG001 checkpoint 为 `313d634`。backend fix 后重新导出的 snapshot 为 58 paths / 88 schemas，generated drift 与 TypeScript typecheck 通过；CG001 已关闭，Slice 2 现恢复为 IN_PROGRESS。
+- Slice 2 实施后的 frontend checkpoint 为 `265e900`；`pnpm check` 通过 10 files / 47 tests 与 production build，manual browser smoke 通过。checkpoint 后除本计划的 Slice 2→3 状态转换外工作树无其他修改，Current Slice 现为 3。
 
 ## Decision Log
 
@@ -584,7 +592,7 @@ Status: RESOLVED / SUPERSEDED
 Evidence:
 
 - Slice 1 已在 checkpoint `7cdbcaa` 完成 contract snapshot、generated transport types、共享 HTTP/error seam 与 SSE protocol infrastructure，并以 4 files / 17 tests 和 `pnpm check` 验证。
-- Slice 2 已进入 Authentication contract verification；尚未创建 AuthProvider、认证表单或 token lifecycle code，是因为真实 Contract Gap CG001，而不是所有业务 Slice 仍为 `NOT_STARTED`。
+- Slice 2 随后已在 checkpoint `265e900` 完成 AuthProvider、token lifecycle、认证表单与路由保护，10 files / 47 tests 和 browser smoke 通过；当前已进入 Slice 3。
 
 Impact:
 
@@ -592,7 +600,7 @@ Impact:
 
 Resolution:
 
-- 由 Slice 1 checkpoint `7cdbcaa` supersede；CG001 已由 backend checkpoint `313d634` 关闭，当前按 Slice 2 / IN_PROGRESS 继续。
+- 由 Slice 1 checkpoint `7cdbcaa` supersede；CG001 已由 backend checkpoint `313d634` 关闭，Slice 2 已由 frontend checkpoint `265e900` 完成，当前按 Slice 3 / IN_PROGRESS 继续。
 
 ### KI002 - OpenAPI Type Generator Is Not Installed
 
