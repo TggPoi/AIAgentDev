@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import hashlib
 import json
 import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import BinaryIO, Callable, Mapping
 from uuid import uuid4
 
 from fast_app.components.vision.base import (
@@ -19,11 +20,89 @@ from fast_app.components.vision.base import (
     VisionExternalCallRejected,
 )
 from fast_app.core.config import Settings
+from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.domain.knowledge_models import (
     VisionAnalysisResult,
     VisionImageContent,
     VisionImageOccurrence,
 )
+
+
+logger = get_logger(__name__)
+
+_CACHE_PUBLISH_MAX_ATTEMPTS = 5
+_CACHE_PUBLISH_RETRY_BASE_SECONDS = 0.01
+_CACHE_LOCK_POLL_SECONDS = 0.05
+
+
+class _CacheFileLock:
+    """使用操作系统文件锁协调共享缓存目录中的进程。"""
+
+    def __init__(self, path: Path, *, timeout_seconds: float) -> None:
+        self._path = path
+        self._timeout_seconds = timeout_seconds
+        self._stream: BinaryIO | None = None
+
+    async def acquire(self) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        stream = self._path.open("a+b")
+        try:
+            stream.seek(0, os.SEEK_END)
+            if stream.tell() == 0:
+                stream.write(b"\0")
+                stream.flush()
+            deadline = time.monotonic() + self._timeout_seconds
+            while True:
+                try:
+                    self._try_lock(stream)
+                except OSError as exc:
+                    if not self._is_contention(exc):
+                        raise
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("等待 Vision 缓存锁超时") from exc
+                    await asyncio.sleep(_CACHE_LOCK_POLL_SECONDS)
+                else:
+                    self._stream = stream
+                    return
+        except BaseException:
+            stream.close()
+            raise
+
+    def release(self) -> None:
+        stream = self._stream
+        if stream is None:
+            return
+        self._stream = None
+        try:
+            stream.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+        finally:
+            stream.close()
+
+    @staticmethod
+    def _try_lock(stream: BinaryIO) -> None:
+        stream.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    @staticmethod
+    def _is_contention(exc: OSError) -> bool:
+        return exc.errno in {errno.EACCES, errno.EAGAIN, errno.EDEADLK} or getattr(
+            exc, "winerror", None
+        ) in {5, 32, 33}
 
 
 @dataclass(frozen=True)
@@ -121,25 +200,77 @@ class DocumentVisionService:
             cached = self._read_cache(content, mode)
             if cached is not None:
                 return content_id, cached, None
+            cache_lock: _CacheFileLock | None = None
             try:
-                async with self._semaphore:
-                    result = await client.analyze(
-                        content=content,
-                        mode=mode,
-                        before_provider_call=guarded_before_external_call,
+                if self._settings.vision_cache_enabled:
+                    cache_lock = _CacheFileLock(
+                        self._cache_lock_path(content, mode),
+                        timeout_seconds=(
+                            self._settings.vision_timeout_seconds
+                            * (self._settings.vision_max_retries + 1)
+                            + 5.0
+                        ),
                     )
-                self._write_cache(content, mode, result)
+                    try:
+                        await cache_lock.acquire()
+                    except Exception as exc:
+                        cache_lock = None
+                        logger.warning(
+                            format_log_fields(
+                                event="vision.cache_lock_failed",
+                                content_id=content.content_id,
+                                mode=mode,
+                                error_type=type(exc).__name__,
+                            )
+                        )
+                if cache_lock is not None:
+                    cached = self._read_cache(content, mode)
+                    if cached is not None:
+                        return content_id, cached, None
+                try:
+                    async with self._semaphore:
+                        result = await client.analyze(
+                            content=content,
+                            mode=mode,
+                            before_provider_call=guarded_before_external_call,
+                        )
+                except VisionAnalysisError as exc:
+                    return content_id, None, exc
+                except VisionExternalCallRejected:
+                    raise
+                except Exception:
+                    return (
+                        content_id,
+                        None,
+                        VisionAnalysisError("VISION_ANALYSIS_FAILED", "图片分析失败"),
+                    )
+                try:
+                    self._write_cache(content, mode, result)
+                except Exception as exc:
+                    # 缓存只是避免重复 Provider 调用的优化层。持久化失败不能把已经成功
+                    # 返回的识别结果降级成 VISION_ANALYSIS_FAILED。
+                    logger.warning(
+                        format_log_fields(
+                            event="vision.cache_write_failed",
+                            content_id=content.content_id,
+                            mode=mode,
+                            error_type=type(exc).__name__,
+                        )
+                    )
                 return content_id, result, None
-            except VisionAnalysisError as exc:
-                return content_id, None, exc
-            except VisionExternalCallRejected:
-                raise
-            except Exception as exc:
-                return (
-                    content_id,
-                    None,
-                    VisionAnalysisError("VISION_ANALYSIS_FAILED", "图片分析失败"),
-                )
+            finally:
+                if cache_lock is not None:
+                    try:
+                        cache_lock.release()
+                    except Exception as exc:
+                        logger.warning(
+                            format_log_fields(
+                                event="vision.cache_lock_release_failed",
+                                content_id=content.content_id,
+                                mode=mode,
+                                error_type=type(exc).__name__,
+                            )
+                        )
 
         ordered_content_ids = list(dict.fromkeys(item.content_id for item in occurrences))
         tasks = [
@@ -225,10 +356,19 @@ class DocumentVisionService:
         key = hashlib.sha256(raw.encode("utf-8")).hexdigest()
         return Path(self._settings.vision_cache_dir) / f"{key}.json"
 
+    def _cache_lock_path(self, content: VisionImageContent, mode: str) -> Path:
+        cache_path = self._cache_path(content, mode)
+        # 固定 256 个锁分片，既让相同缓存键始终竞争同一把锁，也避免每张图片
+        # 永久遗留一个无法安全删除的锁文件。
+        return cache_path.parent / ".locks" / f"{cache_path.stem[:2]}.lock"
+
     def _read_cache(self, content: VisionImageContent, mode: str) -> VisionAnalysisResult | None:
         if not self._settings.vision_cache_enabled:
             return None
-        path = self._cache_path(content, mode)
+        return self._read_cache_path(self._cache_path(content, mode))
+
+    @staticmethod
+    def _read_cache_path(path: Path) -> VisionAnalysisResult | None:
         try:
             return VisionAnalysisResult.model_validate_json(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
@@ -242,16 +382,38 @@ class DocumentVisionService:
         path = self._cache_path(content, mode)
         path.parent.mkdir(parents=True, exist_ok=True)
         temp = path.with_name(f".{path.name}.{os.getpid()}.{uuid4().hex}.tmp")
-        with temp.open("w", encoding="utf-8") as stream:
-            json.dump(result.model_dump(mode="json"), stream, ensure_ascii=False)
-            stream.flush()
-            os.fsync(stream.fileno())
         try:
-            os.chmod(temp, 0o600)
-        except OSError:
-            pass
-        os.replace(temp, path)
+            with temp.open("w", encoding="utf-8") as stream:
+                json.dump(result.model_dump(mode="json"), stream, ensure_ascii=False)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                os.chmod(temp, 0o600)
+            except OSError:
+                pass
+            self._publish_cache_temp(temp, path)
+        finally:
+            try:
+                temp.unlink(missing_ok=True)
+            except OSError:
+                pass
         self._prune_cache(path.parent)
+
+    def _publish_cache_temp(self, temp: Path, path: Path) -> None:
+        """发布临时文件；并发进程已发布有效结果时接受胜者。"""
+
+        for attempt in range(_CACHE_PUBLISH_MAX_ATTEMPTS):
+            try:
+                os.replace(temp, path)
+                return
+            except PermissionError:
+                # Windows 可能在两个进程同时替换同一目标文件时返回 WinError 5。
+                # 若目标已经是完整合法的缓存，说明另一进程已经成功发布，无需覆盖。
+                if self._read_cache_path(path) is not None:
+                    return
+                if attempt == _CACHE_PUBLISH_MAX_ATTEMPTS - 1:
+                    raise
+                time.sleep(_CACHE_PUBLISH_RETRY_BASE_SECONDS * (2**attempt))
 
     def _prune_cache(self, root: Path) -> None:
         """按保留期和总字节上限清理不包含原图的敏感结果缓存。"""

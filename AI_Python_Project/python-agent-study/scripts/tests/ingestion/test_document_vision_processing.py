@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import multiprocessing
+import os
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 from PIL import Image
@@ -74,6 +76,26 @@ class SelectiveFailureVisionClient(RecordingVisionClient):
         )
 
 
+class SharedCountingVisionClient:
+    """跨进程共享调用计数，并延长调用时间以稳定制造缓存未命中竞争。"""
+
+    def __init__(self, counter: Any) -> None:
+        self.counter = counter
+
+    async def analyze(self, *, content, mode, before_provider_call=None):
+        if before_provider_call is not None:
+            await before_provider_call()
+        with self.counter.get_lock():
+            self.counter.value += 1
+        await asyncio.sleep(0.25)
+        return VisionAnalysisResult(
+            extracted_text="",
+            summary="shared provider result",
+            table_markdown=None,
+            visual_facts=[],
+        )
+
+
 def png_bytes() -> bytes:
     stream = BytesIO()
     Image.new("RGB", (16, 16), color="red").save(stream, format="PNG")
@@ -98,6 +120,38 @@ def _write_shared_cache(cache_dir: str, summary: str) -> None:
             visual_facts=[],
         ),
     )
+
+
+def _analyze_shared_cache(cache_dir: str, counter: Any, barrier: Any) -> None:
+    settings = Settings(
+        _env_file=None,
+        VISION_ENABLED=True,
+        VISION_CACHE_ENABLED=True,
+        VISION_CACHE_DIR=cache_dir,
+    )
+    content = VisionImageContent.from_raw(png_bytes(), media_type="image/png")
+    occurrence = VisionImageOccurrence(
+        occurrence_id=f"shared:{content.content_id}",
+        content_id=content.content_id,
+        source_locator="page[1]/image[1]",
+        page_or_slide_number=1,
+        occurrence_index=1,
+    )
+    barrier.wait(10)
+
+    async def run() -> None:
+        outcome = await DocumentVisionService(
+            settings=settings,
+            client=SharedCountingVisionClient(counter),
+        ).analyze_assets_with_warnings(
+            contents={content.content_id: content},
+            occurrences=[occurrence],
+            mode="embedded_image",
+        )
+        assert outcome.results[occurrence.occurrence_id].summary == "shared provider result"
+        assert outcome.warnings == []
+
+    asyncio.run(run())
 
 
 def test_document_validation_dispatches_docx_and_pdf(root: Path) -> None:
@@ -213,6 +267,113 @@ async def test_one_image_failure_does_not_discard_other_image_results() -> None:
     ]
 
 
+async def test_cache_write_failure_does_not_discard_provider_result(root: Path) -> None:
+    content = VisionImageContent.from_raw(png_bytes(), media_type="image/png")
+    occurrence = VisionImageOccurrence(
+        occurrence_id=f"cache-failure:{content.content_id}",
+        content_id=content.content_id,
+        source_locator="page[1]/image[1]",
+        page_or_slide_number=1,
+        occurrence_index=1,
+    )
+    client = RecordingVisionClient()
+    service = DocumentVisionService(
+        settings=Settings(
+            _env_file=None,
+            VISION_ENABLED=True,
+            VISION_CACHE_ENABLED=True,
+            VISION_CACHE_DIR=str(root / "unwritable-cache"),
+        ),
+        client=client,
+    )
+
+    with patch.object(
+        service,
+        "_write_cache",
+        side_effect=PermissionError("simulated cache publish failure"),
+    ):
+        outcome = await service.analyze_assets_with_warnings(
+            contents={content.content_id: content},
+            occurrences=[occurrence],
+            mode="embedded_image",
+        )
+
+    assert client.calls == [content.content_id]
+    assert outcome.results[occurrence.occurrence_id].summary == "architecture diagram"
+    assert outcome.warnings == []
+
+
+def test_cache_publish_retries_transient_permission_error(root: Path) -> None:
+    settings = Settings(
+        _env_file=None,
+        VISION_CACHE_ENABLED=True,
+        VISION_CACHE_DIR=str(root / "retry-cache"),
+    )
+    service = DocumentVisionService(settings=settings)
+    content = VisionImageContent.from_raw(png_bytes(), media_type="image/png")
+    result = VisionAnalysisResult(
+        extracted_text="",
+        summary="published after retry",
+        table_markdown=None,
+        visual_facts=[],
+    )
+    real_replace = os.replace
+    attempts = 0
+
+    def replace_after_transient_failure(source: str | Path, destination: str | Path) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise PermissionError("simulated Windows sharing violation")
+        real_replace(source, destination)
+
+    with patch(
+        "fast_app.ingestion.processing.document_vision.os.replace",
+        side_effect=replace_after_transient_failure,
+    ):
+        service._write_cache(content, "embedded_image", result)
+
+    assert attempts == 2
+    assert service._read_cache(content, "embedded_image") == result
+    assert not list((root / "retry-cache").glob("*.tmp"))
+
+
+def test_cache_publish_accepts_valid_concurrent_winner(root: Path) -> None:
+    cache_dir = root / "winner-cache"
+    settings = Settings(
+        _env_file=None,
+        VISION_CACHE_ENABLED=True,
+        VISION_CACHE_DIR=str(cache_dir),
+    )
+    service = DocumentVisionService(settings=settings)
+    content = VisionImageContent.from_raw(png_bytes(), media_type="image/png")
+    attempted_result = VisionAnalysisResult(
+        extracted_text="",
+        summary="current worker",
+        table_markdown=None,
+        visual_facts=[],
+    )
+    winner_result = VisionAnalysisResult(
+        extracted_text="",
+        summary="concurrent winner",
+        table_markdown=None,
+        visual_facts=[],
+    )
+
+    def publish_winner_then_fail(source: str | Path, destination: str | Path) -> None:
+        Path(destination).write_text(winner_result.model_dump_json(), encoding="utf-8")
+        raise PermissionError("simulated concurrent Windows publish")
+
+    with patch(
+        "fast_app.ingestion.processing.document_vision.os.replace",
+        side_effect=publish_winner_then_fail,
+    ):
+        service._write_cache(content, "embedded_image", attempted_result)
+
+    assert service._read_cache(content, "embedded_image") == winner_result
+    assert not list(cache_dir.glob("*.tmp"))
+
+
 async def test_lease_loss_prevents_next_provider_call() -> None:
     first = VisionImageContent.from_raw(png_bytes(), media_type="image/png")
     blue = BytesIO()
@@ -272,6 +433,26 @@ def test_multi_process_cache_publish_is_atomic(root: Path) -> None:
     value = VisionAnalysisResult.model_validate_json(files[0].read_text(encoding="utf-8"))
     assert value.summary in {"worker-a", "worker-b"}
     assert not list(cache_dir.glob("*.tmp"))
+
+
+def test_multi_process_cache_miss_calls_provider_once(root: Path) -> None:
+    cache_dir = root / "vision-single-flight-cache"
+    context = multiprocessing.get_context("spawn")
+    counter = context.Value("i", 0)
+    barrier = context.Barrier(2)
+    processes = [
+        context.Process(
+            target=_analyze_shared_cache,
+            args=(str(cache_dir), counter, barrier),
+        )
+        for _ in range(2)
+    ]
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(20)
+        assert process.exitcode == 0
+    assert counter.value == 1
 
 
 def _build_docx_with_repeated_image(path: Path, image_path: Path, *, prefix: bool) -> None:
@@ -452,10 +633,15 @@ async def main() -> None:
         await test_word_vision_text_is_bound_to_its_block(root)
         await test_scanned_pdf_without_vision_is_fatal(root)
         test_oversized_word_block_has_unique_stable_chunk_ids()
+        test_cache_publish_retries_transient_permission_error(root)
+        test_cache_publish_accepts_valid_concurrent_winner(root)
         test_multi_process_cache_publish_is_atomic(root)
+        test_multi_process_cache_miss_calls_provider_once(root)
     await test_same_content_keeps_occurrences_but_reuses_analysis()
     await test_disabled_vision_never_constructs_or_calls_client()
     await test_one_image_failure_does_not_discard_other_image_results()
+    with TemporaryDirectory() as directory:
+        await test_cache_write_failure_does_not_discard_provider_result(Path(directory))
     await test_lease_loss_prevents_next_provider_call()
     print("document_vision_processing=passed")
 
