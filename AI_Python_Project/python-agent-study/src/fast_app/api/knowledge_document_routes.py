@@ -85,7 +85,30 @@ async def get_knowledge_document_content_endpoint(
     return await service.get_content(user, doc_id)
 
 
-@router.get("/{doc_id}/download", response_class=Response)
+@router.get(
+    "/{doc_id}/download",
+    response_class=Response,
+    responses={
+        200: {
+            "description": "下载当前授权可见的文档原始内容。",
+            "headers": {
+                "Content-Disposition": {
+                    "description": "符合 RFC 5987 的附件文件名。",
+                    "schema": {"type": "string"},
+                },
+                "X-Source-Revision": {
+                    "description": "下载内容对应的稳定源版本。",
+                    "schema": {"type": "string"},
+                },
+            },
+            "content": {
+                "application/octet-stream": {
+                    "schema": {"type": "string", "format": "binary"},
+                }
+            },
+        }
+    },
+)
 async def download_knowledge_document_endpoint(
     doc_id: str = Path(min_length=1, max_length=64, description="稳定 GitLab 文档 ID。"),
     user: CurrentUserContext = Depends(get_current_user_context),

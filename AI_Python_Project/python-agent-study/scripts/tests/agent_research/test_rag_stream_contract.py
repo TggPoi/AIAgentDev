@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from fast_app.api import agent_task_plan_routes
 from fast_app.api.rag_chat_routes import (
     format_sse_event,
     rag_chat_structured_sse_event_generator,
@@ -44,6 +45,7 @@ def main() -> None:
     assert_event_validation_and_unknown_compatibility()
     assert_request_id_header_contract()
     assert_openapi_contract()
+    assert_task_plan_stream_contract()
     print("rag_stream_contract=passed")
 
 
@@ -189,6 +191,41 @@ def assert_openapi_contract() -> None:
     response = app.openapi()["paths"]["/rag/chat/stream/events"]["post"]["responses"]["200"]
     assert "X-Request-ID" in response["headers"]
     schema = response["content"]["text/event-stream"]["schema"]
+    assert set(schema["properties"]) == {"event", "data"}
+
+
+def assert_task_plan_stream_contract() -> None:
+    app = FastAPI()
+    app.add_middleware(RequestIdMiddleware)
+    app.include_router(agent_task_plan_routes.router)
+
+    @app.get("/task-plan-stream-contract")
+    async def task_plan_stream_contract():
+        async def generate():
+            yield agent_task_plan_routes._format_sse_event(
+                "agent_task_execution_started",
+                {"task_plan_id": "task-plan-contract"},
+            )
+
+        return StreamingResponse(generate(), media_type="text/event-stream")
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/task-plan-stream-contract",
+            headers={REQUEST_ID_HEADER: "request-task-plan-contract"},
+        )
+    assert response.headers[REQUEST_ID_HEADER] == "request-task-plan-contract"
+    event, data = _parse_frame(response.text)
+    assert event == "agent_task_execution_started"
+    assert data["contract_version"] == "1.0"
+    assert data["request_id"] == "request-task-plan-contract"
+    assert data["task_plan_id"] == "task-plan-contract"
+
+    openapi_response = app.openapi()["paths"][
+        "/agent/task-plans/{task_plan_id}/confirm/stream"
+    ]["post"]["responses"]["200"]
+    assert "X-Request-ID" in openapi_response["headers"]
+    schema = openapi_response["content"]["text/event-stream"]["schema"]
     assert set(schema["properties"]) == {"event", "data"}
 
 

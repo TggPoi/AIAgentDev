@@ -35,6 +35,10 @@ from fast_app.services.agent_tasks.agent_task_plan_catalog_service import (
 )
 from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
 from fast_app.schemas.agent_task_plan_schema import AgentTaskPlanListResponse
+from fast_app.schemas.rag_stream_schema import (
+    RagSseEventFrame,
+    normalize_sse_event_envelope,
+)
 from fast_app.services.exceptions import AppServiceError, ToolPermissionDeniedError
 from fast_app.services.rag.guarded_streaming import (
     GuardedStreamState,
@@ -320,7 +324,25 @@ async def confirm_agent_task_plan_endpoint(
     )
 
 
-@router.post("/{task_plan_id}/confirm/stream")
+@router.post(
+    "/{task_plan_id}/confirm/stream",
+    responses={
+        200: {
+            "description": "TaskPlan 确认执行结构化 SSE；每个 data payload 包含 contract_version 和 request_id。",
+            "headers": {
+                "X-Request-ID": {
+                    "description": "与事件 payload request_id 对齐的请求 ID。",
+                    "schema": {"type": "string"},
+                }
+            },
+            "content": {
+                "text/event-stream": {
+                    "schema": RagSseEventFrame.model_json_schema(),
+                }
+            },
+        }
+    },
+)
 async def confirm_agent_task_plan_stream_endpoint(
     task_plan_id: str,
     req: AgentTaskPlanConfirmRequest,
@@ -760,9 +782,13 @@ def _task_plan_progress_events(
 
 
 def _format_sse_event(event: str, data: object) -> str:
+    payload = normalize_sse_event_envelope(
+        data,
+        request_id=get_request_id(),
+    )
     return (
         f"event: {event}\n"
-        f"data: {json.dumps(jsonable_encoder(data), ensure_ascii=False)}\n\n"
+        f"data: {json.dumps(jsonable_encoder(payload), ensure_ascii=False)}\n\n"
     )
 
 

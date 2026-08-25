@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 from docx import Document
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from pptx import Presentation
@@ -91,6 +91,7 @@ def main() -> None:
     asyncio.run(assert_database_flow())
     assert_preview_formats()
     assert_http_contract()
+    assert_cors_contract()
     print("knowledge_document_read=passed")
 
 
@@ -603,6 +604,7 @@ def assert_http_contract() -> None:
         assert response.status_code == 200
         assert response.content == b"# safe"
         assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["x-source-revision"] == REVISION
         assert "filename*=UTF-8''" in response.headers["content-disposition"]
         assert "\r" not in response.headers["content-disposition"]
         assert "\n" not in response.headers["content-disposition"]
@@ -615,6 +617,52 @@ def assert_http_contract() -> None:
         "/knowledge/documents/{doc_id}/download",
     ):
         assert path in schema["paths"]
+
+    download_response = schema["paths"][
+        "/knowledge/documents/{doc_id}/download"
+    ]["get"]["responses"]["200"]
+    assert "X-Source-Revision" in download_response["headers"]
+    assert "Content-Disposition" in download_response["headers"]
+    assert "application/octet-stream" in download_response["content"]
+
+
+def assert_cors_contract() -> None:
+    from fast_app.main import app as main_app
+
+    cors = next(
+        middleware
+        for middleware in main_app.user_middleware
+        if middleware.cls.__name__ == "CORSMiddleware"
+    )
+    exposed = {header.lower() for header in cors.kwargs["expose_headers"]}
+    assert {
+        "x-request-id",
+        "x-source-revision",
+        "content-disposition",
+    } <= exposed
+
+    cors_test_app = FastAPI()
+    cors_test_app.add_middleware(cors.cls, **cors.kwargs)
+
+    @cors_test_app.get("/download")
+    async def cors_download() -> Response:
+        return Response(
+            content=b"safe",
+            headers={
+                "X-Source-Revision": REVISION,
+                "Content-Disposition": 'attachment; filename="safe.md"',
+            },
+        )
+
+    origin = cors.kwargs["allow_origins"][0]
+    with TestClient(cors_test_app) as client:
+        response = client.get("/download", headers={"Origin": origin})
+    assert response.headers["access-control-allow-origin"] == origin
+    exposed_response_headers = {
+        header.strip().lower()
+        for header in response.headers["access-control-expose-headers"].split(",")
+    }
+    assert {"x-source-revision", "content-disposition"} <= exposed_response_headers
 
 
 def _art_user() -> CurrentUserContext:

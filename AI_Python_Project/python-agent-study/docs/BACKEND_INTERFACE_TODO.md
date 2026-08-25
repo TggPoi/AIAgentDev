@@ -27,7 +27,7 @@
 - ✅ `GET /nl2sql/datasets`：返回当前用户获准使用的 Dataset。
 - ✅ `GET /agent/task-plans/{task_plan_id}`：读取单个 TaskPlan。
 - ✅ `GET /agent/task-plans/{task_plan_id}/markdown`：读取 Markdown 审查视图。
-- ✅ `POST /agent/task-plans/{task_plan_id}/confirm/stream`：确认并流式观察执行。
+- ✅ `POST /agent/task-plans/{task_plan_id}/confirm/stream`：确认并流式观察执行；公开事件使用版本化 SSE envelope，OpenAPI 声明 `text/event-stream` 与 `X-Request-ID`。
 - ✅ `POST /agent/task-plans/{task_plan_id}/cancel`：取消 TaskPlan。
 - ✅ `POST /agent/task-plans/{task_plan_id}/retry`：重试 TaskPlan。
 
@@ -410,6 +410,8 @@ can_manage_documents
 验收：越权下载失败，文件名无 header/path traversal，内容与 revision 一致。
 
 实施记录：2026-08-24 完成。下载复用与 content 完全相同的 ACL、固定 revision、大小和 blob 校验，不接受客户端 path/ref/header 覆盖。响应使用服务端净化 basename、ASCII fallback 与 RFC 5987 UTF-8 filename、固定格式 MIME、`nosniff`、private no-store 和 source revision header。真实数据库验证跨部门 grant 可下载、撤销后立即统一 404、内容与固定 revision 一致，HTTP 测试验证中文/引号文件名不会产生 CRLF 或路径/header 注入。
+
+契约加固记录：2026-08-25 完成。OpenAPI 200 response 正式声明 binary content、`X-Source-Revision` 与 `Content-Disposition`；应用 CORS 暴露这两个下载响应头，并通过带 `Origin` 的响应测试验证浏览器可读性。
 
 ## 8. P0：TaskPlan 恢复
 

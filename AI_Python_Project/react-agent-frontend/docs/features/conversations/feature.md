@@ -32,6 +32,7 @@ UI 可在发送时显示本地 pending 用户消息，但不能把它当作永�
 
 ## 5. 一致性与失败处理
 
+- 当前后端没有 `GET /conversations/{session_id}`。Query 只对应 conversation list 与 conversation messages；当前选中会话摘要从 list 派生，不建立虚构的 conversation detail endpoint/cache。
 - 不解析或修改不透明 cursor，也不把内部 scoped ID 暴露为路由。
 - 列表翻页按返回顺序追加并按 `session_id` 去重；不在客户端重新排序破坏 keyset 语义。
 - 重命名成功会改变 `updated_at` 和列表位置，应失效全部 conversation list 页。
@@ -47,3 +48,4 @@ UI 可在发送时显示本地 pending 用户消息，但不能把它当作永�
 4. 删除后历史不可读取，旧 ID 不继承近期上下文。
 5. 游标分页遇到新增消息不会重复渲染已有 message ID。
 6. 流中断后重新加载能与服务端最终记录收敛。
+7. Rename 只失效 conversation list；代码和网络记录中不存在 `GET /conversations/{session_id}` 调用。

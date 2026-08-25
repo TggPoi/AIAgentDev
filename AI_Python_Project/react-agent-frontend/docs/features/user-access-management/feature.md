@@ -40,7 +40,7 @@ Access 编辑使用 PUT 完整快照，不做多个小 mutation。所有选择�
 - 禁用、重置密码和改变账号类型需要二次确认；提交中锁定按钮。
 - 密码仅存在于当前表单内，成功或失败后立即清空。
 
-Mutation 不做乐观更新。成功后用响应替换 detail 并失效列表；禁用/重置响应展示被撤销的 refresh token/API Key 数量，但不展示凭证内容。
+Mutation 不做乐观更新。成功后用响应替换 detail 并失效列表；如果后端允许且目标 `user_id` 恰为当前登录用户，还必须调用 AuthProvider 的 `reloadIdentitySnapshot()` 原子重取 `/auth/me` 与 `/auth/capabilities`，不能直接修改其中一个对象。禁用/重置响应展示被撤销的 refresh token/API Key 数量，但不展示凭证内容。
 
 ## 5. 失败与安全处理
 

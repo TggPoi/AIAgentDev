@@ -282,7 +282,10 @@ async def test_confirm_stream_contract() -> None:
     assert any(name == "answer_delta" for name, _data in events)
     assert "final_answer" not in final_event
     assert "task_plan" not in done_event
-    assert done_event == {"task_plan_id": plan.task_plan_id, "status": "completed"}
+    assert done_event["task_plan_id"] == plan.task_plan_id
+    assert done_event["status"] == "completed"
+    assert done_event["contract_version"] == "1.0"
+    assert "request_id" in done_event
 
 
 async def test_task_plan_control_contract() -> None:

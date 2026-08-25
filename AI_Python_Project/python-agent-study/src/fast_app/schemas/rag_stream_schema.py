@@ -101,13 +101,12 @@ _CORE_EVENT_MODELS: dict[str, type[RagSseEventData]] = {
 }
 
 
-def normalize_and_validate_sse_event_data(
-    event: str,
+def normalize_sse_event_envelope(
     data: object,
     *,
     request_id: str | None,
 ) -> dict[str, Any]:
-    """补充公共契约字段并校验核心事件；未知事件保持向前兼容。"""
+    """补充并校验所有公开结构化 SSE 共用的版本与请求关联字段。"""
 
     if not isinstance(data, dict):
         raise TypeError("SSE event data 必须是 JSON object")
@@ -116,6 +115,18 @@ def normalize_and_validate_sse_event_data(
         "contract_version": RAG_SSE_CONTRACT_VERSION,
         "request_id": data.get("request_id") or request_id,
     }
+    return RagSseEventData.model_validate(normalized).model_dump(mode="json")
+
+
+def normalize_and_validate_sse_event_data(
+    event: str,
+    data: object,
+    *,
+    request_id: str | None,
+) -> dict[str, Any]:
+    """补充公共契约字段并校验核心事件；未知事件保持向前兼容。"""
+
+    normalized = normalize_sse_event_envelope(data, request_id=request_id)
     model = _CORE_EVENT_MODELS.get(event)
     if model is None and event.startswith("agent_task_"):
         model = RagAgentTaskEventData
@@ -133,4 +144,5 @@ __all__ = [
     "RagSourcesEventData",
     "RagSseEventFrame",
     "normalize_and_validate_sse_event_data",
+    "normalize_sse_event_envelope",
 ]

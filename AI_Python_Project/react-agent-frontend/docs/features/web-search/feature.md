@@ -8,15 +8,19 @@
 
 `GET /auth/capabilities` 的 `can_use_web_search` 决定是否显示控制；该值只代表权限存在，不保证外部 Provider 当前可用。后端运行时开关、Router、来源策略和 Tool permission 仍会在请求中裁决。
 
-- 无能力：隐藏开关，并提交 `allow_direct_web=false`、`allow_web_fallback=false`。
-- 有能力且关闭：两个字段均为 false。
-- 有能力且开启：允许直接公开 Web 查询；fallback 是否同时开启在 UI 中明确说明或独立控制，不把两个语义混为一个隐式默认。
+- 主控件“允许联网搜索”控制 `allow_direct_web`，首期默认关闭。
+- 高级控件“本地证据不足时允许 Web 补充”控制 `allow_web_fallback`，首期默认关闭。
+- 无能力：隐藏两个控件，并显式提交 `allow_direct_web=false`、`allow_web_fallback=false`。
+- 有能力但主控件关闭：两个字段均为 `false`，高级控件禁用。
+- 有能力且主控件开启：`allow_direct_web=true`，`allow_web_fallback` 等于高级控件当前值。
 
 `allow_direct_web` 表示用户明确公开 Web 查询；`allow_web_fallback` 表示复杂研究在本地证据不足时允许外部补充。开启不代表一定调用。
 
+两个设置按当前认证用户、当前标签页存入 `sessionStorage`，页面刷新后恢复；logout 或 identity change 时清除。前端始终显式发送两个字段，不能因后端默认值变化而改变产品语义。
+
 ## 3. 事件与来源
 
-Web 工具进度使用 RagAgent 的任务/工具事件显示，未知新增事件按聊天时间线兼容规则保留。最终网页引用是 `RagSource`：`source_type=web`、标题、`href`、`content_preview` 和其他安全摘要。
+Web 工具进度使用 RagAgent 的任务/工具事件显示。未知新增事件遵守 Chat 的安全投影：只保留 event type、已验证 request ID、received time 和通用不支持状态，原始 payload 不展示、不记录、不缓存、不持久化。最终网页引用是 `RagSource`：`source_type=web`、标题、`href`、`content_preview` 和其他已确认安全摘要。
 
 前端只读取后端显式 `href`，再次校验无用户名密码的 HTTP(S) URL；展示域名应从该 URL 安全解析。外链新标签使用 `noopener,noreferrer`。不能从 `metadata.url` 或任意 metadata key 拼接地址。
 
@@ -36,3 +40,5 @@ Web 工具失败显示结构化错误或任务事件，但不删除已经得到�
 4. 网页引用只通过净化 `href` 安全打开，恶意 scheme/凭据 URL 被拒绝。
 5. 敏感 Dataset 和内部文档内容不会被前端发送到 Web。
 6. Web 失败不破坏已有本地回答状态。
+7. 两个设置默认均为关闭，按用户/标签页刷新恢复，身份变化时清除；主开关关闭或无 capability 时请求始终显式发送两个 `false`。
+8. Unknown Web event 的原始 payload 不进入 Timeline、console、Query Cache 或持久化存储。

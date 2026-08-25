@@ -28,6 +28,8 @@
 - Vitest 4、jsdom 29、Testing Library 和 MSW 2。
 - Oxlint。
 
+当前没有 OpenAPI type generator、Tailwind、UI Component Library、Playwright 或 Cypress。`docs/ARCHITECTURE.md` 已选择在 Phase 1 使用 `openapi-typescript` 生成 HTTP Transport Type；开始该代码切片时必须先核对 Node compatibility、锁定精确版本并更新本文件与 lockfile。本次文档修订没有新增任何依赖。
+
 当前机器的 Node `24.14.0` 不满足 jsdom 30 要求的 `24.15.0`，因此 lockfile 使用兼容的 jsdom 29。升级 jsdom 前必须先核对项目 Node runtime，不得只改版本号。
 
 ## 3. 首次安装
@@ -94,10 +96,12 @@ pnpm audit --audit-level high
 - Vite production build：通过。
 - `pnpm audit --audit-level high`：0 个已知漏洞。
 - Vite dev server：220 ms 启动，首页 HTTP 200，验证后已停止。
-- 本地浏览器：React 根节点成功挂载，环境标题与边界提示可见，console 无 warning/error，验证标签页已关闭。
+- 本地浏览器：通过人工 smoke verification 确认 React 根节点成功挂载，环境标题与边界提示可见，console 无 warning/error，验证标签页已关闭。
 
 ## 8. 当前边界
 
 `src/app/App.tsx` 只是环境检查页。当前没有登录、HTTP client、SSE parser、路由页面、会话、文档、TaskPlan、用户管理、NL2SQL 或 Web Search 业务实现。
 
 开始业务模块前，必须遵守 `AGENTS.md` 的文档门禁，并读取对应 feature 规范。
+
+关键 browser flow 当前同样采用人工 smoke verification；Vitest、jsdom、React Testing Library 和 MSW 不等价于自动 E2E。未经明确架构与依赖批准，不得自行安装 Playwright 或 Cypress。

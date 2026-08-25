@@ -22,7 +22,7 @@ NL2SQL 和 Web 搜索属于对话能力，不建立平行问答页。无 provide
 
 ## 3. 启动数据流
 
-应用壳读取 Auth Provider 的 `CurrentUser` 与 `Capabilities`，并按需挂载会话列表 Query。启动流程完成前不计算导航；身份失败时只保留登录路由。
+应用壳只读取 AuthProvider 原子发布的 `CurrentUser` 与 `Capabilities` Bootstrap Snapshot，并按需挂载会话列表 Query。它不得为 `/auth/me` 或 `/auth/capabilities` 再创建 TanStack Query 副本。启动流程完成前不计算导航；身份失败时只保留登录路由。
 
 路由分三层：公共路由、authenticated guard、capability guard。隐藏菜单只是体验优化；用户直接访问受限 URL 时仍发起必要的服务端校验，并以 `403` 或隐藏式 `404` 结果为准。
 
@@ -36,15 +36,18 @@ NL2SQL 和 Web 搜索属于对话能力，不建立平行问答页。无 provide
 
 - 登录用户变化时清空上一用户的所有 Query Cache 与进行中的流。
 - capabilities 刷新后立即重算导航；当前 route 已失权时跳转安全入口并提示原因。
+- AuthProvider 通过 `reloadIdentitySnapshot()` 原子更新当前用户与 capabilities；应用壳不拼接或局部覆盖其中任一对象。
 - 页面筛选写入 URL search params，选中实体写入 route params。
 - 全局错误边界只处理渲染异常；请求异常由对应 feature 处理。
 - 所有弹窗支持键盘操作、焦点回收和重复提交锁定。
+- 登录 return path 只能是以单个 `/` 开头、解析后仍属于当前 Origin 的站内 route。拒绝绝对 URL、`//host`、其他 scheme / Origin 和反斜杠变体；仅交给 React Router 导航，不传给 `window.location`，无效时回退 `/chat`。
 
 ## 6. 验收测试
 
-1. 未登录访问任意受保护 URL 会携带安全 return path 跳转登录。
+1. 未登录访问任意受保护 URL 会携带通过站内相对 route 校验的 return path 跳转登录；恶意或无效值登录后回退 `/chat`。
 2. 无能力入口不显示，直接访问不会越过服务端授权。
 3. 刷新浏览器可恢复身份、route 和 URL 筛选。
 4. 桌面和窄屏均可完成对话、文档与管理操作。
 5. 私有缓存不会跨用户残留。
 6. 后端结构化错误可显示 request ID，敏感字段不会渲染。
+7. Shell、Route Guard 与 Capability Guard 读取同一个 AuthProvider Snapshot，不存在 Query Cache 第二真值。
