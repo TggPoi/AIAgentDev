@@ -8,13 +8,13 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 4 - Conversations
 
-Current Step: Slice 3 Gate 已通过；开始 Slice 4 Conversations contract recovery
+Current Step: Conversations contract verification 已完成；CG002 阻塞创建/重命名表单的安全字段错误映射
 
-Next Action: 读取 Conversations spec，并复核 backend conversation Route/Schema/OpenAPI/runtime tests 与现有 frontend Query/Auth seams
+Next Action: 等待用户决定是否授权推荐的 CG002 backend contract fix；授权前不开始受影响的 Slice 4 frontend implementation
 
 Blocking Issues:
 
-- None。
+- CG002 - Conversation 422 Field Error Schema Does Not Match Runtime。
 
 Last Updated: 2026-08-25 (Asia/Shanghai)
 
@@ -200,11 +200,11 @@ Explicit Boundary:
 
 ### Slice 4 - Conversations
 
-Status: IN_PROGRESS
+Status: BLOCKED
 
 Goal: 完成当前用户会话的创建、列表、选择、重命名、删除和消息历史读取，并建立稳定的私有 Query Key。
 
-- [ ] 读取 Conversations spec，复核 Route/Schema/OpenAPI/runtime tests。
+- [x] 读取 Conversations spec，复核 Route/Schema/OpenAPI/runtime tests。
 - [ ] 实现 conversation list/messages transport adapters 和 user-bound Query Keys。
 - [ ] 实现 keyset pagination、稳定追加、ID 去重和服务端顺序保留。
 - [ ] 实现新建、选择、重命名、确认删除和历史消息恢复。
@@ -440,11 +440,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 4 已进入 IN_PROGRESS；尚未实现 Conversations transport、Query 或页面数据流。
+- Slice 4 已完成 contract verification，状态为 BLOCKED；尚未实现 Conversations transport、Query 或页面数据流。
 
 Next Action:
 
-- 读取 Conversations spec，并复核 backend conversation Route/Schema/OpenAPI/runtime tests 与现有 frontend Query/Auth seams。
+- 等待用户决定是否授权推荐的 CG002 backend contract fix；授权前不开始受影响的 Slice 4 frontend implementation。
 
 Relevant Files:
 
@@ -461,6 +461,9 @@ Relevant Files:
 - `src/pages/`
 - `../python-agent-study/src/fast_app/api/conversation_routes.py`
 - `../python-agent-study/src/fast_app/schemas/conversation_schema.py`
+- `../python-agent-study/src/fast_app/core/exception_handlers.py`
+- `../python-agent-study/src/fast_app/schemas/error_schema.py`
+- `../python-agent-study/scripts/tests/document_security/test_conversation_management.py`
 
 Context Recovery Evidence (verified 2026-08-25 after manual context compaction):
 
@@ -475,6 +478,8 @@ Context Recovery Evidence (verified 2026-08-25 after manual context compaction):
 - 恢复后的文档 checkpoint 为 `1ae0d57`；独立 backend CG001 checkpoint 为 `313d634`。backend fix 后重新导出的 snapshot 为 58 paths / 88 schemas，generated drift 与 TypeScript typecheck 通过；CG001 已关闭，Slice 2 现恢复为 IN_PROGRESS。
 - Slice 2 实施后的 frontend checkpoint 为 `265e900`；`pnpm check` 通过 10 files / 47 tests 与 production build，manual browser smoke 通过。checkpoint 后除本计划的 Slice 2→3 状态转换外工作树无其他修改，Current Slice 现为 3。
 - Slice 3 实施后的 frontend checkpoint 为 `c324170`；`pnpm check` 通过 12 files / 54 tests 与 production build，authenticated manual browser smoke 通过。checkpoint 后除本计划的 Slice 3→4 状态转换外工作树无其他修改，Current Slice 现为 4。
+- Slice 4 contract recovery 时 confirmed HEAD 为 `77e4cfc`，frontend/backend 共用 working tree 干净；backend `.venv` 下 `test_conversation_management.assert_http_contract()` 通过。误用系统 Python 导致缺少 FastAPI 的环境错误已按仓库虚拟环境修正重跑，不作为代码失败。
+- 无敏感值 TestClient 复现 `POST /conversations` 与 `PATCH /conversations/{session_id}` 空白标题均返回 `422`，runtime keys 只有 `code/error_category/message/request_id/trace_id`；两条 OpenAPI `422` 均引用带 `detail` 的 `HTTPValidationError`。CG002 已确认，Current Slice 现为 4 / BLOCKED。
 
 ## Decision Log
 
@@ -719,6 +724,34 @@ Resolution:
 
 - 独立 backend checkpoint：`313d634`。
 - frontend snapshot/type regeneration 与 drift check 已完成；CG001 已重新验证关闭，Slice 2 状态恢复为 `IN_PROGRESS`。
+
+#### CG002 - Conversation 422 Field Error Schema Does Not Match Runtime
+
+Status: BLOCKING SLICE 4 / AWAITING USER DECISION
+
+Evidence:
+
+- `docs/SPEC.md` 第 7 节要求 `422` 映射到字段错误；Slice 4 的创建与重命名表单均包含公开 `title` 字段。
+- `CreateConversationRequest` 与 `UpdateConversationRequest` 都会拒绝纯空白标题；backend `test_conversation_management.assert_http_contract()` 验证 rename 空白标题返回 `422`，其余会话 HTTP route baseline 通过。
+- 2026-08-25 使用真实 Conversation router、全局 exception handler 与 overridden service 的 TestClient，以无敏感空白标题请求 `POST /conversations` 和 `PATCH /conversations/contract-session`，两者 runtime 均返回 `422`，response keys 只有 `code/error_category/message/request_id/trace_id`。
+- 同一 app 的 OpenAPI 对上述两个 `422` response 均引用 `#/components/schemas/HTTPValidationError`，声明 `detail[].loc/msg/type`；runtime 与 OpenAPI 不一致，也没有可供 React 安全映射到 `title` 的 `field_errors`。
+- CG001 的 backend 授权严格限定 Auth route；现有 `RequestValidationErrorResponse` allowlist 也只包含 Auth 公开字段。该授权不能外推到 Conversations。
+
+Impact:
+
+- React 若按 generated OpenAPI 读取 `HTTPValidationError.detail` 会与 runtime 不符；若只显示 form-level error，又不满足批准的通用 `422` 字段映射要求。
+- 受影响范围是 Conversation create/rename 表单与其 deterministic contract tests。Cursor list、messages 和 delete contract 本身已确认，但 Slice Gate 要求一个完整 coherent Slice，不能绕过受影响行为后标记完成。
+
+Recommended Backend Change:
+
+- 复用 CG001 的安全公共 validation response model，仅将 `title` 加入明确公开字段 allowlist，并为 Conversation `POST`/`PATCH` 的顶层 body `title` 投影固定 public code/message。
+- 不读取或回显 Pydantic/FastAPI error 的 `input`、`ctx` 或原始 `msg`；path/session_id 等无法安全映射的 validation error 保持 `field_errors=[]` 的 form-level response。
+- 为两个受影响 Conversation route 显式声明同一 `422` response model，并增加 runtime/OpenAPI/no-input-echo/non-allowlisted-route regression tests。
+- 修复必须是独立 backend checkpoint；随后重新导出 frontend OpenAPI snapshot/generated types，运行 drift check，并在本计划记录 backend commit 后关闭 CG002。
+
+Decision Required:
+
+- 用户需明确授权或拒绝上述严格受限的 backend contract fix。授权前不修改 backend，也不开始依赖该契约的 Slice 4 frontend implementation。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
