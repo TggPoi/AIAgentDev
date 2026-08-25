@@ -26,9 +26,12 @@
 - Vite 8 与 React plugin。
 - TypeScript 6。
 - Vitest 4、jsdom 29、Testing Library 和 MSW 2。
+- `openapi-typescript` `7.13.0`，用于从已提交的后端 OpenAPI snapshot 生成 HTTP Transport Type。
 - Oxlint。
 
-当前没有 OpenAPI type generator、Tailwind、UI Component Library、Playwright 或 Cypress。`docs/ARCHITECTURE.md` 已选择在 Phase 1 使用 `openapi-typescript` 生成 HTTP Transport Type；开始该代码切片时必须先核对 Node compatibility、锁定精确版本并更新本文件与 lockfile。本次文档修订没有新增任何依赖。
+当前没有 Tailwind、UI Component Library、Playwright 或 Cypress。
+
+2026-08-25 从 npm registry 核对并精确锁定 `openapi-typescript` `7.13.0`。该版本及其运行依赖在 Node `24.14.0` 下实际完成安装、CLI 生成与 drift check；其 package manifest 没有更高的 Node 限制，但仍只声明 TypeScript peer `^5.x`，而本项目为 TypeScript `6.0.3`。当前生成结果已通过 TypeScript 6 typecheck、全量测试和 production build；这是显式记录的 upstream peer-range 风险，不使用配置静默隐藏。后续升级生成器时必须先重新核对该 peer 声明。
 
 当前机器的 Node `24.14.0` 不满足 jsdom 30 要求的 `24.15.0`，因此 lockfile 使用兼容的 jsdom 29。升级 jsdom 前必须先核对项目 Node runtime，不得只改版本号。
 
@@ -42,7 +45,29 @@ MSW 是明确允许执行安装脚本的唯一依赖，记录在 `pnpm-workspace
 
 本地配置从 `.env.example` 复制为 `.env.local`；真实环境值不提交 Git。当前示例只包含非秘密的后端 base URL。
 
-## 4. 开发服务器
+## 4. 后端 Contract Snapshot 与类型生成
+
+当前 snapshot 从相邻的 `python-agent-study` 真实 FastAPI app 导出。2026-08-25 的导出证据：monorepo HEAD `768b6d8`，最后影响 `src/fast_app` 的 backend commit 为 `25fad7a`，OpenAPI `3.1.0` 包含 58 paths 和 86 schemas；后端 `scripts/tests/agent_research/test_rag_stream_contract.py` 同期通过。
+
+从前端目录执行以下 PowerShell 命令可重复导出当前后端 OpenAPI：
+
+```powershell
+Push-Location ..\python-agent-study
+$env:PYTHONPATH="src"
+.\.venv\Scripts\python.exe -B -c "import json; from pathlib import Path; from fast_app.main import app; target=Path('../react-agent-frontend/contracts/backend-openapi.json'); target.parent.mkdir(parents=True, exist_ok=True); target.write_text(json.dumps(app.openapi(), ensure_ascii=False, indent=2, sort_keys=True) + '\n', encoding='utf-8')"
+Pop-Location
+```
+
+生成并检查 TypeScript Transport Type：
+
+```powershell
+pnpm contracts:generate
+pnpm contracts:check
+```
+
+`contracts:check` 在临时目录重新调用同一 CLI 并逐字节比较提交的 `src/api/generated/backend-schema.ts`，不会改写工作树。Snapshot 和 generated file 都是完整后端契约事实，因此会包含后端存在但 Initial React 禁止调用的兼容/开发 endpoint；能生成类型不代表前端获准调用它们。
+
+## 5. 开发服务器
 
 ```powershell
 pnpm dev
@@ -59,7 +84,7 @@ pnpm preview
 
 预览服务器固定监听 `http://127.0.0.1:4173`。
 
-## 5. 质量检查
+## 6. 质量检查
 
 单项命令：
 
@@ -77,9 +102,9 @@ pnpm check
 pnpm audit --audit-level high
 ```
 
-`pnpm check` 按 lint、类型检查、测试、生产构建顺序执行。任何一项失败都不能宣称环境或功能可交付。
+`pnpm check` 按 generated contract drift、lint、类型检查、测试、生产构建顺序执行。任何一项失败都不能宣称环境或功能可交付。
 
-## 6. 测试基础设施
+## 7. 测试基础设施
 
 - Vitest 使用 jsdom。
 - `src/test/setup.ts` 启动 MSW Node server 并加载 jest-dom matcher。
@@ -88,19 +113,20 @@ pnpm audit --audit-level high
 
 业务测试应把 handler 和 fixture 放在对应 feature 或共享测试目录，不修改环境检查页承载业务断言。
 
-## 7. 当前已验证结果
+## 8. 当前已验证结果
 
 - `pnpm install --frozen-lockfile`：通过。
 - `pnpm check`：通过。
-- Vitest：1 个测试文件、1 个测试通过。
+- Generated contract drift check：通过。
+- Vitest：4 个测试文件、17 个测试通过。
 - Vite production build：通过。
 - `pnpm audit --audit-level high`：0 个已知漏洞。
 - Vite dev server：220 ms 启动，首页 HTTP 200，验证后已停止。
 - 本地浏览器：通过人工 smoke verification 确认 React 根节点成功挂载，环境标题与边界提示可见，console 无 warning/error，验证标签页已关闭。
 
-## 8. 当前边界
+## 9. 当前边界
 
-`src/app/App.tsx` 只是环境检查页。当前没有登录、HTTP client、SSE parser、路由页面、会话、文档、TaskPlan、用户管理、NL2SQL 或 Web Search 业务实现。
+`src/app/App.tsx` 仍只是环境检查页。当前已经建立 generated HTTP Transport Type、共享 HTTP/error seam、SSE framing 和 Public Event protocol module，但没有 AuthProvider、登录、路由页面、会话、Chat reducer、文档、TaskPlan reducer、用户管理、NL2SQL 或 Web Search 业务页面。
 
 开始业务模块前，必须遵守 `AGENTS.md` 的文档门禁，并读取对应 feature 规范。
 

@@ -6,11 +6,11 @@ Status: ACTIVE
 
 Plan Approval: APPROVED BY USER ON 2026-08-25
 
-Current Slice: 1 - Contract Snapshot and Protocol Infrastructure
+Current Slice: 2 - Authentication Lifecycle and AuthProvider
 
-Current Step: Slice 0 completed; Slice 1 contract authority and current backend implementation are being re-verified
+Current Step: Slice 1 Gate verified; Slice 2 authentication authority and backend contract are being re-verified
 
-Next Action: Export the current backend OpenAPI snapshot from verified backend source and record the backend commit/export command
+Next Action: Read Authentication/Application Shell specs and verify current backend Auth Route, Schema, OpenAPI and deterministic tests
 
 Blocking Issues:
 
@@ -118,22 +118,22 @@ Exit Evidence:
 
 ### Slice 1 - Contract Snapshot and Protocol Infrastructure
 
-Status: IN_PROGRESS
+Status: COMPLETED
 
 Goal: 建立普通 HTTP transport contract、共享 HTTP/error seam 和可独立验证的结构化 SSE protocol module，不实现 Feature 页面。
 
-- [ ] 重新读取 Architecture 第 2、6、7、8、13、14 节及 Chat/TaskPlan 契约。
-- [ ] 从当前后端真实 OpenAPI 导出 `contracts/backend-openapi.json`，记录导出命令和后端 commit。
-- [ ] 核对 Node compatibility，选择并锁定精确 `openapi-typescript` 版本；更新 package、lockfile 和 `docs/DEVELOPMENT.md`。
-- [ ] 生成 `src/api/generated/backend-schema.ts`，禁止手工修改 generated file。
-- [ ] 建立 HTTP transport DTO 到 Feature Domain Model 的唯一映射规则。
-- [ ] 实现共享 `ApiError` 与 JSON、empty 204、text/Markdown、Blob 响应解析。
-- [ ] 实现 base URL、Bearer callback seam、`X-Request-ID`、AbortSignal 和状态码映射；认证所有权仍留给 Slice 2 的 AuthProvider。
-- [ ] 实现 parsed `Content-Type` media-type 校验，接受合法参数化 `text/event-stream`。
-- [ ] 实现可复用 SSE framing parser：任意 byte/chunk、LF/CRLF、多 frame、多行 data、comment 和 incomplete EOF。
-- [ ] 集中定义 Public Event envelope、已批准 event union、安全 unknown-event projection 和 terminal semantics。
-- [ ] 增加 deterministic parser、media type、error mapping、unknown payload 丢弃和 OpenAPI drift 测试。
-- [ ] 完成 Slice Gate 并创建独立 Git checkpoint。
+- [x] 重新读取 Architecture 第 2、6、7、8、13、14 节及 Chat/TaskPlan 契约。
+- [x] 从当前后端真实 OpenAPI 导出 `contracts/backend-openapi.json`，记录导出命令和后端 commit。
+- [x] 核对 Node compatibility，选择并锁定精确 `openapi-typescript` 版本；更新 package、lockfile 和 `docs/DEVELOPMENT.md`。
+- [x] 生成 `src/api/generated/backend-schema.ts`，禁止手工修改 generated file。
+- [x] 建立 HTTP transport DTO 到 Feature Domain Model 的唯一映射规则。
+- [x] 实现共享 `ApiError` 与 JSON、empty 204、text/Markdown、Blob 响应解析。
+- [x] 实现 base URL、Bearer callback seam、`X-Request-ID`、AbortSignal 和状态码映射；认证所有权仍留给 Slice 2 的 AuthProvider。
+- [x] 实现 parsed `Content-Type` media-type 校验，接受合法参数化 `text/event-stream`。
+- [x] 实现可复用 SSE framing parser：任意 byte/chunk、LF/CRLF、多 frame、多行 data、comment 和 incomplete EOF。
+- [x] 集中定义 Public Event envelope、已批准 event union、安全 unknown-event projection 和 terminal semantics。
+- [x] 增加 deterministic parser、media type、error mapping、unknown payload 丢弃和 OpenAPI drift 测试。
+- [x] 完成 Slice Gate 并创建独立 Git checkpoint。
 
 Explicit Boundary:
 
@@ -142,7 +142,7 @@ Explicit Boundary:
 
 ### Slice 2 - Authentication Lifecycle and AuthProvider
 
-Status: NOT_STARTED
+Status: IN_PROGRESS
 
 Goal: 完成认证 Bootstrap Snapshot、token 生命周期、共享 refresh coordination 和认证页面，使后续 Feature 只依赖一个稳定 AuthProvider Interface。
 
@@ -398,38 +398,40 @@ Goal: 在不扩大 Scope 的前提下完成跨 Feature 集成、可访问性、�
 
 Current Slice:
 
-- 1 - Contract Snapshot and Protocol Infrastructure
+- 2 - Authentication Lifecycle and AuthProvider
 
 Completed in Current Slice:
 
-- 全部批准文档已于 2026-08-25 重新完整读取。
-- 计划创建前 `git status --short --branch` 为 `master...origin/master`，工作树干净。
-- 2026-08-25 按 Context Recovery Protocol 重新确认 frontend HEAD 为 `dfa5b7a`，该 commit 只包含 `AGENTS.md` 与本 Execution Plan；此前记录的 `25fad7a` 已不是当前 HEAD。
-- `dfa5b7a` 是 Slice 0 文档治理 checkpoint；本轮用户已在该 checkpoint 存在后明确批准计划，未修改或重写既有 Git 历史。
-- 当前 React 只有环境检查页、`AppProviders`、基础 CSS、MSW server/setup、空 handlers 和一个环境测试。
-- 当前没有 OpenAPI snapshot/generated types、HTTP Client、SSE Parser、AuthProvider、登录或任何业务 Feature 页面。
-- Node `v24.14.0`、pnpm `10.32.1`；lockfile 使用 React `19.2.8`、TanStack Query `5.102.2`、React Router `7.18.2`、Vite `8.2.2`、TypeScript `6.0.3`、Vitest `4.1.11`、MSW `2.15.0`、jsdom `29.1.1`。
-- 2026-08-25 20:46（Asia/Shanghai）恢复期间实际重跑 `pnpm check`：lint、typecheck、1/1 Vitest、production build 全部通过。
-- 恢复时 `git status --short --branch` 为 `master...origin/master`，完整 unstaged/staged diff 均为空。
+- Slice 0 checkpoint 为 `768b6d8` 的前一 checkpoint `dfa5b7a`；`768b6d8` 记录用户批准、Context Recovery 证据和进入 Slice 1 的状态转换。
+- 当前 backend OpenAPI snapshot 来自 monorepo HEAD `768b6d8`，最后影响 `src/fast_app` 的 commit 为 `25fad7a`；OpenAPI `3.1.0` 包含 58 paths、86 schemas。
+- 后端 `scripts/tests/agent_research/test_rag_stream_contract.py` 通过，Chat 与 TaskPlan stream 的 `contract_version`、`request_id`、response header 和逻辑帧声明一致，无阻塞 Contract Gap。
+- 精确锁定 `openapi-typescript` `7.13.0`；`pnpm install --frozen-lockfile`、生成命令和 generated drift check 通过。
+- 已建立 generated HTTP transport type、DTO-to-Domain mapping rule、共享 HTTP/error seam、parameterized SSE media-type gate、SSE byte framer、Public Event validation、安全投影与 terminal semantics。
+- deterministic tests 先以缺失 module 形成 expected-red，完成实现后 focused 16/16 通过；最终全量 Vitest 4 files / 17 tests 通过。
+- 2026-08-25 最终 `pnpm check`：contract drift、lint、typecheck、17/17 tests、production build 全部通过。
+- `pnpm audit --audit-level high`：No known vulnerabilities found。
+- Slice 1 是纯 protocol Slice，browser manual smoke 不适用；没有修改现有环境检查 UI。
+- 完整 diff、generated header、禁止 runtime endpoint 和敏感 OpenAPI default 已检查；唯一 sensitive-name default 是公开的 `TokenPairResponse.token_type`，不是凭证值。
 
 Currently Working On:
 
-- Slice 1 后端契约 authority、OpenAPI 导出方式和 Public SSE event schema 核对。
+- Slice 2 Authentication/Application Shell 文档复读和当前后端 Auth contract 核对。
 
 Next Action:
 
-- 从当前后端 source 导出 OpenAPI snapshot，记录 backend commit 与可重复导出命令；随后选择精确 `openapi-typescript` 版本。
+- 读取 Authentication 与 Application Shell specs，并核对 Auth Route、Schema、OpenAPI 与 deterministic tests，建立 Slice 2 focused baseline。
 
 Relevant Files:
 
 - `AGENTS.md`
 - `docs/exec-plans/active/frontend-initial-build.md`
+- `docs/SPEC.md`
 - `docs/ARCHITECTURE.md`
-- `docs/DEVELOPMENT.md`
-- `docs/features/rag-agent-chat/feature.md`
-- `docs/features/task-plans/feature.md`
-- `contracts/backend-openapi.json`
-- `src/api/`
+- `docs/features/authentication/feature.md`
+- `docs/features/application-shell/feature.md`
+- `src/api/http-client.ts`
+- `src/app/AppProviders.tsx`
+- `src/features/auth/`
 
 Context Recovery Evidence (verified 2026-08-25):
 
@@ -582,19 +584,36 @@ Resolution:
 
 ### KI002 - OpenAPI Type Generator Is Not Installed
 
-Status: PLANNED / NON-BLOCKING
+Status: RESOLVED IN SLICE 1
 
 Evidence:
 
-- 当前 package/lockfile 不含 `openapi-typescript`，也没有 `contracts/backend-openapi.json` 或 generated transport types。
+- `openapi-typescript` `7.13.0` 已精确写入 package/lockfile，snapshot、generated types、生成命令和 drift check 已提交到 Slice 1 working set。
 
 Impact:
 
-- Slice 1 开始时必须先选择与 Node `24.14.0` 兼容的精确版本并更新 Development 文档。
+- 无；原 planned dependency gap 已关闭。
 
 Resolution:
 
-- 在 Slice 1 内按 Architecture 已批准策略处理；本规划任务不安装依赖。
+- 见 `docs/DEVELOPMENT.md` 第 2、4、8 节及 Slice 1 Gate Evidence。
+
+### KI005 - openapi-typescript TypeScript 6 Peer Range
+
+Status: VERIFIED UPSTREAM RISK / NON-BLOCKING
+
+Evidence:
+
+- Registry latest `openapi-typescript` `7.13.0` 的 manifest 仍声明 `typescript: ^5.x`；当前项目解析 TypeScript `6.0.3`。
+- 当前 Node `24.14.0` 下 CLI generate、drift check、frozen install、TypeScript 6 typecheck、17 tests 和 production build 全部通过。
+
+Impact:
+
+- 当前实际工具链可用，但上游尚未正式扩大 peer range；未来生成器或 TypeScript 升级必须重新核对，不能把当前证据永久外推。
+
+Resolution:
+
+- 保持精确版本并显式记录风险，不添加 peer override 静默隐藏；升级时优先采用正式声明 TypeScript 6 支持的版本。
 
 ### KI003 - Markdown Implementation Dependency Is Undecided
 
@@ -630,8 +649,8 @@ Resolution:
 
 ### Contract Gaps
 
-- 当前没有已知的阻塞性 Backend Contract Gap。
-- Slice 1 导出当前 OpenAPI、每个业务 Slice复核真实 Route/Schema/tests 时，如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
+- 当前没有已知的阻塞性 Backend Contract Gap；Slice 1 已核对 Route/Schema/OpenAPI/SSE contract test。
+- 每个业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
 ## Completion
 
