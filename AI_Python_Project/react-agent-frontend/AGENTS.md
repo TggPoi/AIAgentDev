@@ -13,6 +13,13 @@ Before planning dependencies or changing frontend behavior:
 5. Read every affected `docs/features/<feature>/feature.md`.
 6. Inspect the existing implementation, tests, types, package manifest and lockfile.
 
+If `docs/exec-plans/active/` contains an active execution plan:
+
+- read it before planning, implementing or continuing frontend work;
+- treat the execution plan together with current Git and repository state as the implementation-progress source of truth, never conversation history alone;
+- when context was compressed, the session changed or progress is uncertain, follow that plan's Context Recovery Protocol before continuing;
+- update the plan promptly after every meaningful checkpoint or completed Slice.
+
 Use this source-of-truth order:
 
 ```text
