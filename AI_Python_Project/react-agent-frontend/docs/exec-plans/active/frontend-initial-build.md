@@ -6,11 +6,11 @@ Status: ACTIVE
 
 Plan Approval: APPROVED BY USER ON 2026-08-25
 
-Current Slice: 3 - Shared UI Foundations and Application Shell
+Current Slice: 4 - Conversations
 
-Current Step: Slice 2 Gate 已通过；开始 Slice 3 规范复核与 shared UI / shell 边界检查
+Current Step: Slice 3 Gate 已通过；开始 Slice 4 Conversations contract recovery
 
-Next Action: 重新读取 SPEC 视觉规则、Architecture 第 3/11/12/13/14 节和 Application Shell spec，并检查现有全局样式、路由与 AuthProvider interface
+Next Action: 读取 Conversations spec，并复核 backend conversation Route/Schema/OpenAPI/runtime tests 与现有 frontend Query/Auth seams
 
 Blocking Issues:
 
@@ -172,19 +172,26 @@ Explicit Boundary:
 
 ### Slice 3 - Shared UI Foundations and Application Shell
 
-Status: IN_PROGRESS
+Status: COMPLETED
 
 Goal: 建立服从蓝白产品视觉的最小 Shared UI、路由装配层、布局与 guards，为后续页面提供一致 Interface。
 
-- [ ] 读取 SPEC 视觉规则、Architecture 第 3、11、12、13、14 节和 Application Shell spec。
-- [ ] 建立全局 design tokens、CSS Modules 约定和 compact/standard/wide 共享断点。
-- [ ] 在 `src/components/ui/` 实现当前 Slice 真正复用的 Button、Input/Form Control、Error/Empty State、Skeleton、Dialog/Drawer 等最小 primitives；不得预建空壳组件。
-- [ ] 建立 Router、public/authenticated/capability guards 和 `src/pages/` 唯一路由装配层。
-- [ ] 实现桌面 Sidebar、窄屏 Drawer、Top Bar、安全导航和 route-level error/loading 状态。
-- [ ] Shell、Route Guard、Capability Guard 只读取 AuthProvider Snapshot。
-- [ ] 实现安全 request ID 展示、键盘操作、焦点可见与 dialog focus return。
-- [ ] 增加路由保护、capability discoverability、直接访问拒绝、responsive shell 和 accessibility 测试。
-- [ ] 完成 Slice Gate；对浏览器可见流程执行适当 manual smoke；创建独立 Git checkpoint。
+- [x] 读取 SPEC 视觉规则、Architecture 第 3、11、12、13、14 节和 Application Shell spec。
+- [x] 建立全局 design tokens、CSS Modules 约定和 compact/standard/wide 共享断点。
+- [x] 在 `src/components/ui/` 实现当前 Slice 真正复用的 Button、Input/Form Control、Error/Empty State、Skeleton、Dialog/Drawer 等最小 primitives；不得预建空壳组件。
+- [x] 建立 Router、public/authenticated/capability guards 和 `src/pages/` 唯一路由装配层。
+- [x] 实现桌面 Sidebar、窄屏 Drawer、Top Bar、安全导航和 route-level error/loading 状态。
+- [x] Shell、Route Guard、Capability Guard 只读取 AuthProvider Snapshot。
+- [x] 实现安全 request ID 展示、键盘操作、焦点可见与 dialog focus return。
+- [x] 增加路由保护、capability discoverability、直接访问拒绝、responsive shell 和 accessibility 测试。
+- [x] 完成 Slice Gate；对浏览器可见流程执行适当 manual smoke；创建独立 Git checkpoint。
+
+Exit Evidence:
+
+- 独立 frontend checkpoint：`c324170`。
+- `pnpm check` 通过 generated drift、lint、typecheck、12 files / 54 tests 与 production build。
+- tests 覆盖 capability 导航/直接访问/动态失权、安全回退、抽屉键盘关闭与焦点回收、通用页面状态、render error boundary 和共享表单控件。
+- authenticated manual smoke 使用本机临时假 Auth 服务验证桌面与 360px shell、用户菜单、能力入口、抽屉自动收起、焦点循环、Escape/焦点回收、无横向溢出和无 console warning/error；临时服务、dev server 与标签页均已清理。
 
 Explicit Boundary:
 
@@ -193,7 +200,7 @@ Explicit Boundary:
 
 ### Slice 4 - Conversations
 
-Status: NOT_STARTED
+Status: IN_PROGRESS
 
 Goal: 完成当前用户会话的创建、列表、选择、重命名、删除和消息历史读取，并建立稳定的私有 Query Key。
 
@@ -405,7 +412,7 @@ Goal: 在不扩大 Scope 的前提下完成跨 Feature 集成、可访问性、�
 
 Current Slice:
 
-- 3 - Shared UI Foundations and Application Shell
+- 4 - Conversations
 
 Completed in Current Slice:
 
@@ -428,14 +435,16 @@ Completed in Current Slice:
 - 本次 contract sync 的 `pnpm check` 通过：generated drift、lint、typecheck、4 files / 17 tests、production build 全部成功；lockfile 未变化，沿用 Slice 1 同 lockfile 的 successful audit evidence，纯 contract artifact 无新增 browser manual smoke。
 - Slice 2 已在 checkpoint `265e900` 完成：AuthProvider 独占 access/refresh token、single-flight replay、原子身份/能力快照、epoch stale-response rejection、私有 cache/activity 清理、登录/注销/修改密码与安全 return path。
 - Slice 2 的 `pnpm check` 为 10 files / 47 tests 全部通过，production build 成功；browser manual smoke 覆盖桌面与 360px 登录页、无横向溢出、表单语义、焦点样式和无 console warning/error。
+- Slice 3 已在 checkpoint `c324170` 完成 shared design tokens、Button/TextField/Drawer/PageState primitives、三层路由、capability guard、响应式 Shell、Top Bar、用户菜单和安全 render/error 状态。
+- Slice 3 的 `pnpm check` 为 12 files / 54 tests 全部通过，production build 成功；authenticated desktop/360px manual smoke、抽屉焦点循环/Escape/焦点回收和 console 检查通过。
 
 Currently Working On:
 
-- Slice 3 已进入 IN_PROGRESS；尚未开始完整 Application Shell 或 shared UI primitive 实现。
+- Slice 4 已进入 IN_PROGRESS；尚未实现 Conversations transport、Query 或页面数据流。
 
 Next Action:
 
-- 重新读取 SPEC 视觉规则、Architecture 第 3/11/12/13/14 节和 Application Shell spec，并检查现有全局样式、路由与 AuthProvider interface。
+- 读取 Conversations spec，并复核 backend conversation Route/Schema/OpenAPI/runtime tests 与现有 frontend Query/Auth seams。
 
 Relevant Files:
 
@@ -443,13 +452,15 @@ Relevant Files:
 - `docs/exec-plans/active/frontend-initial-build.md`
 - `docs/SPEC.md`
 - `docs/ARCHITECTURE.md`
-- `docs/features/application-shell/feature.md`
-- `src/styles/index.css`
-- `src/app/App.tsx`
+- `docs/features/conversations/feature.md`
+- `contracts/backend-openapi.json`
+- `src/api/generated/backend-schema.ts`
 - `src/app/AppProviders.tsx`
 - `src/features/auth/AuthProvider.tsx`
-- `src/components/ui/`
+- `src/features/conversations/`
 - `src/pages/`
+- `../python-agent-study/src/fast_app/api/conversation_routes.py`
+- `../python-agent-study/src/fast_app/schemas/conversation_schema.py`
 
 Context Recovery Evidence (verified 2026-08-25 after manual context compaction):
 
@@ -463,6 +474,7 @@ Context Recovery Evidence (verified 2026-08-25 after manual context compaction):
 - Current Slice/Status 与 blocker checkpoint 一致：Slice 2 / BLOCKED；CG001 仍真实存在。用户已在本次恢复条件满足后授权推荐 backend fix；唯一 Next Action 是 test-first 修复该 contract，不扩大 backend scope。
 - 恢复后的文档 checkpoint 为 `1ae0d57`；独立 backend CG001 checkpoint 为 `313d634`。backend fix 后重新导出的 snapshot 为 58 paths / 88 schemas，generated drift 与 TypeScript typecheck 通过；CG001 已关闭，Slice 2 现恢复为 IN_PROGRESS。
 - Slice 2 实施后的 frontend checkpoint 为 `265e900`；`pnpm check` 通过 10 files / 47 tests 与 production build，manual browser smoke 通过。checkpoint 后除本计划的 Slice 2→3 状态转换外工作树无其他修改，Current Slice 现为 3。
+- Slice 3 实施后的 frontend checkpoint 为 `c324170`；`pnpm check` 通过 12 files / 54 tests 与 production build，authenticated manual browser smoke 通过。checkpoint 后除本计划的 Slice 3→4 状态转换外工作树无其他修改，Current Slice 现为 4。
 
 ## Decision Log
 
