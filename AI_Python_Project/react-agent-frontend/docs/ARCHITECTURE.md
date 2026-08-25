@@ -89,7 +89,11 @@ src/
 
 禁止 `/auth/me -> TanStack Query -> AuthProvider` 的复制链路。Application Shell、authenticated guard 与 capability guard 全部读取 AuthProvider 的同一认证快照。
 
-AuthProvider 暴露一个 `reloadIdentitySnapshot()` Interface，并行读取 `/auth/me` 与 `/auth/capabilities`，只有两者都成功且仍属于同一个 user ID 时才原子替换当前快照。可能影响当前登录用户身份或能力的 mutation 完成后必须调用该 Interface；管理其他用户只失效相应业务 Query。若返回 user ID 改变、认证失败或 refresh 失败，先 abort 活动流、清空全部私有 Query Cache，再进入匿名状态。非认证类临时失败不得发布半份新快照；保留旧快照并标记 stale，同时实际请求继续以后端授权为准。
+AuthProvider 暴露一个 `reloadIdentitySnapshot()` Interface，并行读取 `/auth/me` 与 `/auth/capabilities`，只有两者都成功时才原子替换当前快照。后端 `UserCapabilitiesResponse` 不含 `user_id` 或其他 actor identity 字段，因此不得编造 `me.user_id === capabilities.user_id` 校验；身份事实来自当前 auth/token lifecycle 与 `/auth/me.user_id`。
+
+AuthProvider 同时维护单调递增的 `authGeneration`（或等价 reload epoch）。每次 deliberate `reloadIdentitySnapshot()` 开始时先推进 generation，并让本次 reload 捕获该值；两个响应都成功后，只有 captured generation 仍等于当前 generation，且 `/auth/me.user_id` 仍符合当前 auth lifecycle 时，才可原子发布完整 `CurrentUser + Capabilities`。较新的 reload 开始、logout、身份切换、refresh failure 或 token/auth lifecycle reset 都必须先推进 generation，使所有旧的 in-flight reload 结果失效并在返回时直接丢弃。规则是 **latest valid authentication generation wins**，不是 last network response wins。
+
+原子发布与 stale-response rejection 是两个独立约束：原子发布防止用户与能力只更新一半，generation 校验防止较旧的完整快照覆盖较新的完整快照。可能影响当前登录用户身份或能力的 mutation 完成后必须调用该 Interface；管理其他用户只失效相应业务 Query。若当前 generation 的 `/auth/me.user_id` 意外不同于该 generation 的 active identity，或发生认证失败、refresh 失败，先使旧 generation 失效，再 abort 活动流、清空全部私有 Query Cache 并进入匿名状态；明确的登录/身份切换则先建立新 generation，再执行该身份的 Bootstrap。非认证类临时失败不得发布半份新快照；仅当该请求仍属于当前 generation 时保留旧快照并标记 stale，实际请求继续以后端授权为准。
 
 ## 5. 启动、Token 与身份生命周期
 
@@ -115,7 +119,7 @@ Streaming Transport 复用相同的 authorized fetch seam，并明确分为两�
 - `401` 在符合 refresh 条件时进入共享 single-flight refresh；成功后原 POST 最多 replay 一次。
 - replay 必须保留同一个 `X-Request-ID`；TaskPlan 同一次动作还必须保留同一个 `Idempotency-Key`。
 - `403 / 404 / 409 / 422 / 5xx` 转为 `ApiError`，不进入 SSE parser，也不自动 replay。
-- 只有成功状态且响应被接受为 `text/event-stream` 后才取得 reader；错误状态或错误媒体类型都属于 pre-stream failure。
+- 只有成功状态且响应的**已解析 media type** 为 `text/event-stream` 后才取得 reader；不得对完整 `Content-Type` header 做严格字符串等值比较。`text/event-stream` 和带合法参数的 `text/event-stream; charset=utf-8` 都接受，`application/json` 等其他 media type 作为 pre-stream failure，不进入 SSE parser。
 
 当前后端在构造两个 `StreamingResponse` 前完成认证、请求校验和入口授权，因此 pre-stream `401/403/409/422` 可按以上规则处理。
 
@@ -266,7 +270,7 @@ Shadow
 
 1. 纯函数：SSE framing、Public Event 校验、安全 unknown projection、reducer、游标、错误与 return-path 校验。
 2. Feature 组件：loading、empty、error、permission、conflict、submit、abort 和 terminal state。
-3. MSW 集成：Auth Bootstrap、并发 `401`、pre-stream error、聊天终止、TaskPlan 控制、Blob 下载和身份切换。
+3. MSW 集成：Auth Bootstrap、并发 `401`、identity reload generation/stale rejection、pre-stream error 与参数化 SSE media type、聊天终止、TaskPlan 控制、Blob 下载和身份切换。
 4. 关键浏览器流程目前是 **manual smoke verification**：登录到对话、历史恢复、文档读取、主管授权和管理员用户管理。
 
 当前没有 Playwright/Cypress 等 E2E Framework。自动 E2E 需要用户批准新的架构与依赖决策后再增加；“browser-flow verification”不得被解释为自动安装 E2E 工具。

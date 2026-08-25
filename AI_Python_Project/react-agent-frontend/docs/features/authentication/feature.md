@@ -35,7 +35,9 @@ authenticated -> loggingOut -> anonymous
 
 AuthProvider 是认证事实的唯一前端所有者，持有 access token、refresh-token lifecycle、`CurrentUser`、`Capabilities`、`authStatus`、refresh coordination，以及 logout / identity-change lifecycle。`/auth/me` 与 `/auth/capabilities` 是 Authentication Bootstrap State，也是普通 TanStack Query Server-State 规则的明确例外：它们不进入 Query Cache，不允许再复制一份用户或能力真值。
 
-Bootstrap 和 `reloadIdentitySnapshot()` 都并行请求 `/auth/me` 与 `/auth/capabilities`，只有两者成功且 user ID 未改变时才原子发布。Application Shell、Route Guard 和 Capability Guard 全部读取这个统一快照。可能影响当前登录用户权限的 mutation 完成后调用 `reloadIdentitySnapshot()`；只修改其他用户时失效对应业务 Query，不覆盖当前 AuthProvider。
+Bootstrap 和 `reloadIdentitySnapshot()` 都并行请求 `/auth/me` 与 `/auth/capabilities`，只有两者成功时才原子发布。后端 `UserCapabilitiesResponse` 不包含 `user_id` 或其他 actor identity 字段，因此不比较不存在的 `capabilities.user_id`；当前身份由 auth/token lifecycle 与 `/auth/me.user_id` 确定。Application Shell、Route Guard 和 Capability Guard 全部读取这个统一快照。
+
+AuthProvider 维护单调递增的 `authGeneration`（或等价 epoch）。每次 deliberate identity reload 开始时推进 generation 并捕获本次值；发布前必须再次确认 captured generation 仍是当前 generation，且 `/auth/me.user_id` 仍属于当前 auth lifecycle。新的 reload、logout、身份切换、refresh failure 或 token/auth lifecycle reset 都先推进 generation，使旧请求返回的完整 Snapshot 也只能被丢弃，不能恢复旧 authenticated state。Atomic publish 防止半份 Snapshot；generation rejection 防止旧的完整 Snapshot 覆盖新 Snapshot。可能影响当前登录用户权限的 mutation 完成后调用 `reloadIdentitySnapshot()`；只修改其他用户时失效对应业务 Query，不覆盖当前 AuthProvider。
 
 HTTP client 负责 Bearer 注入；多个普通 HTTP 或尚未进入成功 stream 的请求同时 `401` 时共享一个 refresh Promise，成功后每个原请求只重放一次。登录、refresh、logout 和已经重放的请求本身不进入递归重试。Stream body 一旦开始读取，不再触发 replay。
 
@@ -63,3 +65,5 @@ HTTP client 负责 Bearer 注入；多个普通 HTTP 或尚未进入成功 strea
 7. 前端无注册、忘记密码和 API Key 管理入口。
 8. `/auth/me` 与 `/auth/capabilities` 不存在 Query Cache 副本，identity reload 只原子发布完整快照。
 9. 绝对 URL、protocol-relative URL 和其他 Origin 的 return path 均回退 `/chat`。
+10. reload A 后启动 reload B，B 先完成并发布、A 后完成时最终 Snapshot 仍保持 B。
+11. identity reload 进行中执行 logout 后，即使旧 reload 返回成功，也不能恢复 authenticated 状态。

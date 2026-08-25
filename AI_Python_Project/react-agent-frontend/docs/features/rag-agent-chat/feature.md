@@ -76,7 +76,7 @@ pre-stream `401` 经过共享 refresh 后 replay 时复用同一个 ID；用户�
 
 Streaming Transport 分两阶段：
 
-1. 尚未取得成功 `text/event-stream` response：复用共享 Bearer、single-flight refresh、AbortSignal 和 `ApiError`。`401` refresh 成功后原 POST 最多 replay 一次；`403/404/409/422/5xx` 不进入 parser。
+1. 尚未取得成功 `text/event-stream` response：复用共享 Bearer、single-flight refresh、AbortSignal 和 `ApiError`。`401` refresh 成功后原 POST 最多 replay 一次；`403/404/409/422/5xx` 不进入 parser。成功响应按 `docs/ARCHITECTURE.md` 第 6.1 节解析 media type，允许合法参数，不对完整 `Content-Type` header 做严格等值比较。
 2. 已开始读取 stream：网络断开或无 terminal EOF 转为 `interrupted`，绝不自动 replay POST。
 
 终止、协议错误、浏览器 abort 或中断后都失效当前会话消息和会话列表 Query，由历史接口校正服务端实际持久化结果。浏览器 abort 只代表本地 `cancelled`，避免把它描述为服务端执行已经停止。
@@ -91,5 +91,5 @@ Streaming Transport 分两阶段：
 6. abort 和迟到事件不会串入下一个请求。
 7. 网络记录中不存在其他 RAG 问答接口调用。
 8. reducer 从请求开始即绑定前端生成的 ID；pre-stream 401 replay 复用 ID，mismatch 事件被隔离。
-9. pre-stream non-2xx 不进入 parser；stream 开始后的断线不自动重复 POST，并 refetch 历史。
+9. pre-stream non-2xx 与非 SSE media type 不进入 parser；`text/event-stream` 和 `text/event-stream; charset=utf-8` 均被接受，stream 开始后的断线不自动重复 POST，并 refetch 历史。
 10. 两个 Web 开关按表格准确提交，刷新按用户/标签页恢复，无 capability 时始终发送两个 `false`。

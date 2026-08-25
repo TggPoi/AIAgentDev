@@ -36,7 +36,7 @@ NL2SQL 和 Web 搜索属于对话能力，不建立平行问答页。无 provide
 
 - 登录用户变化时清空上一用户的所有 Query Cache 与进行中的流。
 - capabilities 刷新后立即重算导航；当前 route 已失权时跳转安全入口并提示原因。
-- AuthProvider 通过 `reloadIdentitySnapshot()` 原子更新当前用户与 capabilities；应用壳不拼接或局部覆盖其中任一对象。
+- AuthProvider 通过 `reloadIdentitySnapshot()` 原子更新当前用户与 capabilities，并拒绝旧 auth generation 的迟到结果；应用壳不拼接、局部覆盖或重新接受任何旧 Snapshot。
 - 页面筛选写入 URL search params，选中实体写入 route params。
 - 全局错误边界只处理渲染异常；请求异常由对应 feature 处理。
 - 所有弹窗支持键盘操作、焦点回收和重复提交锁定。

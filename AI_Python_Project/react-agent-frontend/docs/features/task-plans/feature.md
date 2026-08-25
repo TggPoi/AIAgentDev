@@ -16,7 +16,7 @@
 | `POST /agent/task-plans/{id}/cancel` | 取消 |
 | `POST /agent/task-plans/{id}/retry` | 从服务端允许的状态重试 |
 
-列表项包含 `task_plan_id`、`task_kind`、`status`、`session_id`、`summary`、`requires_confirmation`、`error_code`、`created_at`、`updated_at` 和不透明 `next_cursor`，不包含完整 snapshot。
+列表响应 `AgentTaskPlanListResponse` 顶层包含 `items` 和不透明的 `next_cursor`；没有更多数据时 `next_cursor` 为 `null`。每个 `AgentTaskPlanListItem` 只包含 `task_plan_id`、`task_kind`、`status`、`session_id`、`summary`、`requires_confirmation`、`error_code`、`created_at`、`updated_at`，不包含 cursor 或完整 snapshot。
 
 确认 body 为 `confirmed: true`。确认、取消和重试均携带 `Idempotency-Key`；同一次用户动作的传输重试必须复用 key，新一次主动操作才生成新 key。Codex 不得自行选择在 `/confirm` 与 `/confirm/stream` 之间切换。
 
@@ -49,7 +49,7 @@
 - 当前接口只允许用户读取和控制自己拥有的 TaskPlan；前端不提供 user ID 过滤。
 - 已知他人 ID 的 `404` 不得泄露任务是否存在。
 - 浏览器 abort 确认流不代表服务端取消；随后重新读取详情。
-- 尚未进入成功 stream 的 `401` 复用共享 single-flight refresh，原 POST 最多 replay 一次，并保留同一 `Idempotency-Key`；其他 non-2xx 转为 `ApiError`，不进入 SSE parser。
+- 尚未进入成功 stream 的 `401` 复用共享 single-flight refresh，原 POST 最多 replay 一次，并保留同一 `Idempotency-Key`；其他 non-2xx 转为 `ApiError`，不进入 SSE parser。成功响应也必须通过 `docs/ARCHITECTURE.md` 第 6.1 节的 parsed media-type 校验后才能进入 parser。
 - Stream body 开始后，网络失败、无 terminal EOF 或浏览器 abort 都不自动重复真实工具操作，也不生成新幂等 key；随后重新读取详情。
 - Markdown 使用净化只读渲染，不把内容转回可执行指令。
 - Unknown TaskPlan event 遵守 `docs/ARCHITECTURE.md` 的安全投影规则，原始 payload 不得进入 UI、日志或缓存。
