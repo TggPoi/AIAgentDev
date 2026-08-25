@@ -10,10 +10,31 @@ from fast_app.core.error_responses import (
     build_internal_error_response_content,
 )
 from fast_app.core.logging import format_log_fields, get_logger
+from fast_app.schemas.error_schema import (
+    RequestValidationErrorResponse,
+    RequestValidationFieldError,
+)
 from fast_app.services.exceptions import AppServiceError
 
 
 logger = get_logger(__name__)
+
+
+_AUTH_VALIDATION_FIELDS: dict[tuple[str, str], frozenset[str]] = {
+    ("POST", "/auth/login"): frozenset({"username_or_email", "password"}),
+    ("POST", "/auth/refresh"): frozenset({"refresh_token"}),
+    ("POST", "/auth/change-password"): frozenset(
+        {"current_password", "new_password"}
+    ),
+}
+
+_PUBLIC_VALIDATION_ERRORS: dict[str, tuple[str, str]] = {
+    "missing": ("required", "该字段为必填项"),
+    "string_type": ("invalid_type", "请输入文本"),
+    "string_too_short": ("too_short", "输入长度过短"),
+    "string_too_long": ("too_long", "输入长度过长"),
+    "value_error": ("invalid", "输入值不合法"),
+}
 
 
 def get_request_ids_from_request(request: Request) -> tuple[str | None, str | None]:
@@ -45,15 +66,23 @@ def register_exception_handlers(app: FastAPI) -> None:
             ),
         )
 
+        content = build_error_response_content(
+            code="REQUEST_VALIDATION_ERROR",
+            message="请求参数不合法",
+            error_category="user_error",
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+        field_errors = _project_auth_validation_field_errors(request, exc.errors())
+        if field_errors is not None:
+            content = RequestValidationErrorResponse(
+                **content,
+                field_errors=field_errors,
+            ).model_dump(mode="json")
+
         return JSONResponse(
             status_code=422,
-            content=build_error_response_content(
-                code="REQUEST_VALIDATION_ERROR",
-                message="请求参数不合法",
-                error_category="user_error",
-                request_id=request_id,
-                trace_id=trace_id,
-            ),
+            content=content,
         )
 
     @app.exception_handler(StarletteHTTPException)
@@ -156,3 +185,50 @@ def register_exception_handlers(app: FastAPI) -> None:
                 trace_id=trace_id,
             ),
         )
+
+
+def _project_auth_validation_field_errors(
+    request: Request,
+    errors: list[dict[str, object]],
+) -> list[RequestValidationFieldError] | None:
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", None)
+    if not isinstance(route_path, str):
+        return None
+
+    allowed_fields = _AUTH_VALIDATION_FIELDS.get((request.method.upper(), route_path))
+    if allowed_fields is None:
+        return None
+
+    projected: list[RequestValidationFieldError] = []
+    projected_fields: set[str] = set()
+    for error in errors:
+        location = error.get("loc")
+        if (
+            not isinstance(location, (list, tuple))
+            or len(location) != 2
+            or location[0] != "body"
+            or not isinstance(location[1], str)
+        ):
+            continue
+
+        field = location[1]
+        public_error = _PUBLIC_VALIDATION_ERRORS.get(str(error.get("type", "")))
+        if (
+            field not in allowed_fields
+            or field in projected_fields
+            or public_error is None
+        ):
+            continue
+
+        public_code, public_message = public_error
+        projected.append(
+            RequestValidationFieldError(
+                field=field,
+                code=public_code,
+                message=public_message,
+            )
+        )
+        projected_fields.add(field)
+
+    return projected

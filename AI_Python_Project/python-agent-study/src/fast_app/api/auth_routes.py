@@ -18,6 +18,7 @@ from fast_app.schemas.auth_schema import (
     TokenPairResponse,
     UserCapabilitiesResponse,
 )
+from fast_app.schemas.error_schema import RequestValidationErrorResponse
 from fast_app.services.auth.auth_service import AuthService
 from fast_app.services.auth.capability_service import resolve_auth_capabilities
 from fast_app.services.exceptions import AuthenticationError
@@ -25,8 +26,19 @@ from fast_app.services.exceptions import AuthenticationError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+_AUTH_VALIDATION_ERROR_RESPONSES = {
+    422: {
+        "model": RequestValidationErrorResponse,
+        "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。",
+    }
+}
 
-@router.post("/login", response_model=TokenPairResponse)
+
+@router.post(
+    "/login",
+    response_model=TokenPairResponse,
+    responses=_AUTH_VALIDATION_ERROR_RESPONSES,
+)
 async def login_endpoint(
     req: LoginRequest,
     auth_service: AuthService = Depends(get_auth_service),
@@ -40,7 +52,11 @@ async def login_endpoint(
     return TokenPairResponse.model_validate(token_pair.model_dump())
 
 
-@router.post("/refresh", response_model=TokenPairResponse)
+@router.post(
+    "/refresh",
+    response_model=TokenPairResponse,
+    responses=_AUTH_VALIDATION_ERROR_RESPONSES,
+)
 async def refresh_token_endpoint(
     req: RefreshTokenRequest,
     auth_service: AuthService = Depends(get_auth_service),
@@ -67,7 +83,11 @@ async def logout_endpoint(
     return LogoutResponse(logged_out=logged_out)
 
 
-@router.post("/change-password", response_model=ChangePasswordResponse)
+@router.post(
+    "/change-password",
+    response_model=ChangePasswordResponse,
+    responses=_AUTH_VALIDATION_ERROR_RESPONSES,
+)
 async def change_password_endpoint(
     req: ChangePasswordRequest,
     user: CurrentUserContext = Depends(get_current_user_context),

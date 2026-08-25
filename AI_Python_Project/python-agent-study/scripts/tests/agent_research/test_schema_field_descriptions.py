@@ -105,6 +105,10 @@ from fast_app.schemas.document_access_schema import (
     DocumentAccessGrantListResponse,
     DocumentAccessGrantUser,
 )
+from fast_app.schemas.error_schema import (
+    RequestValidationErrorResponse,
+    RequestValidationFieldError,
+)
 from fast_app.schemas.conversation_schema import (
     ConversationItem,
     ConversationListResponse,
@@ -263,6 +267,8 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     ResearchWorkerCheckpointUpdate,
     ResearchWorkerProgress,
     RequiredKeyFact,
+    RequestValidationErrorResponse,
+    RequestValidationFieldError,
     UserCapabilitiesResponse,
     UpdateManagedUserStatusRequest,
     UpdateConversationRequest,
