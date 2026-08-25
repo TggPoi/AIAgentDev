@@ -4,13 +4,13 @@
 
 Status: ACTIVE
 
-Plan Approval: PENDING USER REVIEW
+Plan Approval: APPROVED BY USER ON 2026-08-25
 
-Current Slice: 0 - Execution Governance and Baseline
+Current Slice: 1 - Contract Snapshot and Protocol Infrastructure
 
-Current Step: Repository baseline verified; Execution Plan created and awaiting review
+Current Step: Slice 0 completed; Slice 1 contract authority and current backend implementation are being re-verified
 
-Next Action: User reviews this plan; after approval, create the documentation-only Git checkpoint before beginning Slice 1
+Next Action: Export the current backend OpenAPI snapshot from verified backend source and record the backend commit/export command
 
 Blocking Issues:
 
@@ -96,7 +96,7 @@ Conversation history 只能提供线索，不能单独证明当前进度。若�
 
 ### Slice 0 - Execution Governance and Baseline
 
-Status: IN_PROGRESS
+Status: COMPLETED
 
 - [x] 完整读取 `AGENTS.md`、SPEC、Architecture、Development、Feature index 和全部十个 Feature specs。
 - [x] 检查当前 Git branch/status 和最近 commits。
@@ -105,9 +105,9 @@ Status: IN_PROGRESS
 - [x] 运行当前 `pnpm check` 基线。
 - [x] 创建本 Execution Plan。
 - [x] 为 `AGENTS.md` 增加 active-plan 导航规则。
-- [ ] 用户审核并批准本 Execution Plan。
-- [ ] 创建仅包含批准文档、`AGENTS.md` 和本计划的 Git checkpoint。
-- [ ] 确认 checkpoint 后工作树干净，再将 Slice 0 标记为 COMPLETED。
+- [x] 用户审核并批准本 Execution Plan。
+- [x] 创建仅包含批准文档、`AGENTS.md` 和本计划的 Git checkpoint。
+- [x] 确认 checkpoint 后工作树干净，再将 Slice 0 标记为 COMPLETED。
 
 Exit Evidence:
 
@@ -118,7 +118,7 @@ Exit Evidence:
 
 ### Slice 1 - Contract Snapshot and Protocol Infrastructure
 
-Status: NOT_STARTED
+Status: IN_PROGRESS
 
 Goal: 建立普通 HTTP transport contract、共享 HTTP/error seam 和可独立验证的结构化 SSE protocol module，不实现 Feature 页面。
 
@@ -398,36 +398,48 @@ Goal: 在不扩大 Scope 的前提下完成跨 Feature 集成、可访问性、�
 
 Current Slice:
 
-- 0 - Execution Governance and Baseline
+- 1 - Contract Snapshot and Protocol Infrastructure
 
 Completed in Current Slice:
 
 - 全部批准文档已于 2026-08-25 重新完整读取。
 - 计划创建前 `git status --short --branch` 为 `master...origin/master`，工作树干净。
-- 当前 monorepo HEAD 为 `25fad7a`；最近与前端规格直接相关的 commit 为 `8ecba30`。
+- 2026-08-25 按 Context Recovery Protocol 重新确认 frontend HEAD 为 `dfa5b7a`，该 commit 只包含 `AGENTS.md` 与本 Execution Plan；此前记录的 `25fad7a` 已不是当前 HEAD。
+- `dfa5b7a` 是 Slice 0 文档治理 checkpoint；本轮用户已在该 checkpoint 存在后明确批准计划，未修改或重写既有 Git 历史。
 - 当前 React 只有环境检查页、`AppProviders`、基础 CSS、MSW server/setup、空 handlers 和一个环境测试。
 - 当前没有 OpenAPI snapshot/generated types、HTTP Client、SSE Parser、AuthProvider、登录或任何业务 Feature 页面。
 - Node `v24.14.0`、pnpm `10.32.1`；lockfile 使用 React `19.2.8`、TanStack Query `5.102.2`、React Router `7.18.2`、Vite `8.2.2`、TypeScript `6.0.3`、Vitest `4.1.11`、MSW `2.15.0`、jsdom `29.1.1`。
-- 2026-08-25 实际运行 `pnpm check`：lint、typecheck、1/1 Vitest、production build 全部通过。
+- 2026-08-25 20:46（Asia/Shanghai）恢复期间实际重跑 `pnpm check`：lint、typecheck、1/1 Vitest、production build 全部通过。
+- 恢复时 `git status --short --branch` 为 `master...origin/master`，完整 unstaged/staged diff 均为空。
 
 Currently Working On:
 
-- 等待用户审核本 Execution Plan。
+- Slice 1 后端契约 authority、OpenAPI 导出方式和 Public SSE event schema 核对。
 
 Next Action:
 
-- 用户批准计划后，创建包含 `AGENTS.md` 与本计划的 docs-only Git checkpoint；随后重新确认 clean status，再开始 Slice 1 的局部计划。
+- 从当前后端 source 导出 OpenAPI snapshot，记录 backend commit 与可重复导出命令；随后选择精确 `openapi-typescript` 版本。
 
 Relevant Files:
 
 - `AGENTS.md`
 - `docs/exec-plans/active/frontend-initial-build.md`
+- `docs/ARCHITECTURE.md`
+- `docs/DEVELOPMENT.md`
+- `docs/features/rag-agent-chat/feature.md`
+- `docs/features/task-plans/feature.md`
+- `contracts/backend-openapi.json`
+- `src/api/`
 
-Current Working Tree After This Planning Task (verified):
+Context Recovery Evidence (verified 2026-08-25):
 
-- `AGENTS.md` modified。
-- `docs/exec-plans/active/frontend-initial-build.md` untracked/new。
-- `src/`、`package.json`、`pnpm-lock.yaml` 和后端无修改。
+- Confirmed HEAD before this plan transition: `dfa5b7a`。
+- `git status --short --branch`: `master...origin/master`，无工作树修改。
+- `git diff --stat`、完整 unstaged diff、`git diff --cached --stat` 与完整 staged diff：全部为空。
+- 当前源码仍只有环境检查页、基础 Provider/MSW 与一个测试；没有 Slice 1 protocol 实现。
+- Node `v24.14.0`、pnpm `10.32.1`；package/lockfile 未包含 `openapi-typescript`。
+- `pnpm check`: lint、typecheck、1/1 Vitest、production build 全部通过。
+- Blocking Issues: None。
 
 ## Decision Log
 
