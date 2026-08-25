@@ -1,6 +1,8 @@
 import { type FormEvent, useState } from 'react'
 
 import { ApiError } from '@/api/api-error'
+import { Button } from '@/components/ui/Button'
+import { TextField } from '@/components/ui/TextField'
 import styles from '@/features/auth/AuthForm.module.css'
 import { useAuth } from '@/features/auth/AuthProvider'
 
@@ -57,57 +59,31 @@ export function ChangePasswordForm() {
 
   return (
     <form className={styles.form} onSubmit={handleSubmit} noValidate>
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor="current-password">
-          当前密码
-        </label>
-        <input
-          aria-describedby={
-            fieldErrors.current_password ? 'current-password-error' : undefined
-          }
-          aria-invalid={fieldErrors.current_password ? 'true' : 'false'}
-          autoComplete="current-password"
-          className={styles.input}
-          disabled={isSubmitting}
-          id="current-password"
-          name="current_password"
-          onChange={(event) => setCurrentPassword(event.target.value)}
-          required
-          type="password"
-          value={currentPassword}
-        />
-        {fieldErrors.current_password ? (
-          <p className={styles.fieldError} id="current-password-error">
-            {fieldErrors.current_password}
-          </p>
-        ) : null}
-      </div>
+      <TextField
+        autoComplete="current-password"
+        disabled={isSubmitting}
+        error={fieldErrors.current_password}
+        id="current-password"
+        label="当前密码"
+        name="current_password"
+        onChange={(event) => setCurrentPassword(event.target.value)}
+        required
+        type="password"
+        value={currentPassword}
+      />
 
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor="new-password">
-          新密码
-        </label>
-        <input
-          aria-describedby={
-            fieldErrors.new_password ? 'new-password-error' : undefined
-          }
-          aria-invalid={fieldErrors.new_password ? 'true' : 'false'}
-          autoComplete="new-password"
-          className={styles.input}
-          disabled={isSubmitting}
-          id="new-password"
-          name="new_password"
-          onChange={(event) => setNewPassword(event.target.value)}
-          required
-          type="password"
-          value={newPassword}
-        />
-        {fieldErrors.new_password ? (
-          <p className={styles.fieldError} id="new-password-error">
-            {fieldErrors.new_password}
-          </p>
-        ) : null}
-      </div>
+      <TextField
+        autoComplete="new-password"
+        disabled={isSubmitting}
+        error={fieldErrors.new_password}
+        id="new-password"
+        label="新密码"
+        name="new_password"
+        onChange={(event) => setNewPassword(event.target.value)}
+        required
+        type="password"
+        value={newPassword}
+      />
 
       {formError ? (
         <div className={styles.formError} role="alert">
@@ -118,9 +94,9 @@ export function ChangePasswordForm() {
         </div>
       ) : null}
 
-      <button className={styles.submit} disabled={isSubmitting} type="submit">
+      <Button disabled={isSubmitting} type="submit">
         {isSubmitting ? '提交中…' : '修改密码'}
-      </button>
+      </Button>
     </form>
   )
 }

@@ -111,22 +111,22 @@ pnpm audit --audit-level high
 - 未被 handler 声明的网络请求在测试中直接报错，防止测试意外访问真实后端。
 - `App.test.tsx` 当前验证认证 bootstrap、受保护路由重定向和安全 return path；Feature 级网络行为由对应 MSW tests 覆盖。
 
-业务测试应把 handler 和 fixture 放在对应 feature 或共享测试目录，不修改环境检查页承载业务断言。
+业务测试应把 handler 和 fixture 放在对应 feature 或共享测试目录；App 测试只覆盖 provider、route guard 与 shell 装配，不承载 Feature 业务协议断言。
 
 ## 8. 当前已验证结果
 
 - `pnpm install --frozen-lockfile`：通过。
 - `pnpm check`：通过。
 - Generated contract drift check：通过。
-- Vitest：10 个测试文件、47 个测试通过。
+- Vitest：12 个测试文件、54 个测试通过。
 - Vite production build：通过。
 - `pnpm audit --audit-level high`：0 个已知漏洞。
-- Vite dev server：220 ms 启动，首页 HTTP 200，验证后已停止。
-- 本地浏览器：通过人工 smoke verification 确认登录页在桌面与 360px 窄屏正确渲染、无横向溢出、表单语义和焦点样式可用，console 无 warning/error，验证标签页已关闭。
+- Vite dev server：211 ms 启动，验证后已停止。
+- 本地浏览器：使用仅监听本机的临时假 Auth 服务完成 authenticated shell 人工 smoke；桌面 sidebar、Top Bar、能力导航和用户菜单正常，360px 下 sidebar 隐藏、抽屉可打开并在导航后自动收起，焦点循环、Escape 关闭和触发器焦点回收通过，页面无横向溢出且 console 无 warning/error。假服务、dev server 与验证标签页均已清理。
 
 ## 9. 当前边界
 
-当前已经建立 generated HTTP Transport Type、共享 HTTP/error seam、SSE framing、Public Event protocol module，以及唯一 AuthProvider 所有权下的 token、refresh、身份/能力快照、登录、注销、修改密码和安全 return path。`src/app/App.tsx` 只装配认证所需的最小路由；完整 Application Shell、会话、Chat reducer、文档、TaskPlan reducer、用户管理、NL2SQL 和 Web Search 仍未实现。
+当前已经建立 generated HTTP Transport Type、共享 HTTP/error seam、SSE framing、Public Event protocol module、唯一 AuthProvider 所有权下的认证生命周期，以及共享 design tokens/UI primitives、三层 route guard、响应式 Application Shell、能力导航和安全通用页面状态。会话、Chat reducer、文档、TaskPlan reducer、用户管理、NL2SQL 和 Web Search 的业务数据流仍未实现；对应 route 当前只提供明确的 Shell 级占位状态，不发起业务请求。
 
 开始业务模块前，必须遵守 `AGENTS.md` 的文档门禁，并读取对应 feature 规范。
 

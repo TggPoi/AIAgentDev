@@ -1,0 +1,63 @@
+.state {
+  align-items: flex-start;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: clamp(var(--space-5), 4vw, var(--space-8));
+}
+
+.eyebrow {
+  color: var(--color-primary-700);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.title {
+  color: var(--color-text);
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.description,
+.details {
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.requestId {
+  color: var(--color-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.skeleton {
+  animation: pulse 1.2s ease-in-out infinite alternate;
+  background: var(--color-primary-100);
+  border-radius: var(--radius-sm);
+  height: 0.9rem;
+  width: 100%;
+}
+
+.skeleton:last-child {
+  width: 62%;
+}
+
+@keyframes pulse {
+  to {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
