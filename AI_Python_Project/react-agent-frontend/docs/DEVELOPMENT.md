@@ -1,6 +1,6 @@
 # React 前端开发环境
 
-> **状态：环境已搭建并验证，业务功能尚未开始。** 本文记录可重复的本地工具链与验收命令，不定义产品行为。
+> **状态：环境与前端认证生命周期已搭建并验证。** 本文记录可重复的本地工具链与验收命令，不定义产品行为。
 
 ## 1. 已验证运行时
 
@@ -109,7 +109,7 @@ pnpm audit --audit-level high
 - Vitest 使用 jsdom。
 - `src/test/setup.ts` 启动 MSW Node server 并加载 jest-dom matcher。
 - 未被 handler 声明的网络请求在测试中直接报错，防止测试意外访问真实后端。
-- 初始 `App.test.tsx` 只证明 React、Provider、jsdom、Testing Library、MSW setup 与路径别名能一起运行。
+- `App.test.tsx` 当前验证认证 bootstrap、受保护路由重定向和安全 return path；Feature 级网络行为由对应 MSW tests 覆盖。
 
 业务测试应把 handler 和 fixture 放在对应 feature 或共享测试目录，不修改环境检查页承载业务断言。
 
@@ -118,15 +118,15 @@ pnpm audit --audit-level high
 - `pnpm install --frozen-lockfile`：通过。
 - `pnpm check`：通过。
 - Generated contract drift check：通过。
-- Vitest：4 个测试文件、17 个测试通过。
+- Vitest：10 个测试文件、47 个测试通过。
 - Vite production build：通过。
 - `pnpm audit --audit-level high`：0 个已知漏洞。
 - Vite dev server：220 ms 启动，首页 HTTP 200，验证后已停止。
-- 本地浏览器：通过人工 smoke verification 确认 React 根节点成功挂载，环境标题与边界提示可见，console 无 warning/error，验证标签页已关闭。
+- 本地浏览器：通过人工 smoke verification 确认登录页在桌面与 360px 窄屏正确渲染、无横向溢出、表单语义和焦点样式可用，console 无 warning/error，验证标签页已关闭。
 
 ## 9. 当前边界
 
-`src/app/App.tsx` 仍只是环境检查页。当前已经建立 generated HTTP Transport Type、共享 HTTP/error seam、SSE framing 和 Public Event protocol module，但没有 AuthProvider、登录、路由页面、会话、Chat reducer、文档、TaskPlan reducer、用户管理、NL2SQL 或 Web Search 业务页面。
+当前已经建立 generated HTTP Transport Type、共享 HTTP/error seam、SSE framing、Public Event protocol module，以及唯一 AuthProvider 所有权下的 token、refresh、身份/能力快照、登录、注销、修改密码和安全 return path。`src/app/App.tsx` 只装配认证所需的最小路由；完整 Application Shell、会话、Chat reducer、文档、TaskPlan reducer、用户管理、NL2SQL 和 Web Search 仍未实现。
 
 开始业务模块前，必须遵守 `AGENTS.md` 的文档门禁，并读取对应 feature 规范。
 

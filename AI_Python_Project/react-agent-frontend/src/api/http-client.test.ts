@@ -18,6 +18,89 @@ describe('media type parsing', () => {
 })
 
 describe('HttpClient', () => {
+  it('shares one refresh across concurrent 401 responses and replays each request once', async () => {
+    let accessToken = 'expired-access-token'
+    let releaseRefresh: (() => void) | undefined
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve
+    })
+    const refreshAccessToken = vi.fn(async () => {
+      await refreshGate
+      accessToken = 'rotated-access-token'
+    })
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      const headers = new Headers(init?.headers)
+      if (headers.get('Authorization') === 'Bearer expired-access-token') {
+        return new Response(
+          JSON.stringify({ code: 'AUTHENTICATION_FAILED' }),
+          {
+            status: 401,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        )
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    })
+    const client = createHttpClient({
+      baseUrl: 'http://127.0.0.1:8000',
+      fetchImpl,
+      getAccessToken: () => accessToken,
+      refreshAccessToken,
+    })
+
+    const first = client.request('/auth/me', { requestId: 'request-first' })
+    const second = client.request('/auth/capabilities', {
+      requestId: 'request-second',
+    })
+
+    await vi.waitFor(() => expect(refreshAccessToken).toHaveBeenCalledTimes(1))
+    releaseRefresh?.()
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2)
+
+    expect(refreshAccessToken).toHaveBeenCalledTimes(1)
+    expect(fetchImpl).toHaveBeenCalledTimes(4)
+    expect(
+      fetchImpl.mock.calls.map(([, init]) =>
+        new Headers(init?.headers).get('X-Request-ID'),
+      ),
+    ).toEqual([
+      'request-first',
+      'request-second',
+      'request-first',
+      'request-second',
+    ])
+  })
+
+  it('does not refresh excluded requests or replay a second 401', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ code: 'AUTHENTICATION_FAILED' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const refreshAccessToken = vi.fn().mockResolvedValue(undefined)
+    const client = createHttpClient({
+      baseUrl: 'http://127.0.0.1:8000',
+      fetchImpl,
+      getAccessToken: () => 'expired-access-token',
+      refreshAccessToken,
+    })
+
+    await expect(client.request('/auth/me')).rejects.toMatchObject({ status: 401 })
+    expect(refreshAccessToken).toHaveBeenCalledOnce()
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+
+    fetchImpl.mockClear()
+    refreshAccessToken.mockClear()
+    await expect(
+      client.request('/auth/logout', { retryOnUnauthorized: false }),
+    ).rejects.toMatchObject({ status: 401 })
+    expect(refreshAccessToken).not.toHaveBeenCalled()
+    expect(fetchImpl).toHaveBeenCalledOnce()
+  })
+
   it('adds the bearer token and stable request ID and parses JSON', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {
@@ -147,6 +230,50 @@ describe('HttpClient', () => {
       traceId: 'trace-conflict',
     })
     expect(JSON.stringify(error)).not.toContain('must-not-be-retained')
+  })
+
+  it('projects only safe declared field errors from validation responses', async () => {
+    const hiddenValue = ['hidden', 'submitted', 'value'].join('-')
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 'REQUEST_VALIDATION_ERROR',
+          message: '请求参数不合法',
+          field_errors: [
+            {
+              field: 'username_or_email',
+              code: 'required',
+              message: '该字段为必填项',
+              input: hiddenValue,
+            },
+            { field: 'password', code: 123, message: hiddenValue },
+          ],
+        }),
+        {
+          status: 422,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    )
+    const client = createHttpClient({
+      baseUrl: 'http://127.0.0.1:8000',
+      fetchImpl,
+      getAccessToken: () => null,
+    })
+
+    const error = await client
+      .request('/auth/login', { authenticated: false })
+      .catch((reason) => reason)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect(error.fieldErrors).toEqual([
+      {
+        field: 'username_or_email',
+        code: 'required',
+        message: '该字段为必填项',
+      },
+    ])
+    expect(JSON.stringify(error)).not.toContain(hiddenValue)
   })
 
   it('maps network failures but preserves AbortError for cancellation', async () => {

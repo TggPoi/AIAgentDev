@@ -19,6 +19,7 @@ export interface ApiRequestOptions
   json?: unknown
   requestId?: string
   responseType?: ApiResponseType
+  retryOnUnauthorized?: boolean
 }
 
 export interface ApiResponse<T> {
@@ -39,6 +40,7 @@ export interface HttpClientOptions {
   baseUrl: string
   fetchImpl?: typeof fetch
   getAccessToken: () => string | null
+  refreshAccessToken?: () => Promise<void>
   requestIdFactory?: () => string
 }
 
@@ -86,6 +88,7 @@ function buildRequestInit(
     json,
     requestId: _requestId,
     responseType: _responseType,
+    retryOnUnauthorized: _retryOnUnauthorized,
     ...requestInit
   } = options
   const headers = new Headers(inputHeaders)
@@ -162,25 +165,54 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
   const baseUrl = normalizeBaseUrl(options.baseUrl)
   const fetchImpl = options.fetchImpl ?? fetch
   const requestIdFactory = options.requestIdFactory ?? (() => crypto.randomUUID())
+  let refreshPromise: Promise<void> | null = null
+
+  function refreshAccessToken(): Promise<void> {
+    if (refreshPromise !== null) {
+      return refreshPromise
+    }
+    if (options.refreshAccessToken === undefined) {
+      return Promise.reject(new Error('No access-token refresh callback configured'))
+    }
+
+    refreshPromise = Promise.resolve()
+      .then(options.refreshAccessToken)
+      .finally(() => {
+        refreshPromise = null
+      })
+    return refreshPromise
+  }
 
   async function execute(
     path: string,
     requestOptions: ApiRequestOptions = {},
   ): Promise<{ requestId: string; response: Response }> {
     const requestId = requestOptions.requestId ?? requestIdFactory()
-    const token =
-      requestOptions.authenticated === false ? null : options.getAccessToken()
-    let response: Response
-    try {
-      response = await fetchImpl(
-        resolveApiUrl(baseUrl, path),
-        buildRequestInit(requestOptions, token, requestId),
-      )
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        throw error
+    const send = async (): Promise<Response> => {
+      const token =
+        requestOptions.authenticated === false ? null : options.getAccessToken()
+      try {
+        return await fetchImpl(
+          resolveApiUrl(baseUrl, path),
+          buildRequestInit(requestOptions, token, requestId),
+        )
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          throw error
+        }
+        throw networkApiError(requestId)
       }
-      throw networkApiError(requestId)
+    }
+
+    let response = await send()
+    const canRefresh =
+      response.status === 401 &&
+      requestOptions.authenticated !== false &&
+      requestOptions.retryOnUnauthorized !== false &&
+      options.refreshAccessToken !== undefined
+    if (canRefresh) {
+      await refreshAccessToken()
+      response = await send()
     }
 
     if (!response.ok) {

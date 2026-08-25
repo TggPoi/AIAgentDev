@@ -1,0 +1,83 @@
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 15% 10%, rgb(219 234 254 / 75%), transparent 34rem),
+    #f8fafc;
+  padding: 1.25rem;
+}
+
+.card {
+  width: min(100%, 30rem);
+  border: 1px solid #dbe5f1;
+  border-radius: 1rem;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 1.25rem 3rem rgb(15 23 42 / 9%);
+  padding: clamp(1.5rem, 4vw, 2.25rem);
+}
+
+.wideCard {
+  width: min(100%, 42rem);
+}
+
+.eyebrow {
+  color: #2563eb;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  margin: 0 0 0.65rem;
+  text-transform: uppercase;
+}
+
+.title {
+  color: #0f172a;
+  font-size: clamp(1.65rem, 5vw, 2.1rem);
+  line-height: 1.15;
+  margin: 0;
+}
+
+.description,
+.identity {
+  color: #64748b;
+  line-height: 1.65;
+  margin: 0.75rem 0 1.5rem;
+}
+
+.actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.link,
+.secondaryButton {
+  border: 1px solid #bfdbfe;
+  border-radius: 0.65rem;
+  background: #eff6ff;
+  color: #1d4ed8;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0.7rem 1rem;
+  text-decoration: none;
+}
+
+.link:focus-visible,
+.secondaryButton:focus-visible {
+  outline: 3px solid rgb(37 99 235 / 22%);
+  outline-offset: 2px;
+}
+
+.secondaryButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.status {
+  color: #475569;
+  font-size: 0.875rem;
+  margin: 1rem 0 0;
+}

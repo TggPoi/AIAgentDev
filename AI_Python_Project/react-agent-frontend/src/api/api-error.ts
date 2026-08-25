@@ -15,6 +15,7 @@ export type ApiErrorStatusKind =
 interface ApiErrorOptions {
   code: string
   errorCategory?: string
+  fieldErrors?: ApiFieldError[]
   message: string
   requestId: string | null
   retryAfterSeconds?: number
@@ -23,9 +24,16 @@ interface ApiErrorOptions {
   traceId?: string | null
 }
 
+export interface ApiFieldError {
+  code: string
+  field: string
+  message: string
+}
+
 export class ApiError extends Error {
   readonly code: string
   readonly errorCategory: string | null
+  readonly fieldErrors: readonly Readonly<ApiFieldError>[]
   readonly requestId: string | null
   readonly retryAfterSeconds: number | null
   readonly status: number
@@ -37,6 +45,11 @@ export class ApiError extends Error {
     this.name = 'ApiError'
     this.code = options.code
     this.errorCategory = options.errorCategory ?? null
+    this.fieldErrors = Object.freeze(
+      (options.fieldErrors ?? []).map((fieldError) =>
+        Object.freeze({ ...fieldError }),
+      ),
+    )
     this.requestId = options.requestId
     this.retryAfterSeconds = options.retryAfterSeconds ?? null
     this.status = options.status
@@ -48,6 +61,7 @@ export class ApiError extends Error {
 interface BackendErrorProjection {
   code?: string
   errorCategory?: string
+  fieldErrors?: ApiFieldError[]
   message?: string
   requestId?: string
   traceId?: string
@@ -55,6 +69,27 @@ interface BackendErrorProjection {
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function projectFieldErrors(value: unknown): ApiFieldError[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const projected: ApiFieldError[] = []
+  for (const item of value.slice(0, 100)) {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      continue
+    }
+    const record = item as Record<string, unknown>
+    const field = optionalString(record.field)
+    const code = optionalString(record.code)
+    const message = optionalString(record.message)
+    if (field !== undefined && code !== undefined && message !== undefined) {
+      projected.push({ field, code, message })
+    }
+  }
+  return projected
 }
 
 function projectBackendError(value: unknown): BackendErrorProjection {
@@ -66,6 +101,7 @@ function projectBackendError(value: unknown): BackendErrorProjection {
   return {
     code: optionalString(record.code),
     errorCategory: optionalString(record.error_category),
+    fieldErrors: projectFieldErrors(record.field_errors),
     message: optionalString(record.message),
     requestId: optionalString(record.request_id),
     traceId: optionalString(record.trace_id),
@@ -142,6 +178,7 @@ export async function apiErrorFromResponse(
   return new ApiError({
     code: projection.code ?? `HTTP_${response.status}`,
     errorCategory: projection.errorCategory,
+    fieldErrors: projection.fieldErrors,
     message: projection.message ?? defaultMessageFor(response.status),
     requestId,
     retryAfterSeconds: parseRetryAfter(response.headers.get('Retry-After')),
