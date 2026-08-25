@@ -47,7 +47,7 @@ MSW 是明确允许执行安装脚本的唯一依赖，记录在 `pnpm-workspace
 
 ## 4. 后端 Contract Snapshot 与类型生成
 
-当前 snapshot 从相邻的 `python-agent-study` 真实 FastAPI app 导出。2026-08-25 的导出证据：monorepo HEAD `768b6d8`，最后影响 `src/fast_app` 的 backend commit 为 `25fad7a`，OpenAPI `3.1.0` 包含 58 paths 和 86 schemas；后端 `scripts/tests/agent_research/test_rag_stream_contract.py` 同期通过。
+当前 snapshot 从相邻的 `python-agent-study` 真实 FastAPI app 导出。2026-08-25 的最新导出证据：monorepo/backend contract HEAD `313d634`，OpenAPI `3.1.0` 包含 58 paths 和 88 schemas；后端 `scripts/tests/document_security/test_auth_validation_contract.py`、既有 Auth focused regressions 与 `scripts/tests/agent_research/test_rag_stream_contract.py` 通过。三个受影响 Auth route 的 `422` 已统一引用安全的 `RequestValidationErrorResponse`。
 
 从前端目录执行以下 PowerShell 命令可重复导出当前后端 OpenAPI：
 

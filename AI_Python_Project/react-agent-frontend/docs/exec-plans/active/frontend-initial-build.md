@@ -8,13 +8,13 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 2 - Authentication Lifecycle and AuthProvider
 
-Current Step: Context Recovery 已重新确认 CG001；执行已授权的受限 backend 422 contract 修复
+Current Step: CG001 已关闭；开始 Slice 2 token storage 与 authorized refresh lifecycle 的 test-first 实现
 
-Next Action: 先增加 Auth HTTP 422/OpenAPI expected-red regression test，再实现安全公共 validation error contract
+Next Action: 检查现有 HTTP client seam 与 Auth feature 空边界，增加 access/refresh storage 和 single-flight refresh 的首个 deterministic expected-red test
 
 Blocking Issues:
 
-- CG001 - Auth 422 field-error contract conflicts with runtime；用户已授权严格受限的 backend remediation，修复并重新验证前 Slice 2 保持 BLOCKED。
+- None。
 
 Last Updated: 2026-08-25 (Asia/Shanghai)
 
@@ -142,7 +142,7 @@ Explicit Boundary:
 
 ### Slice 2 - Authentication Lifecycle and AuthProvider
 
-Status: BLOCKED
+Status: IN_PROGRESS
 
 Goal: 完成认证 Bootstrap Snapshot、token 生命周期、共享 refresh coordination 和认证页面，使后续 Feature 只依赖一个稳定 AuthProvider Interface。
 
@@ -415,14 +415,18 @@ Completed in Current Slice:
 - Slice 2 已完整读取 Authentication/Application Shell specs，并核对 `auth_routes.py`、`auth_schema.py`、OpenAPI 与当前 TestClient runtime。
 - 后端 `test_auth_identity_capabilities.py` 和 `test_auth_session_security.py::assert_http_contract` 均通过；frontend `src/api/http-client.test.ts` baseline 7/7 通过。
 - 复核发现 CG001：认证 `422` 的 OpenAPI schema 与实际全局异常 handler 响应冲突，且 runtime 缺少 Feature spec 所需的字段位置。
+- CG001 backend contract 已在独立 checkpoint `313d634` 修复：只为三个受影响 Auth route 投影 allowlisted 字段，未知/不安全错误保留 form-level，其他 backend API 的 validation runtime shape 保持不变。
+- backend Auth validation expected-red/green、identity/capabilities、session HTTP、schema descriptions 与 RAG/TaskPlan stream contract tests 通过；runtime 与 OpenAPI 均验证一致。
+- frontend OpenAPI snapshot 已从 backend `313d634` 重新导出为 OpenAPI `3.1.0` / 58 paths / 88 schemas，generated transport types 已重新生成；`pnpm contracts:check` 与 `pnpm typecheck` 通过。
+- 本次 contract sync 的 `pnpm check` 通过：generated drift、lint、typecheck、4 files / 17 tests、production build 全部成功；lockfile 未变化，沿用 Slice 1 同 lockfile 的 successful audit evidence，纯 contract artifact 无新增 browser manual smoke。
 
 Currently Working On:
 
-- Slice 2 因 CG001 仍保持 BLOCKED；用户已授权严格受限的 backend remediation，尚未创建 AuthProvider、认证表单或 token lifecycle code。
+- Slice 2 已解除 CG001 blocker 并恢复 IN_PROGRESS；尚未创建 AuthProvider、认证表单或 token lifecycle code。
 
 Next Action:
 
-- 在 Auth HTTP 422 runtime 与 Auth Route OpenAPI 公共 seam 增加 expected-red regression test，再实现 allowlisted 安全字段投影；backend fix 独立 checkpoint 后重新生成 frontend contract artifacts 并复核关闭 CG001。
+- 检查现有 HTTP client seam 与 Auth feature 空边界，在 access/refresh storage 和 single-flight authorized replay 公共 seam 增加首个 deterministic expected-red test。
 
 Relevant Files:
 
@@ -450,6 +454,7 @@ Context Recovery Evidence (verified 2026-08-25 after manual context compaction):
 - 后端 `test_auth_identity_capabilities.py` 通过；`test_auth_session_security.py::assert_http_contract` 通过。首次缺少 `PYTHONPATH=src` 的命令环境错误已按后端文档修正后重跑，不作为代码失败。
 - 真实 Auth router + 全局 exception handler + overridden external AuthService seam 对空 `/auth/login` JSON 返回 `422` 和 `REQUEST_VALIDATION_ERROR`，runtime keys 只有 `code/error_category/message/request_id/trace_id`；三个 Auth route 的 OpenAPI `422` 仍引用带 `detail` 的 `HTTPValidationError`。
 - Current Slice/Status 与 blocker checkpoint 一致：Slice 2 / BLOCKED；CG001 仍真实存在。用户已在本次恢复条件满足后授权推荐 backend fix；唯一 Next Action 是 test-first 修复该 contract，不扩大 backend scope。
+- 恢复后的文档 checkpoint 为 `1ae0d57`；独立 backend CG001 checkpoint 为 `313d634`。backend fix 后重新导出的 snapshot 为 58 paths / 88 schemas，generated drift 与 TypeScript typecheck 通过；CG001 已关闭，Slice 2 现恢复为 IN_PROGRESS。
 
 ## Decision Log
 
@@ -587,7 +592,7 @@ Impact:
 
 Resolution:
 
-- 由 Slice 1 checkpoint `7cdbcaa` supersede；当前按 Slice 2 / BLOCKED 与 CG001 remediation 继续。
+- 由 Slice 1 checkpoint `7cdbcaa` supersede；CG001 已由 backend checkpoint `313d634` 关闭，当前按 Slice 2 / IN_PROGRESS 继续。
 
 ### KI002 - OpenAPI Type Generator Is Not Installed
 
@@ -658,23 +663,27 @@ Resolution:
 
 #### CG001 - Auth 422 Field Error Schema Does Not Match Runtime
 
-Status: BLOCKING SLICE 2 / REMEDIATION AUTHORIZED
+Status: RESOLVED IN SLICE 2
 
-Evidence:
+Evidence (pre-fix and closure):
 
 - `docs/features/authentication/feature.md` 第 5 节要求 `422` 字段错误显示在对应输入框。
-- 当前 OpenAPI 对 `/auth/login`、`/auth/refresh`、`/auth/change-password` 的 `422` response 都引用 `#/components/schemas/HTTPValidationError`；该 schema 的 `detail[]` 声明了 `loc`、`msg` 和 `type`。
-- 当前 `fast_app.core.exception_handlers.handle_request_validation_error()` 调用 `build_error_response_content()`，实际 runtime 只返回 `code`、`message`、`error_category`、`request_id`、`trace_id`。
+- 修复前 OpenAPI 对 `/auth/login`、`/auth/refresh`、`/auth/change-password` 的 `422` response 都引用 `#/components/schemas/HTTPValidationError`；该 schema 的 `detail[]` 声明了 `loc`、`msg` 和 `type`。
+- 修复前 `fast_app.core.exception_handlers.handle_request_validation_error()` 调用 `build_error_response_content()`，实际 runtime 只返回 `code`、`message`、`error_category`、`request_id`、`trace_id`。
 - 2026-08-25 TestClient 对 `POST /auth/login` 提交空 JSON 得到 `422`、`code=REQUEST_VALIDATION_ERROR`，响应 keys 正是上述五项，`detail`/字段位置不存在。
 - 后端 `test_auth_identity_capabilities.py` 与 `test_auth_session_security.py::assert_http_contract` 通过，但它们不覆盖 validation field locations；因此现有成功测试不能证明 Feature spec 的 field mapping contract。
+- backend checkpoint `313d634` 新增 `RequestValidationErrorResponse` / `RequestValidationFieldError`，OpenAPI 将公开 field/code 固化为 enum allowlist。
+- 全局 handler 只对 `POST /auth/login`、`POST /auth/refresh`、`POST /auth/change-password` 的顶层公开字段投影固定 code/message；不读取或回显 error `input`/`ctx`，无法映射时 `field_errors=[]`，非 allowlisted route 保持原响应 shape。
+- `test_auth_validation_contract.py` 先以缺失 schema expected-red，修复后验证三个 route runtime/OpenAPI、敏感输入不回显、form-level fallback、非 Auth route 不变及 schema enum；相关 backend regressions 全部通过。
+- frontend snapshot/generated types 已从 backend commit `313d634` 更新；三个 Auth 422 transport response 均引用 `RequestValidationErrorResponse`，`pnpm contracts:check` 与 `pnpm typecheck` 通过。
 
-Impact:
+Impact before resolution:
 
-- React 无法从服务端 `422` 确定 `username_or_email`、`password`、`current_password` 或 `new_password` 中哪个字段失败。
-- 按 OpenAPI generated type 读取 `HTTPValidationError.detail` 会与 runtime 不符；改为猜测字段或仅显示 form-level error 都不能满足当前已批准 Feature spec。
-- Slice 2 Gate 要求后端 Route/Schema/OpenAPI/tested behavior 无未解决 Contract Gap，因此当前不得进入 AuthProvider/表单实现或 Slice 3。
+- 修复前 React 无法从服务端 `422` 确定 `username_or_email`、`password`、`current_password` 或 `new_password` 中哪个字段失败。
+- 修复前按 OpenAPI generated type 读取 `HTTPValidationError.detail` 会与 runtime 不符；猜测字段或仅显示 form-level error 都不能满足已批准 Feature spec。
+- 该阻塞影响现已消除；Slice 2 可使用 generated transport type 和安全 `field_errors` 实现字段映射，不需要猜测 Pydantic 原始结构。
 
-Recommended Backend Change:
+Implemented Backend Change:
 
 - 在后端定义稳定、前端安全的公共 validation error response schema，为每个可展示字段提供 allowlisted `field`、`code`、`message`，同时保留顶层 `code/message/error_category/request_id/trace_id`。
 - `handle_request_validation_error()` 从 Pydantic/FastAPI `exc.errors()` 只投影公开请求字段，不回显 input、密码、token 或任意 context；所有其他位置保留 form-level error。
@@ -685,6 +694,11 @@ Decision:
 - 用户已于 2026-08-25 批准推荐方案，并把 backend 修改范围严格限定为安全公共 RequestValidationError schema、全局 handler 的 allowlisted field projection、Auth route 422 OpenAPI 声明与对应 tests。
 - 禁止回显 `input`、password、token、secret 或任意敏感值；field 只能来自明确公开请求字段 allowlist，无法安全映射的错误保留 form-level。
 - backend fix 必须独立 checkpoint；随后重新导出 frontend OpenAPI snapshot/generated types、运行 drift check、验证 OpenAPI/runtime/tests 一致后才能将 CG001 标为 RESOLVED 并恢复 Slice 2。
+
+Resolution:
+
+- 独立 backend checkpoint：`313d634`。
+- frontend snapshot/type regeneration 与 drift check 已完成；CG001 已重新验证关闭，Slice 2 状态恢复为 `IN_PROGRESS`。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 

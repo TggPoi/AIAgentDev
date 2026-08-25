@@ -3485,6 +3485,67 @@ export interface components {
             direct_permission_codes?: string[];
         };
         /**
+         * RequestValidationErrorResponse
+         * @description Auth RequestValidationError 的安全公共 422 响应。
+         */
+        RequestValidationErrorResponse: {
+            /**
+             * Code
+             * @description 请求模型校验失败时的稳定顶层错误 code。
+             * @constant
+             */
+            code: "REQUEST_VALIDATION_ERROR";
+            /**
+             * Error Category
+             * @description 错误责任分类；请求模型校验失败固定为 user_error。
+             * @constant
+             */
+            error_category: "user_error";
+            /**
+             * Field Errors
+             * @description 仅包含当前 Auth route 明确 allowlist 顶层字段的安全错误；无法安全映射时为空。
+             */
+            field_errors: components["schemas"]["RequestValidationFieldError"][];
+            /**
+             * Message
+             * @description 请求模型校验失败时可安全显示的 form-level 通用提示。
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 当前 HTTP 请求 ID；测试或缺少请求上下文时可以为空。
+             */
+            request_id: string | null;
+            /**
+             * Trace Id
+             * @description 当前服务端 trace ID；缺少 trace 上下文时可以为空。
+             */
+            trace_id: string | null;
+        };
+        /**
+         * RequestValidationFieldError
+         * @description 一个经过服务端 allowlist 投影的公开请求字段错误。
+         */
+        RequestValidationFieldError: {
+            /**
+             * Code
+             * @description 稳定的公开校验错误 code，不直接暴露 Pydantic/FastAPI 内部 context。
+             * @enum {string}
+             */
+            code: "required" | "invalid_type" | "too_short" | "too_long" | "invalid";
+            /**
+             * Field
+             * @description 允许向客户端公开的顶层请求字段名；不包含请求值或嵌套内部位置。
+             * @enum {string}
+             */
+            field: "username_or_email" | "password" | "refresh_token" | "current_password" | "new_password";
+            /**
+             * Message
+             * @description 可安全显示的固定校验提示，不包含客户端提交值或服务端内部信息。
+             */
+            message: string;
+        };
+        /**
          * ResetManagedUserPasswordRequest
          * @description 由有权 actor 设置目标账号的新初始密码。
          */
@@ -4677,13 +4738,13 @@ export interface operations {
                     "application/json": components["schemas"]["ChangePasswordResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };
@@ -4710,13 +4771,13 @@ export interface operations {
                     "application/json": components["schemas"]["TokenPairResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };
@@ -4813,13 +4874,13 @@ export interface operations {
                     "application/json": components["schemas"]["TokenPairResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };

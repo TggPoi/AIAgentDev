@@ -4131,6 +4131,111 @@
         "title": "ReplaceManagedUserAccessRequest",
         "type": "object"
       },
+      "RequestValidationErrorResponse": {
+        "description": "Auth RequestValidationError 的安全公共 422 响应。",
+        "properties": {
+          "code": {
+            "const": "REQUEST_VALIDATION_ERROR",
+            "description": "请求模型校验失败时的稳定顶层错误 code。",
+            "title": "Code",
+            "type": "string"
+          },
+          "error_category": {
+            "const": "user_error",
+            "description": "错误责任分类；请求模型校验失败固定为 user_error。",
+            "title": "Error Category",
+            "type": "string"
+          },
+          "field_errors": {
+            "description": "仅包含当前 Auth route 明确 allowlist 顶层字段的安全错误；无法安全映射时为空。",
+            "items": {
+              "$ref": "#/components/schemas/RequestValidationFieldError"
+            },
+            "title": "Field Errors",
+            "type": "array"
+          },
+          "message": {
+            "description": "请求模型校验失败时可安全显示的 form-level 通用提示。",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前 HTTP 请求 ID；测试或缺少请求上下文时可以为空。",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前服务端 trace ID；缺少 trace 上下文时可以为空。",
+            "title": "Trace Id"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "error_category",
+          "request_id",
+          "trace_id",
+          "field_errors"
+        ],
+        "title": "RequestValidationErrorResponse",
+        "type": "object"
+      },
+      "RequestValidationFieldError": {
+        "description": "一个经过服务端 allowlist 投影的公开请求字段错误。",
+        "properties": {
+          "code": {
+            "description": "稳定的公开校验错误 code，不直接暴露 Pydantic/FastAPI 内部 context。",
+            "enum": [
+              "required",
+              "invalid_type",
+              "too_short",
+              "too_long",
+              "invalid"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "field": {
+            "description": "允许向客户端公开的顶层请求字段名；不包含请求值或嵌套内部位置。",
+            "enum": [
+              "username_or_email",
+              "password",
+              "refresh_token",
+              "current_password",
+              "new_password"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "message": {
+            "description": "可安全显示的固定校验提示，不包含客户端提交值或服务端内部信息。",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "code",
+          "message"
+        ],
+        "title": "RequestValidationFieldError",
+        "type": "object"
+      },
       "ResetManagedUserPasswordRequest": {
         "additionalProperties": false,
         "description": "由有权 actor 设置目标账号的新初始密码。",
@@ -7218,11 +7323,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Change Password Endpoint",
@@ -7260,11 +7365,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Login Endpoint",
@@ -7476,11 +7581,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Refresh Token Endpoint",
