@@ -3486,7 +3486,7 @@ export interface components {
         };
         /**
          * RequestValidationErrorResponse
-         * @description Auth RequestValidationError 的安全公共 422 响应。
+         * @description 已批准 Route 的 RequestValidationError 安全公共 422 响应。
          */
         RequestValidationErrorResponse: {
             /**
@@ -3503,7 +3503,7 @@ export interface components {
             error_category: "user_error";
             /**
              * Field Errors
-             * @description 仅包含当前 Auth route 明确 allowlist 顶层字段的安全错误；无法安全映射时为空。
+             * @description 仅包含当前 Route 明确 allowlist 顶层字段的安全错误；无法安全映射时为空。
              */
             field_errors: components["schemas"]["RequestValidationFieldError"][];
             /**
@@ -3538,7 +3538,7 @@ export interface components {
              * @description 允许向客户端公开的顶层请求字段名；不包含请求值或嵌套内部位置。
              * @enum {string}
              */
-            field: "username_or_email" | "password" | "refresh_token" | "current_password" | "new_password";
+            field: "username_or_email" | "password" | "refresh_token" | "current_password" | "new_password" | "title";
             /**
              * Message
              * @description 可安全显示的固定校验提示，不包含客户端提交值或服务端内部信息。
@@ -5015,13 +5015,13 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationItem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };
@@ -5089,13 +5089,13 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationItem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };

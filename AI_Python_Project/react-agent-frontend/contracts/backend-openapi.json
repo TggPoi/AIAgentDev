@@ -4132,7 +4132,7 @@
         "type": "object"
       },
       "RequestValidationErrorResponse": {
-        "description": "Auth RequestValidationError 的安全公共 422 响应。",
+        "description": "已批准 Route 的 RequestValidationError 安全公共 422 响应。",
         "properties": {
           "code": {
             "const": "REQUEST_VALIDATION_ERROR",
@@ -4147,7 +4147,7 @@
             "type": "string"
           },
           "field_errors": {
-            "description": "仅包含当前 Auth route 明确 allowlist 顶层字段的安全错误；无法安全映射时为空。",
+            "description": "仅包含当前 Route 明确 allowlist 顶层字段的安全错误；无法安全映射时为空。",
             "items": {
               "$ref": "#/components/schemas/RequestValidationFieldError"
             },
@@ -4217,7 +4217,8 @@
               "password",
               "refresh_token",
               "current_password",
-              "new_password"
+              "new_password",
+              "title"
             ],
             "title": "Field",
             "type": "string"
@@ -7863,11 +7864,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Create Conversation Endpoint",
@@ -8052,11 +8053,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Rename Conversation Endpoint",

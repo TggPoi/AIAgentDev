@@ -8,21 +8,21 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 4 - Conversations
 
-Current Step: Conversations contract verification 已完成；CG002 阻塞创建/重命名表单的安全字段错误映射
+Current Step: CG002 已由 backend `2a13eb3` 修复并完成 frontend contract sync；Slice 4 恢复为 IN_PROGRESS，准备以 deterministic test 建立 Conversations feature seam
 
-Next Action: 等待用户决定是否授权推荐的 CG002 backend contract fix；授权前不开始受影响的 Slice 4 frontend implementation
+Next Action: 先为 conversation transport adapters、user-bound Query Keys 与 keyset page merge 增加 focused expected-red tests，再实现最小完整数据层
 
 Blocking Issues:
 
-- CG002 - Conversation 422 Field Error Schema Does Not Match Runtime。
+- 无。
 
-Last Updated: 2026-08-25 (Asia/Shanghai)
+Last Updated: 2026-08-26 (Asia/Shanghai)
 
 ## Goal
 
 按照已经批准的产品、架构和 Feature 规范，全量实现 Initial React frontend，并以可验证、可恢复、按业务边界提交的 Slice 推进。
 
-本计划只管理实施顺序、当前状态、验证证据和上下文恢复，不修改产品 Scope。当前任务只建立计划与治理规则；在用户审核本计划前不得开始 Slice 1 或任何 React 业务编码。
+本计划管理 Initial React frontend 的完整实施过程、当前状态、验证证据和上下文恢复，不修改产品 Scope。实施期间严格按照 Slice、Slice Gate 和 Blocking Condition 推进。
 
 最终结果必须覆盖：
 
@@ -200,7 +200,7 @@ Explicit Boundary:
 
 ### Slice 4 - Conversations
 
-Status: BLOCKED
+Status: IN_PROGRESS
 
 Goal: 完成当前用户会话的创建、列表、选择、重命名、删除和消息历史读取，并建立稳定的私有 Query Key。
 
@@ -417,7 +417,7 @@ Current Slice:
 Completed in Current Slice:
 
 - Slice 0 checkpoint 为 `768b6d8` 的前一 checkpoint `dfa5b7a`；`768b6d8` 记录用户批准、Context Recovery 证据和进入 Slice 1 的状态转换。
-- 当前 backend OpenAPI snapshot 来自 monorepo HEAD `768b6d8`，最后影响 `src/fast_app` 的 commit 为 `25fad7a`；OpenAPI `3.1.0` 包含 58 paths、86 schemas。
+- Slice 1 最初导出的 backend OpenAPI snapshot 来自 monorepo HEAD `768b6d8`，最后影响当时 `src/fast_app` 的 commit 为 `25fad7a`；该历史 snapshot 为 OpenAPI `3.1.0` / 58 paths / 86 schemas，随后已由 backend `313d634` 对应的 58 paths / 88 schemas snapshot supersede。
 - 后端 `scripts/tests/agent_research/test_rag_stream_contract.py` 通过，Chat 与 TaskPlan stream 的 `contract_version`、`request_id`、response header 和逻辑帧声明一致，无阻塞 Contract Gap。
 - 精确锁定 `openapi-typescript` `7.13.0`；`pnpm install --frozen-lockfile`、生成命令和 generated drift check 通过。
 - 已建立 generated HTTP transport type、DTO-to-Domain mapping rule、共享 HTTP/error seam、parameterized SSE media-type gate、SSE byte framer、Public Event validation、安全投影与 terminal semantics。
@@ -437,14 +437,17 @@ Completed in Current Slice:
 - Slice 2 的 `pnpm check` 为 10 files / 47 tests 全部通过，production build 成功；browser manual smoke 覆盖桌面与 360px 登录页、无横向溢出、表单语义、焦点样式和无 console warning/error。
 - Slice 3 已在 checkpoint `c324170` 完成 shared design tokens、Button/TextField/Drawer/PageState primitives、三层路由、capability guard、响应式 Shell、Top Bar、用户菜单和安全 render/error 状态。
 - Slice 3 的 `pnpm check` 为 12 files / 54 tests 全部通过，production build 成功；authenticated desktop/360px manual smoke、抽屉焦点循环/Escape/焦点回收和 console 检查通过。
+- 用户于 2026-08-26 授权严格受限的 CG002 fix；backend test 先因 Conversation runtime 缺少 `field_errors` expected-red，再由独立 checkpoint `2a13eb3` 完成两个 Route 的 `title` allowlist projection、422 OpenAPI 声明和 runtime/OpenAPI/no-sensitive-echo/regression tests。
+- backend Conversation/Auth validation contract、Conversation HTTP、Auth identity/session HTTP 和 schema field-description regressions 通过；非 allowlisted Route 仍保持原 validation response shape，path `session_id` validation 仍为 `field_errors=[]`。
+- frontend OpenAPI snapshot 已从 backend `2a13eb3` 重新导出，仍为 OpenAPI `3.1.0` / 58 paths / 88 schemas；Conversation POST/PATCH 422 均引用 `RequestValidationErrorResponse`，field enum 只新增 `title`。generated types 已重新生成，`pnpm contracts:check`、typecheck 与完整 `pnpm check`（12 files / 54 tests + production build）通过。
 
 Currently Working On:
 
-- Slice 4 已完成 contract verification，状态为 BLOCKED；尚未实现 Conversations transport、Query 或页面数据流。
+- CG002 已关闭，Slice 4 恢复为 IN_PROGRESS；尚未实现 Conversations transport、Query 或页面数据流，下一步从数据层 public seam 开始 expected-red。
 
 Next Action:
 
-- 等待用户决定是否授权推荐的 CG002 backend contract fix；授权前不开始受影响的 Slice 4 frontend implementation。
+- 为 conversation transport adapters、user-bound Query Keys 与 keyset page merge 增加 focused expected-red tests，再实现 Slice 4 最小完整数据层。
 
 Relevant Files:
 
@@ -457,7 +460,8 @@ Relevant Files:
 - `src/api/generated/backend-schema.ts`
 - `src/app/AppProviders.tsx`
 - `src/features/auth/AuthProvider.tsx`
-- `src/features/conversations/`
+- `src/app/App.tsx`
+- `src/pages/PlaceholderPage.tsx`
 - `src/pages/`
 - `../python-agent-study/src/fast_app/api/conversation_routes.py`
 - `../python-agent-study/src/fast_app/schemas/conversation_schema.py`
@@ -465,7 +469,19 @@ Relevant Files:
 - `../python-agent-study/src/fast_app/schemas/error_schema.py`
 - `../python-agent-study/scripts/tests/document_security/test_conversation_management.py`
 
-Context Recovery Evidence (verified 2026-08-25 after manual context compaction):
+Context Recovery Evidence (verified 2026-08-26 after session change):
+
+- frontend 与 backend 目录重新确认共享 Git root `D:/AI_Agent_Project`，共同 confirmed HEAD 为 `2f27d83aa50f67f0f8b04ef4c3d6bc338e247760`，branch 为 `master...origin/master [ahead 11]`。
+- 恢复开始时从 frontend 与 backend 目录分别运行 `git status --short --branch`；除 branch 行外无输出。两边的完整 unstaged diff、staged diff 及其 stat 均为空。
+- 最近 commits 与计划中的 checkpoint 链一致：Slice 1 `7cdbcaa`、backend CG001 `313d634`、Slice 2 `265e900`、Slice 3 `c324170`、进入 Slice 4 `77e4cfc`、记录 CG002 `2f27d83`。最后一个真正完成并含业务实现的 Slice 是 Slice 3；`2f27d83` 只修改本计划。
+- `c324170..HEAD` 的 frontend `src`、package 和 lockfile 无差异；`e532197..HEAD` 的 committed OpenAPI snapshot、generated contract、package 和 lockfile 无差异；`313d634..HEAD` 的 backend `src` 与相关 tests 无差异。当前 Slice 1-3 checkpoint 对应源码仍存在。
+- 当前 `src/app/App.tsx` 的 `/chat` 与 `/chat/:sessionId` 仍装配 `PlaceholderPage`；Repository 中没有 `src/features/conversations/`，也没有 Conversations transport、TanStack Query 或页面数据流，未发现 Slice 4 被未记录地继续实施。
+- 当前 package manifest/lockfile 实际解析 Node `24.14.0`、pnpm `10.32.1`、`openapi-typescript` `7.13.0`、TypeScript `6.0.3` 和 jsdom `29.1.1`。committed OpenAPI snapshot 为 `3.1.0` / 58 paths / 88 schemas，generated header 标明禁止手工修改；`pnpm contracts:check` 通过。
+- frontend focused recovery tests 为 7 files / 30 tests 全部通过。随后 `pnpm check` 通过 generated drift、lint、typecheck、12 files / 54 tests 与 production build。
+- backend `.venv` 下 `test_conversation_management.assert_http_contract()`、`test_auth_validation_contract.py` 与 `test_schema_field_descriptions.py` 通过。Conversation TestClient runtime/OpenAPI 探针重新确认 POST/PATCH 空白 `title` 都返回 `422`，runtime keys 只有 `code/error_category/message/request_id/trace_id`，两条 OpenAPI `422` 均引用 `HTTPValidationError`。首次探针打印 OpenAPI `$ref` 时发生 PowerShell 变量展开导致探针自身 `KeyError`；改用无 `$` 插值的读取方式后重跑成功，不是后端失败。
+- 本计划主状态与仓库事实一致：Last verified completed Slice 为 3；Current Slice 为 4 / BLOCKED；CG002 仍真实存在。恢复后唯一 Next Action 仍是等待用户明确授权或拒绝推荐的严格受限 backend contract fix；本轮不继续编码。
+
+Historical Context Recovery Evidence (verified 2026-08-25 after manual context compaction):
 
 - 恢复开始时 confirmed HEAD 为 `6d3bc71`；frontend 与 backend 位于同一 Git root `D:/AI_Agent_Project`，branch 为 `master...origin/master [ahead 3]`。
 - `git status --short --branch` 除 branch 行外无输出；`git diff --stat`、完整 unstaged diff、`git diff --cached --stat` 与完整 staged diff 全部为空。
@@ -609,7 +625,7 @@ Status: RESOLVED / SUPERSEDED
 Evidence:
 
 - Slice 1 已在 checkpoint `7cdbcaa` 完成 contract snapshot、generated transport types、共享 HTTP/error seam 与 SSE protocol infrastructure，并以 4 files / 17 tests 和 `pnpm check` 验证。
-- Slice 2 随后已在 checkpoint `265e900` 完成 AuthProvider、token lifecycle、认证表单与路由保护，10 files / 47 tests 和 browser smoke 通过；当前已进入 Slice 3。
+- Slice 2 随后已在 checkpoint `265e900` 完成 AuthProvider、token lifecycle、认证表单与路由保护，10 files / 47 tests 和 browser smoke 通过；Slice 3 也已在 checkpoint `c324170` 完成，当前已进入 Slice 4。
 
 Impact:
 
@@ -617,7 +633,7 @@ Impact:
 
 Resolution:
 
-- 由 Slice 1 checkpoint `7cdbcaa` supersede；CG001 已由 backend checkpoint `313d634` 关闭，Slice 2 已由 frontend checkpoint `265e900` 完成，当前按 Slice 3 / IN_PROGRESS 继续。
+- 由 Slice 1 checkpoint `7cdbcaa` supersede；CG001 已由 backend checkpoint `313d634` 关闭，Slice 2 已由 frontend checkpoint `265e900` 完成，Slice 3 已由 frontend checkpoint `c324170` 完成，CG002 已由 backend checkpoint `2a13eb3` 关闭，当前为 Slice 4 / IN_PROGRESS。
 
 ### KI002 - OpenAPI Type Generator Is Not Installed
 
@@ -666,7 +682,7 @@ Impact:
 
 Resolution:
 
-- 在 Slice 3/5 的局部计划中形成依赖决定并更新 package/lockfile/Development；不得渲染 raw HTML。
+- 在首次实际需要 Shared Markdown Viewer 的 Slice 5 局部计划中形成依赖决定并更新 package/lockfile/Development；不得渲染 raw HTML。
 
 ### KI004 - No Automated E2E Framework
 
@@ -727,13 +743,13 @@ Resolution:
 
 #### CG002 - Conversation 422 Field Error Schema Does Not Match Runtime
 
-Status: BLOCKING SLICE 4 / AWAITING USER DECISION
+Status: RESOLVED IN SLICE 4
 
 Evidence:
 
 - `docs/SPEC.md` 第 7 节要求 `422` 映射到字段错误；Slice 4 的创建与重命名表单均包含公开 `title` 字段。
 - `CreateConversationRequest` 与 `UpdateConversationRequest` 都会拒绝纯空白标题；backend `test_conversation_management.assert_http_contract()` 验证 rename 空白标题返回 `422`，其余会话 HTTP route baseline 通过。
-- 2026-08-25 使用真实 Conversation router、全局 exception handler 与 overridden service 的 TestClient，以无敏感空白标题请求 `POST /conversations` 和 `PATCH /conversations/contract-session`，两者 runtime 均返回 `422`，response keys 只有 `code/error_category/message/request_id/trace_id`。
+- 2026-08-26 Context Recovery 使用真实 Conversation router、全局 exception handler 与 overridden service 的 TestClient，以无敏感空白标题请求 `POST /conversations` 和 `PATCH /conversations/contract-session`，两者 runtime 均返回 `422`，response keys 只有 `code/error_category/message/request_id/trace_id`；同日 backend Conversation HTTP contract test 重新通过。
 - 同一 app 的 OpenAPI 对上述两个 `422` response 均引用 `#/components/schemas/HTTPValidationError`，声明 `detail[].loc/msg/type`；runtime 与 OpenAPI 不一致，也没有可供 React 安全映射到 `title` 的 `field_errors`。
 - CG001 的 backend 授权严格限定 Auth route；现有 `RequestValidationErrorResponse` allowlist 也只包含 Auth 公开字段。该授权不能外推到 Conversations。
 
@@ -749,9 +765,16 @@ Recommended Backend Change:
 - 为两个受影响 Conversation route 显式声明同一 `422` response model，并增加 runtime/OpenAPI/no-input-echo/non-allowlisted-route regression tests。
 - 修复必须是独立 backend checkpoint；随后重新导出 frontend OpenAPI snapshot/generated types，运行 drift check，并在本计划记录 backend commit 后关闭 CG002。
 
-Decision Required:
+Decision:
 
-- 用户需明确授权或拒绝上述严格受限的 backend contract fix。授权前不修改 backend，也不开始依赖该契约的 Slice 4 frontend implementation。
+- 用户已于 2026-08-26 明确授权上述严格受限的 backend contract fix。授权只覆盖两个 Conversation Route 的 `title` 安全字段投影、422 OpenAPI 声明及对应 runtime/OpenAPI/no-sensitive-echo/regression tests，不得外推到未来 Route。
+- backend fix 必须独立 checkpoint；Runtime = OpenAPI = Tests 并同步 frontend snapshot/generated types 后才能关闭 CG002 并恢复 Slice 4 frontend implementation。
+
+Resolution:
+
+- backend 独立 checkpoint `2a13eb3` 完成 `title` allowlist、两个 Conversation Route 422 schema 和安全 projection；未扩展到其他 Route。
+- 新增 `test_conversation_validation_contract.py` 覆盖 POST/PATCH runtime、OpenAPI、敏感 marker 不回显、malformed body、path validation form-level fallback 和非 allowlisted Route regression；既有 Auth validation enum expectation同步增加已批准的 `title`。
+- frontend snapshot/generated types 已从 `2a13eb3` 重新导出和生成；`pnpm contracts:check`、typecheck 与 `pnpm check` 通过，Runtime = OpenAPI = Tests，CG002 关闭，Slice 4 恢复为 `IN_PROGRESS`。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
