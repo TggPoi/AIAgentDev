@@ -8,13 +8,13 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 5 - RAG / Agent Chat Core
 
-Current Step: Slice 4 已由 checkpoint `5821b25` 完成；正在重新读取 Chat spec 并复核 `/rag/chat/stream/events` 的 Route/Schema/OpenAPI/public events/runtime tests
+Current Step: Slice 5 Chat contract reconnaissance 已完成；CG003 阻塞问题输入框的安全 422 字段错误映射
 
-Next Action: 完成 Slice 5 contract reconnaissance，核对 Markdown dependency decision 与 KI006 的 Chat 422 风险，再确定唯一 expected-red Chat public seam
+Next Action: 等待用户决定是否授权推荐的 CG003 backend contract fix；授权前不开始依赖该契约的 Slice 5 frontend implementation
 
 Blocking Issues:
 
-- 无。
+- CG003 - Structured Chat 422 Field Error Schema Does Not Match Runtime。
 
 Last Updated: 2026-08-26 (Asia/Shanghai)
 
@@ -225,7 +225,7 @@ Exit Evidence:
 
 ### Slice 5 - RAG / Agent Chat Core
 
-Status: IN_PROGRESS
+Status: BLOCKED
 
 Goal: 使用唯一结构化 SSE 主线完成标准 RAG/Agent 对话、事件时间线、回答、来源与持久化收敛。
 
@@ -455,14 +455,17 @@ Completed in Current Slice:
 - 按用户授权完成后续 mutation 422 只读 inventory：当前 snapshot 中实际会被 Slice 5/6/8/9 使用的 mutation endpoints 仍声明 `HTTPValidationError`；代表性 `/admin/users` 与 `/admin/document-access/grants` runtime validation 返回公共 form-level shape。该风险已记录为 KI006，不预修复、不阻塞 Slice 4。
 - Slice 4 已在独立 frontend checkpoint `5821b25` 完成 Conversations transport/domain/query/page flow、历史消息/来源/TaskPlan/终态恢复、create/rename/delete/404 收敛和可访问 Dialog。
 - Slice 4 最终 `pnpm check` 通过 generated drift、lint、typecheck、15 files / 66 tests 与 production build；1280px/360px manual browser smoke 通过，临时服务与 browser tab 已清理，checkpoint 后工作树干净。
+- Slice 5 已完整重读 Chat spec 与相关 SPEC/Architecture，检查现有 `HttpClient.openEventStream()`、SSE parser/public event contract、Conversation query/reconciliation seams 和 package/lockfile；进入 reconnaissance 时工作树干净。
+- backend `test_rag_stream_contract.py` 通过，确认 structured Chat event order、public envelope、request ID header、SSE OpenAPI 200 response 和安全 source navigation baseline。
+- KI006 的 Chat 风险已用当前 `RagChatRequest`、全局 validation handler 和实际 Route OpenAPI 复核为 CG003：空白 `query` 加未批准 marker 返回 `422`，runtime keys 只有 `code/error_category/message/request_id/trace_id`，marker 未回显；OpenAPI 422 仍引用 `HTTPValidationError`。
 
 Currently Working On:
 
-- Slice 5 contract reconnaissance：重新读取 Chat spec，复核唯一结构化 SSE Route/Schema/OpenAPI/public event/runtime tests，并局部决策安全 Markdown dependency。
+- Slice 5 因 CG003 BLOCKED；未开始 Chat feature code、Markdown dependency 或其他 Slice 5 frontend implementation。
 
 Next Action:
 
-- 完成 Slice 5 contract reconnaissance，核对 Markdown dependency decision 与 KI006 的 Chat 422 风险，再确定唯一 expected-red Chat public seam。
+- 等待用户决定是否授权推荐的 CG003 backend contract fix；授权前不修改 backend，也不开始依赖该契约的 Slice 5 frontend implementation。
 
 Relevant Files:
 
@@ -715,7 +718,7 @@ Resolution:
 
 ### KI006 - Future Mutation 422 Contract Inventory
 
-Status: INVENTORIED / NON-BLOCKING FOR SLICE 4
+Status: INVENTORIED / CHAT QUERY RISK PROMOTED TO CG003
 
 Evidence:
 
@@ -726,7 +729,8 @@ Evidence:
 
 Impact:
 
-- Slice 8 User Management 是高可信未来 contract risk；Slice 5 Chat 与 Slice 9 Document Access Grants 是待各 Slice 核实的潜在风险。Slice 6 TaskPlan 的多数 validation 来自 path/header/控制参数，可能保持安全 form-level，但 OpenAPI/runtime drift 仍须在 Slice 6 复核。
+- Slice 8 User Management 是高可信未来 contract risk；Slice 9 Document Access Grants 是待对应 Slice 核实的潜在风险。Slice 6 TaskPlan 的多数 validation 来自 path/header/控制参数，可能保持安全 form-level，但 OpenAPI/runtime drift 仍须在 Slice 6 复核。
+- Slice 5 reconnaissance 已确认 `query` 字段确实受影响，因此该部分风险已提升为正式 blocking CG003；其他未来 Route 仍只保留 inventory 状态。
 - inventory 未发现新的 Slice 4 Route gap；因此它不阻塞 Slice 4，也不授权提前修改任何未来 backend Route。
 
 Resolution:
@@ -809,6 +813,35 @@ Resolution:
 - backend 独立 checkpoint `2a13eb3` 完成 `title` allowlist、两个 Conversation Route 422 schema 和安全 projection；未扩展到其他 Route。
 - 新增 `test_conversation_validation_contract.py` 覆盖 POST/PATCH runtime、OpenAPI、敏感 marker 不回显、malformed body、path validation form-level fallback 和非 allowlisted Route regression；既有 Auth validation enum expectation同步增加已批准的 `title`。
 - frontend snapshot/generated types 已从 `2a13eb3` 重新导出和生成；`pnpm contracts:check`、typecheck 与 `pnpm check` 通过，Runtime = OpenAPI = Tests，CG002 关闭，Slice 4 恢复为 `IN_PROGRESS`。
+
+#### CG003 - Structured Chat 422 Field Error Schema Does Not Match Runtime
+
+Status: BLOCKING SLICE 5 / AWAITING USER DECISION
+
+Evidence:
+
+- `docs/SPEC.md` 第 7 节要求 `422` 映射到字段错误；Chat feature 的主输入是公开 `RagChatRequest.query`，其 Pydantic schema 要求长度 1–500 并拒绝纯空白字符串。
+- 当前唯一 React Chat Route `POST /rag/chat/stream/events` 未声明公共 `RequestValidationErrorResponse`；实际 OpenAPI 的 422 response 引用 `#/components/schemas/HTTPValidationError`，声明 FastAPI `detail[].loc/msg/type` shape。
+- 2026-08-26 使用当前 `RagChatRequest`、全局 `register_exception_handlers()` 和同一路径的无外部依赖 TestClient，对空白 `query` 加无敏感 marker 请求得到 `422`；runtime keys 只有 `code/error_category/message/request_id/trace_id`，marker 未回显，`field_errors`/`detail` 均不存在。
+- `_VALIDATION_FIELDS` 只允许 CG001 Auth routes 与 CG002 Conversation POST/PATCH；Chat Route 不在 allowlist。CG001/CG002 的用户授权均严格限定对应 Route，不能外推。
+- backend `scripts/tests/agent_research/test_rag_stream_contract.py` 当前通过，证明 SSE 200/public event/request ID/source baseline，但该测试不覆盖 request validation 422 runtime 或 OpenAPI schema，因此不能关闭此 gap。
+
+Impact:
+
+- React 若按 generated OpenAPI 读取 `HTTPValidationError.detail` 会与 runtime 不符；若只显示 form-level error，公开 `query` 又无法按批准的通用规则映射到问题输入框。
+- 受影响的是 Slice 5 的 Chat request form、pre-stream `ApiError` 和对应 deterministic contract tests。现有 SSE parser/public event infrastructure 本身仍通过，但 coherent Slice 5 Gate 不能在该契约冲突下完成。
+
+Recommended Backend Change:
+
+- 复用 CG001/CG002 的安全公共 `RequestValidationErrorResponse`，只把公开顶层字段 `query` 加入明确 field allowlist，并只为 `POST /rag/chat/stream/events` 投影固定 public code/message。
+- `session_id`、交叉字段/model-level、嵌套 `filters`、未批准字段及其他无法安全映射的位置保持 `field_errors=[]` 的 form-level response；本次推荐不扩展到 legacy `/rag/chat`、`/rag/chat/stream`、TaskPlan 或未来 Admin/Grant Route。
+- 不读取或回显 validation error 的 `input`、`ctx` 或原始 `msg`，不暴露 query 内容、Dataset 值、token、secret、ACL、内部信息或未知字段名；field 只能来自明确批准的 `query` allowlist。
+- 为 structured Chat Route 显式声明同一 422 response model，并增加 runtime/OpenAPI/no-sensitive-echo/form-level fallback/non-allowlisted-route regression tests。
+- 修复必须是独立 backend checkpoint；随后重新导出 frontend OpenAPI snapshot/generated types，运行 contract drift 与必要回归，确认 Runtime = OpenAPI = Tests 后关闭 CG003 并恢复 Slice 5。
+
+Decision Required:
+
+- 用户需明确授权或拒绝上述严格受限的 backend contract fix。授权前不修改 backend，也不开始依赖该契约的 Slice 5 frontend implementation。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
