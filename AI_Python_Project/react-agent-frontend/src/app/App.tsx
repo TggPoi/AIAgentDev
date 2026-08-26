@@ -8,6 +8,7 @@ import { useAuth } from '@/features/auth/AuthProvider'
 import { ApplicationShell } from '@/layouts/ApplicationShell'
 import { LoginPage } from '@/pages/LoginPage'
 import { PlaceholderPage } from '@/pages/PlaceholderPage'
+import { ChatPage } from '@/pages/ChatPage'
 import { SecuritySettingsPage } from '@/pages/SecuritySettingsPage'
 
 function StartupScreen() {
@@ -28,16 +29,6 @@ function StartupScreen() {
     </main>
   )
 }
-
-const chatPage = (
-  <PlaceholderPage
-    description="在统一工作区中恢复历史会话并发起结构化 RAG / Agent 对话。"
-    emptyDescription="选择历史会话或新建会话后，消息将在这里显示。"
-    emptyTitle="准备开始对话"
-    eyebrow="RAG / Agent"
-    title="新对话"
-  />
-)
 
 const taskPlanPage = (
   <PlaceholderPage
@@ -92,8 +83,8 @@ function AppContent() {
     <Routes>
       <Route path="/login" element={<Navigate replace to="/chat" />} />
       <Route element={<ApplicationShell />}>
-        <Route path="/chat" element={chatPage} />
-        <Route path="/chat/:sessionId" element={chatPage} />
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/chat/:sessionId" element={<ChatPage />} />
         <Route path="/tasks" element={taskPlanPage} />
         <Route path="/tasks/:taskPlanId" element={taskPlanPage} />
         <Route

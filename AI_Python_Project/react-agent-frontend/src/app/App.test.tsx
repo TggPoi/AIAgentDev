@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -87,6 +87,11 @@ function ReloadIdentityProbe() {
 }
 
 function renderApp(initialEntry: string, includeReloadProbe = false) {
+  server.use(
+    http.get(`${apiBaseUrl}/conversations`, () =>
+      HttpResponse.json({ items: [], next_cursor: null }),
+    ),
+  )
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <AuthProvider baseUrl={apiBaseUrl} storage={window.sessionStorage}>
@@ -225,7 +230,9 @@ describe('App authentication entry', () => {
     await user.type(screen.getByLabelText('密码'), 'submitted-value')
     await user.click(screen.getByRole('button', { name: '登录' }))
 
-    expect(await screen.findByLabelText('current-route')).toHaveTextContent('/chat')
+    await waitFor(() =>
+      expect(screen.getByLabelText('current-route')).toHaveTextContent('/chat'),
+    )
     expect(
       await screen.findByRole('heading', { name: '新对话' }),
     ).toBeInTheDocument()
@@ -256,7 +263,9 @@ describe('App authentication entry', () => {
 
     renderApp('/admin/users')
 
-    expect(await screen.findByLabelText('current-route')).toHaveTextContent('/chat')
+    await waitFor(() =>
+      expect(screen.getByLabelText('current-route')).toHaveTextContent('/chat'),
+    )
     expect(
       screen.getByRole('status', {
         name: '当前账号没有访问该页面的能力，已返回安全入口。',
@@ -295,7 +304,9 @@ describe('App authentication entry', () => {
     )
     await user.click(screen.getByRole('button', { name: '重新加载身份' }))
 
-    expect(await screen.findByLabelText('current-route')).toHaveTextContent('/chat')
+    await waitFor(() =>
+      expect(screen.getByLabelText('current-route')).toHaveTextContent('/chat'),
+    )
     expect(screen.queryByRole('link', { name: '用户管理' })).not.toBeInTheDocument()
     expect(
       screen.queryByRole('link', { name: '跨部门授权' }),

@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 4 - Conversations
 
-Current Step: CG002 已由 backend `2a13eb3` 修复并完成 frontend contract sync；Slice 4 恢复为 IN_PROGRESS，准备以 deterministic test 建立 Conversations feature seam
+Current Step: Slice 4 implementation、focused/full checks、manual browser smoke 与完整 diff 复核已完成；正在创建单一 Conversations Git checkpoint
 
-Next Action: 先为 conversation transport adapters、user-bound Query Keys 与 keyset page merge 增加 focused expected-red tests，再实现最小完整数据层
+Next Action: stage 并检查完整 Slice 4 staged diff，创建 Conversations checkpoint；随后记录 commit、确认工作树并推进 Slice 5
 
 Blocking Issues:
 
@@ -205,14 +205,22 @@ Status: IN_PROGRESS
 Goal: 完成当前用户会话的创建、列表、选择、重命名、删除和消息历史读取，并建立稳定的私有 Query Key。
 
 - [x] 读取 Conversations spec，复核 Route/Schema/OpenAPI/runtime tests。
-- [ ] 实现 conversation list/messages transport adapters 和 user-bound Query Keys。
-- [ ] 实现 keyset pagination、稳定追加、ID 去重和服务端顺序保留。
-- [ ] 实现新建、选择、重命名、确认删除和历史消息恢复。
-- [ ] 从 list 派生当前会话摘要；禁止虚构 conversation detail endpoint/cache。
-- [ ] 实现 pending 与 persisted 消息区分，为 Chat Slice 提供明确 seam。
-- [ ] 实现 rename/delete/404/refreshing/error 的服务端收敛规则。
-- [ ] 增加同 session 跨用户隔离、cursor、重命名顺序、删除、消息恢复和 cache invalidation 测试。
+- [x] 实现 conversation list/messages transport adapters 和 user-bound Query Keys。
+- [x] 实现 keyset pagination、稳定追加、ID 去重和服务端顺序保留。
+- [x] 实现新建、选择、重命名、确认删除和历史消息恢复。
+- [x] 从 list 派生当前会话摘要；禁止虚构 conversation detail endpoint/cache。
+- [x] 实现 pending 与 persisted 消息区分，为 Chat Slice 提供明确 seam。
+- [x] 实现 rename/delete/404/refreshing/error 的服务端收敛规则。
+- [x] 增加同 session 跨用户隔离、cursor、重命名顺序、删除、消息恢复和 cache invalidation 测试。
 - [ ] 完成 Slice Gate 并创建独立 Git checkpoint。
+
+Gate Evidence before checkpoint:
+
+- focused Conversations/Dialog tests 为 3 files / 12 tests 全部通过；包含先失败后通过的 data seam、真实 App/MSW 页面流、Dialog focus return 与安全 form-level mutation error。
+- `pnpm check` 通过 generated contract drift、lint、typecheck、15 files / 66 tests 与 production build；package、lockfile 和 dependency graph 未变化，沿用 Slice 1 相同 lockfile 下 `pnpm audit --audit-level high` 的成功证据。
+- manual browser smoke 使用仅含虚构数据的本机临时 Auth/Conversation 服务：验证 1280px 历史消息/来源/TaskPlan 恢复、新建后按服务端 session ID 导航、重命名、删除确认、Dialog Escape 与焦点回收、直接 404 安全状态；360px 验证单列布局、Dialog 完整位于 viewport 内且 body/main 无横向溢出；console warning/error 均为空。
+- 浏览器 smoke 未实际提交最终删除，只验证不可恢复警告与确认边界；实际 DELETE、204 解析、cache 清理、导航和列表收敛由真实 App/MSW deterministic test 提交并通过。临时 fake service、Vite dev server 与 browser tab 均已清理。
+- 当前 Slice 未修改 package/lockfile/generated contract；只使用批准的 Conversation routes，未引入 conversation detail endpoint、未来 Feature、global state/UI/E2E dependency 或客户端 ACL。
 
 ### Slice 5 - RAG / Agent Chat Core
 
@@ -440,14 +448,18 @@ Completed in Current Slice:
 - 用户于 2026-08-26 授权严格受限的 CG002 fix；backend test 先因 Conversation runtime 缺少 `field_errors` expected-red，再由独立 checkpoint `2a13eb3` 完成两个 Route 的 `title` allowlist projection、422 OpenAPI 声明和 runtime/OpenAPI/no-sensitive-echo/regression tests。
 - backend Conversation/Auth validation contract、Conversation HTTP、Auth identity/session HTTP 和 schema field-description regressions 通过；非 allowlisted Route 仍保持原 validation response shape，path `session_id` validation 仍为 `field_errors=[]`。
 - frontend OpenAPI snapshot 已从 backend `2a13eb3` 重新导出，仍为 OpenAPI `3.1.0` / 58 paths / 88 schemas；Conversation POST/PATCH 422 均引用 `RequestValidationErrorResponse`，field enum 只新增 `title`。generated types 已重新生成，`pnpm contracts:check`、typecheck 与完整 `pnpm check`（12 files / 54 tests + production build）通过。
+- Conversations data/UI 的 expected-red tests 已分别证明缺失 module、缺失 route implementation、Dialog focus return 和 form-level mutation error；最小实现完成后 focused 3 files / 12 tests 与 typecheck 通过。
+- 已建立 generated transport alias、DTO-to-domain adapter、opaque cursor、稳定 page merge、user-bound Query Keys 和 create/rename/delete invalidation；页面只从 list 派生当前摘要，没有调用或缓存不存在的 conversation detail endpoint。
+- `ConversationsWorkspace` 已使用真实 App/AuthProvider/QueryClient/MSW seam 覆盖选择、分页、消息/来源/TaskPlan 恢复、创建导航、422 `title` 映射、form-level 安全错误、重命名服务端重排、404 安全状态、删除确认与 cache 收敛。
+- 按用户授权完成后续 mutation 422 只读 inventory：当前 snapshot 中实际会被 Slice 5/6/8/9 使用的 mutation endpoints 仍声明 `HTTPValidationError`；代表性 `/admin/users` 与 `/admin/document-access/grants` runtime validation 返回公共 form-level shape。该风险已记录为 KI006，不预修复、不阻塞 Slice 4。
 
 Currently Working On:
 
-- CG002 已关闭，Slice 4 恢复为 IN_PROGRESS；尚未实现 Conversations transport、Query 或页面数据流，下一步从数据层 public seam 开始 expected-red。
+- Slice 4 Gate 的 implementation/tests/check/build/manual smoke 已通过；正在 stage、检查完整 staged diff 并创建单一 Conversations checkpoint。
 
 Next Action:
 
-- 为 conversation transport adapters、user-bound Query Keys 与 keyset page merge 增加 focused expected-red tests，再实现 Slice 4 最小完整数据层。
+- stage 并检查完整 Slice 4 staged diff，创建 Conversations checkpoint；随后记录 commit、确认工作树并推进 Slice 5。
 
 Relevant Files:
 
@@ -461,8 +473,10 @@ Relevant Files:
 - `src/app/AppProviders.tsx`
 - `src/features/auth/AuthProvider.tsx`
 - `src/app/App.tsx`
-- `src/pages/PlaceholderPage.tsx`
+- `src/pages/ChatPage.tsx`
 - `src/pages/`
+- `src/features/conversations/`
+- `src/components/ui/Dialog.tsx`
 - `../python-agent-study/src/fast_app/api/conversation_routes.py`
 - `../python-agent-study/src/fast_app/schemas/conversation_schema.py`
 - `../python-agent-study/src/fast_app/core/exception_handlers.py`
@@ -699,6 +713,27 @@ Impact:
 Resolution:
 
 - 按每个浏览器可见 Slice 与最终 Slice 的 manual smoke gate 执行；未经批准不增加 E2E 依赖。
+
+### KI006 - Future Mutation 422 Contract Inventory
+
+Status: INVENTORIED / NON-BLOCKING FOR SLICE 4
+
+Evidence:
+
+- 按用户授权只读检查 Initial React 后续 Slice 实际使用的 mutation endpoints；当前 OpenAPI snapshot 中 `POST /rag/chat/stream/events`、`POST /agent/task-plans/{task_plan_id}/confirm/stream`、TaskPlan cancel/retry、`POST /admin/users`、`PUT /admin/users/{user_id}/access`、`PATCH /admin/users/{user_id}/status`、`POST /admin/users/{user_id}/reset-password`、`POST /admin/document-access/grants` 和 grant DELETE 的 `422` 均仍引用 `#/components/schemas/HTTPValidationError`。
+- 对应 backend Route/Pydantic Schema 仍由全局 `RequestValidationError` handler 处理，但不在 CG001/CG002 明确批准的 field allowlist 内；因此 runtime validation 使用公共 form-level `code/message/error_category/request_id/trace_id` shape，而 OpenAPI 仍声明 FastAPI `detail[]` shape。
+- 使用真实 admin user / document grant router、全局 handler 和 overridden service 的无敏感 TestClient 代表性验证：空 `POST /admin/users` 与空 `POST /admin/document-access/grants` 均返回 `422`，runtime keys 为 `code/error_category/message/request_id/trace_id`。
+- User Management feature 明确要求把 `422` 映射到 account、primary department、roles、permissions 等字段；全局 SPEC 对表单 `422` 也要求字段级错误。Chat、TaskPlan、Document Grant 的实际字段映射需求仍须在各自 Slice 结合真实交互重新判定。
+
+Impact:
+
+- Slice 8 User Management 是高可信未来 contract risk；Slice 5 Chat 与 Slice 9 Document Access Grants 是待各 Slice 核实的潜在风险。Slice 6 TaskPlan 的多数 validation 来自 path/header/控制参数，可能保持安全 form-level，但 OpenAPI/runtime drift 仍须在 Slice 6 复核。
+- inventory 未发现新的 Slice 4 Route gap；因此它不阻塞 Slice 4，也不授权提前修改任何未来 backend Route。
+
+Resolution:
+
+- 仅记录风险。进入对应 Slice 时重新执行 Route/Schema/OpenAPI/runtime/spec 核对；只有确认影响该 Slice 的公开行为后，才建立精确 Contract Gap 并按 Blocking Condition 请求受限授权。
+- 禁止把 CG001/CG002 授权外推到上述 Route，禁止现在预修复。
 
 ### Contract Gaps
 
