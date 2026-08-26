@@ -20,12 +20,14 @@ from fast_app.services.exceptions import AppServiceError
 logger = get_logger(__name__)
 
 
-_AUTH_VALIDATION_FIELDS: dict[tuple[str, str], frozenset[str]] = {
+_VALIDATION_FIELDS: dict[tuple[str, str], frozenset[str]] = {
     ("POST", "/auth/login"): frozenset({"username_or_email", "password"}),
     ("POST", "/auth/refresh"): frozenset({"refresh_token"}),
     ("POST", "/auth/change-password"): frozenset(
         {"current_password", "new_password"}
     ),
+    ("POST", "/conversations"): frozenset({"title"}),
+    ("PATCH", "/conversations/{session_id}"): frozenset({"title"}),
 }
 
 _PUBLIC_VALIDATION_ERRORS: dict[str, tuple[str, str]] = {
@@ -73,7 +75,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             request_id=request_id,
             trace_id=trace_id,
         )
-        field_errors = _project_auth_validation_field_errors(request, exc.errors())
+        field_errors = _project_validation_field_errors(request, exc.errors())
         if field_errors is not None:
             content = RequestValidationErrorResponse(
                 **content,
@@ -187,7 +189,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
 
-def _project_auth_validation_field_errors(
+def _project_validation_field_errors(
     request: Request,
     errors: list[dict[str, object]],
 ) -> list[RequestValidationFieldError] | None:
@@ -196,7 +198,7 @@ def _project_auth_validation_field_errors(
     if not isinstance(route_path, str):
         return None
 
-    allowed_fields = _AUTH_VALIDATION_FIELDS.get((request.method.upper(), route_path))
+    allowed_fields = _VALIDATION_FIELDS.get((request.method.upper(), route_path))
     if allowed_fields is None:
         return None
 

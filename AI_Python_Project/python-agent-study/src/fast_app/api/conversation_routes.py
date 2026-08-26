@@ -12,12 +12,20 @@ from fast_app.schemas.conversation_schema import (
     CreateConversationRequest,
     UpdateConversationRequest,
 )
+from fast_app.schemas.error_schema import RequestValidationErrorResponse
 from fast_app.services.conversation.conversation_catalog_service import (
     ConversationCatalogService,
 )
 
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
+
+_CONVERSATION_VALIDATION_ERROR_RESPONSES = {
+    422: {
+        "model": RequestValidationErrorResponse,
+        "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。",
+    }
+}
 
 
 @router.get("", response_model=ConversationListResponse)
@@ -36,6 +44,7 @@ async def list_conversations_endpoint(
     "",
     response_model=ConversationItem,
     status_code=status.HTTP_201_CREATED,
+    responses=_CONVERSATION_VALIDATION_ERROR_RESPONSES,
 )
 async def create_conversation_endpoint(
     request: CreateConversationRequest,
@@ -47,7 +56,11 @@ async def create_conversation_endpoint(
     return await service.create_conversation(user, request)
 
 
-@router.patch("/{session_id}", response_model=ConversationItem)
+@router.patch(
+    "/{session_id}",
+    response_model=ConversationItem,
+    responses=_CONVERSATION_VALIDATION_ERROR_RESPONSES,
+)
 async def rename_conversation_endpoint(
     request: UpdateConversationRequest,
     session_id: str = Path(

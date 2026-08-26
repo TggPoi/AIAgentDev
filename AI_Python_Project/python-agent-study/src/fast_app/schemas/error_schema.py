@@ -14,6 +14,7 @@ class RequestValidationFieldError(BaseModel):
         "refresh_token",
         "current_password",
         "new_password",
+        "title",
     ] = Field(
         description="允许向客户端公开的顶层请求字段名；不包含请求值或嵌套内部位置。",
     )
@@ -32,7 +33,7 @@ class RequestValidationFieldError(BaseModel):
 
 
 class RequestValidationErrorResponse(BaseModel):
-    """Auth RequestValidationError 的安全公共 422 响应。"""
+    """已批准 Route 的 RequestValidationError 安全公共 422 响应。"""
 
     code: Literal["REQUEST_VALIDATION_ERROR"] = Field(
         description="请求模型校验失败时的稳定顶层错误 code。",
@@ -50,7 +51,7 @@ class RequestValidationErrorResponse(BaseModel):
         description="当前服务端 trace ID；缺少 trace 上下文时可以为空。",
     )
     field_errors: list[RequestValidationFieldError] = Field(
-        description="仅包含当前 Auth route 明确 allowlist 顶层字段的安全错误；无法安全映射时为空。",
+        description="仅包含当前 Route 明确 allowlist 顶层字段的安全错误；无法安全映射时为空。",
     )
 
 
