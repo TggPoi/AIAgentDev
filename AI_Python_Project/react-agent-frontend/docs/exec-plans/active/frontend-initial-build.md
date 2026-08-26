@@ -6,11 +6,11 @@ Status: ACTIVE
 
 Plan Approval: APPROVED BY USER ON 2026-08-25
 
-Current Slice: 4 - Conversations
+Current Slice: 5 - RAG / Agent Chat Core
 
-Current Step: Slice 4 implementation、focused/full checks、manual browser smoke 与完整 diff 复核已完成；正在创建单一 Conversations Git checkpoint
+Current Step: Slice 4 已由 checkpoint `5821b25` 完成；正在重新读取 Chat spec 并复核 `/rag/chat/stream/events` 的 Route/Schema/OpenAPI/public events/runtime tests
 
-Next Action: stage 并检查完整 Slice 4 staged diff，创建 Conversations checkpoint；随后记录 commit、确认工作树并推进 Slice 5
+Next Action: 完成 Slice 5 contract reconnaissance，核对 Markdown dependency decision 与 KI006 的 Chat 422 风险，再确定唯一 expected-red Chat public seam
 
 Blocking Issues:
 
@@ -200,7 +200,7 @@ Explicit Boundary:
 
 ### Slice 4 - Conversations
 
-Status: IN_PROGRESS
+Status: COMPLETED
 
 Goal: 完成当前用户会话的创建、列表、选择、重命名、删除和消息历史读取，并建立稳定的私有 Query Key。
 
@@ -212,19 +212,20 @@ Goal: 完成当前用户会话的创建、列表、选择、重命名、删除�
 - [x] 实现 pending 与 persisted 消息区分，为 Chat Slice 提供明确 seam。
 - [x] 实现 rename/delete/404/refreshing/error 的服务端收敛规则。
 - [x] 增加同 session 跨用户隔离、cursor、重命名顺序、删除、消息恢复和 cache invalidation 测试。
-- [ ] 完成 Slice Gate 并创建独立 Git checkpoint。
+- [x] 完成 Slice Gate 并创建独立 Git checkpoint。
 
-Gate Evidence before checkpoint:
+Exit Evidence:
 
 - focused Conversations/Dialog tests 为 3 files / 12 tests 全部通过；包含先失败后通过的 data seam、真实 App/MSW 页面流、Dialog focus return 与安全 form-level mutation error。
 - `pnpm check` 通过 generated contract drift、lint、typecheck、15 files / 66 tests 与 production build；package、lockfile 和 dependency graph 未变化，沿用 Slice 1 相同 lockfile 下 `pnpm audit --audit-level high` 的成功证据。
 - manual browser smoke 使用仅含虚构数据的本机临时 Auth/Conversation 服务：验证 1280px 历史消息/来源/TaskPlan 恢复、新建后按服务端 session ID 导航、重命名、删除确认、Dialog Escape 与焦点回收、直接 404 安全状态；360px 验证单列布局、Dialog 完整位于 viewport 内且 body/main 无横向溢出；console warning/error 均为空。
 - 浏览器 smoke 未实际提交最终删除，只验证不可恢复警告与确认边界；实际 DELETE、204 解析、cache 清理、导航和列表收敛由真实 App/MSW deterministic test 提交并通过。临时 fake service、Vite dev server 与 browser tab 均已清理。
 - 当前 Slice 未修改 package/lockfile/generated contract；只使用批准的 Conversation routes，未引入 conversation detail endpoint、未来 Feature、global state/UI/E2E dependency 或客户端 ACL。
+- 独立 frontend checkpoint：`5821b25`；checkpoint 后工作树干净，branch 为 `master...origin/master [ahead 14]`。
 
 ### Slice 5 - RAG / Agent Chat Core
 
-Status: NOT_STARTED
+Status: IN_PROGRESS
 
 Goal: 使用唯一结构化 SSE 主线完成标准 RAG/Agent 对话、事件时间线、回答、来源与持久化收敛。
 
@@ -420,7 +421,7 @@ Goal: 在不扩大 Scope 的前提下完成跨 Feature 集成、可访问性、�
 
 Current Slice:
 
-- 4 - Conversations
+- 5 - RAG / Agent Chat Core
 
 Completed in Current Slice:
 
@@ -452,14 +453,16 @@ Completed in Current Slice:
 - 已建立 generated transport alias、DTO-to-domain adapter、opaque cursor、稳定 page merge、user-bound Query Keys 和 create/rename/delete invalidation；页面只从 list 派生当前摘要，没有调用或缓存不存在的 conversation detail endpoint。
 - `ConversationsWorkspace` 已使用真实 App/AuthProvider/QueryClient/MSW seam 覆盖选择、分页、消息/来源/TaskPlan 恢复、创建导航、422 `title` 映射、form-level 安全错误、重命名服务端重排、404 安全状态、删除确认与 cache 收敛。
 - 按用户授权完成后续 mutation 422 只读 inventory：当前 snapshot 中实际会被 Slice 5/6/8/9 使用的 mutation endpoints 仍声明 `HTTPValidationError`；代表性 `/admin/users` 与 `/admin/document-access/grants` runtime validation 返回公共 form-level shape。该风险已记录为 KI006，不预修复、不阻塞 Slice 4。
+- Slice 4 已在独立 frontend checkpoint `5821b25` 完成 Conversations transport/domain/query/page flow、历史消息/来源/TaskPlan/终态恢复、create/rename/delete/404 收敛和可访问 Dialog。
+- Slice 4 最终 `pnpm check` 通过 generated drift、lint、typecheck、15 files / 66 tests 与 production build；1280px/360px manual browser smoke 通过，临时服务与 browser tab 已清理，checkpoint 后工作树干净。
 
 Currently Working On:
 
-- Slice 4 Gate 的 implementation/tests/check/build/manual smoke 已通过；正在 stage、检查完整 staged diff 并创建单一 Conversations checkpoint。
+- Slice 5 contract reconnaissance：重新读取 Chat spec，复核唯一结构化 SSE Route/Schema/OpenAPI/public event/runtime tests，并局部决策安全 Markdown dependency。
 
 Next Action:
 
-- stage 并检查完整 Slice 4 staged diff，创建 Conversations checkpoint；随后记录 commit、确认工作树并推进 Slice 5。
+- 完成 Slice 5 contract reconnaissance，核对 Markdown dependency decision 与 KI006 的 Chat 422 风险，再确定唯一 expected-red Chat public seam。
 
 Relevant Files:
 
@@ -467,21 +470,17 @@ Relevant Files:
 - `docs/exec-plans/active/frontend-initial-build.md`
 - `docs/SPEC.md`
 - `docs/ARCHITECTURE.md`
-- `docs/features/conversations/feature.md`
+- `docs/features/rag-agent-chat/feature.md`
 - `contracts/backend-openapi.json`
 - `src/api/generated/backend-schema.ts`
-- `src/app/AppProviders.tsx`
-- `src/features/auth/AuthProvider.tsx`
+- `src/api/sse/`
+- `src/api/http-client.ts`
 - `src/app/App.tsx`
 - `src/pages/ChatPage.tsx`
-- `src/pages/`
 - `src/features/conversations/`
-- `src/components/ui/Dialog.tsx`
-- `../python-agent-study/src/fast_app/api/conversation_routes.py`
-- `../python-agent-study/src/fast_app/schemas/conversation_schema.py`
-- `../python-agent-study/src/fast_app/core/exception_handlers.py`
-- `../python-agent-study/src/fast_app/schemas/error_schema.py`
-- `../python-agent-study/scripts/tests/document_security/test_conversation_management.py`
+- `../python-agent-study/src/fast_app/api/rag_chat_routes.py`
+- `../python-agent-study/src/fast_app/schemas/rag_schema.py`
+- `../python-agent-study/scripts/tests/agent_research/test_rag_stream_contract.py`
 
 Context Recovery Evidence (verified 2026-08-26 after session change):
 
@@ -639,7 +638,7 @@ Status: RESOLVED / SUPERSEDED
 Evidence:
 
 - Slice 1 已在 checkpoint `7cdbcaa` 完成 contract snapshot、generated transport types、共享 HTTP/error seam 与 SSE protocol infrastructure，并以 4 files / 17 tests 和 `pnpm check` 验证。
-- Slice 2 随后已在 checkpoint `265e900` 完成 AuthProvider、token lifecycle、认证表单与路由保护，10 files / 47 tests 和 browser smoke 通过；Slice 3 也已在 checkpoint `c324170` 完成，当前已进入 Slice 4。
+- Slice 2 随后已在 checkpoint `265e900` 完成 AuthProvider、token lifecycle、认证表单与路由保护，10 files / 47 tests 和 browser smoke 通过；Slice 3 已在 checkpoint `c324170` 完成，Slice 4 已在 checkpoint `5821b25` 完成，当前已进入 Slice 5。
 
 Impact:
 
@@ -647,7 +646,7 @@ Impact:
 
 Resolution:
 
-- 由 Slice 1 checkpoint `7cdbcaa` supersede；CG001 已由 backend checkpoint `313d634` 关闭，Slice 2 已由 frontend checkpoint `265e900` 完成，Slice 3 已由 frontend checkpoint `c324170` 完成，CG002 已由 backend checkpoint `2a13eb3` 关闭，当前为 Slice 4 / IN_PROGRESS。
+- 由 Slice 1 checkpoint `7cdbcaa` supersede；CG001 已由 backend checkpoint `313d634` 关闭，Slice 2 已由 frontend checkpoint `265e900` 完成，Slice 3 已由 frontend checkpoint `c324170` 完成，CG002 已由 backend checkpoint `2a13eb3` 关闭，Slice 4 已由 frontend checkpoint `5821b25` 完成，当前为 Slice 5 / IN_PROGRESS。
 
 ### KI002 - OpenAPI Type Generator Is Not Installed
 
