@@ -6,6 +6,7 @@ import { credentialFreeHttpHref } from '@/api/safe-url'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { EmptyState, ErrorState, PageSkeleton } from '@/components/ui/PageState'
+import { MarkdownViewer } from '@/components/ui/MarkdownViewer'
 import { TextField } from '@/components/ui/TextField'
 import type { ConversationApi } from '@/features/conversations/conversation-api'
 import {
@@ -283,7 +284,13 @@ export function ConversationsWorkspace({
                 <p className={styles.messageRole}>
                   {item.role === 'user' ? '你' : 'Agent'}
                 </p>
-                <p className={styles.messageContent}>{item.content}</p>
+                {item.role === 'assistant' ? (
+                  <div className={styles.messageContent}>
+                    <MarkdownViewer markdown={item.content} />
+                  </div>
+                ) : (
+                  <p className={styles.messageContent}>{item.content}</p>
+                )}
                 {item.sources.length > 0 ? (
                   <ul aria-label="消息来源" className={styles.sources}>
                     {item.sources.map((source) => (

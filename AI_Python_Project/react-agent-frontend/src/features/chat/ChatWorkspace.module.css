@@ -55,7 +55,7 @@
   gap: var(--space-1);
 }
 
-.sources span {
+.sourcePreview {
   color: var(--color-text-secondary);
   font-size: 0.825rem;
 }

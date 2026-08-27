@@ -20,6 +20,7 @@
 - React DOM 19。
 - React Router 7。
 - TanStack Query 5。
+- `react-markdown` `10.1.0` 与 `remark-gfm` `4.0.1`，用于共享安全 Markdown Viewer；不安装或启用 raw HTML renderer。
 
 开发与验证依赖：
 
@@ -118,15 +119,16 @@ pnpm audit --audit-level high
 - `pnpm install --frozen-lockfile`：通过。
 - `pnpm check`：通过。
 - Generated contract drift check：通过。
-- Vitest：15 个测试文件、66 个测试通过。
+- Vitest：19 个测试文件、82 个测试通过。
 - Vite production build：通过。
 - `pnpm audit --audit-level high`：0 个已知漏洞。
 - Vite dev server：211 ms 启动，验证后已停止。
 - 本地浏览器：使用仅监听本机的临时假 Auth 服务完成 authenticated shell 人工 smoke；桌面 sidebar、Top Bar、能力导航和用户菜单正常，360px 下 sidebar 隐藏、抽屉可打开并在导航后自动收起，焦点循环、Escape 关闭和触发器焦点回收通过，页面无横向溢出且 console 无 warning/error。假服务、dev server 与验证标签页均已清理。
+- Chat browser smoke：使用仅监听本机的虚构 Conversation/structured SSE 数据验证 desktop 与 360px 历史、实时和持久化 Markdown、安全/不安全来源、unknown payload 丢弃、TaskPlan link、Web 设置刷新恢复和无横向溢出；console 无 warning/error，临时服务、dev server、脚本和标签页均已清理。
 
 ## 9. 当前边界
 
-当前已经建立 generated HTTP Transport Type、共享 HTTP/error seam、SSE framing、Public Event protocol module、唯一 AuthProvider 所有权下的认证生命周期、共享 design tokens/UI primitives、三层 route guard、响应式 Application Shell，以及 Conversation 列表/消息/创建/重命名/删除和历史恢复。Chat reducer、文档、TaskPlan reducer、用户管理、NL2SQL 和 Web Search 的业务数据流仍未实现；当前实施进度与唯一 Next Action 由 active Execution Plan 记录。
+当前已经建立 generated HTTP Transport Type、共享 HTTP/error seam、SSE framing、Public Event protocol module、唯一 AuthProvider 所有权下的认证生命周期、共享 design tokens/UI primitives、三层 route guard、响应式 Application Shell、Conversation 管理/历史恢复，以及 structured Chat request/reducer/Web 偏好/事件与来源安全展示/持久化收敛和共享 Markdown Viewer。文档、TaskPlan reducer、用户管理与 NL2SQL 完整业务数据流仍未实现；当前实施进度与唯一 Next Action 由 active Execution Plan 记录。
 
 开始业务模块前，必须遵守 `AGENTS.md` 的文档门禁，并读取对应 feature 规范。
 

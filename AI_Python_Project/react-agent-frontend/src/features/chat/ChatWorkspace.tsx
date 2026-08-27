@@ -9,6 +9,7 @@ import {
   type PublicSource,
 } from '@/api/sse/public-events'
 import { Button } from '@/components/ui/Button'
+import { MarkdownViewer } from '@/components/ui/MarkdownViewer'
 import { TextField } from '@/components/ui/TextField'
 import type { ChatApi } from '@/features/chat/chat-api'
 import {
@@ -193,9 +194,13 @@ export function ChatWorkspace({
           <p className={styles.role}>你</p>
           <p>{state.query}</p>
           <p className={styles.role}>Agent</p>
-          <p aria-live="polite" className={styles.answer}>
-            {state.answer || (isActive ? '正在连接…' : state.errorMessage)}
-          </p>
+          <div aria-live="polite" className={styles.answer}>
+            {state.answer ? (
+              <MarkdownViewer markdown={state.answer} />
+            ) : (
+              isActive ? '正在连接…' : state.errorMessage
+            )}
+          </div>
           {state.clarification ? (
             <aside className={styles.notice}>
               <strong>需要补充信息</strong>
@@ -222,7 +227,9 @@ export function ChatWorkspace({
               {state.sources.map((source) => (
                 <li key={source.id}>
                   <SourceReference source={source} />
-                  <span>{source.contentPreview}</span>
+                  <div className={styles.sourcePreview}>
+                    <MarkdownViewer markdown={source.contentPreview} />
+                  </div>
                 </li>
               ))}
             </ul>

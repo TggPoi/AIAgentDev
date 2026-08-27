@@ -415,7 +415,7 @@ describe('Conversations workspace', () => {
                   { ...message('message-3', 3, 'user'), content: '新的问题' },
                   {
                     ...message('message-4', 4, 'assistant'),
-                    content: '服务端持久化回答',
+                    content: '**服务端持久化回答**',
                     sources: [],
                   },
                 ],
@@ -457,7 +457,7 @@ describe('Conversations workspace', () => {
     await user.type(screen.getByLabelText('问题'), '新的问题')
     await user.click(screen.getByRole('button', { name: '发送' }))
 
-    expect(await screen.findByText('服务端持久化回答')).toBeInTheDocument()
+    expect((await screen.findByText('服务端持久化回答')).tagName).toBe('STRONG')
     expect(streamRequestCount).toBe(1)
     expect(messageRequestCount).toBeGreaterThan(1)
     expect(listRequestCount).toBeGreaterThan(1)
@@ -579,7 +579,7 @@ describe('Conversations workspace', () => {
             'event: sources\n' +
             `data: {${envelope},"sources":[` +
             '{"id":"doc-source","source":"elasticsearch","source_type":"knowledge_document","doc_id":"doc-1","href":null,"title":"知识来源","content_preview":"文档预览","score":0.8,"source_revision":"rev-1","section_path":["章节"]},' +
-            '{"id":"web-source","source":"web","source_type":"web","doc_id":null,"href":"https://example.test/result","title":"公开网页","content_preview":"网页预览","score":0.7,"source_revision":null,"section_path":[]},' +
+            '{"id":"web-source","source":"web","source_type":"web","doc_id":null,"href":"https://example.test/result","title":"公开网页","content_preview":"**网页预览**","score":0.7,"source_revision":null,"section_path":[]},' +
             '{"id":"unsafe-source","source":"web","source_type":"web","doc_id":null,"href":"https://user:password@example.test/private","title":"不安全网页","content_preview":"只显示文本","score":0.6,"source_revision":null,"section_path":[]}' +
             ']}\n\n' +
             'event: future_private_event\n' +
@@ -615,6 +615,7 @@ describe('Conversations workspace', () => {
       'href',
       'https://example.test/result',
     )
+    expect(screen.getByText('网页预览').tagName).toBe('STRONG')
     expect(screen.getByText('不安全网页')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '不安全网页' })).not.toBeInTheDocument()
     expect(screen.getByText('当前前端版本暂不支持 future_private_event')).toBeInTheDocument()
