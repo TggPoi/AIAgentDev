@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { ApiError } from '@/api/api-error'
+import { credentialFreeHttpHref } from '@/api/safe-url'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { EmptyState, ErrorState, PageSkeleton } from '@/components/ui/PageState'
@@ -25,6 +26,7 @@ import styles from '@/features/conversations/ConversationsWorkspace.module.css'
 
 interface ConversationsWorkspaceProps {
   api: ConversationApi
+  chatPanel?: ReactNode
   sessionId: string | null
   userBoundary: string
 }
@@ -46,25 +48,16 @@ function MutationErrorState({ error, message }: { error: unknown; message: strin
   )
 }
 
-function safeWebHref(href: string | null): string | null {
-  if (href === null) return null
-  try {
-    const url = new URL(href)
-    return url.protocol === 'http:' || url.protocol === 'https:' ? href : null
-  } catch {
-    return null
-  }
-}
-
 function SourceReference({ source }: { source: HistoricalSource }) {
   const label = source.title ?? source.contentPreview
   if (source.sourceType === 'knowledge_document' && source.docId) {
     return <Link to={`/documents/${encodeURIComponent(source.docId)}`}>{label}</Link>
   }
-  const href = source.sourceType === 'web' ? safeWebHref(source.href) : null
+  const href =
+    source.sourceType === 'web' ? credentialFreeHttpHref(source.href) : null
   if (href) {
     return (
-      <a href={href} rel="noreferrer" target="_blank">
+      <a href={href} rel="noopener noreferrer" target="_blank">
         {label}
       </a>
     )
@@ -123,6 +116,7 @@ function ConversationList({
 
 export function ConversationsWorkspace({
   api,
+  chatPanel,
   sessionId,
   userBoundary,
 }: ConversationsWorkspaceProps) {
@@ -319,6 +313,7 @@ export function ConversationsWorkspace({
             {messagesQuery.isFetchingNextPage ? '正在加载…' : '加载更多消息'}
           </Button>
         ) : null}
+        {chatPanel}
       </div>
 
       <Dialog label="新建会话" onClose={closeDialog} open={openDialog === 'create'}>

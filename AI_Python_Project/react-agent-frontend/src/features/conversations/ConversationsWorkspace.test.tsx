@@ -67,6 +67,17 @@ function message(messageId: string, sequenceNo: number, role: 'assistant' | 'use
               score: 0.6,
               scores: {},
             },
+            {
+              id: 'source-4',
+              source: 'web',
+              source_type: 'web' as const,
+              doc_id: null,
+              href: 'https://user:password@example.test/private',
+              title: '带凭据来源',
+              content_preview: '凭据 URL 只显示文本',
+              score: 0.5,
+              scores: {},
+            },
           ]
         : [],
     agent_task_plan_id: role === 'assistant' ? 'task-1' : null,
@@ -76,7 +87,7 @@ function message(messageId: string, sequenceNo: number, role: 'assistant' | 'use
   }
 }
 
-function installIdentity() {
+function installIdentity(canUseWebSearch = false) {
   createAuthTokenStore(window.sessionStorage).setTokenPair({
     access_token: 'test-access',
     refresh_token: 'test-refresh',
@@ -115,7 +126,7 @@ function installIdentity() {
         can_manage_users: false,
         user_management_scope: 'none',
         can_manage_document_grants: false,
-        can_use_web_search: false,
+        can_use_web_search: canUseWebSearch,
         can_use_nl2sql: false,
         can_read_documents: false,
         can_manage_documents: false,
@@ -197,6 +208,8 @@ describe('Conversations workspace', () => {
     )
     expect(screen.getByText('不安全来源')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '不安全来源' })).not.toBeInTheDocument()
+    expect(screen.getByText('带凭据来源')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '带凭据来源' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: '查看 TaskPlan task-1' })).toHaveAttribute(
       'href',
       '/tasks/task-1',
@@ -378,5 +391,330 @@ describe('Conversations workspace', () => {
 
     expect(await screen.findByLabelText('current-route')).toHaveTextContent('/chat')
     expect(screen.queryByText('会话 A')).not.toBeInTheDocument()
+  })
+
+  it('streams a Chat turn through the structured route and refetches persisted history', async () => {
+    let listRequestCount = 0
+    let messageRequestCount = 0
+    let streamRequestCount = 0
+    server.use(
+      http.get(`${apiBaseUrl}/conversations`, () => {
+        listRequestCount += 1
+        return HttpResponse.json({
+          items: [conversation('session-a', '会话 A', messageRequestCount > 0 ? 2 : 0)],
+          next_cursor: null,
+        })
+      }),
+      http.get(`${apiBaseUrl}/conversations/session-a/messages`, () => {
+        messageRequestCount += 1
+        return HttpResponse.json(
+          messageRequestCount === 1
+            ? { items: [], next_cursor: null }
+            : {
+                items: [
+                  { ...message('message-3', 3, 'user'), content: '新的问题' },
+                  {
+                    ...message('message-4', 4, 'assistant'),
+                    content: '服务端持久化回答',
+                    sources: [],
+                  },
+                ],
+                next_cursor: null,
+              },
+        )
+      }),
+      http.post(`${apiBaseUrl}/rag/chat/stream/events`, async ({ request }) => {
+        streamRequestCount += 1
+        const requestId = request.headers.get('X-Request-ID')
+        expect(requestId).toBeTruthy()
+        expect(await request.json()).toEqual({
+          allow_direct_web: false,
+          allow_web_fallback: false,
+          min_score: 0,
+          mode: 'hybrid',
+          query: '新的问题',
+          session_id: 'session-a',
+          top_k: 5,
+        })
+        return new HttpResponse(
+          'event: answer_delta\n' +
+            `data: {"contract_version":"1.0","request_id":"${requestId}","text":"流式回答"}\n\n` +
+            'event: done\n' +
+            `data: {"contract_version":"1.0","request_id":"${requestId}","status":"done"}\n\n`,
+          {
+            headers: {
+              'Content-Type': 'text/event-stream; charset=utf-8',
+              'X-Request-ID': requestId ?? '',
+            },
+          },
+        )
+      }),
+    )
+    const user = userEvent.setup()
+
+    renderApp('/chat/session-a')
+    await screen.findByRole('heading', { name: '会话 A' })
+    await user.type(screen.getByLabelText('问题'), '新的问题')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(await screen.findByText('服务端持久化回答')).toBeInTheDocument()
+    expect(streamRequestCount).toBe(1)
+    expect(messageRequestCount).toBeGreaterThan(1)
+    expect(listRequestCount).toBeGreaterThan(1)
+  })
+
+  it('restores capable-user Web settings and sends both explicit request fields', async () => {
+    installIdentity(true)
+    let receivedBody: unknown
+    server.use(
+      http.get(`${apiBaseUrl}/conversations`, () =>
+        HttpResponse.json({
+          items: [conversation('session-a', '会话 A', 0)],
+          next_cursor: null,
+        }),
+      ),
+      http.get(`${apiBaseUrl}/conversations/session-a/messages`, () =>
+        HttpResponse.json({ items: [], next_cursor: null }),
+      ),
+      http.post(`${apiBaseUrl}/rag/chat/stream/events`, async ({ request }) => {
+        receivedBody = await request.json()
+        const requestId = request.headers.get('X-Request-ID')
+        return new HttpResponse(
+          'event: done\n' +
+            `data: {"contract_version":"1.0","request_id":"${requestId}","status":"done"}\n\n`,
+          {
+            headers: {
+              'Content-Type': 'text/event-stream',
+              'X-Request-ID': requestId ?? '',
+            },
+          },
+        )
+      }),
+    )
+    const user = userEvent.setup()
+    const firstRender = renderApp('/chat/session-a')
+
+    await screen.findByRole('heading', { name: '会话 A' })
+    await user.click(screen.getByLabelText('允许联网搜索'))
+    await user.click(screen.getByLabelText('本地证据不足时允许 Web 补充'))
+    firstRender.unmount()
+
+    renderApp('/chat/session-a')
+    expect(await screen.findByLabelText('允许联网搜索')).toBeChecked()
+    expect(screen.getByLabelText('本地证据不足时允许 Web 补充')).toBeChecked()
+    await user.type(screen.getByLabelText('问题'), '需要公开信息')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(await screen.findByText('状态：completed')).toBeInTheDocument()
+    expect(receivedBody).toMatchObject({
+      allow_direct_web: true,
+      allow_web_fallback: true,
+      query: '需要公开信息',
+    })
+  })
+
+  it('maps a pre-stream 422 query error to the composer without exposing form detail', async () => {
+    server.use(
+      http.get(`${apiBaseUrl}/conversations`, () =>
+        HttpResponse.json({
+          items: [conversation('session-a', '会话 A', 0)],
+          next_cursor: null,
+        }),
+      ),
+      http.get(`${apiBaseUrl}/conversations/session-a/messages`, () =>
+        HttpResponse.json({ items: [], next_cursor: null }),
+      ),
+      http.post(`${apiBaseUrl}/rag/chat/stream/events`, () =>
+        HttpResponse.json(
+          {
+            code: 'REQUEST_VALIDATION_ERROR',
+            error_category: 'user_error',
+            field_errors: [
+              { code: 'invalid', field: 'query', message: '问题格式不合法' },
+            ],
+            message: '不应直接显示的表单详情',
+            request_id: 'chat-validation-request',
+            trace_id: null,
+          },
+          { status: 422 },
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+
+    renderApp('/chat/session-a')
+    await screen.findByRole('heading', { name: '会话 A' })
+    await user.type(screen.getByLabelText('问题'), '服务端拒绝')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(await screen.findByText('问题格式不合法')).toBeInTheDocument()
+    expect(screen.getByLabelText('问题')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.queryByText('不应直接显示的表单详情')).not.toBeInTheDocument()
+    expect(screen.getByText('状态：failed')).toBeInTheDocument()
+  })
+
+  it('renders safe structured events, sources, clarification and TaskPlan references', async () => {
+    server.use(
+      http.get(`${apiBaseUrl}/conversations`, () =>
+        HttpResponse.json({
+          items: [conversation('session-a', '会话 A', 0)],
+          next_cursor: null,
+        }),
+      ),
+      http.get(`${apiBaseUrl}/conversations/session-a/messages`, () =>
+        HttpResponse.json({ items: [], next_cursor: null }),
+      ),
+      http.post(`${apiBaseUrl}/rag/chat/stream/events`, ({ request }) => {
+        const requestId = request.headers.get('X-Request-ID')
+        const envelope = `"contract_version":"1.0","request_id":"${requestId}"`
+        return new HttpResponse(
+          'event: agent_route_selected\n' +
+            `data: {${envelope},"intent":"research","confidence":0.9,"reason":"public","source":"router"}\n\n` +
+            'event: guard_sanitized\n' +
+            `data: {${envelope},"action":"sanitize","categories":["prompt"],"reason":"policy","risk_level":"low","text":"已净化"}\n\n` +
+            'event: agent_route_clarification_required\n' +
+            `data: {${envelope},"code":"NEED_SCOPE","confidence":0.4,"question":"请说明时间范围"}\n\n` +
+            'event: agent_task_plan_created\n' +
+            `data: {${envelope},"task_plan_id":"task-1","status":"pending"}\n\n` +
+            'event: sources\n' +
+            `data: {${envelope},"sources":[` +
+            '{"id":"doc-source","source":"elasticsearch","source_type":"knowledge_document","doc_id":"doc-1","href":null,"title":"知识来源","content_preview":"文档预览","score":0.8,"source_revision":"rev-1","section_path":["章节"]},' +
+            '{"id":"web-source","source":"web","source_type":"web","doc_id":null,"href":"https://example.test/result","title":"公开网页","content_preview":"网页预览","score":0.7,"source_revision":null,"section_path":[]},' +
+            '{"id":"unsafe-source","source":"web","source_type":"web","doc_id":null,"href":"https://user:password@example.test/private","title":"不安全网页","content_preview":"只显示文本","score":0.6,"source_revision":null,"section_path":[]}' +
+            ']}\n\n' +
+            'event: future_private_event\n' +
+            `data: {${envelope},"secret":"must-not-render"}\n\n` +
+            'event: done\n' +
+            `data: {${envelope},"status":"done","stale":true}\n\n`,
+          {
+            headers: {
+              'Content-Type': 'text/event-stream',
+              'X-Request-ID': requestId ?? '',
+            },
+          },
+        )
+      }),
+    )
+    const user = userEvent.setup()
+
+    renderApp('/chat/session-a')
+    await screen.findByRole('heading', { name: '会话 A' })
+    await user.type(screen.getByLabelText('问题'), '复杂任务')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(await screen.findByText('请说明时间范围')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '查看 TaskPlan task-1' })).toHaveAttribute(
+      'href',
+      '/tasks/task-1',
+    )
+    expect(screen.getByRole('link', { name: '知识来源' })).toHaveAttribute(
+      'href',
+      '/documents/doc-1',
+    )
+    expect(screen.getByRole('link', { name: '公开网页' })).toHaveAttribute(
+      'href',
+      'https://example.test/result',
+    )
+    expect(screen.getByText('不安全网页')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '不安全网页' })).not.toBeInTheDocument()
+    expect(screen.getByText('当前前端版本暂不支持 future_private_event')).toBeInTheDocument()
+    expect(screen.queryByText('must-not-render')).not.toBeInTheDocument()
+    expect(screen.getByText('知识已在生成期间更新，可以重新提问。')).toBeInTheDocument()
+  })
+
+  it('disables duplicate sends, aborts browser reading and refetches after cancellation', async () => {
+    let listRequestCount = 0
+    let messageRequestCount = 0
+    server.use(
+      http.get(`${apiBaseUrl}/conversations`, () => {
+        listRequestCount += 1
+        return HttpResponse.json({
+          items: [conversation('session-a', '会话 A', 0)],
+          next_cursor: null,
+        })
+      }),
+      http.get(`${apiBaseUrl}/conversations/session-a/messages`, () => {
+        messageRequestCount += 1
+        return HttpResponse.json({ items: [], next_cursor: null })
+      }),
+      http.post(`${apiBaseUrl}/rag/chat/stream/events`, ({ request }) => {
+        const requestId = request.headers.get('X-Request-ID')
+        const body = new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                'event: answer_delta\n' +
+                  `data: {"contract_version":"1.0","request_id":"${requestId}","text":"部分回答"}\n\n`,
+              ),
+            )
+            request.signal.addEventListener('abort', () => {
+              controller.error(new DOMException('Aborted', 'AbortError'))
+            })
+          },
+        })
+        return new HttpResponse(body, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'X-Request-ID': requestId ?? '',
+          },
+        })
+      }),
+    )
+    const user = userEvent.setup()
+
+    renderApp('/chat/session-a')
+    await screen.findByRole('heading', { name: '会话 A' })
+    await user.type(screen.getByLabelText('问题'), '可取消问题')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(await screen.findByText('部分回答')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: '停止读取' }))
+
+    expect(await screen.findByText('状态：cancelled')).toBeInTheDocument()
+    expect(messageRequestCount).toBeGreaterThan(1)
+    expect(listRequestCount).toBeGreaterThan(1)
+  })
+
+  it('marks terminal-free EOF interrupted, does not replay POST and refetches history', async () => {
+    let streamRequestCount = 0
+    let messageRequestCount = 0
+    server.use(
+      http.get(`${apiBaseUrl}/conversations`, () =>
+        HttpResponse.json({
+          items: [conversation('session-a', '会话 A', 0)],
+          next_cursor: null,
+        }),
+      ),
+      http.get(`${apiBaseUrl}/conversations/session-a/messages`, () => {
+        messageRequestCount += 1
+        return HttpResponse.json({ items: [], next_cursor: null })
+      }),
+      http.post(`${apiBaseUrl}/rag/chat/stream/events`, ({ request }) => {
+        streamRequestCount += 1
+        const requestId = request.headers.get('X-Request-ID')
+        return new HttpResponse(
+          'event: answer_delta\n' +
+            `data: {"contract_version":"1.0","request_id":"${requestId}","text":"未完成回答"}\n\n`,
+          {
+            headers: {
+              'Content-Type': 'text/event-stream',
+              'X-Request-ID': requestId ?? '',
+            },
+          },
+        )
+      }),
+    )
+    const user = userEvent.setup()
+
+    renderApp('/chat/session-a')
+    await screen.findByRole('heading', { name: '会话 A' })
+    await user.type(screen.getByLabelText('问题'), '中断问题')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(await screen.findByText('状态：interrupted')).toBeInTheDocument()
+    expect(screen.getByText('未完成回答')).toBeInTheDocument()
+    expect(streamRequestCount).toBe(1)
+    expect(messageRequestCount).toBeGreaterThan(1)
   })
 })

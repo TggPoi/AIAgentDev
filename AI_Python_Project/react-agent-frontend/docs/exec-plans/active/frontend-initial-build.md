@@ -8,13 +8,13 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 5 - RAG / Agent Chat Core
 
-Current Step: CG003 已完成 Runtime/OpenAPI/Tests 对齐并关闭；正在为 Slice 5 Chat request adapter 与 reducer 确定首个 expected-red frontend seam
+Current Step: Chat request/stream/reducer/page integration、Web 偏好、事件/来源安全展示和持久化收敛已实现并通过完整 check；净化 Markdown Viewer 的精确依赖安装被环境安全审查要求额外用户授权
 
-Next Action: 在现有 shared HTTP/SSE/Conversation seam 上新增 Chat request adapter、pre-stream 422 `query` 映射和 reducer 初始状态的最小 expected-red deterministic frontend test
+Next Action: 用户明确批准安装 `react-markdown@10.1.0` 与 `remark-gfm@4.0.1` 后，以 expected-red Viewer 安全测试继续，安装时更新 lockfile 并运行 `pnpm audit --audit-level high`；未获批准前不得绕过审查或自行实现不完整 Markdown parser
 
 Blocking Issues:
 
-- 无。
+- Slice 5 的净化 Markdown Viewer 需要新增依赖。官方 package metadata 已核对版本/兼容性/安全默认值，计划不使用 `rehype-raw`；但 2026-08-27 执行 `pnpm add --save-exact react-markdown@10.1.0 remark-gfm@4.0.1` 被环境安全审查拒绝，理由是 supply-chain 与 lockfile mutation 需要用户再次明确授权。package/lockfile 未变化。
 
 Last Updated: 2026-08-27 (Asia/Shanghai)
 
@@ -225,20 +225,20 @@ Exit Evidence:
 
 ### Slice 5 - RAG / Agent Chat Core
 
-Status: IN_PROGRESS
+Status: BLOCKED
 
 Goal: 使用唯一结构化 SSE 主线完成标准 RAG/Agent 对话、事件时间线、回答、来源与持久化收敛。
 
 - [x] 读取 Chat spec，并复核 `/rag/chat/stream/events` 的 Route/Schema/OpenAPI/public events/runtime tests。
-- [ ] 实现 Chat request adapter；不得提交客户端推导的 ACL、内部 scoped ID 或未声明字段。
-- [ ] 实现一个活动流/会话、前端 request ID 绑定、pre-stream replay 和 late-event isolation。
-- [ ] 实现 Chat reducer：connecting/streaming/completed/failed/interrupted/cancelled。
-- [ ] 实现 answer、sources、route、guard、clarification、TaskPlan reference 和 terminal event 展示。
-- [ ] 对 unknown events 只保留 allowlisted safe projection，立即丢弃 raw payload。
+- [x] 实现 Chat request adapter；不得提交客户端推导的 ACL、内部 scoped ID 或未声明字段。
+- [x] 实现一个活动流/会话、前端 request ID 绑定、pre-stream replay 和 late-event isolation。
+- [x] 实现 Chat reducer：connecting/streaming/completed/failed/interrupted/cancelled。
+- [x] 实现 answer、sources、route、guard、clarification、TaskPlan reference 和 terminal event 展示。
+- [x] 对 unknown events 只保留 allowlisted safe projection，立即丢弃 raw payload。
 - [ ] 实现净化 Markdown Viewer 和 knowledge/web source 安全导航；新增依赖前必须核对现有依赖并锁定精确版本。
-- [ ] 实现 Web 两开关的基础请求映射和按用户/标签页存储；Dataset 细化留给 Slice 10。
-- [ ] `done/error/interrupted/abort` 后统一 refetch conversation messages/list；stream body 开始后绝不自动 replay。
-- [ ] 增加 chunking、terminal、abort、mismatch、unknown safety、source URL、Web toggle 和持久化收敛测试。
+- [x] 实现 Web 两开关的基础请求映射和按用户/标签页存储；Dataset 细化留给 Slice 10。
+- [x] `done/error/interrupted/abort` 后统一 refetch conversation messages/list；stream body 开始后绝不自动 replay。
+- [x] 增加 chunking、terminal、abort、mismatch、unknown safety、source URL、Web toggle 和持久化收敛测试。
 - [ ] 完成 Slice Gate；执行 Chat manual smoke；创建独立 Git checkpoint。
 
 Explicit Boundary:
@@ -460,14 +460,19 @@ Completed in Current Slice:
 - KI006 的 Chat 风险已用当前 `RagChatRequest`、全局 validation handler 和实际 Route OpenAPI 复核为 CG003：空白 `query` 加未批准 marker 返回 `422`，runtime keys 只有 `code/error_category/message/request_id/trace_id`，marker 未回显；OpenAPI 422 仍引用 `HTTPValidationError`。
 - CG003 已由独立 backend checkpoint `d3d95ba` 修复：只为 `POST /rag/chat/stream/events` 投影公开顶层 `query`，显式声明安全 422 model，并增加 runtime/OpenAPI/no-sensitive-echo/form-level fallback/legacy-route regression test；Auth、Conversation、RAG stream、Conversation HTTP、Auth identity/session 和 schema description regressions 全部通过。
 - frontend OpenAPI snapshot 已从 `d3d95ba` 重新导出，仍为 OpenAPI `3.1.0` / 58 paths / 88 schemas；只有安全字段 enum 新增 `query` 且 structured Chat 422 改为 `RequestValidationErrorResponse`，legacy Chat 422 保持 `HTTPValidationError`。generated types、contract drift、lint、typecheck、15 files / 66 tests 与 production build 全部通过。
+- Slice 5 frontend expected-red/green 已建立 generated `RagChatRequest` adapter、安全 `query` 422 映射、唯一 structured Chat API、request-ID 绑定、feature reducer 与 Chat/Conversation page composition；无其他 RAG endpoint 调用。
+- deterministic tests 覆盖 capability-off/on Web 字段、按用户/标签页偏好恢复、增量回答与持久化 refetch、pre-stream 422、terminal-free EOF、abort/duplicate-send、late event、error terminal、mismatch protocol、unknown raw-payload 丢弃、澄清、TaskPlan、stale 和 knowledge/credential-free Web source navigation。
+- Auth private-activity abort 生命周期同时清除当前用户 Web 偏好；session/user key 变化卸载并 abort 旧 ChatWorkspace，防止旧流进入新会话。历史与实时来源复用同一 credential-free HTTP(S) URL 过滤。
+- 2026-08-27 中间 `pnpm check` 通过 contract drift、lint、typecheck、18 files / 81 tests 与 production build；package/lockfile/generated contract 均无本轮意外差异。
+- 官方 metadata 确认 `react-markdown@10.1.0` 与 `remark-gfm@4.0.1` 兼容当前 React 19/Node 24/ESM；计划使用 `skipHtml`、自定义 URL/filter/component 且不安装 `rehype-raw`。实际安装被环境安全审查拒绝，package/lockfile 未变化，Slice 5 因此保持 BLOCKED。
 
 Currently Working On:
 
-- Slice 5 已恢复为 IN_PROGRESS；准备在现有 shared HTTP/SSE/Conversation seam 上建立 Chat request adapter、pre-stream validation 和 reducer 初始状态的首个 expected-red frontend test。尚未决定 Markdown dependency，也未实现 Chat feature code。
+- Slice 5 除净化 Markdown Viewer、dependency audit、manual smoke 与最终 Slice Gate checkpoint 外均已实现并通过当前完整 check。当前 verified non-Markdown implementation 与 blocker 状态以独立 recovery checkpoint 持久化；该 checkpoint 不等同 Slice Gate 完成。
 
 Next Action:
 
-- 在现有 shared HTTP/SSE/Conversation seam 上新增 Chat request adapter、pre-stream 422 `query` 映射和 reducer 初始状态的最小 expected-red deterministic frontend test；不得调用其他 RAG endpoint 或提前实现 Markdown/未来 Slice。
+- 用户明确批准 `pnpm add --save-exact react-markdown@10.1.0 remark-gfm@4.0.1` 的 supply-chain/lockfile mutation 后，新增净化 Markdown Viewer expected-red tests，安装并实现 Viewer，运行 focused tests、`pnpm audit --audit-level high`、`pnpm check`、Chat browser manual smoke 和独立 Slice 5 checkpoint。未获批准前停止编码且不得开始 Slice 6。
 
 Relevant Files:
 

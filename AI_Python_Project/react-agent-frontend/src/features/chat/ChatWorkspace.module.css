@@ -1,0 +1,81 @@
+.workspace {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: auto;
+  padding-top: var(--space-4);
+}
+
+.turn,
+.composer {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.turn {
+  background: var(--color-surface-subtle);
+}
+
+.role,
+.status {
+  color: var(--color-text-secondary);
+  font-size: 0.825rem;
+  margin: 0;
+}
+
+.answer {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.notice {
+  background: var(--color-primary-50);
+  border-left: 0.2rem solid var(--color-primary-600);
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.notice p {
+  margin: 0;
+}
+
+.timeline,
+.sources {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.sources li {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.sources span {
+  color: var(--color-text-secondary);
+  font-size: 0.825rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.webSettings {
+  border: 0;
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+}
+
+.webSettings label {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+}
