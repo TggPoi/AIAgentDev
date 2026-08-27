@@ -8,13 +8,15 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 6 - TaskPlan
 
-Current Step: Slice 5 已通过 Gate 并由 frontend checkpoint `633a07a` 完成；正在进入 Slice 6 的 required reading、Repository reconnaissance 和 TaskPlan contract recovery
+Current Step: Slice 6 contract-first reconnaissance 已完成；TaskPlan detail transport、422 validation 与 confirm-stream business event 三项契约缺口已分别确认并正式记录为 CG004-CG006
 
-Next Action: 完整读取 TaskPlan feature spec 与相关 SPEC/Architecture，检查 frontend TaskPlan 现状和 backend list/detail/markdown/control/confirm-stream Route、Schema、OpenAPI/runtime tests，确认 Slice 6 唯一 implementation seam 或 Contract Gap
+Next Action: 等待用户明确批准或拒绝 CG004-CG006 的严格受限 TaskPlan backend contract fix；未获授权前不得根据内部 runtime dict 自行定义 frontend DTO、弱化 generated type boundary 或开始 TaskPlan 页面实现
 
 Blocking Issues:
 
-- 无。Slice 6 尚处于 contract-first reconnaissance；若发现 Runtime/OpenAPI/spec 冲突，按 Contract Gap gate 停止受影响实现。
+- CG004：`GET /agent/task-plans/{task_plan_id}` OpenAPI 200 只有任意 object，无法生成两种 `task_kind` 的安全 discriminated detail transport type。
+- CG005：Initial React 使用的 TaskPlan list/detail/markdown/confirm-stream/cancel/retry Route runtime 422 与 OpenAPI `HTTPValidationError` 不一致。
+- CG006：TaskPlan confirm stream 只有公共 envelope，没有稳定、安全的业务 event payload schemas；当前 runtime 可把 progress arbitrary fields、step output 或 tool_calls 放入已知事件。
 
 Last Updated: 2026-08-28 (Asia/Shanghai)
 
@@ -256,11 +258,11 @@ Explicit Boundary:
 
 ### Slice 6 - TaskPlan
 
-Status: NOT_STARTED
+Status: BLOCKED
 
 Goal: 完成 TaskPlan 列表、详情、Markdown、确认流、取消、重试和恢复。
 
-- [ ] 读取 TaskPlan spec，复核 list wrapper、task-kind detail、控制接口、SSE 和 Idempotency contract。
+- [x] 读取 TaskPlan spec，复核 list wrapper、task-kind detail、控制接口、SSE 和 Idempotency contract。
 - [ ] 实现 list/detail/markdown adapters、Query Keys、filters 和 keyset pagination。
 - [ ] 按 task kind 保留完整 Domain Model，不压平成丢字段的通用模型。
 - [ ] 实现结构化 status 驱动的 controls；禁止解析自然语言 message 决定按钮。
@@ -484,11 +486,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 6 contract-first reconnaissance：尚未开始 TaskPlan implementation，正在恢复当前 frontend seam 并核对 backend list/detail/markdown/control/confirm-stream 契约。
+- Slice 6 / BLOCKED。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；backend contract recovery 已确认 CG004-CG006，当前未开始 frontend coding。
 
 Next Action:
 
-- 完整读取 TaskPlan feature spec 与相关 SPEC/Architecture，检查 frontend TaskPlan 现状和 backend Route/Schema/OpenAPI/runtime tests；只在契约一致后确定一个 expected-red implementation seam。
+- 等待用户明确批准或拒绝 CG004-CG006 的严格受限 backend contract fix。批准后必须 backend test-first、独立 checkpoint、重新导出 OpenAPI/generated types 并确认 Runtime = OpenAPI = Tests；未获授权前停止编码。
 
 Relevant Files:
 
@@ -508,6 +510,23 @@ Relevant Files:
 - `../python-agent-study/src/fast_app/schemas/rag_chat_schema.py`
 - `../python-agent-study/scripts/tests/agent_research/test_rag_stream_contract.py`
 - `../python-agent-study/scripts/tests/document_security/test_rag_chat_validation_contract.py`
+- `docs/features/task-plans/feature.md`
+- `src/api/sse/public-events.ts`
+- `../python-agent-study/src/fast_app/api/agent_task_plan_routes.py`
+- `../python-agent-study/src/fast_app/schemas/agent_task_plan_schema.py`
+- `../python-agent-study/src/fast_app/domain/agent_task_plan.py`
+- `../python-agent-study/src/fast_app/domain/research_task_plan.py`
+- `../python-agent-study/scripts/tests/agent_research/test_agent_task_plan_list.py`
+
+Slice 6 Contract Recovery Evidence (verified 2026-08-28):
+
+- Slice 5 implementation checkpoint `633a07a` 与 Gate/state checkpoint `215761c` 已存在，恢复后 frontend/backend 共享 HEAD 为 `215761c1469d9bf7788fdfc4f370ef4a219c398c`，branch 为 `master...origin/master [ahead 23]`，工作树干净；最后 verified completed Slice 为 5。
+- TaskPlan feature spec、相关 SPEC/Architecture/Development、frontend generated types/public SSE seam、backend AGENTS/required teaching rules、真实 Route/Schema/domain 和 focused tests 已读取。frontend 只有 `/tasks` placeholder、导航和 TaskPlan references，没有 `src/features/task-plans/` 或隐藏实现。
+- backend list wrapper、opaque cursor、status/session filters、detail/Markdown、confirm-stream、cancel/retry 和 Idempotency-Key Route 均存在；`assert_http_contract()` 与 `test_rag_stream_contract.py` 通过，证明当前 list baseline 与 SSE envelope/request ID baseline，但不证明 detail discriminated schema、422 runtime/OpenAPI equality 或业务 event payload schemas。
+- CG004：committed OpenAPI 对 `GET /agent/task-plans/{task_plan_id}` 的 200 schema 是 `type=object + additionalProperties=true`；generated transport 因此只有 `{[key:string]: unknown}`。runtime Route 对 Research 返回现有 `ResearchTaskPlanPublicView`，对 Document 直接返回内部 `AgentTaskPlan.model_dump()`；前者未进入 OpenAPI，后者包含 `user_id`、arbitrary step input/output、final_output 等内部结构，当前没有安全的两类 detail response union 或 runtime/OpenAPI regression test。
+- CG005：committed OpenAPI 对 Initial React 使用的 list/detail/markdown/confirm-stream/cancel/retry 422 全部引用 `HTTPValidationError`。无敏感 TestClient probes 对 invalid list status/limit、invalid confirm body 与 missing cancel idempotency header 均得到 422，runtime keys 只有 `code/error_category/message/request_id/trace_id`，无 `detail`/`field_errors`，marker 未回显。
+- CG006：confirm-stream 200 OpenAPI 只声明 `RagSseEventFrame {event:string,data:object}`；现有 contract test 只验证 envelope、request ID 和一个 `agent_task_execution_started` event。真实 `_task_plan_progress_events()` 会对部分 research/document progress 使用 arbitrary key spread，并在已知 step/sub-question events 中放入 arbitrary `output` 或 `tool_calls`；没有 TaskPlan 业务 event Pydantic schemas、safe projection 或 OpenAPI/test union，无法满足独立 typed reducer 与敏感 payload boundary。
+- Repository/Git/Tests 与进入 Slice 6 时的计划记录一致；新发现只来自真实 backend contract。唯一 Next Action 是等待 CG004-CG006 backend contract fix 授权，不按内部 dict 猜 frontend DTO。
 
 Context Recovery Evidence (verified 2026-08-28 after quota reset and editor-state discrepancy):
 
@@ -763,7 +782,7 @@ Resolution:
 
 ### KI006 - Future Mutation 422 Contract Inventory
 
-Status: INVENTORIED / CHAT QUERY RISK RESOLVED AS CG003
+Status: INVENTORIED / CHAT QUERY RESOLVED AS CG003 / TASKPLAN RISKS ELEVATED TO CG004-CG006
 
 Evidence:
 
@@ -771,10 +790,11 @@ Evidence:
 - 对应 backend Route/Pydantic Schema 仍由全局 `RequestValidationError` handler 处理，但不在 CG001/CG002 明确批准的 field allowlist 内；因此 runtime validation 使用公共 form-level `code/message/error_category/request_id/trace_id` shape，而 OpenAPI 仍声明 FastAPI `detail[]` shape。
 - 使用真实 admin user / document grant router、全局 handler 和 overridden service 的无敏感 TestClient 代表性验证：空 `POST /admin/users` 与空 `POST /admin/document-access/grants` 均返回 `422`，runtime keys 为 `code/error_category/message/request_id/trace_id`。
 - User Management feature 明确要求把 `422` 映射到 account、primary department、roles、permissions 等字段；全局 SPEC 对表单 `422` 也要求字段级错误。Chat、TaskPlan、Document Grant 的实际字段映射需求仍须在各自 Slice 结合真实交互重新判定。
+- Slice 6 reconnaissance 已确认 TaskPlan 不只有 422 drift：detail 200 仍为 arbitrary object，confirm-stream 也只有 generic envelope 且缺少业务 payload schema；对应问题已分别提升为 CG004-CG006。
 
 Impact:
 
-- Slice 8 User Management 是高可信未来 contract risk；Slice 9 Document Access Grants 是待对应 Slice 核实的潜在风险。Slice 6 TaskPlan 的多数 validation 来自 path/header/控制参数，可能保持安全 form-level，但 OpenAPI/runtime drift 仍须在 Slice 6 复核。
+- Slice 8 User Management 是高可信未来 contract risk；Slice 9 Document Access Grants 是待对应 Slice 核实的潜在风险。Slice 6 已实际复核并确认 detail type、422 drift 与 business event schema 都直接阻塞安全 typed frontend implementation。
 - Slice 5 reconnaissance 已确认 `query` 字段确实受影响，因此该部分风险已提升为正式 blocking CG003；其他未来 Route 仍只保留 inventory 状态。
 - inventory 未发现新的 Slice 4 Route gap；因此它不阻塞 Slice 4，也不授权提前修改任何未来 backend Route。
 
@@ -782,7 +802,7 @@ Resolution:
 
 - 仅记录风险。进入对应 Slice 时重新执行 Route/Schema/OpenAPI/runtime/spec 核对；只有确认影响该 Slice 的公开行为后，才建立精确 Contract Gap 并按 Blocking Condition 请求受限授权。
 - 禁止把 CG001/CG002 授权外推到上述 Route，禁止现在预修复。
-- Chat `query` 风险已由严格受限的 CG003 backend checkpoint `d3d95ba` 解决；TaskPlan、Admin 与 Grant 风险仍保持 inventory，未被本次授权或修复覆盖。
+- Chat `query` 风险已由严格受限的 CG003 backend checkpoint `d3d95ba` 解决；TaskPlan 风险已提升为 CG004-CG006 并等待单独授权，Admin 与 Grant 风险仍保持 inventory，未被任何当前授权覆盖。
 
 ### Contract Gaps
 
@@ -894,6 +914,83 @@ Resolution:
 
 - 独立 backend checkpoint `d3d95ba` 只修改安全公共 field enum、structured Chat Route allowlist/422 声明和对应 contract regressions；`query` 不回显，malformed body、`session_id`、嵌套 `filters`、model-level 与未批准字段保持 `field_errors=[]`，legacy `/rag/chat` 和 `/rag/chat/stream` runtime/OpenAPI 均未扩展。
 - frontend snapshot/generated types 已从 `d3d95ba` 重新导出和生成；OpenAPI 仍为 58 paths / 88 schemas，`pnpm contracts:check`、lint、typecheck、15 files / 66 tests 与 production build 通过。Runtime = OpenAPI = Tests，CG003 关闭，Slice 5 恢复为 `IN_PROGRESS`。
+
+#### CG004 - TaskPlan Detail Response Lacks a Safe Discriminated Contract
+
+Status: BLOCKING SLICE 6 / AWAITING USER DECISION
+
+Evidence:
+
+- TaskPlan feature 要求详情 adapter 先按 `task_kind` 区分 research 与 document 两种完整 Domain Model；Architecture 要求普通 HTTP DTO 来自 generated OpenAPI transport type，Component/Feature 不得自行定义漂移 DTO。
+- `GET /agent/task-plans/{task_plan_id}` 当前 annotation 只是 `dict[str, Any]`，OpenAPI 200 是 `type=object + additionalProperties=true`，generated TypeScript 因此只有 `{[key:string]: unknown}`，没有 `task_kind` discriminator 或任何类型字段。
+- Research runtime 已有明确的安全 `ResearchTaskPlanPublicView`，但 Route 未声明它，因此该 schema 完全未进入 OpenAPI snapshot。
+- Document runtime 由 `_public_plan_payload()` 直接返回内部 `AgentTaskPlan.model_dump()`；该 internal model 包含 `user_id`、step arbitrary `input/output`、`final_output` 和其他不能直接当长期 frontend contract 的结构。当前没有安全 Document public view、两类 response union 或 no-sensitive-echo/detail OpenAPI regression test。
+
+Impact:
+
+- Frontend 无法遵守 generated transport type boundary 实现两种详情；若根据当前 runtime dict 手写 DTO，就会把内部 model 当公共长期契约并可能接收 Tool 参数、ACL/Scope 或其他敏感内部字段。
+- TaskPlan list 与 Markdown text 本身可读取，但 coherent Slice 6 必须包含详情、状态 controls 与恢复，不能绕过 detail 后标记 Gate 完成。
+
+Recommended Backend Change:
+
+- 复用现有 `ResearchTaskPlanPublicView`，为 `knowledge_document_management` 定义显式 allowlisted 的安全 Document TaskPlan public view；保留批准的用户可见步骤、状态、风险、确认需求、结果摘要和错误码，但排除 `user_id`、raw Tool input/output/arguments、ACL、scope、lease/checkpoint、内部 trace 和未审核 arbitrary dict。
+- 为 detail Route 声明以 `task_kind` 为 discriminator 的公共 response union，并让 runtime 通过同一 public projection 返回；不得改变 ownership/404、执行器、持久化或其他 Route 行为。
+- 增加两种 task kind 的 runtime/OpenAPI/generated-discriminator/no-sensitive-field/ownership regression tests；创建独立 backend checkpoint 后重新导出 frontend snapshot/types。
+
+Decision:
+
+- 等待用户明确批准或拒绝上述严格受限的 TaskPlan detail contract fix；未经授权不得修改 backend 或手写 frontend transport DTO 绕过 gap。
+
+#### CG005 - TaskPlan 422 Schema Does Not Match Runtime
+
+Status: BLOCKING SLICE 6 / AWAITING USER DECISION
+
+Evidence:
+
+- Initial React 实际使用 `GET` list/detail/markdown 与 `POST` confirm-stream/cancel/retry；这些 Route 当前 OpenAPI 422 全部引用 `#/components/schemas/HTTPValidationError`，声明 FastAPI `detail[]`。
+- 当前全局 validation handler 未为 TaskPlan Route启用安全 projection。TestClient 对 invalid list `status`/`limit`、invalid confirm body 和缺失 cancel `Idempotency-Key` 均返回 422，runtime keys 只有 `code/error_category/message/request_id/trace_id`，没有 `detail` 或 `field_errors`；测试 marker 未回显。
+- 既有 `test_agent_task_plan_list.assert_http_contract()` 只断言 422 status，`test_rag_stream_contract.py` 只断言 SSE 200 envelope；二者均通过但不证明 422 OpenAPI/runtime equality。
+
+Impact:
+
+- Generated response type与 runtime 不一致；list filter field error、confirm pre-stream failure 和 control error 不能按 approved ApiError/field mapping contract安全处理。
+- path、Idempotency-Key 和固定 `confirmed=true` 不是应回显的用户字段，不能通过暴露原始 validation detail 解决。
+
+Recommended Backend Change:
+
+- 复用 CG001-CG003 的安全公共 `RequestValidationErrorResponse`。只为 `GET /agent/task-plans` 的公开用户控制 filter `status`、`session_id`、`limit` 建立明确 allowlist；cursor、path、Idempotency-Key、固定 confirm body、model-level 与未知字段保持 `field_errors=[]`。
+- 只为 Initial React 使用的 list/detail/markdown/confirm-stream/cancel/retry Route 声明同一 422 response model；不修改首期禁止调用的非流式 `/confirm`，也不扩展到 Admin/Grant 或其他 Route。
+- 不读取或回显 validation `input`、`ctx`、raw `msg`、TaskPlan ID、Idempotency-Key、query、Tool 参数、ACL、secret 或内部字段；增加 runtime/OpenAPI/no-sensitive-echo/form-level/non-allowlisted regression tests。
+
+Decision:
+
+- 等待用户明确批准或拒绝上述严格受限的 TaskPlan validation contract fix；CG001-CG003 授权不能外推。
+
+#### CG006 - TaskPlan Confirm Stream Business Events Lack Safe Public Schemas
+
+Status: BLOCKING SLICE 6 / AWAITING USER DECISION
+
+Evidence:
+
+- TaskPlan feature 与 Architecture 要求 confirm-stream 复用公共 envelope，但业务 event 必须进入独立 discriminated union/reducer；未知 payload 必须立即丢弃，已知 payload 也必须来自稳定公共 schema。
+- 当前 OpenAPI 200 只声明 `RagSseEventFrame`，其中 `event` 是任意 string、`data` 是任意 object；`test_rag_stream_contract.py` 只验证 envelope/request ID 和单一 `agent_task_execution_started` payload。
+- `_task_plan_progress_events()` 对部分 research/document progress 直接 spread arbitrary keys；step events包含 arbitrary `output`，legacy sub-question event包含 `tool_calls`。`_format_sse_event()` 只补 envelope，没有 per-event Pydantic validation或 safe projection。
+- frontend 当前 central parser 只保留 task event name、request ID、received time 和 `task_plan_id` 的 safe reference，因此没有泄漏；但它也没有 Slice 6 reducer所需的稳定 status/progress fields，不能从 internal runtime dict 猜出长期 DTO。
+
+Impact:
+
+- 若直接把当前 payload 标成 known typed events，会把 Tool arguments/output、internal progress 或未来新增字段带入 UI/cache/log风险；若继续只保留 reference，又无法满足结构化进度、状态和独立 reducer验收。
+- confirm-stream request isolation/envelope baseline 已可复用，但业务 event contract 未达到 Slice 6 implementation gate。
+
+Recommended Backend Change:
+
+- 只为 Initial React confirm-stream 实际展示的 TaskPlan progress/status/step/research/document events定义显式 Pydantic public event models 和 discriminated union；共享 `answer_delta`、`sources`、guard、`done/error` 继续复用既有公共 schema。
+- Route在写 SSE 前必须通过对应 public model projection/validation，只保留批准的 IDs、稳定 status/error code、用户可见安全摘要和必要 progress facts；删除 raw arbitrary spread、step output、tool_calls、Tool arguments、ACL/Scope、Dataset rows、internal URL/trace 和未知字段。
+- OpenAPI logical contract 与 backend tests必须覆盖 event name/payload schema、request ID/version、no-sensitive-field、unknown/internal event exclusion和两种 task kind代表事件；不改变 executor、TaskPlan状态机、真实工具执行或 legacy Chat stream。
+
+Decision:
+
+- 等待用户明确批准或拒绝上述严格受限的 TaskPlan public SSE contract fix；未经授权不得从 backend internal event dict自行定义 frontend business union。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
