@@ -28,6 +28,7 @@ _VALIDATION_FIELDS: dict[tuple[str, str], frozenset[str]] = {
     ),
     ("POST", "/conversations"): frozenset({"title"}),
     ("PATCH", "/conversations/{session_id}"): frozenset({"title"}),
+    ("POST", "/rag/chat/stream/events"): frozenset({"query"}),
 }
 
 _PUBLIC_VALIDATION_ERRORS: dict[str, tuple[str, str]] = {

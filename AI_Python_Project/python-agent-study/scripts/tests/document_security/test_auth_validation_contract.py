@@ -129,6 +129,7 @@ def assert_auth_validation_openapi_contract() -> None:
         "current_password",
         "new_password",
         "title",
+        "query",
     ]
     assert field_error_schema["properties"]["code"]["enum"] == [
         "required",

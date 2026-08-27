@@ -17,6 +17,7 @@ from fast_app.dependencies.conversation_dependencies import (
     get_structured_conversation_turn_recorder,
 )
 from fast_app.domain.user_context import CurrentUserContext
+from fast_app.schemas.error_schema import RequestValidationErrorResponse
 from fast_app.schemas.rag_chat_schema import RagChatRequest, RagChatResponse
 from fast_app.schemas.rag_stream_schema import (
     RagSseEventFrame,
@@ -339,7 +340,11 @@ async def rag_chat_structured_sse_event_generator(
                     "schema": RagSseEventFrame.model_json_schema(),
                 }
             },
-        }
+        },
+        422: {
+            "model": RequestValidationErrorResponse,
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。",
+        },
     },
 )
 async def rag_chat_stream_events_endpoint(

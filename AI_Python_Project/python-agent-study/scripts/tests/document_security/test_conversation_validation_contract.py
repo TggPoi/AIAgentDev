@@ -117,6 +117,7 @@ def assert_conversation_validation_openapi_contract() -> None:
         "current_password",
         "new_password",
         "title",
+        "query",
     ]
 
 
