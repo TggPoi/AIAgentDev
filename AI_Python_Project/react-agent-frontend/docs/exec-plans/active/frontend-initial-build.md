@@ -465,10 +465,11 @@ Completed in Current Slice:
 - Auth private-activity abort 生命周期同时清除当前用户 Web 偏好；session/user key 变化卸载并 abort 旧 ChatWorkspace，防止旧流进入新会话。历史与实时来源复用同一 credential-free HTTP(S) URL 过滤。
 - 2026-08-27 中间 `pnpm check` 通过 contract drift、lint、typecheck、18 files / 81 tests 与 production build；package/lockfile/generated contract 均无本轮意外差异。
 - 官方 metadata 确认 `react-markdown@10.1.0` 与 `remark-gfm@4.0.1` 兼容当前 React 19/Node 24/ESM；计划使用 `skipHtml`、自定义 URL/filter/component 且不安装 `rehype-raw`。实际安装被环境安全审查拒绝，package/lockfile 未变化，Slice 5 因此保持 BLOCKED。
+- verified non-Markdown implementation 与 blocker 状态已由恢复 checkpoint `1444099` 持久化；该 commit 明确不代表 Slice Gate 完成。
 
 Currently Working On:
 
-- Slice 5 除净化 Markdown Viewer、dependency audit、manual smoke 与最终 Slice Gate checkpoint 外均已实现并通过当前完整 check。当前 verified non-Markdown implementation 与 blocker 状态以独立 recovery checkpoint 持久化；该 checkpoint 不等同 Slice Gate 完成。
+- Slice 5 除净化 Markdown Viewer、dependency audit、manual smoke 与最终 Slice Gate checkpoint 外均已实现并通过当前完整 check。当前 verified non-Markdown implementation 与 blocker 状态已由 recovery checkpoint `1444099` 持久化；该 checkpoint 不等同 Slice Gate 完成。
 
 Next Action:
 
