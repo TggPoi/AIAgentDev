@@ -4218,7 +4218,8 @@
               "refresh_token",
               "current_password",
               "new_password",
-              "title"
+              "title",
+              "query"
             ],
             "title": "Field",
             "type": "string"
@@ -10102,11 +10103,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Rag Chat Stream Events Endpoint",

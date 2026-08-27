@@ -1,6 +1,6 @@
 # React RAG 工作台架构
 
-> **状态：实现前最终一致性基线。** React 开发环境已验证、业务代码尚未开始。用户确认后可以进入 Phase 1 基础模块；第 15 节列出的后端契约缺口只允许被记录和隔离，不得由前端猜测或绕过。
+> **状态：已批准的实现架构基线。** 本文约束 Initial React frontend 的模块、状态与协议策略；实际实施进度、checkpoint 和当前 Contract Gap 以 active Execution Plan、Git、Repository 与 Tests 为准。
 
 ## 1. 技术选型与模块原则
 

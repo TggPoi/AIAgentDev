@@ -1,6 +1,6 @@
 # Feature 规范索引
 
-> **状态：全部 feature 文档已完成实现前最终一致性修订。** 文档经用户确认后才进入 React 编码；TaskPlan 公共事件 envelope 与知识文档下载响应头契约已经补齐并验证。
+> **状态：全部 Feature 文档均为已批准的行为基线。** 本索引只负责 Feature 导航和后端能力边界；实际实施进度、checkpoint 与当前阻塞以 active Execution Plan、Git、Repository 与 Tests 为准。
 
 | 功能模块 | 文档 | 后端状态 |
 | --- | --- | --- |

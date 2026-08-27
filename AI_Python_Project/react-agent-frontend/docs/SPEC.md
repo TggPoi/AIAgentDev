@@ -1,6 +1,6 @@
 # React RAG 工作台功能规格
 
-> **状态：React 开发环境已完成验证，本文已完成实现前最终一致性修订。** 当前尚未开始任何业务模块；用户确认后可进入 Phase 1 基础模块。TaskPlan 结构化流封装与知识文档跨域下载响应头契约已经在后端补齐并由契约测试验证。
+> **状态：已批准的产品行为基线。** 本文定义 Initial React frontend 的产品 Scope 与验收边界；实际实施进度、checkpoint 和当前阻塞以 active Execution Plan、Git、Repository 与 Tests 为准。
 
 ## 1. 产品目标
 
