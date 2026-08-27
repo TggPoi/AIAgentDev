@@ -8,15 +8,15 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 5 - RAG / Agent Chat Core
 
-Current Step: Slice 5 Chat contract reconnaissance 已完成；CG003 阻塞问题输入框的安全 422 字段错误映射
+Current Step: Context Recovery 已完成；用户已授权严格受限的 CG003 backend contract fix，准备从公开 HTTP/OpenAPI seam 的 expected-red test 开始
 
-Next Action: 等待用户决定是否授权推荐的 CG003 backend contract fix；授权前不开始依赖该契约的 Slice 5 frontend implementation
+Next Action: 新增只覆盖 `POST /rag/chat/stream/events` 的 runtime/OpenAPI/no-sensitive-echo/form-level fallback/non-allowlisted-route expected-red backend contract test
 
 Blocking Issues:
 
-- CG003 - Structured Chat 422 Field Error Schema Does Not Match Runtime。
+- CG003 - Structured Chat 422 Field Error Schema Does Not Match Runtime（AUTHORIZED / FIX IN PROGRESS）。
 
-Last Updated: 2026-08-26 (Asia/Shanghai)
+Last Updated: 2026-08-27 (Asia/Shanghai)
 
 ## Goal
 
@@ -229,7 +229,7 @@ Status: BLOCKED
 
 Goal: 使用唯一结构化 SSE 主线完成标准 RAG/Agent 对话、事件时间线、回答、来源与持久化收敛。
 
-- [ ] 读取 Chat spec，并复核 `/rag/chat/stream/events` 的 Route/Schema/OpenAPI/public events/runtime tests。
+- [x] 读取 Chat spec，并复核 `/rag/chat/stream/events` 的 Route/Schema/OpenAPI/public events/runtime tests。
 - [ ] 实现 Chat request adapter；不得提交客户端推导的 ACL、内部 scoped ID 或未声明字段。
 - [ ] 实现一个活动流/会话、前端 request ID 绑定、pre-stream replay 和 late-event isolation。
 - [ ] 实现 Chat reducer：connecting/streaming/completed/failed/interrupted/cancelled。
@@ -461,11 +461,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 5 因 CG003 BLOCKED；未开始 Chat feature code、Markdown dependency 或其他 Slice 5 frontend implementation。
+- Slice 5 仍因 CG003 BLOCKED；用户已授权严格受限的 backend contract fix，Context Recovery 已完成，尚未开始 Chat feature code、Markdown dependency 或其他 Slice 5 frontend implementation。
 
 Next Action:
 
-- 等待用户决定是否授权推荐的 CG003 backend contract fix；授权前不修改 backend，也不开始依赖该契约的 Slice 5 frontend implementation。
+- 新增只覆盖 `POST /rag/chat/stream/events` 的 runtime/OpenAPI/no-sensitive-echo/form-level fallback/non-allowlisted-route expected-red backend contract test；先证明当前契约缺口，再实施最小修复。
 
 Relevant Files:
 
@@ -482,8 +482,19 @@ Relevant Files:
 - `src/pages/ChatPage.tsx`
 - `src/features/conversations/`
 - `../python-agent-study/src/fast_app/api/rag_chat_routes.py`
-- `../python-agent-study/src/fast_app/schemas/rag_schema.py`
+- `../python-agent-study/src/fast_app/schemas/rag_chat_schema.py`
 - `../python-agent-study/scripts/tests/agent_research/test_rag_stream_contract.py`
+
+Context Recovery Evidence (verified 2026-08-27 after explicit CG003 authorization and session recovery):
+
+- frontend 与 backend 目录重新确认共享 Git root `D:/AI_Agent_Project`，共同 confirmed HEAD 为 `a25293fe395b51dd88a7966bfcab40bed21b35ea`，branch 为 `master...origin/master [ahead 16]`；两边 `git status --short --branch` 除 branch 行外无输出，完整 unstaged/staged diff 及 stat 均为空。
+- 最近 commits 与 checkpoint 链一致：CG002 backend `2a13eb3`、Slice 4 frontend `5821b25`、Slice 4→5 状态转换 `d276d12`、CG003 blocker plan `a25293f`。`5821b25..HEAD` 的 frontend `src`/package/lockfile 无差异，`2a13eb3..HEAD` 的 backend `src`/tests 无差异；最后 verified completed Slice 仍为 4。
+- Slice 4 的 `ConversationsWorkspace`、conversation API/query/model、真实 `ChatPage` 和 `/chat`、`/chat/:sessionId` route 均存在；`src/features/chat/` 不存在，确认 Slice 5 feature implementation 尚未被未记录地开始。
+- 当前 package 精确保留 pnpm `10.32.1`、`openapi-typescript` `7.13.0`、TypeScript `6.0.3` 与 jsdom `29.1.1` 的现有解析；lockfile 未变化。committed snapshot 为 OpenAPI `3.1.0` / 58 paths / 88 schemas，generated header 仍声明禁止手工修改。
+- frontend focused recovery baseline 为共享 HTTP/SSE/Conversations 5 files / 30 tests 全部通过。backend `.venv` 下 Chat stream、Auth validation、Conversation validation 与 schema field-description contract scripts 全部通过。
+- 当前 `pnpm check` 通过 generated drift、lint、typecheck、15 files / 66 tests 与 production build；该结果与 Slice 4 checkpoint 记录一致。
+- 无外部依赖的当前 Runtime/OpenAPI 探针再次确认 CG003：空白 `query` 请求返回 `422`，runtime keys 只有 `code/error_category/message/request_id/trace_id`，无 `field_errors`/`detail`，测试 marker 未回显；committed OpenAPI 422 仍引用 `#/components/schemas/HTTPValidationError`。
+- 本计划过期的“等待授权”、Current Working On/Next Action、未勾选的已完成 reconnaissance、错误 Schema 路径和缺失的当前恢复证据已修正。Current Slice 保持 5 / BLOCKED；唯一 Next Action 是先新增严格受限的 CG003 expected-red backend contract test。
 
 Context Recovery Evidence (verified 2026-08-26 after session change):
 
@@ -816,7 +827,7 @@ Resolution:
 
 #### CG003 - Structured Chat 422 Field Error Schema Does Not Match Runtime
 
-Status: BLOCKING SLICE 5 / AWAITING USER DECISION
+Status: BLOCKING SLICE 5 / AUTHORIZED / FIX IN PROGRESS
 
 Evidence:
 
@@ -839,9 +850,10 @@ Recommended Backend Change:
 - 为 structured Chat Route 显式声明同一 422 response model，并增加 runtime/OpenAPI/no-sensitive-echo/form-level fallback/non-allowlisted-route regression tests。
 - 修复必须是独立 backend checkpoint；随后重新导出 frontend OpenAPI snapshot/generated types，运行 contract drift 与必要回归，确认 Runtime = OpenAPI = Tests 后关闭 CG003 并恢复 Slice 5。
 
-Decision Required:
+Decision:
 
-- 用户需明确授权或拒绝上述严格受限的 backend contract fix。授权前不修改 backend，也不开始依赖该契约的 Slice 5 frontend implementation。
+- 用户已于 2026-08-27 明确授权上述严格受限的 backend contract fix。授权只覆盖 `POST /rag/chat/stream/events` 的公开顶层 `query` 安全字段投影、422 OpenAPI 声明与 runtime/OpenAPI/no-sensitive-echo/form-level fallback/non-allowlisted-route regression tests，不得外推到 legacy Chat、TaskPlan 或未来 Admin/Grant Route。
+- CG003 修复必须保持独立 backend checkpoint；Runtime = OpenAPI = Tests 并同步 frontend snapshot/generated types 后才能关闭 CG003、把 Slice 5 恢复为 `IN_PROGRESS` 并开始依赖该契约的 frontend implementation。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
