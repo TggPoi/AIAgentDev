@@ -6,17 +6,17 @@ Status: ACTIVE
 
 Plan Approval: APPROVED BY USER ON 2026-08-25
 
-Current Slice: 5 - RAG / Agent Chat Core
+Current Slice: 6 - TaskPlan
 
-Current Step: Chat request/stream/reducer/page integration、Web 偏好、事件/来源安全展示和持久化收敛已实现并通过完整 check；净化 Markdown Viewer 的精确依赖安装被环境安全审查要求额外用户授权
+Current Step: Slice 5 已通过 Gate 并由 frontend checkpoint `633a07a` 完成；正在进入 Slice 6 的 required reading、Repository reconnaissance 和 TaskPlan contract recovery
 
-Next Action: 用户明确批准安装 `react-markdown@10.1.0` 与 `remark-gfm@4.0.1` 后，以 expected-red Viewer 安全测试继续，安装时更新 lockfile 并运行 `pnpm audit --audit-level high`；未获批准前不得绕过审查或自行实现不完整 Markdown parser
+Next Action: 完整读取 TaskPlan feature spec 与相关 SPEC/Architecture，检查 frontend TaskPlan 现状和 backend list/detail/markdown/control/confirm-stream Route、Schema、OpenAPI/runtime tests，确认 Slice 6 唯一 implementation seam 或 Contract Gap
 
 Blocking Issues:
 
-- Slice 5 的净化 Markdown Viewer 需要新增依赖。官方 package metadata 已核对版本/兼容性/安全默认值，计划不使用 `rehype-raw`；但 2026-08-27 执行 `pnpm add --save-exact react-markdown@10.1.0 remark-gfm@4.0.1` 被环境安全审查拒绝，理由是 supply-chain 与 lockfile mutation 需要用户再次明确授权。package/lockfile 未变化。
+- 无。Slice 6 尚处于 contract-first reconnaissance；若发现 Runtime/OpenAPI/spec 冲突，按 Contract Gap gate 停止受影响实现。
 
-Last Updated: 2026-08-27 (Asia/Shanghai)
+Last Updated: 2026-08-28 (Asia/Shanghai)
 
 ## Goal
 
@@ -225,7 +225,7 @@ Exit Evidence:
 
 ### Slice 5 - RAG / Agent Chat Core
 
-Status: BLOCKED
+Status: COMPLETED
 
 Goal: 使用唯一结构化 SSE 主线完成标准 RAG/Agent 对话、事件时间线、回答、来源与持久化收敛。
 
@@ -235,11 +235,19 @@ Goal: 使用唯一结构化 SSE 主线完成标准 RAG/Agent 对话、事件时�
 - [x] 实现 Chat reducer：connecting/streaming/completed/failed/interrupted/cancelled。
 - [x] 实现 answer、sources、route、guard、clarification、TaskPlan reference 和 terminal event 展示。
 - [x] 对 unknown events 只保留 allowlisted safe projection，立即丢弃 raw payload。
-- [ ] 实现净化 Markdown Viewer 和 knowledge/web source 安全导航；新增依赖前必须核对现有依赖并锁定精确版本。
+- [x] 实现净化 Markdown Viewer 和 knowledge/web source 安全导航；新增依赖前必须核对现有依赖并锁定精确版本。
 - [x] 实现 Web 两开关的基础请求映射和按用户/标签页存储；Dataset 细化留给 Slice 10。
 - [x] `done/error/interrupted/abort` 后统一 refetch conversation messages/list；stream body 开始后绝不自动 replay。
 - [x] 增加 chunking、terminal、abort、mismatch、unknown safety、source URL、Web toggle 和持久化收敛测试。
-- [ ] 完成 Slice Gate；执行 Chat manual smoke；创建独立 Git checkpoint。
+- [x] 完成 Slice Gate；执行 Chat manual smoke；创建独立 Git checkpoint。
+
+Exit Evidence:
+
+- frontend checkpoint `633a07a` 在既有 non-Markdown core checkpoint `1444099` 之上完成共享安全 Markdown Viewer、实时/历史回答与 source preview 集成、精确 dependency/lockfile mutation 和对应 tests；active plan 状态转换由后续 plan checkpoint 记录。
+- focused Markdown/Conversations tests 为 2 files / 12 tests 通过；最终 `pnpm check` 通过 generated drift、lint、typecheck、19 files / 82 tests 与 production build。
+- dependency graph 变化后 `pnpm audit --audit-level high` 返回 `No known vulnerabilities found`。
+- desktop/360px Chat manual smoke 覆盖历史、实时和持久化 Markdown、安全/不安全来源、unknown payload 丢弃、TaskPlan link、Web 设置刷新恢复、无横向溢出和空 console；临时服务、脚本、dev server 与 browser tab 均已清理。
+- final diff/staged boundary、generated contract 无差异、生产代码唯一 RAG route 和敏感 marker 检查通过；checkpoint 不包含 active plan 状态转换或 backend/未来 Slice 改动。
 
 Explicit Boundary:
 
@@ -421,7 +429,7 @@ Goal: 在不扩大 Scope 的前提下完成跨 Feature 集成、可访问性、�
 
 Current Slice:
 
-- 5 - RAG / Agent Chat Core
+- 6 - TaskPlan
 
 Completed in Current Slice:
 
@@ -466,14 +474,21 @@ Completed in Current Slice:
 - 2026-08-27 中间 `pnpm check` 通过 contract drift、lint、typecheck、18 files / 81 tests 与 production build；package/lockfile/generated contract 均无本轮意外差异。
 - 官方 metadata 确认 `react-markdown@10.1.0` 与 `remark-gfm@4.0.1` 兼容当前 React 19/Node 24/ESM；计划使用 `skipHtml`、自定义 URL/filter/component 且不安装 `rehype-raw`。实际安装被环境安全审查拒绝，package/lockfile 未变化，Slice 5 因此保持 BLOCKED。
 - verified non-Markdown implementation 与 blocker 状态已由恢复 checkpoint `1444099` 持久化；该 commit 明确不代表 Slice Gate 完成。
+- 用户于 2026-08-27 明确批准安装 `react-markdown@10.1.0` 与 `remark-gfm@4.0.1`；dependency blocker 已解除，Slice 5 恢复为 IN_PROGRESS。
+- `react-markdown@10.1.0` 与 `remark-gfm@4.0.1` 已精确写入 package/lockfile；共享 `MarkdownViewer` 已实现 GFM、raw HTML 禁用、图片丢弃与 credential-free HTTP(S) link policy，并接入实时回答、持久化 assistant message 和 source preview。
+- 恢复时 focused Markdown/Conversations tests 为 2 files / 12 tests 通过，contract drift、typecheck、全量 19 files / 82 tests 与 production build 分别通过；完整 `pnpm check` 只在 `MarkdownViewer` render 内定义 link renderer 的 lint warning 处停止。
+- link renderer 已移到 module scope；修复后 focused 2 files / 12 tests、lint 和 typecheck 通过，完整 `pnpm check` 通过 contract drift、lint、typecheck、19 files / 82 tests 与 production build。
+- dependency graph 变化后的 `pnpm audit --audit-level high` 返回 `No known vulnerabilities found`。
+- Chat manual browser smoke 使用仅监听本机的虚构 Auth/Conversation/structured SSE service：desktop 与 360px 均验证历史、实时和持久化 Markdown；raw HTML/unknown secret 不进入页面，credential URL 不生成链接，安全外链带 `_blank` 与 `noopener noreferrer`，实时 source preview 使用 Markdown，TaskPlan link 正确，Web 设置刷新恢复，360px 无横向溢出且 console warning/error 为空。临时 browser tab、service、dev server 和 smoke script 已清理。
+- Slice 5 Markdown completion 已由独立 frontend checkpoint `633a07a` 持久化；完整 Slice 5 由 non-Markdown core `1444099`、Markdown completion `633a07a` 及本计划记录的 Gate evidence 共同证明。
 
 Currently Working On:
 
-- Slice 5 除净化 Markdown Viewer、dependency audit、manual smoke 与最终 Slice Gate checkpoint 外均已实现并通过当前完整 check。当前 verified non-Markdown implementation 与 blocker 状态已由 recovery checkpoint `1444099` 持久化；该 checkpoint 不等同 Slice Gate 完成。
+- Slice 6 contract-first reconnaissance：尚未开始 TaskPlan implementation，正在恢复当前 frontend seam 并核对 backend list/detail/markdown/control/confirm-stream 契约。
 
 Next Action:
 
-- 用户明确批准 `pnpm add --save-exact react-markdown@10.1.0 remark-gfm@4.0.1` 的 supply-chain/lockfile mutation 后，新增净化 Markdown Viewer expected-red tests，安装并实现 Viewer，运行 focused tests、`pnpm audit --audit-level high`、`pnpm check`、Chat browser manual smoke 和独立 Slice 5 checkpoint。未获批准前停止编码且不得开始 Slice 6。
+- 完整读取 TaskPlan feature spec 与相关 SPEC/Architecture，检查 frontend TaskPlan 现状和 backend Route/Schema/OpenAPI/runtime tests；只在契约一致后确定一个 expected-red implementation seam。
 
 Relevant Files:
 
@@ -493,6 +508,15 @@ Relevant Files:
 - `../python-agent-study/src/fast_app/schemas/rag_chat_schema.py`
 - `../python-agent-study/scripts/tests/agent_research/test_rag_stream_contract.py`
 - `../python-agent-study/scripts/tests/document_security/test_rag_chat_validation_contract.py`
+
+Context Recovery Evidence (verified 2026-08-28 after quota reset and editor-state discrepancy):
+
+- frontend/backend 目录再次确认共享 Git root 与 HEAD `30dbfc891d462e803195cd1557184ce5b132b4ae`，branch 为 `master...origin/master [ahead 21]`；backend scoped unstaged/staged diff 为空，frontend 有 7 个 tracked modifications 与 3 个 untracked Markdown Viewer files，staged diff 为空。
+- 最近 commits 仍包含 CG003 backend `d3d95ba`、frontend contract sync `3a7f198`、Slice 5 non-Markdown core `1444099` 与依赖 blocker plan `30dbfc8`；Repository 没有回退，最后 verified completed Slice 仍为 Slice 4 checkpoint `5821b25`。
+- 当前 package/lockfile 已精确解析 `react-markdown@10.1.0` 与 `remark-gfm@4.0.1`；committed OpenAPI snapshot/generated types 自 `3a7f198` 后无差异，`pnpm contracts:check` 通过。
+- Markdown Viewer 与 Conversations focused tests 为 2 files / 12 tests 通过；`pnpm typecheck`、全量 19 files / 82 tests 与 production build 分别通过。完整 `pnpm check` 在 lint 阶段因 `MarkdownViewer.tsx` render 内定义 link renderer 的 `react(no-unstable-nested-components)` warning 失败。
+- backend `test_rag_chat_validation_contract.py` 与 `test_rag_stream_contract.py` 通过，CG003 Runtime/OpenAPI/tests 仍一致。dependency audit 首次尝试因受限环境访问 npm audit endpoint 得到 `EACCES`，未形成成功证据。
+- 本计划原 Current Step/Next Action、Current Working Set 与 KI003 已落后于工作区；恢复后唯一 Next Action 是先修复上述 lint Gate，再继续同一 Slice 的 Gate，不开始 Slice 6。
 
 Context Recovery Evidence (verified 2026-08-27 after explicit CG003 authorization and session recovery):
 
@@ -706,19 +730,20 @@ Resolution:
 
 ### KI003 - Markdown Implementation Dependency Is Undecided
 
-Status: PLANNED / NON-BLOCKING
+Status: RESOLVED IN SLICE 5
 
 Evidence:
 
-- 当前依赖没有 Markdown renderer/sanitizer，而 Chat、TaskPlan 和 Documents 要求安全 Markdown Viewer。
+- `react-markdown@10.1.0` 与 `remark-gfm@4.0.1` 已按用户批准精确写入 package/lockfile；没有安装 `rehype-raw`。
+- 共享 `MarkdownViewer` 使用 `skipHtml`、图片丢弃和 credential-free HTTP(S) link renderer；安全 DOM test 已覆盖 GFM、raw HTML、图片、凭据 URL 与脚本 URL。
 
 Impact:
 
-- 在首次实现 Shared Markdown Viewer 前需要核对现有能力并选择最小、兼容、可安全配置的精确依赖或实现方案。
+- 原 dependency decision gap 已关闭；当前只剩普通 Slice Gate verification，不再构成依赖阻塞。
 
 Resolution:
 
-- 在首次实际需要 Shared Markdown Viewer 的 Slice 5 局部计划中形成依赖决定并更新 package/lockfile/Development；不得渲染 raw HTML。
+- 采用已批准的精确版本与安全配置；focused/full tests、production build、dependency audit 和 browser smoke 均通过，frontend checkpoint `633a07a` 已持久化实现。
 
 ### KI004 - No Automated E2E Framework
 
