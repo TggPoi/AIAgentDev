@@ -221,6 +221,13 @@ class AgentTaskPlanBusyError(AppServiceError):
     status_code = 409
 
 
+class AgentTaskPlanNotFoundError(AppServiceError):
+    """TaskPlan 不存在或不属于当前公开 API 请求用户。"""
+
+    error_code = "AGENT_TASK_PLAN_NOT_FOUND"
+    status_code = 404
+
+
 class AgentTaskPlanCursorInvalidError(AppServiceError):
     """TaskPlan 列表 cursor 无法解析。"""
 

@@ -24,7 +24,6 @@ from fast_app.dependencies.rag_dependencies import (
 from fast_app.dependencies.user_context import get_current_user_context
 from fast_app.domain.agent_task_plan import AgentTaskPlanStatus
 from fast_app.domain.user_context import CurrentUserContext
-from fast_app.domain.agent_tool_permissions import RoleCode
 from fast_app.domain.research_task_plan import (
     ResearchTaskPlan,
     build_research_task_plan_public_view,
@@ -39,7 +38,10 @@ from fast_app.schemas.rag_stream_schema import (
     RagSseEventFrame,
     normalize_sse_event_envelope,
 )
-from fast_app.services.exceptions import AppServiceError, ToolPermissionDeniedError
+from fast_app.services.exceptions import (
+    AgentTaskPlanNotFoundError,
+    AppServiceError,
+)
 from fast_app.services.rag.guarded_streaming import (
     GuardedStreamState,
     guarded_answer_delta_events,
@@ -68,6 +70,27 @@ def _public_plan_payload(plan) -> dict[str, Any]:
     if isinstance(plan, ResearchTaskPlan):
         return build_research_task_plan_public_view(plan).model_dump(mode="json")
     return plan.model_dump(mode="json")
+
+
+async def _load_owned_public_plan(
+    task_plan_id: str,
+    *,
+    user: CurrentUserContext,
+    task_plan_store: AgentTaskPlanStore,
+) -> Any:
+    """读取当前用户自己的 TaskPlan，并统一隐藏缺失与其他 owner。"""
+
+    try:
+        plan = await task_plan_store.load(task_plan_id)
+    except AppServiceError as exc:
+        if exc.error_code != "APP_SERVICE_ERROR":
+            raise
+        raise AgentTaskPlanNotFoundError(
+            "TaskPlan 不存在或当前不可访问"
+        ) from exc
+    if plan.user_id != user.user_id:
+        raise AgentTaskPlanNotFoundError("TaskPlan 不存在或当前不可访问")
+    return plan
 
 
 class AgentTaskPlanConfirmRequest(BaseModel):
@@ -173,11 +196,11 @@ async def get_agent_task_plan_endpoint(
 ) -> dict[str, Any]:
     """读取 Agent 多步骤任务计划。"""
 
-    plan = await task_plan_store.load(task_plan_id)
-    if plan.user_id != user.user_id and not user.has_global_role(
-        RoleCode.SYSTEM_ADMIN.value
-    ):
-        raise ToolPermissionDeniedError("只能查看自己创建的 Agent task plan")
+    plan = await _load_owned_public_plan(
+        task_plan_id,
+        user=user,
+        task_plan_store=task_plan_store,
+    )
     return _public_plan_payload(plan)
 
 
@@ -189,11 +212,11 @@ async def get_agent_task_plan_markdown_endpoint(
 ) -> str:
     """读取 Agent TaskPlan 的 Markdown 审查视图。"""
 
-    plan = await task_plan_store.load(task_plan_id)
-    if plan.user_id != user.user_id and not user.has_global_role(
-        RoleCode.SYSTEM_ADMIN.value
-    ):
-        raise ToolPermissionDeniedError("只能查看自己创建的 Agent task plan")
+    await _load_owned_public_plan(
+        task_plan_id,
+        user=user,
+        task_plan_store=task_plan_store,
+    )
     return await task_plan_store.load_markdown(task_plan_id)
 
 
@@ -203,9 +226,16 @@ async def cancel_agent_task_plan_endpoint(
     idempotency_key: IdempotencyKey,
     user: CurrentUserContext = Depends(get_current_user_context),
     task_executor: AgentTaskExecutor = Depends(get_agent_task_executor),
+    task_plan_store: AgentTaskPlanStore = Depends(get_agent_task_plan_store),
     settings: Settings = Depends(get_settings),
 ) -> AgentTaskPlanControlResponse:
     """取消 TaskPlan；运行中的 Tool Loop 会在当前轮次屏障后停止。"""
+
+    await _load_owned_public_plan(
+        task_plan_id,
+        user=user,
+        task_plan_store=task_plan_store,
+    )
 
     async with _agent_task_plan_trace(
         settings,
@@ -237,9 +267,16 @@ async def retry_agent_task_plan_endpoint(
     idempotency_key: IdempotencyKey,
     user: CurrentUserContext = Depends(get_current_user_context),
     task_executor: AgentTaskExecutor = Depends(get_agent_task_executor),
+    task_plan_store: AgentTaskPlanStore = Depends(get_agent_task_plan_store),
     settings: Settings = Depends(get_settings),
 ) -> AgentTaskPlanControlResponse:
     """恢复可重试的研究任务或文档 Tool Loop。"""
+
+    await _load_owned_public_plan(
+        task_plan_id,
+        user=user,
+        task_plan_store=task_plan_store,
+    )
 
     async with _agent_task_plan_trace(
         settings,
@@ -357,6 +394,12 @@ async def confirm_agent_task_plan_stream_endpoint(
 
     if req.confirmed is not True:
         raise AppServiceError("confirmed 必须为 true")
+
+    await _load_owned_public_plan(
+        task_plan_id,
+        user=user,
+        task_plan_store=task_plan_store,
+    )
 
     return StreamingResponse(
         _confirm_task_plan_sse_generator(
