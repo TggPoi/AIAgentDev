@@ -38,6 +38,7 @@ from fast_app.schemas.agent_task_plan_schema import (
     AgentTaskPlanListResponse,
     build_document_task_plan_public_view,
 )
+from fast_app.schemas.error_schema import RequestValidationErrorResponse
 from fast_app.schemas.rag_stream_schema import (
     RagSseEventFrame,
     normalize_sse_event_envelope,
@@ -55,6 +56,25 @@ from fast_app.services.rag.prompt_guard_service import PromptGuardService
 
 
 router = APIRouter(prefix="/agent/task-plans", tags=["agent-task-plans"])
+
+_TASK_PLAN_VALIDATION_ERROR_RESPONSES = {
+    422: {
+        "model": RequestValidationErrorResponse,
+        "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。",
+    }
+}
+_TASK_PLAN_MARKDOWN_VALIDATION_ERROR_RESPONSES = {
+    422: {
+        "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                }
+            }
+        },
+    }
+}
 
 
 IdempotencyKey = Annotated[
@@ -127,7 +147,11 @@ class AgentTaskPlanControlResponse(BaseModel):
     trace_id: str | None = Field(default=None, description="本次控制链路追踪 ID。")
 
 
-@router.get("", response_model=AgentTaskPlanListResponse)
+@router.get(
+    "",
+    response_model=AgentTaskPlanListResponse,
+    responses=_TASK_PLAN_VALIDATION_ERROR_RESPONSES,
+)
 async def list_agent_task_plans_endpoint(
     cursor: str | None = Query(
         default=None,
@@ -200,7 +224,11 @@ def _agent_task_plan_trace(
     )
 
 
-@router.get("/{task_plan_id}", response_model=AgentTaskPlanDetailResponse)
+@router.get(
+    "/{task_plan_id}",
+    response_model=AgentTaskPlanDetailResponse,
+    responses=_TASK_PLAN_VALIDATION_ERROR_RESPONSES,
+)
 async def get_agent_task_plan_endpoint(
     task_plan_id: str,
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -216,7 +244,11 @@ async def get_agent_task_plan_endpoint(
     return _public_detail_view(plan)
 
 
-@router.get("/{task_plan_id}/markdown", response_class=PlainTextResponse)
+@router.get(
+    "/{task_plan_id}/markdown",
+    response_class=PlainTextResponse,
+    responses=_TASK_PLAN_MARKDOWN_VALIDATION_ERROR_RESPONSES,
+)
 async def get_agent_task_plan_markdown_endpoint(
     task_plan_id: str,
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -232,7 +264,11 @@ async def get_agent_task_plan_markdown_endpoint(
     return await task_plan_store.load_markdown(task_plan_id)
 
 
-@router.post("/{task_plan_id}/cancel", response_model=AgentTaskPlanControlResponse)
+@router.post(
+    "/{task_plan_id}/cancel",
+    response_model=AgentTaskPlanControlResponse,
+    responses=_TASK_PLAN_VALIDATION_ERROR_RESPONSES,
+)
 async def cancel_agent_task_plan_endpoint(
     task_plan_id: str,
     idempotency_key: IdempotencyKey,
@@ -273,7 +309,11 @@ async def cancel_agent_task_plan_endpoint(
     )
 
 
-@router.post("/{task_plan_id}/retry", response_model=AgentTaskPlanControlResponse)
+@router.post(
+    "/{task_plan_id}/retry",
+    response_model=AgentTaskPlanControlResponse,
+    responses=_TASK_PLAN_VALIDATION_ERROR_RESPONSES,
+)
 async def retry_agent_task_plan_endpoint(
     task_plan_id: str,
     idempotency_key: IdempotencyKey,
@@ -389,7 +429,8 @@ async def confirm_agent_task_plan_endpoint(
                     "schema": RagSseEventFrame.model_json_schema(),
                 }
             },
-        }
+        },
+        **_TASK_PLAN_VALIDATION_ERROR_RESPONSES,
     },
 )
 async def confirm_agent_task_plan_stream_endpoint(

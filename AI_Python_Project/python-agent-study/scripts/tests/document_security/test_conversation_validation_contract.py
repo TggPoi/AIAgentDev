@@ -118,6 +118,9 @@ def assert_conversation_validation_openapi_contract() -> None:
         "new_password",
         "title",
         "query",
+        "status",
+        "session_id",
+        "limit",
     ]
 
 

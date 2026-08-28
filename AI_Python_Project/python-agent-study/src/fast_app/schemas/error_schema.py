@@ -16,6 +16,9 @@ class RequestValidationFieldError(BaseModel):
         "new_password",
         "title",
         "query",
+        "status",
+        "session_id",
+        "limit",
     ] = Field(
         description="允许向客户端公开的顶层请求字段名；不包含请求值或嵌套内部位置。",
     )

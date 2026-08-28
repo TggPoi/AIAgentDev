@@ -20,15 +20,27 @@ from fast_app.services.exceptions import AppServiceError
 logger = get_logger(__name__)
 
 
-_VALIDATION_FIELDS: dict[tuple[str, str], frozenset[str]] = {
-    ("POST", "/auth/login"): frozenset({"username_or_email", "password"}),
-    ("POST", "/auth/refresh"): frozenset({"refresh_token"}),
-    ("POST", "/auth/change-password"): frozenset(
-        {"current_password", "new_password"}
-    ),
-    ("POST", "/conversations"): frozenset({"title"}),
-    ("PATCH", "/conversations/{session_id}"): frozenset({"title"}),
-    ("POST", "/rag/chat/stream/events"): frozenset({"query"}),
+_VALIDATION_FIELDS: dict[tuple[str, str], dict[str, frozenset[str]]] = {
+    ("POST", "/auth/login"): {
+        "body": frozenset({"username_or_email", "password"})
+    },
+    ("POST", "/auth/refresh"): {"body": frozenset({"refresh_token"})},
+    ("POST", "/auth/change-password"): {
+        "body": frozenset({"current_password", "new_password"})
+    },
+    ("POST", "/conversations"): {"body": frozenset({"title"})},
+    ("PATCH", "/conversations/{session_id}"): {
+        "body": frozenset({"title"})
+    },
+    ("POST", "/rag/chat/stream/events"): {"body": frozenset({"query"})},
+    ("GET", "/agent/task-plans"): {
+        "query": frozenset({"status", "session_id", "limit"})
+    },
+    ("GET", "/agent/task-plans/{task_plan_id}"): {},
+    ("GET", "/agent/task-plans/{task_plan_id}/markdown"): {},
+    ("POST", "/agent/task-plans/{task_plan_id}/confirm/stream"): {},
+    ("POST", "/agent/task-plans/{task_plan_id}/cancel"): {},
+    ("POST", "/agent/task-plans/{task_plan_id}/retry"): {},
 }
 
 _PUBLIC_VALIDATION_ERRORS: dict[str, tuple[str, str]] = {
@@ -37,6 +49,10 @@ _PUBLIC_VALIDATION_ERRORS: dict[str, tuple[str, str]] = {
     "string_too_short": ("too_short", "输入长度过短"),
     "string_too_long": ("too_long", "输入长度过长"),
     "value_error": ("invalid", "输入值不合法"),
+    "enum": ("invalid", "输入值不合法"),
+    "int_parsing": ("invalid_type", "请输入有效数字"),
+    "greater_than_equal": ("invalid", "输入值不合法"),
+    "less_than_equal": ("invalid", "输入值不合法"),
 }
 
 
@@ -199,8 +215,10 @@ def _project_validation_field_errors(
     if not isinstance(route_path, str):
         return None
 
-    allowed_fields = _VALIDATION_FIELDS.get((request.method.upper(), route_path))
-    if allowed_fields is None:
+    allowed_locations = _VALIDATION_FIELDS.get(
+        (request.method.upper(), route_path)
+    )
+    if allowed_locations is None:
         return None
 
     projected: list[RequestValidationFieldError] = []
@@ -210,11 +228,14 @@ def _project_validation_field_errors(
         if (
             not isinstance(location, (list, tuple))
             or len(location) != 2
-            or location[0] != "body"
+            or not isinstance(location[0], str)
             or not isinstance(location[1], str)
         ):
             continue
 
+        allowed_fields = allowed_locations.get(location[0])
+        if allowed_fields is None:
+            continue
         field = location[1]
         public_error = _PUBLIC_VALIDATION_ERRORS.get(str(error.get("type", "")))
         if (

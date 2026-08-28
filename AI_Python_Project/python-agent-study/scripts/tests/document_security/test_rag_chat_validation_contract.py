@@ -124,6 +124,9 @@ def assert_rag_chat_validation_openapi_contract() -> None:
         "new_password",
         "title",
         "query",
+        "status",
+        "session_id",
+        "limit",
     ]
 
 
