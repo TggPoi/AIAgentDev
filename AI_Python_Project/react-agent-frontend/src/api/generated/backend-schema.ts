@@ -1142,6 +1142,76 @@ export interface components {
          * @enum {string}
          */
         AccountType: "admin" | "department_manager" | "employee";
+        /**
+         * AgentTaskEvidencePublicView
+         * @description Evidence Registry 中允许返回给当前任务拥有者的字段。
+         */
+        AgentTaskEvidencePublicView: {
+            /**
+             * Evidence Id
+             * @description Evidence 稳定 ID。
+             */
+            evidence_id: string;
+            /**
+             * Evidence Type
+             * @description Evidence 类型。
+             * @enum {string}
+             */
+            evidence_type: "knowledge_chunk" | "web_citation" | "sql_query_result" | "derived_synthesis";
+            /**
+             * Query Id
+             * @description NL2SQL 查询审计 ID。
+             */
+            query_id?: string | null;
+            /**
+             * Reference Id
+             * @description 公开安全的证据引用。
+             */
+            reference_id?: string | null;
+            /**
+             * Source Type
+             * @description 外部来源类型；派生证据为空。
+             */
+            source_type?: ("knowledge_retrieval" | "web_search" | "nl2sql_query") | null;
+            /**
+             * Sub Question Id
+             * @description 产生 Evidence 的 SubQuestion ID。
+             */
+            sub_question_id: string;
+            /**
+             * Url
+             * @description 公开 Web citation URL。
+             */
+            url?: string | null;
+        };
+        /**
+         * AgentTaskExpectedEvidence
+         * @description Requirement 期望获得的可计数证据。
+         */
+        AgentTaskExpectedEvidence: {
+            /**
+             * Evidence Type
+             * @description 期望证据的结构化类型。
+             * @enum {string}
+             */
+            evidence_type: "knowledge_chunk" | "web_citation" | "sql_query_result" | "derived_synthesis";
+            /**
+             * Minimum Count
+             * @description 满足该证据契约所需的最少合法 Evidence 数量。
+             */
+            minimum_count: number;
+            /**
+             * Required Attributes
+             * @description SQL 结果必须提供的 Dataset 逻辑字段；非 SQL 证据必须为空。
+             */
+            required_attributes?: string[];
+            /**
+             * Requires Query Id
+             * @description 证据是否必须携带真实 NL2SQL query_id；仅 SQL 证据允许为 true。
+             * @default false
+             */
+            requires_query_id: boolean;
+        };
         /** AgentTaskPlanConfirmRequest */
         AgentTaskPlanConfirmRequest: {
             /**
@@ -1286,11 +1356,235 @@ export interface components {
             next_cursor?: string | null;
         };
         /**
+         * AgentTaskPlanQualityChecks
+         * @description Reviewer 使用的可解释 pass/fail 检查项。
+         */
+        AgentTaskPlanQualityChecks: {
+            /**
+             * Completion Policy Alignment
+             * @description strict/allow_partial 是否符合用户的完整性要求。
+             * @enum {string}
+             */
+            completion_policy_alignment: "pass" | "fail";
+            /**
+             * Dependency Quality
+             * @description 依赖是否能支撑综合结论。
+             * @enum {string}
+             */
+            dependency_quality: "pass" | "fail";
+            /**
+             * Executability
+             * @description 计划是否能由当前 Tool 和字段执行。
+             * @enum {string}
+             */
+            executability: "pass" | "fail";
+            /**
+             * Requirement Coverage
+             * @description 用户需求是否完整覆盖。
+             * @enum {string}
+             */
+            requirement_coverage: "pass" | "fail";
+            /**
+             * Semantic Alignment
+             * @description 计划是否保持 resolved query 语义。
+             * @enum {string}
+             */
+            semantic_alignment: "pass" | "fail";
+            /**
+             * Source Alignment
+             * @description 来源和完成策略是否符合用户原意。
+             * @enum {string}
+             */
+            source_alignment: "pass" | "fail";
+        };
+        /**
+         * AgentTaskPlanQualityReview
+         * @description 只保存 accepted/revised 有效 TaskPlan 的最终评审结果。
+         */
+        AgentTaskPlanQualityReview: {
+            /** @description 最终质量检查结果。 */
+            checks: components["schemas"]["AgentTaskPlanQualityChecks"];
+            /**
+             * Initial Validation Findings
+             * @description Candidate 第一次确定性校验发现的问题历史。
+             */
+            initial_validation_findings?: components["schemas"]["AgentTaskPlanValidationIssue"][];
+            /**
+             * Reviewer Findings
+             * @description Reviewer 语义发现及其最终解决状态。
+             */
+            reviewer_findings?: components["schemas"]["AgentTaskPlanReviewerFinding"][];
+            /**
+             * Revision Count
+             * @description Reviewer 实际修订次数。
+             * @enum {integer}
+             */
+            revision_count: 0 | 1;
+            /**
+             * Revision Summary
+             * @description 一次修订的摘要；未修订时为空。
+             */
+            revision_summary?: string | null;
+            /**
+             * Verdict
+             * @description 最终有效计划的 Reviewer 结论。
+             * @enum {string}
+             */
+            verdict: "accepted" | "revised";
+        };
+        /**
+         * AgentTaskPlanReviewerFinding
+         * @description Reviewer 发现的语义质量问题及最终解决状态。
+         */
+        AgentTaskPlanReviewerFinding: {
+            /**
+             * Code
+             * @description Reviewer 语义发现码。
+             */
+            code: string;
+            /**
+             * Message
+             * @description 经过清洗的 Reviewer 发现说明。
+             */
+            message: string;
+            /**
+             * Requirement Ids
+             * @description 受影响的 Requirement ID。
+             */
+            requirement_ids?: string[];
+            /**
+             * Severity
+             * @description 发现的严重程度。
+             * @enum {string}
+             */
+            severity: "warning" | "error";
+            /**
+             * Status
+             * @description 本次发现尚未处理、已修复或最终仍存在。
+             * @enum {string}
+             */
+            status: "detected" | "resolved" | "remaining";
+            /**
+             * Sub Question Ids
+             * @description 受影响的 SubQuestion ID。
+             */
+            sub_question_ids?: string[];
+        };
+        /**
          * AgentTaskPlanStatus
          * @description 任务整体状态：LLM 多步骤任务计划状态。
          * @enum {string}
          */
         AgentTaskPlanStatus: "created" | "preparing_confirmation" | "waiting_confirmation" | "executing_confirmed" | "completed" | "completed_with_warnings" | "failed" | "cancelled";
+        /**
+         * AgentTaskPlanValidationIssue
+         * @description 后端确定性校验发现的结构、来源或可执行性问题。
+         */
+        AgentTaskPlanValidationIssue: {
+            /**
+             * Code
+             * @description 确定性校验问题码。
+             */
+            code: string;
+            /**
+             * Message
+             * @description 经过清洗的校验问题说明。
+             */
+            message: string;
+            /**
+             * Requirement Ids
+             * @description 受影响的 Requirement ID。
+             */
+            requirement_ids?: string[];
+            /**
+             * Severity
+             * @description warning 可保存，error 必须阻止计划。
+             * @enum {string}
+             */
+            severity: "warning" | "error";
+            /**
+             * Sub Question Ids
+             * @description 受影响的 SubQuestion ID。
+             */
+            sub_question_ids?: string[];
+        };
+        /**
+         * AgentTaskRequirement
+         * @description 从 resolved query 拆出的原子需求及证据完成策略。
+         */
+        AgentTaskRequirement: {
+            /**
+             * Completion Policy
+             * @description strict 不允许缺证据；allow_partial 允许带明确限制的部分结论。
+             * @enum {string}
+             */
+            completion_policy: "strict" | "allow_partial";
+            /**
+             * Description
+             * @description 必须由最终答案覆盖的原子用户需求。
+             */
+            description: string;
+            /**
+             * Expected Evidence
+             * @description 该需求必须达到的结构化证据阈值。
+             */
+            expected_evidence: components["schemas"]["AgentTaskExpectedEvidence"][];
+            /**
+             * Requirement Id
+             * @description 当前 Research TaskPlan 内唯一的 Requirement ID。
+             */
+            requirement_id: string;
+            /** @description 该需求的外部来源组合规则。 */
+            source_policy: components["schemas"]["RequirementSourcePolicy"];
+        };
+        /**
+         * AgentTaskRequirementEvidenceStatus
+         * @description Aggregator 对一个 Requirement 的当前确定性判断。
+         */
+        AgentTaskRequirementEvidenceStatus: {
+            /**
+             * Covering Sub Question Ids
+             * @description 声明覆盖该 Requirement 的正式 SubQuestion ID。
+             */
+            covering_sub_question_ids?: string[];
+            /**
+             * Evidence Refs
+             * @description 参与本次 Requirement 判断的合法 Evidence ID。
+             */
+            evidence_refs?: string[];
+            /**
+             * Missing Source Types
+             * @description 尚未达到证据契约的外部来源。
+             */
+            missing_source_types?: ("knowledge_retrieval" | "web_search" | "nl2sql_query")[];
+            /**
+             * Reason Codes
+             * @description 证据不足或失败的稳定原因码。
+             */
+            reason_codes?: string[];
+            /**
+             * Requirement Id
+             * @description 对应的 Requirement ID。
+             */
+            requirement_id: string;
+            /**
+             * Satisfied Source Types
+             * @description 已经达到 ExpectedEvidence 阈值的外部来源。
+             */
+            satisfied_source_types?: ("knowledge_retrieval" | "web_search" | "nl2sql_query")[];
+            /**
+             * Status
+             * @description Requirement 当前证据状态。
+             * @enum {string}
+             */
+            status: "pending" | "partially_satisfied" | "satisfied" | "failed";
+        };
+        /**
+         * AgentToolStepStatus
+         * @description TaskPlan 中单个工具步骤的执行状态。
+         * @enum {string}
+         */
+        AgentToolStepStatus: "pending" | "running" | "completed" | "waiting_confirmation" | "failed" | "skipped";
         /**
          * ApiKeySummary
          * @description API Key 列表项：只展示可审计的摘要信息，不返回明文密钥。
@@ -1360,6 +1654,47 @@ export interface components {
              * @default false
              */
             reconfigure_excel_profile: boolean;
+        };
+        /**
+         * CapabilitySnapshotPublicView
+         * @description 只暴露任务依赖的非敏感能力事实。
+         */
+        CapabilitySnapshotPublicView: {
+            /**
+             * Available Source Types
+             * @description 计划可使用的公开来源类型。
+             */
+            available_source_types: ("knowledge_retrieval" | "web_search" | "nl2sql_query")[];
+            /**
+             * Dataset Domain
+             * @description 非敏感 Dataset 业务领域。
+             */
+            dataset_domain?: string | null;
+            /**
+             * Dataset Name
+             * @description 非敏感 Dataset 展示名称。
+             */
+            dataset_name?: string | null;
+            /**
+             * Knowledge Retrieval Available
+             * @description 知识库检索是否可用。
+             */
+            knowledge_retrieval_available: boolean;
+            /**
+             * Nl2Sql Query Available
+             * @description 绑定 Dataset 的 NL2SQL 是否可用。
+             */
+            nl2sql_query_available: boolean;
+            /**
+             * Web Direct Allowed
+             * @description 计划创建时是否允许 direct Web。
+             */
+            web_direct_allowed: boolean;
+            /**
+             * Web Fallback Allowed
+             * @description 计划创建时是否允许 Web fallback。
+             */
+            web_fallback_allowed: boolean;
         };
         /**
          * ChangePasswordRequest
@@ -1981,6 +2316,129 @@ export interface components {
              * @description 被授权用户稳定登录用户名。
              */
             username: string;
+        };
+        /**
+         * DocumentTaskPlanPublicView
+         * @description 排除工具参数、原始输出和内部 owner 信息的文档 TaskPlan。
+         */
+        DocumentTaskPlanPublicView: {
+            /**
+             * Created At
+             * Format: date-time
+             * @description TaskPlan 创建时间。
+             */
+            created_at: string;
+            /**
+             * Error Code
+             * @description 计划失败时的稳定公开错误码；不包含原始错误正文。
+             */
+            error_code?: string | null;
+            /**
+             * Objective
+             * @description 用户可见的任务目标。
+             */
+            objective: string;
+            /**
+             * Requires Confirmation
+             * @description 当前是否等待用户确认。
+             */
+            requires_confirmation: boolean;
+            /** @description 不包含 final_output 的计数摘要。 */
+            result_summary: components["schemas"]["DocumentTaskPlanResultSummary"];
+            /**
+             * Session Id
+             * @description 创建该计划的外部会话 ID；旧计划或非会话任务为空。
+             */
+            session_id?: string | null;
+            /** @description TaskPlan 当前生命周期状态。 */
+            status: components["schemas"]["AgentTaskPlanStatus"];
+            /**
+             * Steps
+             * @description 不包含 input、output 或原始错误正文的安全步骤列表。
+             */
+            steps: components["schemas"]["DocumentTaskPlanStepPublicView"][];
+            /**
+             * @description 知识文档管理任务类型。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            task_kind: "knowledge_document_management";
+            /**
+             * Task Plan Id
+             * @description TaskPlan 唯一 ID。
+             */
+            task_plan_id: string;
+            /**
+             * Task Type
+             * @description 用户可见的任务分类。
+             * @enum {string}
+             */
+            task_type: "qa" | "comparison" | "report_generation" | "analysis" | "unknown";
+            /**
+             * Updated At
+             * Format: date-time
+             * @description TaskPlan 最近更新时间。
+             */
+            updated_at: string;
+        };
+        /**
+         * DocumentTaskPlanResultSummary
+         * @description 不包含工具输出的文档 TaskPlan 计数摘要。
+         */
+        DocumentTaskPlanResultSummary: {
+            /**
+             * Completed Steps
+             * @description 已完成步骤数量。
+             */
+            completed_steps: number;
+            /**
+             * Failed Steps
+             * @description 失败步骤数量。
+             */
+            failed_steps: number;
+            /**
+             * Skipped Steps
+             * @description 跳过步骤数量。
+             */
+            skipped_steps: number;
+            /**
+             * Total Steps
+             * @description 计划步骤总数。
+             */
+            total_steps: number;
+        };
+        /**
+         * DocumentTaskPlanStepPublicView
+         * @description 文档 TaskPlan 步骤的安全公开元数据。
+         */
+        DocumentTaskPlanStepPublicView: {
+            /**
+             * Error Code
+             * @description 步骤失败时的稳定公开错误码；不包含原始错误正文。
+             */
+            error_code?: string | null;
+            /**
+             * Requires Confirmation
+             * @description 步骤是否需要人工确认。
+             */
+            requires_confirmation: boolean;
+            /**
+             * Risk Level
+             * @description 服务端评估的稳定公开风险等级；未知内部值统一为 unknown。
+             * @enum {string}
+             */
+            risk_level: "low" | "medium" | "high" | "critical" | "unknown";
+            /** @description 步骤当前执行状态。 */
+            status: components["schemas"]["AgentToolStepStatus"];
+            /**
+             * Step Id
+             * @description 当前 TaskPlan 内稳定的步骤 ID。
+             */
+            step_id: string;
+            /**
+             * Tool Name
+             * @description 供用户识别步骤用途的工具名。
+             */
+            tool_name: string;
         };
         /**
          * ExcelFieldProfile
@@ -3546,6 +4004,420 @@ export interface components {
             message: string;
         };
         /**
+         * RequirementSourcePolicy
+         * @description 一个 Requirement 对外部证据来源的确定性契约。
+         */
+        RequirementSourcePolicy: {
+            /**
+             * Mode
+             * @description all_of 要求全部来源，any_of 接受任一来源，none 不读取新外部事实。
+             * @enum {string}
+             */
+            mode: "all_of" | "any_of" | "none";
+            /**
+             * Source Types
+             * @description Requirement 允许或必须使用的外部来源；none 模式必须为空。
+             */
+            source_types?: ("knowledge_retrieval" | "web_search" | "nl2sql_query")[];
+        };
+        /**
+         * ResearchProgressEvent
+         * @description 可恢复的 Research 执行进度事件。
+         */
+        ResearchProgressEvent: {
+            /**
+             * Active Operations
+             * @description 事件发生时仍在执行的操作名称。
+             */
+            active_operations?: string[];
+            /**
+             * Attempt
+             * @description 事件对应的 Worker attempt。
+             */
+            attempt?: number | null;
+            /**
+             * Event
+             * @description 结构化进度事件名。
+             */
+            event: string;
+            /**
+             * Evidence Count
+             * @description 事件发生时已记录的 Evidence 数量。
+             */
+            evidence_count?: number | null;
+            /**
+             * Last Tool Name
+             * @description 事件发生时最近结束的 Tool 名称。
+             */
+            last_tool_name?: string | null;
+            /**
+             * Reason Code
+             * @description 事件对应的稳定原因码。
+             */
+            reason_code?: string | null;
+            /**
+             * Stage
+             * @description 事件对应的 Worker 阶段。
+             */
+            stage?: ("starting" | "tool_setup" | "tool_selection" | "tool_execution" | "answer_generation" | "evidence_evaluation" | "retry_preparation" | "completed") | null;
+            /**
+             * Status
+             * @description 事件对应的状态。
+             */
+            status?: string | null;
+            /**
+             * Sub Question Id
+             * @description 相关 SubQuestion ID。
+             */
+            sub_question_id?: string | null;
+            /**
+             * Tool Call Count
+             * @description 事件发生时已记录的 ToolCall 数量。
+             */
+            tool_call_count?: number | null;
+            /**
+             * Wave
+             * @description 相关依赖波次。
+             */
+            wave?: number | null;
+        };
+        /**
+         * ResearchTaskFinalOutput
+         * @description 通过 Output Guard 后才能持久化的最终研究输出。
+         */
+        ResearchTaskFinalOutput: {
+            /**
+             * Answer
+             * @description 经过 Output Guard 的安全最终答案。
+             */
+            answer?: string | null;
+            /**
+             * Completed At
+             * Format: date-time
+             * @description 最终输出完成时间。
+             */
+            completed_at: string;
+            /**
+             * Evidence Ids
+             * @description 最终答案实际使用的合法 Evidence ID。
+             */
+            evidence_ids?: string[];
+            /**
+             * Guard Action
+             * @description Output Guard 对最终答案的处理动作。
+             * @enum {string}
+             */
+            guard_action: "allow" | "sanitize" | "block";
+            /**
+             * Guard Reason Codes
+             * @description Output Guard 的安全原因码。
+             */
+            guard_reason_codes?: string[];
+            /**
+             * Included Requirement Ids
+             * @description 最终答案实际综合的 Requirement ID。
+             */
+            included_requirement_ids?: string[];
+            /**
+             * Used Tools
+             * @description 服务端记录的实际成功 Tool 名称。
+             */
+            used_tools?: string[];
+            /**
+             * Warnings
+             * @description 部分完成和输出安全限制。
+             */
+            warnings?: string[];
+        };
+        /**
+         * ResearchTaskPlanPublicView
+         * @description Research TaskPlan v2 的 API/SSE 安全公开视图。
+         */
+        ResearchTaskPlanPublicView: {
+            /** @description 非敏感能力公开摘要。 */
+            capability_snapshot: components["schemas"]["CapabilitySnapshotPublicView"];
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间。
+             */
+            created_at: string;
+            /**
+             * Error Code
+             * @description 失败错误码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 经过清洗的失败说明。
+             */
+            error_message?: string | null;
+            /**
+             * Evidence
+             * @description 公开安全的 Evidence 引用。
+             */
+            evidence: components["schemas"]["AgentTaskEvidencePublicView"][];
+            /** @description 通过 Output Guard 的最终输出。 */
+            final_output?: components["schemas"]["ResearchTaskFinalOutput"] | null;
+            /**
+             * Final Synthesis Instruction
+             * @description 最终综合约束。
+             */
+            final_synthesis_instruction: string;
+            /**
+             * Objective
+             * @description 研究目标。
+             */
+            objective: string;
+            /** @description 结构化执行进度。 */
+            progress: components["schemas"]["ResearchTaskProgress"];
+            /** @description 质量评审和初始校验历史。 */
+            quality_review: components["schemas"]["AgentTaskPlanQualityReview"];
+            /**
+             * Requirement Evidence Statuses
+             * @description Requirement 聚合状态。
+             */
+            requirement_evidence_statuses: components["schemas"]["AgentTaskRequirementEvidenceStatus"][];
+            /**
+             * Requirements
+             * @description 原子需求和证据契约。
+             */
+            requirements: components["schemas"]["AgentTaskRequirement"][];
+            /**
+             * Schema Version
+             * @description Research TaskPlan Schema 版本。
+             * @constant
+             */
+            schema_version: 2;
+            /**
+             * Session Id
+             * @description 创建该计划的外部会话 ID；旧计划或非会话任务为空。
+             */
+            session_id?: string | null;
+            /**
+             * Source Query
+             * @description 服务端解析后的当前任务语义。
+             */
+            source_query: string;
+            /** @description TaskPlan 生命周期状态。 */
+            status: components["schemas"]["AgentTaskPlanStatus"];
+            /**
+             * Sub Question Results
+             * @description 公开安全的 Worker 结果。
+             */
+            sub_question_results: components["schemas"]["ResearchTaskSubQuestionResultPublicView"][];
+            /**
+             * Sub Questions
+             * @description 正式子问题和 WebUsage。
+             */
+            sub_questions: components["schemas"]["ResearchTaskSubQuestion"][];
+            /**
+             * @description 研究任务类型。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            task_kind: "question_decomposition";
+            /**
+             * Task Plan Id
+             * @description TaskPlan ID。
+             */
+            task_plan_id: string;
+            /**
+             * Task Type
+             * @description 展示任务类型。
+             * @constant
+             */
+            task_type: "analysis";
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 更新时间。
+             */
+            updated_at: string;
+            /**
+             * Validation Issues
+             * @description 最终仍保留的 warning。
+             */
+            validation_issues: components["schemas"]["AgentTaskPlanValidationIssue"][];
+        };
+        /**
+         * ResearchTaskProgress
+         * @description Research TaskPlan 的结构化进度快照。
+         */
+        ResearchTaskProgress: {
+            /**
+             * Current Wave
+             * @description 最近已启动的依赖波次。
+             * @default 0
+             */
+            current_wave: number;
+            /**
+             * Events
+             * @description 按发生顺序保存的有限进度事件。
+             */
+            events?: components["schemas"]["ResearchProgressEvent"][];
+            /**
+             * Workers
+             * @description 按 SubQuestion ID 保存的 Worker 进度。
+             */
+            workers?: {
+                [key: string]: components["schemas"]["ResearchWorkerProgress"];
+            };
+        };
+        /**
+         * ResearchTaskSubQuestion
+         * @description 通过校验后由服务端生成的正式研究子问题。
+         */
+        ResearchTaskSubQuestion: {
+            /**
+             * Covers Requirement Ids
+             * @description 该子问题预期提供证据的 Requirement ID。
+             */
+            covers_requirement_ids: string[];
+            /**
+             * Depends On
+             * @description 该子问题依赖的前置候选子问题 ID。
+             */
+            depends_on?: string[];
+            /**
+             * Information Source Hint
+             * @description Planner 建议的主要事实来源；不授予 Tool 权限。
+             * @enum {string}
+             */
+            information_source_hint: "knowledge_retrieval" | "web_search" | "nl2sql_query" | "none";
+            /**
+             * Order
+             * @description 子问题的稳定展示和执行排序。
+             */
+            order: number;
+            /**
+             * Purpose
+             * @description 该子问题对最终任务的作用。
+             */
+            purpose: string;
+            /**
+             * Question
+             * @description Worker 需要回答的具体研究问题。
+             */
+            question: string;
+            /**
+             * Reason
+             * @description 为什么该问题和来源能够覆盖所声明的需求。
+             */
+            reason: string;
+            /**
+             * Sub Question Id
+             * @description 当前候选计划内唯一的子问题 ID。
+             */
+            sub_question_id: string;
+            /**
+             * Web Usage
+             * @description 服务端依据请求策略和来源提示计算的 Web 执行方式。
+             * @enum {string}
+             */
+            web_usage: "direct" | "fallback_on_insufficient_evidence" | "not_used";
+        };
+        /**
+         * ResearchTaskSubQuestionResultPublicView
+         * @description 隐藏 Tool 参数和原始输出后的 Worker 结果。
+         */
+        ResearchTaskSubQuestionResultPublicView: {
+            /**
+             * Answer
+             * @description 经过边界控制的子问题回答。
+             */
+            answer?: string | null;
+            /**
+             * Attempt Count
+             * @description 执行尝试次数。
+             */
+            attempt_count: number;
+            /**
+             * Error Code
+             * @description 稳定错误码。
+             */
+            error_code?: string | null;
+            /**
+             * Evidence Ids
+             * @description 合法 Evidence ID。
+             */
+            evidence_ids: string[];
+            /**
+             * Status
+             * @description Worker 执行状态。
+             * @enum {string}
+             */
+            status: "pending" | "running" | "completed" | "partial" | "failed" | "skipped";
+            /**
+             * Sub Question Id
+             * @description 对应 SubQuestion ID。
+             */
+            sub_question_id: string;
+            /**
+             * Warnings
+             * @description 结果限制说明。
+             */
+            warnings: string[];
+        };
+        /**
+         * ResearchWorkerProgress
+         * @description 一个正式 Research SubQuestion 的公开执行进度。
+         */
+        ResearchWorkerProgress: {
+            /**
+             * Active Operations
+             * @description 当前仍在执行的公开安全操作名称，不包含 Tool 参数。
+             */
+            active_operations?: string[];
+            /**
+             * Attempt
+             * @description 当前研究尝试次数。
+             * @default 0
+             */
+            attempt: number;
+            /**
+             * Error Code
+             * @description Worker 当前错误码。
+             */
+            error_code?: string | null;
+            /**
+             * Evidence Count
+             * @description 内部检查点已记录的 Evidence 数量。
+             * @default 0
+             */
+            evidence_count: number;
+            /**
+             * Last Tool Name
+             * @description 最近结束的 Tool 名称；尚无 ToolCall 时为空。
+             */
+            last_tool_name?: string | null;
+            /**
+             * Stage
+             * @description 公开安全的 Worker 当前阶段。
+             * @default starting
+             * @enum {string}
+             */
+            stage: "starting" | "tool_setup" | "tool_selection" | "tool_execution" | "answer_generation" | "evidence_evaluation" | "retry_preparation" | "completed";
+            /**
+             * Status
+             * @description Worker 当前执行状态。
+             * @default pending
+             * @enum {string}
+             */
+            status: "pending" | "running" | "completed" | "partial" | "failed" | "skipped";
+            /**
+             * Tool Call Count
+             * @description 内部检查点已记录的 ToolCall 数量。
+             * @default 0
+             */
+            tool_call_count: number;
+            /**
+             * Wave
+             * @description Worker 所属依赖波次。
+             * @default 0
+             */
+            wave: number;
+        };
+        /**
          * ResetManagedUserPasswordRequest
          * @description 由有权 actor 设置目标账号的新初始密码。
          */
@@ -4351,9 +5223,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ResearchTaskPlanPublicView"] | components["schemas"]["DocumentTaskPlanPublicView"];
                 };
             };
             /** @description Validation Error */

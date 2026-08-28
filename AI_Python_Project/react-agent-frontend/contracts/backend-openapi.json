@@ -99,6 +99,137 @@
         "title": "AccountType",
         "type": "string"
       },
+      "AgentTaskEvidencePublicView": {
+        "additionalProperties": false,
+        "description": "Evidence Registry 中允许返回给当前任务拥有者的字段。",
+        "properties": {
+          "evidence_id": {
+            "description": "Evidence 稳定 ID。",
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "evidence_type": {
+            "description": "Evidence 类型。",
+            "enum": [
+              "knowledge_chunk",
+              "web_citation",
+              "sql_query_result",
+              "derived_synthesis"
+            ],
+            "title": "Evidence Type",
+            "type": "string"
+          },
+          "query_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "NL2SQL 查询审计 ID。",
+            "title": "Query Id"
+          },
+          "reference_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "公开安全的证据引用。",
+            "title": "Reference Id"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "knowledge_retrieval",
+                  "web_search",
+                  "nl2sql_query"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "外部来源类型；派生证据为空。",
+            "title": "Source Type"
+          },
+          "sub_question_id": {
+            "description": "产生 Evidence 的 SubQuestion ID。",
+            "title": "Sub Question Id",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "公开 Web citation URL。",
+            "title": "Url"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "evidence_type",
+          "sub_question_id"
+        ],
+        "title": "AgentTaskEvidencePublicView",
+        "type": "object"
+      },
+      "AgentTaskExpectedEvidence": {
+        "additionalProperties": false,
+        "description": "Requirement 期望获得的可计数证据。",
+        "properties": {
+          "evidence_type": {
+            "description": "期望证据的结构化类型。",
+            "enum": [
+              "knowledge_chunk",
+              "web_citation",
+              "sql_query_result",
+              "derived_synthesis"
+            ],
+            "title": "Evidence Type",
+            "type": "string"
+          },
+          "minimum_count": {
+            "description": "满足该证据契约所需的最少合法 Evidence 数量。",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Minimum Count",
+            "type": "integer"
+          },
+          "required_attributes": {
+            "description": "SQL 结果必须提供的 Dataset 逻辑字段；非 SQL 证据必须为空。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Attributes",
+            "type": "array"
+          },
+          "requires_query_id": {
+            "default": false,
+            "description": "证据是否必须携带真实 NL2SQL query_id；仅 SQL 证据允许为 true。",
+            "title": "Requires Query Id",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "evidence_type",
+          "minimum_count"
+        ],
+        "title": "AgentTaskExpectedEvidence",
+        "type": "object"
+      },
       "AgentTaskPlanConfirmRequest": {
         "properties": {
           "confirmed": {
@@ -338,6 +469,198 @@
         "title": "AgentTaskPlanListResponse",
         "type": "object"
       },
+      "AgentTaskPlanQualityChecks": {
+        "additionalProperties": false,
+        "description": "Reviewer 使用的可解释 pass/fail 检查项。",
+        "properties": {
+          "completion_policy_alignment": {
+            "description": "strict/allow_partial 是否符合用户的完整性要求。",
+            "enum": [
+              "pass",
+              "fail"
+            ],
+            "title": "Completion Policy Alignment",
+            "type": "string"
+          },
+          "dependency_quality": {
+            "description": "依赖是否能支撑综合结论。",
+            "enum": [
+              "pass",
+              "fail"
+            ],
+            "title": "Dependency Quality",
+            "type": "string"
+          },
+          "executability": {
+            "description": "计划是否能由当前 Tool 和字段执行。",
+            "enum": [
+              "pass",
+              "fail"
+            ],
+            "title": "Executability",
+            "type": "string"
+          },
+          "requirement_coverage": {
+            "description": "用户需求是否完整覆盖。",
+            "enum": [
+              "pass",
+              "fail"
+            ],
+            "title": "Requirement Coverage",
+            "type": "string"
+          },
+          "semantic_alignment": {
+            "description": "计划是否保持 resolved query 语义。",
+            "enum": [
+              "pass",
+              "fail"
+            ],
+            "title": "Semantic Alignment",
+            "type": "string"
+          },
+          "source_alignment": {
+            "description": "来源和完成策略是否符合用户原意。",
+            "enum": [
+              "pass",
+              "fail"
+            ],
+            "title": "Source Alignment",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requirement_coverage",
+          "source_alignment",
+          "semantic_alignment",
+          "dependency_quality",
+          "executability",
+          "completion_policy_alignment"
+        ],
+        "title": "AgentTaskPlanQualityChecks",
+        "type": "object"
+      },
+      "AgentTaskPlanQualityReview": {
+        "additionalProperties": false,
+        "description": "只保存 accepted/revised 有效 TaskPlan 的最终评审结果。",
+        "properties": {
+          "checks": {
+            "$ref": "#/components/schemas/AgentTaskPlanQualityChecks",
+            "description": "最终质量检查结果。"
+          },
+          "initial_validation_findings": {
+            "description": "Candidate 第一次确定性校验发现的问题历史。",
+            "items": {
+              "$ref": "#/components/schemas/AgentTaskPlanValidationIssue"
+            },
+            "title": "Initial Validation Findings",
+            "type": "array"
+          },
+          "reviewer_findings": {
+            "description": "Reviewer 语义发现及其最终解决状态。",
+            "items": {
+              "$ref": "#/components/schemas/AgentTaskPlanReviewerFinding"
+            },
+            "title": "Reviewer Findings",
+            "type": "array"
+          },
+          "revision_count": {
+            "description": "Reviewer 实际修订次数。",
+            "enum": [
+              0,
+              1
+            ],
+            "title": "Revision Count",
+            "type": "integer"
+          },
+          "revision_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "一次修订的摘要；未修订时为空。",
+            "title": "Revision Summary"
+          },
+          "verdict": {
+            "description": "最终有效计划的 Reviewer 结论。",
+            "enum": [
+              "accepted",
+              "revised"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "checks",
+          "revision_count"
+        ],
+        "title": "AgentTaskPlanQualityReview",
+        "type": "object"
+      },
+      "AgentTaskPlanReviewerFinding": {
+        "additionalProperties": false,
+        "description": "Reviewer 发现的语义质量问题及最终解决状态。",
+        "properties": {
+          "code": {
+            "description": "Reviewer 语义发现码。",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "description": "经过清洗的 Reviewer 发现说明。",
+            "title": "Message",
+            "type": "string"
+          },
+          "requirement_ids": {
+            "description": "受影响的 Requirement ID。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Requirement Ids",
+            "type": "array"
+          },
+          "severity": {
+            "description": "发现的严重程度。",
+            "enum": [
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "status": {
+            "description": "本次发现尚未处理、已修复或最终仍存在。",
+            "enum": [
+              "detected",
+              "resolved",
+              "remaining"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "sub_question_ids": {
+            "description": "受影响的 SubQuestion ID。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sub Question Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "severity",
+          "status"
+        ],
+        "title": "AgentTaskPlanReviewerFinding",
+        "type": "object"
+      },
       "AgentTaskPlanStatus": {
         "description": "任务整体状态：LLM 多步骤任务计划状态。",
         "enum": [
@@ -351,6 +674,191 @@
           "cancelled"
         ],
         "title": "AgentTaskPlanStatus",
+        "type": "string"
+      },
+      "AgentTaskPlanValidationIssue": {
+        "additionalProperties": false,
+        "description": "后端确定性校验发现的结构、来源或可执行性问题。",
+        "properties": {
+          "code": {
+            "description": "确定性校验问题码。",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "description": "经过清洗的校验问题说明。",
+            "title": "Message",
+            "type": "string"
+          },
+          "requirement_ids": {
+            "description": "受影响的 Requirement ID。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Requirement Ids",
+            "type": "array"
+          },
+          "severity": {
+            "description": "warning 可保存，error 必须阻止计划。",
+            "enum": [
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "sub_question_ids": {
+            "description": "受影响的 SubQuestion ID。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sub Question Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "severity"
+        ],
+        "title": "AgentTaskPlanValidationIssue",
+        "type": "object"
+      },
+      "AgentTaskRequirement": {
+        "additionalProperties": false,
+        "description": "从 resolved query 拆出的原子需求及证据完成策略。",
+        "properties": {
+          "completion_policy": {
+            "description": "strict 不允许缺证据；allow_partial 允许带明确限制的部分结论。",
+            "enum": [
+              "strict",
+              "allow_partial"
+            ],
+            "title": "Completion Policy",
+            "type": "string"
+          },
+          "description": {
+            "description": "必须由最终答案覆盖的原子用户需求。",
+            "title": "Description",
+            "type": "string"
+          },
+          "expected_evidence": {
+            "description": "该需求必须达到的结构化证据阈值。",
+            "items": {
+              "$ref": "#/components/schemas/AgentTaskExpectedEvidence"
+            },
+            "title": "Expected Evidence",
+            "type": "array"
+          },
+          "requirement_id": {
+            "description": "当前 Research TaskPlan 内唯一的 Requirement ID。",
+            "title": "Requirement Id",
+            "type": "string"
+          },
+          "source_policy": {
+            "$ref": "#/components/schemas/RequirementSourcePolicy",
+            "description": "该需求的外部来源组合规则。"
+          }
+        },
+        "required": [
+          "requirement_id",
+          "description",
+          "source_policy",
+          "expected_evidence",
+          "completion_policy"
+        ],
+        "title": "AgentTaskRequirement",
+        "type": "object"
+      },
+      "AgentTaskRequirementEvidenceStatus": {
+        "additionalProperties": false,
+        "description": "Aggregator 对一个 Requirement 的当前确定性判断。",
+        "properties": {
+          "covering_sub_question_ids": {
+            "description": "声明覆盖该 Requirement 的正式 SubQuestion ID。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Covering Sub Question Ids",
+            "type": "array"
+          },
+          "evidence_refs": {
+            "description": "参与本次 Requirement 判断的合法 Evidence ID。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "missing_source_types": {
+            "description": "尚未达到证据契约的外部来源。",
+            "items": {
+              "enum": [
+                "knowledge_retrieval",
+                "web_search",
+                "nl2sql_query"
+              ],
+              "type": "string"
+            },
+            "title": "Missing Source Types",
+            "type": "array"
+          },
+          "reason_codes": {
+            "description": "证据不足或失败的稳定原因码。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "requirement_id": {
+            "description": "对应的 Requirement ID。",
+            "title": "Requirement Id",
+            "type": "string"
+          },
+          "satisfied_source_types": {
+            "description": "已经达到 ExpectedEvidence 阈值的外部来源。",
+            "items": {
+              "enum": [
+                "knowledge_retrieval",
+                "web_search",
+                "nl2sql_query"
+              ],
+              "type": "string"
+            },
+            "title": "Satisfied Source Types",
+            "type": "array"
+          },
+          "status": {
+            "description": "Requirement 当前证据状态。",
+            "enum": [
+              "pending",
+              "partially_satisfied",
+              "satisfied",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requirement_id",
+          "status"
+        ],
+        "title": "AgentTaskRequirementEvidenceStatus",
+        "type": "object"
+      },
+      "AgentToolStepStatus": {
+        "description": "TaskPlan 中单个工具步骤的执行状态。",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "waiting_confirmation",
+          "failed",
+          "skipped"
+        ],
+        "title": "AgentToolStepStatus",
         "type": "string"
       },
       "ApiKeySummary": {
@@ -487,6 +995,78 @@
           "expected_sha256"
         ],
         "title": "Body_update_knowledge_import_job_knowledge_documents__doc_id__import_jobs_post",
+        "type": "object"
+      },
+      "CapabilitySnapshotPublicView": {
+        "additionalProperties": false,
+        "description": "只暴露任务依赖的非敏感能力事实。",
+        "properties": {
+          "available_source_types": {
+            "description": "计划可使用的公开来源类型。",
+            "items": {
+              "enum": [
+                "knowledge_retrieval",
+                "web_search",
+                "nl2sql_query"
+              ],
+              "type": "string"
+            },
+            "title": "Available Source Types",
+            "type": "array"
+          },
+          "dataset_domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "非敏感 Dataset 业务领域。",
+            "title": "Dataset Domain"
+          },
+          "dataset_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "非敏感 Dataset 展示名称。",
+            "title": "Dataset Name"
+          },
+          "knowledge_retrieval_available": {
+            "description": "知识库检索是否可用。",
+            "title": "Knowledge Retrieval Available",
+            "type": "boolean"
+          },
+          "nl2sql_query_available": {
+            "description": "绑定 Dataset 的 NL2SQL 是否可用。",
+            "title": "Nl2Sql Query Available",
+            "type": "boolean"
+          },
+          "web_direct_allowed": {
+            "description": "计划创建时是否允许 direct Web。",
+            "title": "Web Direct Allowed",
+            "type": "boolean"
+          },
+          "web_fallback_allowed": {
+            "description": "计划创建时是否允许 Web fallback。",
+            "title": "Web Fallback Allowed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "available_source_types",
+          "web_direct_allowed",
+          "web_fallback_allowed",
+          "knowledge_retrieval_available",
+          "nl2sql_query_available"
+        ],
+        "title": "CapabilitySnapshotPublicView",
         "type": "object"
       },
       "ChangePasswordRequest": {
@@ -1545,6 +2125,208 @@
           "username"
         ],
         "title": "DocumentAccessGrantUser",
+        "type": "object"
+      },
+      "DocumentTaskPlanPublicView": {
+        "additionalProperties": false,
+        "description": "排除工具参数、原始输出和内部 owner 信息的文档 TaskPlan。",
+        "properties": {
+          "created_at": {
+            "description": "TaskPlan 创建时间。",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "计划失败时的稳定公开错误码；不包含原始错误正文。",
+            "title": "Error Code"
+          },
+          "objective": {
+            "description": "用户可见的任务目标。",
+            "title": "Objective",
+            "type": "string"
+          },
+          "requires_confirmation": {
+            "description": "当前是否等待用户确认。",
+            "title": "Requires Confirmation",
+            "type": "boolean"
+          },
+          "result_summary": {
+            "$ref": "#/components/schemas/DocumentTaskPlanResultSummary",
+            "description": "不包含 final_output 的计数摘要。"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "创建该计划的外部会话 ID；旧计划或非会话任务为空。",
+            "title": "Session Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentTaskPlanStatus",
+            "description": "TaskPlan 当前生命周期状态。"
+          },
+          "steps": {
+            "description": "不包含 input、output 或原始错误正文的安全步骤列表。",
+            "items": {
+              "$ref": "#/components/schemas/DocumentTaskPlanStepPublicView"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "task_kind": {
+            "const": "knowledge_document_management",
+            "description": "知识文档管理任务类型。",
+            "title": "Task Kind",
+            "type": "string"
+          },
+          "task_plan_id": {
+            "description": "TaskPlan 唯一 ID。",
+            "title": "Task Plan Id",
+            "type": "string"
+          },
+          "task_type": {
+            "description": "用户可见的任务分类。",
+            "enum": [
+              "qa",
+              "comparison",
+              "report_generation",
+              "analysis",
+              "unknown"
+            ],
+            "title": "Task Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "TaskPlan 最近更新时间。",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_plan_id",
+          "task_kind",
+          "objective",
+          "task_type",
+          "status",
+          "requires_confirmation",
+          "steps",
+          "result_summary",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DocumentTaskPlanPublicView",
+        "type": "object"
+      },
+      "DocumentTaskPlanResultSummary": {
+        "additionalProperties": false,
+        "description": "不包含工具输出的文档 TaskPlan 计数摘要。",
+        "properties": {
+          "completed_steps": {
+            "description": "已完成步骤数量。",
+            "minimum": 0.0,
+            "title": "Completed Steps",
+            "type": "integer"
+          },
+          "failed_steps": {
+            "description": "失败步骤数量。",
+            "minimum": 0.0,
+            "title": "Failed Steps",
+            "type": "integer"
+          },
+          "skipped_steps": {
+            "description": "跳过步骤数量。",
+            "minimum": 0.0,
+            "title": "Skipped Steps",
+            "type": "integer"
+          },
+          "total_steps": {
+            "description": "计划步骤总数。",
+            "minimum": 0.0,
+            "title": "Total Steps",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_steps",
+          "completed_steps",
+          "failed_steps",
+          "skipped_steps"
+        ],
+        "title": "DocumentTaskPlanResultSummary",
+        "type": "object"
+      },
+      "DocumentTaskPlanStepPublicView": {
+        "additionalProperties": false,
+        "description": "文档 TaskPlan 步骤的安全公开元数据。",
+        "properties": {
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "步骤失败时的稳定公开错误码；不包含原始错误正文。",
+            "title": "Error Code"
+          },
+          "requires_confirmation": {
+            "description": "步骤是否需要人工确认。",
+            "title": "Requires Confirmation",
+            "type": "boolean"
+          },
+          "risk_level": {
+            "description": "服务端评估的稳定公开风险等级；未知内部值统一为 unknown。",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical",
+              "unknown"
+            ],
+            "title": "Risk Level",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentToolStepStatus",
+            "description": "步骤当前执行状态。"
+          },
+          "step_id": {
+            "description": "当前 TaskPlan 内稳定的步骤 ID。",
+            "title": "Step Id",
+            "type": "string"
+          },
+          "tool_name": {
+            "description": "供用户识别步骤用途的工具名。",
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step_id",
+          "tool_name",
+          "status",
+          "risk_level",
+          "requires_confirmation"
+        ],
+        "title": "DocumentTaskPlanStepPublicView",
         "type": "object"
       },
       "ExcelFieldProfile": {
@@ -4238,6 +5020,745 @@
         "title": "RequestValidationFieldError",
         "type": "object"
       },
+      "RequirementSourcePolicy": {
+        "additionalProperties": false,
+        "description": "一个 Requirement 对外部证据来源的确定性契约。",
+        "properties": {
+          "mode": {
+            "description": "all_of 要求全部来源，any_of 接受任一来源，none 不读取新外部事实。",
+            "enum": [
+              "all_of",
+              "any_of",
+              "none"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "source_types": {
+            "description": "Requirement 允许或必须使用的外部来源；none 模式必须为空。",
+            "items": {
+              "enum": [
+                "knowledge_retrieval",
+                "web_search",
+                "nl2sql_query"
+              ],
+              "type": "string"
+            },
+            "title": "Source Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "RequirementSourcePolicy",
+        "type": "object"
+      },
+      "ResearchProgressEvent": {
+        "additionalProperties": false,
+        "description": "可恢复的 Research 执行进度事件。",
+        "properties": {
+          "active_operations": {
+            "description": "事件发生时仍在执行的操作名称。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Active Operations",
+            "type": "array"
+          },
+          "attempt": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "事件对应的 Worker attempt。",
+            "title": "Attempt"
+          },
+          "event": {
+            "description": "结构化进度事件名。",
+            "title": "Event",
+            "type": "string"
+          },
+          "evidence_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "事件发生时已记录的 Evidence 数量。",
+            "title": "Evidence Count"
+          },
+          "last_tool_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "事件发生时最近结束的 Tool 名称。",
+            "title": "Last Tool Name"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "事件对应的稳定原因码。",
+            "title": "Reason Code"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "starting",
+                  "tool_setup",
+                  "tool_selection",
+                  "tool_execution",
+                  "answer_generation",
+                  "evidence_evaluation",
+                  "retry_preparation",
+                  "completed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "事件对应的 Worker 阶段。",
+            "title": "Stage"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "事件对应的状态。",
+            "title": "Status"
+          },
+          "sub_question_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "相关 SubQuestion ID。",
+            "title": "Sub Question Id"
+          },
+          "tool_call_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "事件发生时已记录的 ToolCall 数量。",
+            "title": "Tool Call Count"
+          },
+          "wave": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "相关依赖波次。",
+            "title": "Wave"
+          }
+        },
+        "required": [
+          "event"
+        ],
+        "title": "ResearchProgressEvent",
+        "type": "object"
+      },
+      "ResearchTaskFinalOutput": {
+        "additionalProperties": false,
+        "description": "通过 Output Guard 后才能持久化的最终研究输出。",
+        "properties": {
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "经过 Output Guard 的安全最终答案。",
+            "title": "Answer"
+          },
+          "completed_at": {
+            "description": "最终输出完成时间。",
+            "format": "date-time",
+            "title": "Completed At",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "description": "最终答案实际使用的合法 Evidence ID。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "guard_action": {
+            "description": "Output Guard 对最终答案的处理动作。",
+            "enum": [
+              "allow",
+              "sanitize",
+              "block"
+            ],
+            "title": "Guard Action",
+            "type": "string"
+          },
+          "guard_reason_codes": {
+            "description": "Output Guard 的安全原因码。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Guard Reason Codes",
+            "type": "array"
+          },
+          "included_requirement_ids": {
+            "description": "最终答案实际综合的 Requirement ID。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Included Requirement Ids",
+            "type": "array"
+          },
+          "used_tools": {
+            "description": "服务端记录的实际成功 Tool 名称。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Used Tools",
+            "type": "array"
+          },
+          "warnings": {
+            "description": "部分完成和输出安全限制。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "guard_action",
+          "completed_at"
+        ],
+        "title": "ResearchTaskFinalOutput",
+        "type": "object"
+      },
+      "ResearchTaskPlanPublicView": {
+        "additionalProperties": false,
+        "description": "Research TaskPlan v2 的 API/SSE 安全公开视图。",
+        "properties": {
+          "capability_snapshot": {
+            "$ref": "#/components/schemas/CapabilitySnapshotPublicView",
+            "description": "非敏感能力公开摘要。"
+          },
+          "created_at": {
+            "description": "创建时间。",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败错误码。",
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "经过清洗的失败说明。",
+            "title": "Error Message"
+          },
+          "evidence": {
+            "description": "公开安全的 Evidence 引用。",
+            "items": {
+              "$ref": "#/components/schemas/AgentTaskEvidencePublicView"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "final_output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResearchTaskFinalOutput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "通过 Output Guard 的最终输出。"
+          },
+          "final_synthesis_instruction": {
+            "description": "最终综合约束。",
+            "title": "Final Synthesis Instruction",
+            "type": "string"
+          },
+          "objective": {
+            "description": "研究目标。",
+            "title": "Objective",
+            "type": "string"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ResearchTaskProgress",
+            "description": "结构化执行进度。"
+          },
+          "quality_review": {
+            "$ref": "#/components/schemas/AgentTaskPlanQualityReview",
+            "description": "质量评审和初始校验历史。"
+          },
+          "requirement_evidence_statuses": {
+            "description": "Requirement 聚合状态。",
+            "items": {
+              "$ref": "#/components/schemas/AgentTaskRequirementEvidenceStatus"
+            },
+            "title": "Requirement Evidence Statuses",
+            "type": "array"
+          },
+          "requirements": {
+            "description": "原子需求和证据契约。",
+            "items": {
+              "$ref": "#/components/schemas/AgentTaskRequirement"
+            },
+            "title": "Requirements",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": 2,
+            "description": "Research TaskPlan Schema 版本。",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "创建该计划的外部会话 ID；旧计划或非会话任务为空。",
+            "title": "Session Id"
+          },
+          "source_query": {
+            "description": "服务端解析后的当前任务语义。",
+            "title": "Source Query",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentTaskPlanStatus",
+            "description": "TaskPlan 生命周期状态。"
+          },
+          "sub_question_results": {
+            "description": "公开安全的 Worker 结果。",
+            "items": {
+              "$ref": "#/components/schemas/ResearchTaskSubQuestionResultPublicView"
+            },
+            "title": "Sub Question Results",
+            "type": "array"
+          },
+          "sub_questions": {
+            "description": "正式子问题和 WebUsage。",
+            "items": {
+              "$ref": "#/components/schemas/ResearchTaskSubQuestion"
+            },
+            "title": "Sub Questions",
+            "type": "array"
+          },
+          "task_kind": {
+            "const": "question_decomposition",
+            "description": "研究任务类型。",
+            "title": "Task Kind",
+            "type": "string"
+          },
+          "task_plan_id": {
+            "description": "TaskPlan ID。",
+            "title": "Task Plan Id",
+            "type": "string"
+          },
+          "task_type": {
+            "const": "analysis",
+            "description": "展示任务类型。",
+            "title": "Task Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "更新时间。",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "validation_issues": {
+            "description": "最终仍保留的 warning。",
+            "items": {
+              "$ref": "#/components/schemas/AgentTaskPlanValidationIssue"
+            },
+            "title": "Validation Issues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schema_version",
+          "task_plan_id",
+          "task_kind",
+          "task_type",
+          "source_query",
+          "objective",
+          "final_synthesis_instruction",
+          "requirements",
+          "sub_questions",
+          "quality_review",
+          "validation_issues",
+          "capability_snapshot",
+          "progress",
+          "sub_question_results",
+          "evidence",
+          "requirement_evidence_statuses",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ResearchTaskPlanPublicView",
+        "type": "object"
+      },
+      "ResearchTaskProgress": {
+        "additionalProperties": false,
+        "description": "Research TaskPlan 的结构化进度快照。",
+        "properties": {
+          "current_wave": {
+            "default": 0,
+            "description": "最近已启动的依赖波次。",
+            "minimum": 0.0,
+            "title": "Current Wave",
+            "type": "integer"
+          },
+          "events": {
+            "description": "按发生顺序保存的有限进度事件。",
+            "items": {
+              "$ref": "#/components/schemas/ResearchProgressEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "workers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ResearchWorkerProgress"
+            },
+            "description": "按 SubQuestion ID 保存的 Worker 进度。",
+            "title": "Workers",
+            "type": "object"
+          }
+        },
+        "title": "ResearchTaskProgress",
+        "type": "object"
+      },
+      "ResearchTaskSubQuestion": {
+        "additionalProperties": false,
+        "description": "通过校验后由服务端生成的正式研究子问题。",
+        "properties": {
+          "covers_requirement_ids": {
+            "description": "该子问题预期提供证据的 Requirement ID。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Covers Requirement Ids",
+            "type": "array"
+          },
+          "depends_on": {
+            "description": "该子问题依赖的前置候选子问题 ID。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Depends On",
+            "type": "array"
+          },
+          "information_source_hint": {
+            "description": "Planner 建议的主要事实来源；不授予 Tool 权限。",
+            "enum": [
+              "knowledge_retrieval",
+              "web_search",
+              "nl2sql_query",
+              "none"
+            ],
+            "title": "Information Source Hint",
+            "type": "string"
+          },
+          "order": {
+            "description": "子问题的稳定展示和执行排序。",
+            "minimum": 1.0,
+            "title": "Order",
+            "type": "integer"
+          },
+          "purpose": {
+            "description": "该子问题对最终任务的作用。",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "question": {
+            "description": "Worker 需要回答的具体研究问题。",
+            "title": "Question",
+            "type": "string"
+          },
+          "reason": {
+            "description": "为什么该问题和来源能够覆盖所声明的需求。",
+            "title": "Reason",
+            "type": "string"
+          },
+          "sub_question_id": {
+            "description": "当前候选计划内唯一的子问题 ID。",
+            "title": "Sub Question Id",
+            "type": "string"
+          },
+          "web_usage": {
+            "description": "服务端依据请求策略和来源提示计算的 Web 执行方式。",
+            "enum": [
+              "direct",
+              "fallback_on_insufficient_evidence",
+              "not_used"
+            ],
+            "title": "Web Usage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sub_question_id",
+          "order",
+          "question",
+          "purpose",
+          "information_source_hint",
+          "covers_requirement_ids",
+          "reason",
+          "web_usage"
+        ],
+        "title": "ResearchTaskSubQuestion",
+        "type": "object"
+      },
+      "ResearchTaskSubQuestionResultPublicView": {
+        "additionalProperties": false,
+        "description": "隐藏 Tool 参数和原始输出后的 Worker 结果。",
+        "properties": {
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "经过边界控制的子问题回答。",
+            "title": "Answer"
+          },
+          "attempt_count": {
+            "description": "执行尝试次数。",
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "稳定错误码。",
+            "title": "Error Code"
+          },
+          "evidence_ids": {
+            "description": "合法 Evidence ID。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "status": {
+            "description": "Worker 执行状态。",
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "partial",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "sub_question_id": {
+            "description": "对应 SubQuestion ID。",
+            "title": "Sub Question Id",
+            "type": "string"
+          },
+          "warnings": {
+            "description": "结果限制说明。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sub_question_id",
+          "status",
+          "attempt_count",
+          "evidence_ids",
+          "warnings"
+        ],
+        "title": "ResearchTaskSubQuestionResultPublicView",
+        "type": "object"
+      },
+      "ResearchWorkerProgress": {
+        "additionalProperties": false,
+        "description": "一个正式 Research SubQuestion 的公开执行进度。",
+        "properties": {
+          "active_operations": {
+            "description": "当前仍在执行的公开安全操作名称，不包含 Tool 参数。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Active Operations",
+            "type": "array"
+          },
+          "attempt": {
+            "default": 0,
+            "description": "当前研究尝试次数。",
+            "minimum": 0.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Worker 当前错误码。",
+            "title": "Error Code"
+          },
+          "evidence_count": {
+            "default": 0,
+            "description": "内部检查点已记录的 Evidence 数量。",
+            "minimum": 0.0,
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "last_tool_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近结束的 Tool 名称；尚无 ToolCall 时为空。",
+            "title": "Last Tool Name"
+          },
+          "stage": {
+            "default": "starting",
+            "description": "公开安全的 Worker 当前阶段。",
+            "enum": [
+              "starting",
+              "tool_setup",
+              "tool_selection",
+              "tool_execution",
+              "answer_generation",
+              "evidence_evaluation",
+              "retry_preparation",
+              "completed"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "default": "pending",
+            "description": "Worker 当前执行状态。",
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "partial",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tool_call_count": {
+            "default": 0,
+            "description": "内部检查点已记录的 ToolCall 数量。",
+            "minimum": 0.0,
+            "title": "Tool Call Count",
+            "type": "integer"
+          },
+          "wave": {
+            "default": 0,
+            "description": "Worker 所属依赖波次。",
+            "minimum": 0.0,
+            "title": "Wave",
+            "type": "integer"
+          }
+        },
+        "title": "ResearchWorkerProgress",
+        "type": "object"
+      },
       "ResetManagedUserPasswordRequest": {
         "additionalProperties": false,
         "description": "由有权 actor 设置目标账号的新初始密码。",
@@ -6314,9 +7835,22 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Agent Task Plan Endpoint Agent Task Plans  Task Plan Id  Get",
-                  "type": "object"
+                  "discriminator": {
+                    "mapping": {
+                      "knowledge_document_management": "#/components/schemas/DocumentTaskPlanPublicView",
+                      "question_decomposition": "#/components/schemas/ResearchTaskPlanPublicView"
+                    },
+                    "propertyName": "task_kind"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ResearchTaskPlanPublicView"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DocumentTaskPlanPublicView"
+                    }
+                  ],
+                  "title": "Response Get Agent Task Plan Endpoint Agent Task Plans  Task Plan Id  Get"
                 }
               }
             },
