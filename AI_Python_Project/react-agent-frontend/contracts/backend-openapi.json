@@ -5001,7 +5001,10 @@
               "current_password",
               "new_password",
               "title",
-              "query"
+              "query",
+              "status",
+              "session_id",
+              "limit"
             ],
             "title": "Field",
             "type": "string"
@@ -7754,11 +7757,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "List Agent Task Plans Endpoint",
@@ -7860,11 +7863,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Get Agent Task Plan Endpoint",
@@ -7964,11 +7967,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Cancel Agent Task Plan Endpoint",
@@ -8223,11 +8226,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Confirm Agent Task Plan Stream Endpoint",
@@ -8314,11 +8317,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Get Agent Task Plan Markdown Endpoint",
@@ -8418,11 +8421,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Retry Agent Task Plan Endpoint",
