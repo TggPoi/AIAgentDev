@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 6 - TaskPlan
 
-Current Step: Slice 6 contract-first reconnaissance 已完成；TaskPlan detail transport、422 validation 与 confirm-stream business event 三项契约缺口已分别确认并正式记录为 CG004-CG006
+Current Step: 用户已批准 CG004-CG006 的严格受限 backend contract fix；Context Recovery 已确认 HEAD、working set、现有 contract gaps 与修改前 focused baseline，现进入 backend test-first 修复
 
-Next Action: 等待用户明确批准或拒绝 CG004-CG006 的严格受限 TaskPlan backend contract fix；未获授权前不得根据内部 runtime dict 自行定义 frontend DTO、弱化 generated type boundary 或开始 TaskPlan 页面实现
+Next Action: 先在公开 HTTP/OpenAPI seam 为 CG004 增加两种 task kind 的安全 detail contract expected-red test；确认失败只由缺失 discriminated public response/projection 导致后，再做最小 backend 实现
 
 Blocking Issues:
 
@@ -258,7 +258,7 @@ Explicit Boundary:
 
 ### Slice 6 - TaskPlan
 
-Status: BLOCKED
+Status: IN_PROGRESS
 
 Goal: 完成 TaskPlan 列表、详情、Markdown、确认流、取消、重试和恢复。
 
@@ -486,11 +486,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 6 / BLOCKED。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；backend contract recovery 已确认 CG004-CG006，当前未开始 frontend coding。
+- Slice 6 / IN_PROGRESS。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；CG004-CG006 已获严格受限授权，当前先执行 backend contract test-first 修复，尚未开始 frontend TaskPlan coding。
 
 Next Action:
 
-- 等待用户明确批准或拒绝 CG004-CG006 的严格受限 backend contract fix。批准后必须 backend test-first、独立 checkpoint、重新导出 OpenAPI/generated types 并确认 Runtime = OpenAPI = Tests；未获授权前停止编码。
+- 在公开 HTTP/OpenAPI seam 为 CG004 增加两种 task kind 的安全 detail contract expected-red test。CG004-CG006 必须按 vertical red/green cycle 完成，随后创建独立 backend checkpoint、重新导出 OpenAPI/generated types，并确认 Runtime = OpenAPI = Tests 后才能开始 frontend TaskPlan implementation。
 
 Relevant Files:
 
@@ -517,6 +517,17 @@ Relevant Files:
 - `../python-agent-study/src/fast_app/domain/agent_task_plan.py`
 - `../python-agent-study/src/fast_app/domain/research_task_plan.py`
 - `../python-agent-study/scripts/tests/agent_research/test_agent_task_plan_list.py`
+
+Context Recovery Evidence (verified 2026-08-28 after CG004-CG006 authorization):
+
+- frontend/backend 目录再次确认共享 Git root `D:/AI_Agent_Project` 与 HEAD `bf384c5cf3dd8e884e2354299c30ed7fcee237e9`，branch 为 `master...origin/master [ahead 24]`；frontend scoped unstaged/staged diff 为空，backend tracked unstaged/staged diff 为空。
+- backend 当前另有 7 个未跟踪 evaluation dataset builder/test/report/fixture 文件，均不属于 Initial React Slice 6 working set；本 Slice 不读取、不修改、不暂存，也不把它们计入 contract fix checkpoint。
+- 最近 checkpoints `633a07a`、`215761c` 与 `bf384c5` 分别证明 Slice 5 Markdown implementation、Slice 5 Gate/进入 TaskPlan，以及 CG004-CG006 blocker 记录；最后 verified completed Slice 仍为 5，Slice 0-5 不重新实现。
+- frontend `src/features/task-plans/` 仍不存在，`/tasks` 仅装配 placeholder；package/lockfile 精确保留 `openapi-typescript@7.13.0`、`react-markdown@10.1.0`、`remark-gfm@4.0.1`，committed OpenAPI/generated contract 无工作区差异。
+- committed OpenAPI 再次确认 detail 200 为 arbitrary object、Initial React TaskPlan routes 422 为 `HTTPValidationError`、confirm-stream 200 为 generic `RagSseEventFrame`；真实 backend Route/Schema/domain/exception handler/tests 与 CG004-CG006 Evidence 一致。
+- 修改前 `pnpm contracts:check` 通过；backend `test_agent_task_plan_list.assert_http_contract()`、`test_rag_stream_contract.py` 与 `test_schema_field_descriptions.py` 通过。这些 baseline 证明现有 list/envelope/schema-description 回归稳定，但不关闭三项 gap。
+- 用户于本轮确认理解三项问题并批准继续执行 active Execution Plan；该指令批准当前唯一 Next Action 下 CG004-CG006 的严格受限 backend contract fix。修复范围保持 Recommended Backend Change，不扩展 executor、状态机、真实工具行为、非流式 `/confirm`、legacy Chat、Admin/Grant 或未来 Slice Route。
+- 恢复后的唯一 Next Action 是在公开 HTTP/OpenAPI seam 为 CG004 增加 expected-red；TDD 按 CG004、CG005、CG006 分别完成 vertical red/green cycle，三项 Runtime = OpenAPI = Tests 后建立独立 backend checkpoint并同步 frontend contract。
 
 Slice 6 Contract Recovery Evidence (verified 2026-08-28):
 
@@ -917,7 +928,7 @@ Resolution:
 
 #### CG004 - TaskPlan Detail Response Lacks a Safe Discriminated Contract
 
-Status: BLOCKING SLICE 6 / AWAITING USER DECISION
+Status: APPROVED / FIX IN PROGRESS
 
 Evidence:
 
@@ -939,11 +950,11 @@ Recommended Backend Change:
 
 Decision:
 
-- 等待用户明确批准或拒绝上述严格受限的 TaskPlan detail contract fix；未经授权不得修改 backend 或手写 frontend transport DTO 绕过 gap。
+- 用户已于 2026-08-28 批准上述严格受限的 TaskPlan detail contract fix；只允许安全 detail public view/discriminated response、runtime/OpenAPI/no-sensitive/ownership tests，不得修改执行器、持久化、授权语义或其他 Route。
 
 #### CG005 - TaskPlan 422 Schema Does Not Match Runtime
 
-Status: BLOCKING SLICE 6 / AWAITING USER DECISION
+Status: APPROVED / FIX PENDING CG004 CYCLE
 
 Evidence:
 
@@ -964,11 +975,11 @@ Recommended Backend Change:
 
 Decision:
 
-- 等待用户明确批准或拒绝上述严格受限的 TaskPlan validation contract fix；CG001-CG003 授权不能外推。
+- 用户已于 2026-08-28 批准上述严格受限的 TaskPlan validation contract fix；只覆盖 Initial React list/detail/markdown/confirm-stream/cancel/retry Route 与 list 的 `status`、`session_id`、`limit` allowlist，不能外推到非流式 `/confirm`、Admin/Grant 或其他 Route。
 
 #### CG006 - TaskPlan Confirm Stream Business Events Lack Safe Public Schemas
 
-Status: BLOCKING SLICE 6 / AWAITING USER DECISION
+Status: APPROVED / FIX PENDING CG004-CG005 CYCLES
 
 Evidence:
 
@@ -990,7 +1001,7 @@ Recommended Backend Change:
 
 Decision:
 
-- 等待用户明确批准或拒绝上述严格受限的 TaskPlan public SSE contract fix；未经授权不得从 backend internal event dict自行定义 frontend business union。
+- 用户已于 2026-08-28 批准上述严格受限的 TaskPlan public SSE contract fix；只允许 confirm-stream 公共业务事件 models/projection/OpenAPI/tests，不改变 executor、TaskPlan 状态机、真实工具执行或 legacy Chat stream。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
