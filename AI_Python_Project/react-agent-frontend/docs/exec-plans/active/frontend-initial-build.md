@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 6 - TaskPlan
 
-Current Step: 用户已批准 CG007 的严格受限 TaskPlan resource-hiding contract fix；短恢复确认 blocker checkpoint 与 tracked working tree 无漂移，现进入公开 HTTP seam 的 backend test-first 修复
+Current Step: 额度中断后的 Context Recovery 已确认 CG007 detail vertical cycle working set 完整且 focused test 为 green；detail 已统一安全 404 并保留 same-owner 200，现继续下一个公开 Route seam
 
-Next Action: 先为 detail Route 增加 missing/other-owner 相同安全 404 与 same-owner 正常读取的 expected-red test；确认红阶段后实现仅供 Initial React Route 复用的最小 owned-resource resolution
+Next Action: 扩展公开 HTTP contract test，使 Markdown Route 的 missing/other-owner/system-admin-other-owner 使用相同安全 404 且 same-owner 保持 200；先确认 expected-red，再复用现有 owned-resource resolver 做最小实现
 
 Blocking Issues:
 
@@ -491,7 +491,7 @@ Currently Working On:
 
 Next Action:
 
-- 为 detail Route 增加 missing/other-owner 相同安全 404 与 same-owner 正常读取的 expected-red test，再让 Initial React detail/Markdown/confirm-stream/cancel/retry 复用同一 owned-resource resolution；非流式 `/confirm` 与内部 executor/state machine 保持不变。
+- 扩展公开 HTTP contract test，使 Markdown Route 的 missing/other-owner/system-admin-other-owner 使用相同安全 404 且 same-owner 保持 200；先确认 expected-red，再复用现有 owned-resource resolver。随后按 confirm-stream、cancel、retry 各自 vertical cycle 推进；非流式 `/confirm` 与内部 executor/state machine 保持不变。
 
 Relevant Files:
 
@@ -532,6 +532,13 @@ Context Recovery Evidence (verified 2026-08-28 after CG004-CG006 authorization):
 - 在 CG004 expected-red fixture 准备中复核 Feature Spec ownership seam：无敏感真实 Route probe 证明他人 plan 返回 `403 / TOOL_PERMISSION_DENIED`，missing plan 的当前通用 store failure 返回 `400 / APP_SERVICE_ERROR`；Route 与 executor/repository 源码同时确认 system admin bypass 或 owner mismatch 403。该事实与 Feature Spec 的统一隐藏式 404 冲突，提升为 CG007。
 - 发现 CG007 后未创建或修改任何 backend/frontend业务源码或测试。恢复后的唯一 Next Action 改为等待 CG007 严格受限授权；CG004-CG006 保持已批准但暂停。
 - 用户于 2026-08-28 明确批准 CG007 Recommended Backend Change。短恢复确认 HEAD `9e2188f98f1641cafcf9d0da248cb05c8a6c0d4e`，tracked unstaged/staged diff 为空；8 个 backend evaluation 未跟踪文件仍属于外部 working set并继续排除。唯一 Next Action 是从 detail HTTP expected-red 开始，不重做已完成 Slice。
+
+Context Recovery Evidence (verified 2026-08-28 after quota interruption):
+
+- confirmed HEAD 为 CG007 授权 checkpoint `0fd1486da45b3d4c56feb57c097e25b69b9c0c35`；frontend scoped diff 与全部 staged diff 为空。backend working set 只有 `agent_task_plan_routes.py`、`services/exceptions.py` 和新 `test_agent_task_plan_resource_visibility_contract.py`，另有 8 个明确排除的 evaluation 未跟踪文件。
+- 完整 diff 证明 working set 只新增稳定 `AGENT_TASK_PLAN_NOT_FOUND`、Route 层 `_load_owned_public_plan()`、detail 对该 resolver 的使用和公开 HTTP contract test；没有修改 executor、store、状态机、非流式 `/confirm`、真实工具行为或 frontend。
+- 恢复运行 `test_agent_task_plan_resource_visibility_contract.py` 通过：missing、普通 other-owner 与 system-admin other-owner 均为相同 `404 / AGENT_TASK_PLAN_NOT_FOUND`，测试 marker 不回显；same-owner detail 为 200。
+- 本计划原 Current Step/Next Action 已落后于 green working set。修正后的唯一 Next Action 是先为 Markdown Route 增加相同 owned-resource contract expected-red，再复用已建立 resolver 做最小实现；CG004-CG006 保持已批准但暂停于 CG007。
 
 Slice 6 Contract Recovery Evidence (verified 2026-08-28):
 
