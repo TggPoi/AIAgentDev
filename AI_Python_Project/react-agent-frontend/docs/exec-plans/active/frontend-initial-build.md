@@ -8,15 +8,16 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 6 - TaskPlan
 
-Current Step: 用户已批准 CG004-CG006 的严格受限 backend contract fix；Context Recovery 已确认 HEAD、working set、现有 contract gaps 与修改前 focused baseline，现进入 backend test-first 修复
+Current Step: CG004-CG006 授权后的 Context Recovery 已完成，但在 CG004 expected-red fixture 准备中确认 TaskPlan ownership/not-found runtime 与 Feature Spec 的隐藏式 404 冲突，已新增 CG007 并在业务编码前停止
 
-Next Action: 先在公开 HTTP/OpenAPI seam 为 CG004 增加两种 task kind 的安全 detail contract expected-red test；确认失败只由缺失 discriminated public response/projection 导致后，再做最小 backend 实现
+Next Action: 等待用户明确批准或拒绝 CG007 的严格受限 TaskPlan resource-hiding contract fix；未获决策前不改变 ownership/admin/not-found behavior，也不继续 CG004-CG006 backend coding
 
 Blocking Issues:
 
 - CG004：`GET /agent/task-plans/{task_plan_id}` OpenAPI 200 只有任意 object，无法生成两种 `task_kind` 的安全 discriminated detail transport type。
 - CG005：Initial React 使用的 TaskPlan list/detail/markdown/confirm-stream/cancel/retry Route runtime 422 与 OpenAPI `HTTPValidationError` 不一致。
 - CG006：TaskPlan confirm stream 只有公共 envelope，没有稳定、安全的业务 event payload schemas；当前 runtime 可把 progress arbitrary fields、step output 或 tool_calls 放入已知事件。
+- CG007：Feature Spec 要求他人 ID 与不存在 ID 均使用不可枚举 404，但 detail runtime 分别返回 403 与 400，且 detail/Markdown/control 仍存在 system admin owner bypass 或同类 403 behavior。
 
 Last Updated: 2026-08-28 (Asia/Shanghai)
 
@@ -258,7 +259,7 @@ Explicit Boundary:
 
 ### Slice 6 - TaskPlan
 
-Status: IN_PROGRESS
+Status: BLOCKED
 
 Goal: 完成 TaskPlan 列表、详情、Markdown、确认流、取消、重试和恢复。
 
@@ -486,11 +487,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 6 / IN_PROGRESS。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；CG004-CG006 已获严格受限授权，当前先执行 backend contract test-first 修复，尚未开始 frontend TaskPlan coding。
+- Slice 6 / BLOCKED。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；CG004-CG006 已获严格受限授权，但 CG004 测试准备确认了新的 CG007 ownership/not-found contract gap，backend/frontend 业务编码均已停止。
 
 Next Action:
 
-- 在公开 HTTP/OpenAPI seam 为 CG004 增加两种 task kind 的安全 detail contract expected-red test。CG004-CG006 必须按 vertical red/green cycle 完成，随后创建独立 backend checkpoint、重新导出 OpenAPI/generated types，并确认 Runtime = OpenAPI = Tests 后才能开始 frontend TaskPlan implementation。
+- 等待用户明确批准或拒绝 CG007 的严格受限 TaskPlan resource-hiding contract fix。获批后先按 test-first 统一 Initial React TaskPlan routes 的不可枚举 404，再恢复 CG004-CG006 vertical cycles；未经授权不得把 ownership/admin/not-found behavior 夹带进已批准的 response schema 修复。
 
 Relevant Files:
 
@@ -527,7 +528,9 @@ Context Recovery Evidence (verified 2026-08-28 after CG004-CG006 authorization):
 - committed OpenAPI 再次确认 detail 200 为 arbitrary object、Initial React TaskPlan routes 422 为 `HTTPValidationError`、confirm-stream 200 为 generic `RagSseEventFrame`；真实 backend Route/Schema/domain/exception handler/tests 与 CG004-CG006 Evidence 一致。
 - 修改前 `pnpm contracts:check` 通过；backend `test_agent_task_plan_list.assert_http_contract()`、`test_rag_stream_contract.py` 与 `test_schema_field_descriptions.py` 通过。这些 baseline 证明现有 list/envelope/schema-description 回归稳定，但不关闭三项 gap。
 - 用户于本轮确认理解三项问题并批准继续执行 active Execution Plan；该指令批准当前唯一 Next Action 下 CG004-CG006 的严格受限 backend contract fix。修复范围保持 Recommended Backend Change，不扩展 executor、状态机、真实工具行为、非流式 `/confirm`、legacy Chat、Admin/Grant 或未来 Slice Route。
-- 恢复后的唯一 Next Action 是在公开 HTTP/OpenAPI seam 为 CG004 增加 expected-red；TDD 按 CG004、CG005、CG006 分别完成 vertical red/green cycle，三项 Runtime = OpenAPI = Tests 后建立独立 backend checkpoint并同步 frontend contract。
+- 计划恢复 checkpoint `f288b6d` 只记录 Context Recovery 与 CG004-CG006 授权，没有混入 backend 或外部 evaluation working set。
+- 在 CG004 expected-red fixture 准备中复核 Feature Spec ownership seam：无敏感真实 Route probe 证明他人 plan 返回 `403 / TOOL_PERMISSION_DENIED`，missing plan 的当前通用 store failure 返回 `400 / APP_SERVICE_ERROR`；Route 与 executor/repository 源码同时确认 system admin bypass 或 owner mismatch 403。该事实与 Feature Spec 的统一隐藏式 404 冲突，提升为 CG007。
+- 发现 CG007 后未创建或修改任何 backend/frontend业务源码或测试。恢复后的唯一 Next Action 改为等待 CG007 严格受限授权；CG004-CG006 保持已批准但暂停。
 
 Slice 6 Contract Recovery Evidence (verified 2026-08-28):
 
@@ -928,7 +931,7 @@ Resolution:
 
 #### CG004 - TaskPlan Detail Response Lacks a Safe Discriminated Contract
 
-Status: APPROVED / FIX IN PROGRESS
+Status: APPROVED / PAUSED BY CG007
 
 Evidence:
 
@@ -954,7 +957,7 @@ Decision:
 
 #### CG005 - TaskPlan 422 Schema Does Not Match Runtime
 
-Status: APPROVED / FIX PENDING CG004 CYCLE
+Status: APPROVED / PAUSED BY CG007
 
 Evidence:
 
@@ -979,7 +982,7 @@ Decision:
 
 #### CG006 - TaskPlan Confirm Stream Business Events Lack Safe Public Schemas
 
-Status: APPROVED / FIX PENDING CG004-CG005 CYCLES
+Status: APPROVED / PAUSED BY CG007
 
 Evidence:
 
@@ -1002,6 +1005,33 @@ Recommended Backend Change:
 Decision:
 
 - 用户已于 2026-08-28 批准上述严格受限的 TaskPlan public SSE contract fix；只允许 confirm-stream 公共业务事件 models/projection/OpenAPI/tests，不改变 executor、TaskPlan 状态机、真实工具执行或 legacy Chat stream。
+
+#### CG007 - TaskPlan Ownership and Missing Resources Do Not Use the Required Hidden 404 Contract
+
+Status: BLOCKING SLICE 6 / AWAITING USER DECISION
+
+Evidence:
+
+- TaskPlan Feature Spec 第 5 节声明当前接口只允许用户读取和控制自己拥有的 TaskPlan，并要求已知他人 ID 的 `404` 不得泄露任务是否存在。
+- 当前 detail/Markdown Route 先加载 plan，再允许相同 owner 或 `system_admin`；普通非 owner 抛出 `ToolPermissionDeniedError`。无敏感 TestClient probe 对他人 ID 得到 `403`、`code=TOOL_PERMISSION_DENIED`，与隐藏式 404 不符。
+- 当前 repository 在 TaskPlan row 不存在时抛出通用 `AppServiceError("Agent task plan 不存在")`；同一真实 Route/handler seam 的无敏感 missing probe 得到 `400`、`code=APP_SERVICE_ERROR`，也与隐藏式 404 不符。
+- confirm/retry 的 `_load_owned_plan()` 同样允许 `system_admin` 并对 owner mismatch 抛 403；cancel repository 对 missing 抛通用 400、对 owner mismatch 抛 403。Initial React 不使用非流式 `/confirm`，但 confirm-stream/retry/cancel 都受当前 ownership seam 影响。
+- CG004 Recommended Backend Change 明确不得改变 ownership/404；CG004-CG006 的已批准范围只覆盖 response view、422 schema 与 SSE event projection，不能隐式授权新的权限/资源隐藏行为。
+
+Impact:
+
+- 前端若按 Feature Spec 将 404 作为统一不可见状态，当前 runtime 会通过 403/400 区分他人资源与缺失资源，形成资源枚举侧信道；同时 generated/runtime tests 无法建立已批准的 ownership 404 acceptance。
+- CG004 的 detail runtime/ownership regression test 无法在不改变未授权 backend behavior 的情况下达到 green；因此当前 Slice 必须在业务编码前阻塞。
+
+Recommended Backend Change:
+
+- 为 Initial React 使用的 detail/Markdown/confirm-stream/cancel/retry 公共 Route 建立统一的 owned-resource resolution：missing 与 owner mismatch 均返回同一个稳定公共 404 code/message，且不在响应中泄露 TaskPlan ID、owner、权限或存在性。
+- 仅对这些 Initial React Route 移除 public API 的 system-admin owner bypass；非流式 `/confirm`、内部 executor/state machine、真实工具执行、Admin/Grant 和其他 Route 不在本次范围。控制操作仍须在现有 executor/repository 边界二次鉴权，不能用 Route preflight 取代真实副作用前的授权。
+- 增加 detail/Markdown/confirm-stream/cancel/retry 的 missing/other-owner/runtime/no-sensitive-echo regression tests；相同 owner 的正常行为、幂等、409、stream envelope 与所有已通过 regression 必须保持不变。
+
+Decision:
+
+- 等待用户明确批准或拒绝上述严格受限的 TaskPlan resource-hiding contract fix；未经授权不得改变 ownership、system-admin bypass、missing error mapping 或控制接口行为。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
