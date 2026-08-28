@@ -8,13 +8,12 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 6 - TaskPlan
 
-Current Step: CG007 已由独立 backend checkpoint `3a14f4a` 完成并验证；detail、Markdown、confirm-stream、cancel、retry 均使用统一安全 404，现恢复已批准的 CG004 detail 公共 response contract 修复
+Current Step: CG004 已由 backend checkpoint `a24d53b` 与 frontend contract sync `04027f8` 完成并验证；detail Runtime/OpenAPI/generated types 已按 `task_kind` 判别，现进入已批准的 CG005 TaskPlan 422 契约修复
 
-Next Action: 为 CG004 新增 detail 公开 HTTP/OpenAPI contract expected-red test，分别固定 research 与 document 的 `task_kind` discriminator、安全 allowlisted runtime shape、OpenAPI `oneOf`/discriminator 和 no-sensitive-field 边界；确认失败原因后再实现最小 public view/union/projection
+Next Action: 为 CG005 新增 TaskPlan validation contract expected-red test：list 仅把公开 query 字段 `status`、`session_id`、`limit` 投影为 field errors；detail/Markdown/confirm-stream/cancel/retry 的 path、header、固定 body、model-level 与未知字段保持 form-level，并固定六条 Route 的安全 422 OpenAPI response model
 
 Blocking Issues:
 
-- CG004：`GET /agent/task-plans/{task_plan_id}` OpenAPI 200 只有任意 object，无法生成两种 `task_kind` 的安全 discriminated detail transport type。
 - CG005：Initial React 使用的 TaskPlan list/detail/markdown/confirm-stream/cancel/retry Route runtime 422 与 OpenAPI `HTTPValidationError` 不一致。
 - CG006：TaskPlan confirm stream 只有公共 envelope，没有稳定、安全的业务 event payload schemas；当前 runtime 可把 progress arbitrary fields、step output 或 tool_calls 放入已知事件。
 
@@ -486,11 +485,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 6 / IN_PROGRESS。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；CG007 已由独立 backend checkpoint `3a14f4a` 关闭，当前按 test-first 顺序恢复已批准的 CG004，CG005-CG006 尚未开始，frontend TaskPlan coding 尚未开始。
+- Slice 6 / IN_PROGRESS。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；CG007 与 CG004 已分别关闭，当前按 test-first 顺序执行已批准的 CG005，CG006 尚未开始，frontend TaskPlan coding 尚未开始。
 
 Next Action:
 
-- 为 CG004 新增 detail 公开 HTTP/OpenAPI contract expected-red test，分别固定 research 与 document 的 `task_kind` discriminator、安全 allowlisted runtime shape、OpenAPI `oneOf`/discriminator 和 no-sensitive-field 边界；确认失败原因后只实现获批的最小 public view/union/projection。
+- 为 CG005 新增 TaskPlan validation contract expected-red test：list 仅把公开 query 字段 `status`、`session_id`、`limit` 投影为 field errors；detail/Markdown/confirm-stream/cancel/retry 的 path、header、固定 body、model-level 与未知字段保持 form-level，并固定六条 Route 的安全 422 OpenAPI response model。
 
 Relevant Files:
 
@@ -546,6 +545,14 @@ CG007 Completion Evidence (verified 2026-08-28):
 - 实际通过：`py_compile`（两个修改源码与新 contract test）、`test_agent_task_plan_resource_visibility_contract.py`、TaskPlan list HTTP contract、`test_rag_stream_contract.py`、`test_schema_field_descriptions.py`、Auth/Conversation/RAG Chat validation contract。
 - 额外运行 `test_agent_task_executor_control_regressions.py` 时在既有 private test seam `_resume_locked()` 失败：fixture 未提供当前 executor 所需 `_document_access_policy`。本次 diff 未修改 executor 或该测试；该 test-harness drift 不影响公开 CG007 HTTP contract，按范围限制记录但不借机修复。
 - 独立 backend checkpoint `3a14f4a` 只包含 `agent_task_plan_routes.py`、`services/exceptions.py` 和 `test_agent_task_plan_resource_visibility_contract.py`；外部 evaluation 未跟踪 working set 未被读取、修改或暂存。CG007 关闭，唯一 Next Action 恢复 CG004 的公开 detail contract expected-red。
+
+CG004 Completion Evidence (verified 2026-08-28):
+
+- `test_agent_task_plan_detail_contract.py` 先在 Document raw `AgentTaskPlan.model_dump()` 上 expected-red，再由显式 `DocumentTaskPlanPublicView`、安全 step/result-summary models、值级 risk allowlist 与 detail-only projection 转为 green。Research 继续复用既有 `ResearchTaskPlanPublicView`。
+- runtime test 固定两种 `task_kind`、Document 精确字段 allowlist、Research internal fields 排除、raw input/output/error/final_output/owner/path/ACL/scope/trace marker 不回显；OpenAPI test 固定 `oneOf`、`task_kind` discriminator/mapping 和安全嵌套 schema properties。
+- 最初复用共享 `_public_plan_payload()` 导致未授权非流式 `/confirm` response validation regression；随后拆出 detail 专用 `_public_detail_view()` 并保留原 helper 行为。CG007 resource visibility、Research v2、TaskPlan list HTTP、RAG SSE contract、schema descriptions 与非流式 `/confirm` regression 均通过。
+- 独立 backend checkpoint `a24d53b` 只包含 detail Route、公共 response schema/projection 和 CG004 contract test。重新导出的 OpenAPI 保持 58 paths，只有 detail path operation 变化；schemas 从 88 增至 109，因为既有 Research Public View 嵌套类型首次进入 components。
+- frontend contract sync checkpoint `04027f8` 只包含 snapshot/generated types；`pnpm contracts:generate`、`pnpm contracts:check`、typecheck 与完整 `pnpm check` 通过（19 files / 82 tests + production build）。dependency graph 未变化，browser smoke 对纯 contract sync 不适用。CG004 Runtime = OpenAPI = generated types = Tests，关闭并恢复 CG005。
 
 Slice 6 Contract Recovery Evidence (verified 2026-08-28):
 
@@ -946,7 +953,7 @@ Resolution:
 
 #### CG004 - TaskPlan Detail Response Lacks a Safe Discriminated Contract
 
-Status: APPROVED / FIX IN PROGRESS
+Status: RESOLVED IN SLICE 6
 
 Evidence:
 
@@ -970,9 +977,14 @@ Decision:
 
 - 用户已于 2026-08-28 批准上述严格受限的 TaskPlan detail contract fix；只允许安全 detail public view/discriminated response、runtime/OpenAPI/no-sensitive/ownership tests，不得修改执行器、持久化、授权语义或其他 Route。
 
+Resolution:
+
+- backend checkpoint `a24d53b` 复用 Research 安全 Public View，并为 Document detail 建立显式 allowlisted view、步骤安全元数据、计数结果摘要、稳定 error code 与风险值投影；detail 200 OpenAPI 使用 `task_kind` discriminated `oneOf`，内部 owner/query/path/input/output/error/final_output 等字段不进入响应。
+- frontend contract sync checkpoint `04027f8` 已重新导出 58 paths / 109 schemas snapshot 并生成两种判别 transport types；backend focused regressions、`pnpm contracts:check` 与完整 `pnpm check` 通过。CG004 Runtime = OpenAPI = generated types = Tests，关闭该 gap。
+
 #### CG005 - TaskPlan 422 Schema Does Not Match Runtime
 
-Status: APPROVED / PENDING CG004
+Status: APPROVED / FIX IN PROGRESS
 
 Evidence:
 
@@ -997,7 +1009,7 @@ Decision:
 
 #### CG006 - TaskPlan Confirm Stream Business Events Lack Safe Public Schemas
 
-Status: APPROVED / PENDING CG004-CG005
+Status: APPROVED / PENDING CG005
 
 Evidence:
 
