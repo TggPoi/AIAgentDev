@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 6 - TaskPlan
 
-Current Step: CG004-CG006 授权后的 Context Recovery 已完成，但在 CG004 expected-red fixture 准备中确认 TaskPlan ownership/not-found runtime 与 Feature Spec 的隐藏式 404 冲突，已新增 CG007 并在业务编码前停止
+Current Step: 用户已批准 CG007 的严格受限 TaskPlan resource-hiding contract fix；短恢复确认 blocker checkpoint 与 tracked working tree 无漂移，现进入公开 HTTP seam 的 backend test-first 修复
 
-Next Action: 等待用户明确批准或拒绝 CG007 的严格受限 TaskPlan resource-hiding contract fix；未获决策前不改变 ownership/admin/not-found behavior，也不继续 CG004-CG006 backend coding
+Next Action: 先为 detail Route 增加 missing/other-owner 相同安全 404 与 same-owner 正常读取的 expected-red test；确认红阶段后实现仅供 Initial React Route 复用的最小 owned-resource resolution
 
 Blocking Issues:
 
@@ -259,7 +259,7 @@ Explicit Boundary:
 
 ### Slice 6 - TaskPlan
 
-Status: BLOCKED
+Status: IN_PROGRESS
 
 Goal: 完成 TaskPlan 列表、详情、Markdown、确认流、取消、重试和恢复。
 
@@ -487,11 +487,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 6 / BLOCKED。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；CG004-CG006 已获严格受限授权，但 CG004 测试准备确认了新的 CG007 ownership/not-found contract gap，backend/frontend 业务编码均已停止。
+- Slice 6 / IN_PROGRESS。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；CG004-CG006 与 CG007 均已获严格受限授权，当前先按 backend test-first 修复 CG007，尚未开始 frontend TaskPlan coding。
 
 Next Action:
 
-- 等待用户明确批准或拒绝 CG007 的严格受限 TaskPlan resource-hiding contract fix。获批后先按 test-first 统一 Initial React TaskPlan routes 的不可枚举 404，再恢复 CG004-CG006 vertical cycles；未经授权不得把 ownership/admin/not-found behavior 夹带进已批准的 response schema 修复。
+- 为 detail Route 增加 missing/other-owner 相同安全 404 与 same-owner 正常读取的 expected-red test，再让 Initial React detail/Markdown/confirm-stream/cancel/retry 复用同一 owned-resource resolution；非流式 `/confirm` 与内部 executor/state machine 保持不变。
 
 Relevant Files:
 
@@ -531,6 +531,7 @@ Context Recovery Evidence (verified 2026-08-28 after CG004-CG006 authorization):
 - 计划恢复 checkpoint `f288b6d` 只记录 Context Recovery 与 CG004-CG006 授权，没有混入 backend 或外部 evaluation working set。
 - 在 CG004 expected-red fixture 准备中复核 Feature Spec ownership seam：无敏感真实 Route probe 证明他人 plan 返回 `403 / TOOL_PERMISSION_DENIED`，missing plan 的当前通用 store failure 返回 `400 / APP_SERVICE_ERROR`；Route 与 executor/repository 源码同时确认 system admin bypass 或 owner mismatch 403。该事实与 Feature Spec 的统一隐藏式 404 冲突，提升为 CG007。
 - 发现 CG007 后未创建或修改任何 backend/frontend业务源码或测试。恢复后的唯一 Next Action 改为等待 CG007 严格受限授权；CG004-CG006 保持已批准但暂停。
+- 用户于 2026-08-28 明确批准 CG007 Recommended Backend Change。短恢复确认 HEAD `9e2188f98f1641cafcf9d0da248cb05c8a6c0d4e`，tracked unstaged/staged diff 为空；8 个 backend evaluation 未跟踪文件仍属于外部 working set并继续排除。唯一 Next Action 是从 detail HTTP expected-red 开始，不重做已完成 Slice。
 
 Slice 6 Contract Recovery Evidence (verified 2026-08-28):
 
@@ -1008,7 +1009,7 @@ Decision:
 
 #### CG007 - TaskPlan Ownership and Missing Resources Do Not Use the Required Hidden 404 Contract
 
-Status: BLOCKING SLICE 6 / AWAITING USER DECISION
+Status: APPROVED / FIX IN PROGRESS
 
 Evidence:
 
@@ -1031,7 +1032,7 @@ Recommended Backend Change:
 
 Decision:
 
-- 等待用户明确批准或拒绝上述严格受限的 TaskPlan resource-hiding contract fix；未经授权不得改变 ownership、system-admin bypass、missing error mapping 或控制接口行为。
+- 用户已于 2026-08-28 批准上述严格受限的 TaskPlan resource-hiding contract fix；只覆盖 Initial React detail/Markdown/confirm-stream/cancel/retry 的 owned-resource resolution、统一安全 404 与对应 regressions，不覆盖非流式 `/confirm`、内部 executor/state machine、真实工具行为、Admin/Grant 或其他 Route。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
