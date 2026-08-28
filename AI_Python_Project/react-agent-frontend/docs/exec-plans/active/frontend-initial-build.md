@@ -8,13 +8,12 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 6 - TaskPlan
 
-Current Step: CG004 已由 backend checkpoint `a24d53b` 与 frontend contract sync `04027f8` 完成并验证；detail Runtime/OpenAPI/generated types 已按 `task_kind` 判别，现进入已批准的 CG005 TaskPlan 422 契约修复
+Current Step: CG005 已由 backend checkpoint `c337db6` 与 frontend contract sync `1e6882f` 完成并验证；六条 TaskPlan Route 的 Runtime/OpenAPI/generated 422 已一致，现进入已批准的 CG006 confirm-stream 业务事件公开契约修复
 
-Next Action: 为 CG005 新增 TaskPlan validation contract expected-red test：list 仅把公开 query 字段 `status`、`session_id`、`limit` 投影为 field errors；detail/Markdown/confirm-stream/cancel/retry 的 path、header、固定 body、model-level 与未知字段保持 form-level，并固定六条 Route 的安全 422 OpenAPI response model
+Next Action: 为 CG006 新增 TaskPlan confirm-stream public event contract expected-red test，固定两种 task kind 的安全业务事件名称/payload、公共 envelope/request ID、OpenAPI logical event union，并证明 raw arbitrary progress、step output、tool_calls、Tool arguments、ACL/Scope、Dataset rows、internal URL/trace 和未知事件不会进入公开 SSE
 
 Blocking Issues:
 
-- CG005：Initial React 使用的 TaskPlan list/detail/markdown/confirm-stream/cancel/retry Route runtime 422 与 OpenAPI `HTTPValidationError` 不一致。
 - CG006：TaskPlan confirm stream 只有公共 envelope，没有稳定、安全的业务 event payload schemas；当前 runtime 可把 progress arbitrary fields、step output 或 tool_calls 放入已知事件。
 
 Last Updated: 2026-08-28 (Asia/Shanghai)
@@ -485,11 +484,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 6 / IN_PROGRESS。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；CG007 与 CG004 已分别关闭，当前按 test-first 顺序执行已批准的 CG005，CG006 尚未开始，frontend TaskPlan coding 尚未开始。
+- Slice 6 / IN_PROGRESS。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；CG007、CG004、CG005 已关闭，当前按 test-first 执行已批准的 CG006，frontend TaskPlan coding 尚未开始。
 
 Next Action:
 
-- 为 CG005 新增 TaskPlan validation contract expected-red test：list 仅把公开 query 字段 `status`、`session_id`、`limit` 投影为 field errors；detail/Markdown/confirm-stream/cancel/retry 的 path、header、固定 body、model-level 与未知字段保持 form-level，并固定六条 Route 的安全 422 OpenAPI response model。
+- 为 CG006 新增 TaskPlan confirm-stream public event contract expected-red test，固定两种 task kind 的安全业务事件名称/payload、公共 envelope/request ID、OpenAPI logical event union，并证明 raw arbitrary progress、step output、tool_calls、Tool arguments、ACL/Scope、Dataset rows、internal URL/trace 和未知事件不会进入公开 SSE。
 
 Relevant Files:
 
@@ -553,6 +552,14 @@ CG004 Completion Evidence (verified 2026-08-28):
 - 最初复用共享 `_public_plan_payload()` 导致未授权非流式 `/confirm` response validation regression；随后拆出 detail 专用 `_public_detail_view()` 并保留原 helper 行为。CG007 resource visibility、Research v2、TaskPlan list HTTP、RAG SSE contract、schema descriptions 与非流式 `/confirm` regression 均通过。
 - 独立 backend checkpoint `a24d53b` 只包含 detail Route、公共 response schema/projection 和 CG004 contract test。重新导出的 OpenAPI 保持 58 paths，只有 detail path operation 变化；schemas 从 88 增至 109，因为既有 Research Public View 嵌套类型首次进入 components。
 - frontend contract sync checkpoint `04027f8` 只包含 snapshot/generated types；`pnpm contracts:generate`、`pnpm contracts:check`、typecheck 与完整 `pnpm check` 通过（19 files / 82 tests + production build）。dependency graph 未变化，browser smoke 对纯 contract sync 不适用。CG004 Runtime = OpenAPI = generated types = Tests，关闭并恢复 CG005。
+
+CG005 Completion Evidence (verified 2026-08-28):
+
+- `test_agent_task_plan_validation_contract.py` 先在 list runtime 缺少 `field_errors` 上 expected-red，再通过 Route+location+field allowlist 变绿：只允许 list query 的 `status`、`session_id`、`limit`，confirm-stream/cancel/retry 的固定 body/header validation 保持 `field_errors=[]`，marker 不回显。
+- detail/Markdown/confirm-stream/cancel/retry 只注册安全 422 response model；Markdown 200 继续为 `text/plain`，其 422 显式为 `application/json`。非流式 `/confirm` 和无关 probe 继续使用原 `HTTPValidationError`/旧 runtime shape，未扩展到授权范围外 Route。
+- Auth、Conversation、structured Chat 的 runtime 字段投影 regression 全部通过；其 OpenAPI exact-enum tests 只同步新增的三个获批公共字段。CG004 detail、CG007 visibility、TaskPlan list、RAG SSE 与 schema-description regressions 通过。
+- 独立 backend checkpoint `c337db6` 只包含安全 validation handler、公共 field enum、六条 Route 声明和对应 contract regressions。frontend 重新导出后只有六条 TaskPlan path operation 变化，公共 field enum 为既有字段加 `status/session_id/limit`；checkpoint `1e6882f` 只包含 snapshot/generated types。
+- contract generate/drift/typecheck 均通过。首次完整 `pnpm check` 在未修改的 Conversations create-navigation test 上观察到一次 `/chat` 未及时变为 `/chat/session-new`；单独重跑该 11-test file 通过，随后完整 `pnpm check` 通过（19 files / 82 tests + production build）。该一次性异步时序波动未通过修改 Conversations 或弱化断言处理。dependency graph 未变化，browser smoke 对纯 contract sync 不适用。CG005 Runtime = OpenAPI = generated types = Tests，关闭并恢复 CG006。
 
 Slice 6 Contract Recovery Evidence (verified 2026-08-28):
 
@@ -984,7 +991,7 @@ Resolution:
 
 #### CG005 - TaskPlan 422 Schema Does Not Match Runtime
 
-Status: APPROVED / FIX IN PROGRESS
+Status: RESOLVED IN SLICE 6
 
 Evidence:
 
@@ -1007,9 +1014,14 @@ Decision:
 
 - 用户已于 2026-08-28 批准上述严格受限的 TaskPlan validation contract fix；只覆盖 Initial React list/detail/markdown/confirm-stream/cancel/retry Route 与 list 的 `status`、`session_id`、`limit` allowlist，不能外推到非流式 `/confirm`、Admin/Grant 或其他 Route。
 
+Resolution:
+
+- backend checkpoint `c337db6` 将安全投影配置扩展为 Route+location+field allowlist，只为 list query 公开 `status/session_id/limit`，其他五条 Route 的 path/header/fixed-body/未知错误保持 form-level；六条 OpenAPI 422 均声明 `RequestValidationErrorResponse`，非流式 `/confirm` 未改变。
+- frontend contract sync checkpoint `1e6882f` 已重新导出并生成 types；路径级 diff 只包含六条授权 TaskPlan operation，shared Auth/Conversation/Chat regressions、contract drift 与最终 `pnpm check` 通过。CG005 Runtime = OpenAPI = generated types = Tests，关闭该 gap。
+
 #### CG006 - TaskPlan Confirm Stream Business Events Lack Safe Public Schemas
 
-Status: APPROVED / PENDING CG005
+Status: APPROVED / FIX IN PROGRESS
 
 Evidence:
 
