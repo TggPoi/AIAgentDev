@@ -33,7 +33,11 @@ from fast_app.services.agent_tasks.agent_task_plan_catalog_service import (
     AgentTaskPlanCatalogService,
 )
 from fast_app.services.agent_tasks.agent_task_plan_store import AgentTaskPlanStore
-from fast_app.schemas.agent_task_plan_schema import AgentTaskPlanListResponse
+from fast_app.schemas.agent_task_plan_schema import (
+    AgentTaskPlanDetailResponse,
+    AgentTaskPlanListResponse,
+    build_document_task_plan_public_view,
+)
 from fast_app.schemas.rag_stream_schema import (
     RagSseEventFrame,
     normalize_sse_event_envelope,
@@ -65,11 +69,19 @@ IdempotencyKey = Annotated[
 
 
 def _public_plan_payload(plan) -> dict[str, Any]:
-    """Research 使用安全 Public View；Document 保持现有 API 契约。"""
+    """保留非 detail 调用方的既有快照行为。"""
 
     if isinstance(plan, ResearchTaskPlan):
         return build_research_task_plan_public_view(plan).model_dump(mode="json")
     return plan.model_dump(mode="json")
+
+
+def _public_detail_view(plan) -> AgentTaskPlanDetailResponse:
+    """把 detail 的两类内部 TaskPlan 投影为判别式安全 Public View。"""
+
+    if isinstance(plan, ResearchTaskPlan):
+        return build_research_task_plan_public_view(plan)
+    return build_document_task_plan_public_view(plan)
 
 
 async def _load_owned_public_plan(
@@ -188,12 +200,12 @@ def _agent_task_plan_trace(
     )
 
 
-@router.get("/{task_plan_id}")
+@router.get("/{task_plan_id}", response_model=AgentTaskPlanDetailResponse)
 async def get_agent_task_plan_endpoint(
     task_plan_id: str,
     user: CurrentUserContext = Depends(get_current_user_context),
     task_plan_store: AgentTaskPlanStore = Depends(get_agent_task_plan_store),
-) -> dict[str, Any]:
+) -> AgentTaskPlanDetailResponse:
     """读取 Agent 多步骤任务计划。"""
 
     plan = await _load_owned_public_plan(
@@ -201,7 +213,7 @@ async def get_agent_task_plan_endpoint(
         user=user,
         task_plan_store=task_plan_store,
     )
-    return _public_plan_payload(plan)
+    return _public_detail_view(plan)
 
 
 @router.get("/{task_plan_id}/markdown", response_class=PlainTextResponse)
