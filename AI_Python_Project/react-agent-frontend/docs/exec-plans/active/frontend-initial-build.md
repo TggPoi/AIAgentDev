@@ -8,16 +8,15 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 6 - TaskPlan
 
-Current Step: 额度中断后的 Context Recovery 已确认 CG007 detail vertical cycle working set 完整且 focused test 为 green；detail 已统一安全 404 并保留 same-owner 200，现继续下一个公开 Route seam
+Current Step: CG007 已由独立 backend checkpoint `3a14f4a` 完成并验证；detail、Markdown、confirm-stream、cancel、retry 均使用统一安全 404，现恢复已批准的 CG004 detail 公共 response contract 修复
 
-Next Action: 扩展公开 HTTP contract test，使 Markdown Route 的 missing/other-owner/system-admin-other-owner 使用相同安全 404 且 same-owner 保持 200；先确认 expected-red，再复用现有 owned-resource resolver 做最小实现
+Next Action: 为 CG004 新增 detail 公开 HTTP/OpenAPI contract expected-red test，分别固定 research 与 document 的 `task_kind` discriminator、安全 allowlisted runtime shape、OpenAPI `oneOf`/discriminator 和 no-sensitive-field 边界；确认失败原因后再实现最小 public view/union/projection
 
 Blocking Issues:
 
 - CG004：`GET /agent/task-plans/{task_plan_id}` OpenAPI 200 只有任意 object，无法生成两种 `task_kind` 的安全 discriminated detail transport type。
 - CG005：Initial React 使用的 TaskPlan list/detail/markdown/confirm-stream/cancel/retry Route runtime 422 与 OpenAPI `HTTPValidationError` 不一致。
 - CG006：TaskPlan confirm stream 只有公共 envelope，没有稳定、安全的业务 event payload schemas；当前 runtime 可把 progress arbitrary fields、step output 或 tool_calls 放入已知事件。
-- CG007：Feature Spec 要求他人 ID 与不存在 ID 均使用不可枚举 404，但 detail runtime 分别返回 403 与 400，且 detail/Markdown/control 仍存在 system admin owner bypass 或同类 403 behavior。
 
 Last Updated: 2026-08-28 (Asia/Shanghai)
 
@@ -487,11 +486,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 6 / IN_PROGRESS。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；CG004-CG006 与 CG007 均已获严格受限授权，当前先按 backend test-first 修复 CG007，尚未开始 frontend TaskPlan coding。
+- Slice 6 / IN_PROGRESS。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；CG007 已由独立 backend checkpoint `3a14f4a` 关闭，当前按 test-first 顺序恢复已批准的 CG004，CG005-CG006 尚未开始，frontend TaskPlan coding 尚未开始。
 
 Next Action:
 
-- 扩展公开 HTTP contract test，使 Markdown Route 的 missing/other-owner/system-admin-other-owner 使用相同安全 404 且 same-owner 保持 200；先确认 expected-red，再复用现有 owned-resource resolver。随后按 confirm-stream、cancel、retry 各自 vertical cycle 推进；非流式 `/confirm` 与内部 executor/state machine 保持不变。
+- 为 CG004 新增 detail 公开 HTTP/OpenAPI contract expected-red test，分别固定 research 与 document 的 `task_kind` discriminator、安全 allowlisted runtime shape、OpenAPI `oneOf`/discriminator 和 no-sensitive-field 边界；确认失败原因后只实现获批的最小 public view/union/projection。
 
 Relevant Files:
 
@@ -539,6 +538,14 @@ Context Recovery Evidence (verified 2026-08-28 after quota interruption):
 - 完整 diff 证明 working set 只新增稳定 `AGENT_TASK_PLAN_NOT_FOUND`、Route 层 `_load_owned_public_plan()`、detail 对该 resolver 的使用和公开 HTTP contract test；没有修改 executor、store、状态机、非流式 `/confirm`、真实工具行为或 frontend。
 - 恢复运行 `test_agent_task_plan_resource_visibility_contract.py` 通过：missing、普通 other-owner 与 system-admin other-owner 均为相同 `404 / AGENT_TASK_PLAN_NOT_FOUND`，测试 marker 不回显；same-owner detail 为 200。
 - 本计划原 Current Step/Next Action 已落后于 green working set。修正后的唯一 Next Action 是先为 Markdown Route 增加相同 owned-resource contract expected-red，再复用已建立 resolver 做最小实现；CG004-CG006 保持已批准但暂停于 CG007。
+
+CG007 Completion Evidence (verified 2026-08-28):
+
+- CG007 对 detail、Markdown、confirm-stream、cancel、retry 逐 Route 完成 expected-red → minimal green：missing、普通 other-owner 与 system-admin other-owner 均得到相同 `404 / AGENT_TASK_PLAN_NOT_FOUND` 和固定安全 message；测试 marker、TaskPlan ID、owner 与权限信息均不回显，同 owner 路径保持 200。
+- Route preflight 只覆盖 Initial React 的五条公开 Route；未修改 executor、store、状态机、真实工具行为或非流式 `/confirm`，并新增非流式 `/confirm` 的 system-admin other-owner regression 证明该未授权范围行为保持不变。控制操作仍继续经过原 executor/repository 二次鉴权。
+- 实际通过：`py_compile`（两个修改源码与新 contract test）、`test_agent_task_plan_resource_visibility_contract.py`、TaskPlan list HTTP contract、`test_rag_stream_contract.py`、`test_schema_field_descriptions.py`、Auth/Conversation/RAG Chat validation contract。
+- 额外运行 `test_agent_task_executor_control_regressions.py` 时在既有 private test seam `_resume_locked()` 失败：fixture 未提供当前 executor 所需 `_document_access_policy`。本次 diff 未修改 executor 或该测试；该 test-harness drift 不影响公开 CG007 HTTP contract，按范围限制记录但不借机修复。
+- 独立 backend checkpoint `3a14f4a` 只包含 `agent_task_plan_routes.py`、`services/exceptions.py` 和 `test_agent_task_plan_resource_visibility_contract.py`；外部 evaluation 未跟踪 working set 未被读取、修改或暂存。CG007 关闭，唯一 Next Action 恢复 CG004 的公开 detail contract expected-red。
 
 Slice 6 Contract Recovery Evidence (verified 2026-08-28):
 
@@ -939,7 +946,7 @@ Resolution:
 
 #### CG004 - TaskPlan Detail Response Lacks a Safe Discriminated Contract
 
-Status: APPROVED / PAUSED BY CG007
+Status: APPROVED / FIX IN PROGRESS
 
 Evidence:
 
@@ -965,7 +972,7 @@ Decision:
 
 #### CG005 - TaskPlan 422 Schema Does Not Match Runtime
 
-Status: APPROVED / PAUSED BY CG007
+Status: APPROVED / PENDING CG004
 
 Evidence:
 
@@ -990,7 +997,7 @@ Decision:
 
 #### CG006 - TaskPlan Confirm Stream Business Events Lack Safe Public Schemas
 
-Status: APPROVED / PAUSED BY CG007
+Status: APPROVED / PENDING CG004-CG005
 
 Evidence:
 
@@ -1016,7 +1023,7 @@ Decision:
 
 #### CG007 - TaskPlan Ownership and Missing Resources Do Not Use the Required Hidden 404 Contract
 
-Status: APPROVED / FIX IN PROGRESS
+Status: RESOLVED IN SLICE 6
 
 Evidence:
 
@@ -1040,6 +1047,11 @@ Recommended Backend Change:
 Decision:
 
 - 用户已于 2026-08-28 批准上述严格受限的 TaskPlan resource-hiding contract fix；只覆盖 Initial React detail/Markdown/confirm-stream/cancel/retry 的 owned-resource resolution、统一安全 404 与对应 regressions，不覆盖非流式 `/confirm`、内部 executor/state machine、真实工具行为、Admin/Grant 或其他 Route。
+
+Resolution:
+
+- 独立 backend checkpoint `3a14f4a` 新增稳定 `AgentTaskPlanNotFoundError` 与 Route 层 owned-resource resolver；五条 Initial React Route 对 missing、普通 other-owner、system-admin other-owner 均统一为安全 `404 / AGENT_TASK_PLAN_NOT_FOUND`，same-owner 保持正常。
+- runtime/no-sensitive-echo/regression contract test 与共享 Auth/Conversation/RAG validation、TaskPlan list、SSE envelope、schema-description baseline 均通过；非流式 `/confirm`、executor、store、状态机和真实工具实现未修改。CG007 Runtime = Tests，关闭该 gap 并恢复 CG004。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
