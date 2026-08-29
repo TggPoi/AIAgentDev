@@ -4513,6 +4513,619 @@ export interface components {
              */
             query: string;
         };
+        /** TaskPlanAnswerDeltaData */
+        TaskPlanAnswerDeltaData: {
+            /**
+             * Contract Version
+             * @description TaskPlan 公共 SSE 契约版本，当前固定为 1.0。
+             * @constant
+             */
+            contract_version: "1.0";
+            /**
+             * Request Id
+             * @description 与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。
+             */
+            request_id?: string | null;
+            /**
+             * Task Plan Id
+             * @description 当前公开事件所属且已经过入口授权的 TaskPlan ID。
+             */
+            task_plan_id: string;
+            /**
+             * Text
+             * @description 已通过输出安全边界的回答增量。
+             */
+            text: string;
+        };
+        /** TaskPlanAnswerDeltaFrame */
+        TaskPlanAnswerDeltaFrame: {
+            /** @description TaskPlan 安全回答增量 payload。 */
+            data: components["schemas"]["TaskPlanAnswerDeltaData"];
+            /**
+             * @description TaskPlan 安全回答增量事件名。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            event: "answer_delta";
+        };
+        /** TaskPlanDocumentProgressData */
+        TaskPlanDocumentProgressData: {
+            /**
+             * Confidence
+             * @description 文档审查公开置信度；非审查事件为空。
+             */
+            confidence?: number | null;
+            /**
+             * Contract Version
+             * @description TaskPlan 公共 SSE 契约版本，当前固定为 1.0。
+             * @constant
+             */
+            contract_version: "1.0";
+            /**
+             * Deliverable Count
+             * @description 文档交付物数量；事件未提供时为空。
+             */
+            deliverable_count?: number | null;
+            /**
+             * Deliverable Id
+             * @description 文档交付物公开 ID；不适用时为空。
+             */
+            deliverable_id?: string | null;
+            /**
+             * Error Code
+             * @description 稳定公开文档工作流错误码；无失败时为空。
+             */
+            error_code?: string | null;
+            /**
+             * Operation
+             * @description 文档操作类型；事件不关联具体操作时为空。
+             */
+            operation?: ("create" | "update" | "delete") | null;
+            /**
+             * Request Id
+             * @description 与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。
+             */
+            request_id?: string | null;
+            /**
+             * Status
+             * @description 文档工作流稳定状态；不适用时为空。
+             */
+            status?: ("running" | "completed" | "partial" | "failed" | "skipped") | null;
+            /**
+             * Step Id
+             * @description 关联 TaskPlan 步骤 ID；不适用时为空。
+             */
+            step_id?: string | null;
+            /**
+             * Task Plan Id
+             * @description 当前公开事件所属且已经过入口授权的 TaskPlan ID。
+             */
+            task_plan_id: string;
+            /**
+             * Verdict
+             * @description 文档审查结论；非审查事件为空。
+             */
+            verdict?: ("approved" | "revision_required" | "rejected") | null;
+        };
+        /** TaskPlanDocumentProgressFrame */
+        TaskPlanDocumentProgressFrame: {
+            /** @description Document 进度的安全公开 payload。 */
+            data: components["schemas"]["TaskPlanDocumentProgressData"];
+            /**
+             * @description Document TaskPlan 公开进度事件名。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            event: "agent_task_document_action_prepared" | "agent_task_document_draft_created" | "agent_task_document_review_completed" | "agent_task_document_revision_started" | "agent_task_document_subagent_completed" | "agent_task_document_subagent_failed" | "agent_task_document_subagent_started" | "agent_task_document_supervised";
+        };
+        /** TaskPlanDoneData */
+        TaskPlanDoneData: {
+            /**
+             * Contract Version
+             * @description TaskPlan 公共 SSE 契约版本，当前固定为 1.0。
+             * @constant
+             */
+            contract_version: "1.0";
+            /**
+             * Request Id
+             * @description 与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。
+             */
+            request_id?: string | null;
+            /**
+             * Status
+             * @description TaskPlan SSE 正常完成标记。
+             * @constant
+             */
+            status: "done";
+            /**
+             * Task Plan Id
+             * @description 当前公开事件所属且已经过入口授权的 TaskPlan ID。
+             */
+            task_plan_id: string;
+            /** @description 流结束时的最终 TaskPlan 状态。 */
+            task_status: components["schemas"]["AgentTaskPlanStatus"];
+        };
+        /** TaskPlanDoneFrame */
+        TaskPlanDoneFrame: {
+            /** @description TaskPlan SSE 正常终止的安全公开 payload。 */
+            data: components["schemas"]["TaskPlanDoneData"];
+            /**
+             * @description TaskPlan SSE 正常终止事件名。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            event: "done";
+        };
+        /** TaskPlanErrorData */
+        TaskPlanErrorData: {
+            /**
+             * Code
+             * @description 稳定公开错误码。
+             */
+            code: string;
+            /**
+             * Contract Version
+             * @description TaskPlan 公共 SSE 契约版本，当前固定为 1.0。
+             * @constant
+             */
+            contract_version: "1.0";
+            /**
+             * Error Category
+             * @description TaskPlan 流失败的稳定公开错误分类。
+             * @constant
+             */
+            error_category: "system_error";
+            /**
+             * Message
+             * @description 固定且不回显内部异常的公开错误消息。
+             * @constant
+             */
+            message: "TaskPlan 执行失败";
+            /**
+             * Request Id
+             * @description 与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。
+             */
+            request_id?: string | null;
+            /**
+             * Task Plan Id
+             * @description 当前公开事件所属且已经过入口授权的 TaskPlan ID。
+             */
+            task_plan_id: string;
+            /**
+             * Trace Id
+             * @description 允许公开的链路追踪 ID；未提供或不安全时为空。
+             */
+            trace_id?: string | null;
+        };
+        /** TaskPlanErrorFrame */
+        TaskPlanErrorFrame: {
+            /** @description TaskPlan SSE 失败终止的安全公开 payload。 */
+            data: components["schemas"]["TaskPlanErrorData"];
+            /**
+             * @description TaskPlan SSE 失败终止事件名。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            event: "error";
+        };
+        /** TaskPlanExecutionStartedData */
+        TaskPlanExecutionStartedData: {
+            /**
+             * Contract Version
+             * @description TaskPlan 公共 SSE 契约版本，当前固定为 1.0。
+             * @constant
+             */
+            contract_version: "1.0";
+            /**
+             * Request Id
+             * @description 与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。
+             */
+            request_id?: string | null;
+            /**
+             * Task Plan Id
+             * @description 当前公开事件所属且已经过入口授权的 TaskPlan ID。
+             */
+            task_plan_id: string;
+        };
+        /** TaskPlanExecutionStartedFrame */
+        TaskPlanExecutionStartedFrame: {
+            /** @description TaskPlan 执行开始的安全公开 payload。 */
+            data: components["schemas"]["TaskPlanExecutionStartedData"];
+            /**
+             * @description TaskPlan 执行开始事件名。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            event: "agent_task_execution_started";
+        };
+        /** TaskPlanFinalSynthesisData */
+        TaskPlanFinalSynthesisData: {
+            /**
+             * Contract Version
+             * @description TaskPlan 公共 SSE 契约版本，当前固定为 1.0。
+             * @constant
+             */
+            contract_version: "1.0";
+            /**
+             * Request Id
+             * @description 与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。
+             */
+            request_id?: string | null;
+            /** @description 最终合成时的 TaskPlan 状态。 */
+            status: components["schemas"]["AgentTaskPlanStatus"];
+            /**
+             * Task Plan Id
+             * @description 当前公开事件所属且已经过入口授权的 TaskPlan ID。
+             */
+            task_plan_id: string;
+            /**
+             * Used Tool Count
+             * @description 最终合成使用的工具数量；不公开工具参数或输出。
+             */
+            used_tool_count: number;
+            /**
+             * Warning Count
+             * @description 最终合成产生的公开警告数量。
+             */
+            warning_count: number;
+        };
+        /** TaskPlanFinalSynthesisFrame */
+        TaskPlanFinalSynthesisFrame: {
+            /** @description 最终合成完成的安全公开 payload。 */
+            data: components["schemas"]["TaskPlanFinalSynthesisData"];
+            /**
+             * @description TaskPlan 最终合成完成事件名。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            event: "agent_task_final_synthesis_completed";
+        };
+        /** TaskPlanGuardData */
+        TaskPlanGuardData: {
+            /**
+             * Action
+             * @description Prompt Guard 公开处理动作。
+             * @enum {string}
+             */
+            action: "sanitize" | "block";
+            /**
+             * Categories
+             * @description 经过格式约束的 Prompt Guard 分类码。
+             */
+            categories: string[];
+            /**
+             * Contract Version
+             * @description TaskPlan 公共 SSE 契约版本，当前固定为 1.0。
+             * @constant
+             */
+            contract_version: "1.0";
+            /**
+             * Reason
+             * @description 允许展示的稳定安全处理原因。
+             */
+            reason: string;
+            /**
+             * Request Id
+             * @description 与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。
+             */
+            request_id?: string | null;
+            /**
+             * Risk Level
+             * @description Prompt Guard 公开风险级别。
+             */
+            risk_level: string;
+            /**
+             * Task Plan Id
+             * @description 当前公开事件所属且已经过入口授权的 TaskPlan ID。
+             */
+            task_plan_id: string;
+            /**
+             * Text
+             * @description 允许展示的脱敏或阻断文本。
+             */
+            text: string;
+        };
+        /** TaskPlanGuardFrame */
+        TaskPlanGuardFrame: {
+            /** @description Prompt Guard 处理后的安全公开 payload。 */
+            data: components["schemas"]["TaskPlanGuardData"];
+            /**
+             * @description TaskPlan Prompt Guard 处理事件名。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            event: "guard_blocked" | "guard_sanitized";
+        };
+        /**
+         * TaskPlanPublicEventFrame
+         * @description OpenAPI 使用的 TaskPlan 业务事件判别式 union。
+         */
+        TaskPlanPublicEventFrame: components["schemas"]["TaskPlanExecutionStartedFrame"] | components["schemas"]["TaskPlanStatusFrame"] | components["schemas"]["TaskPlanResearchProgressFrame"] | components["schemas"]["TaskPlanSubQuestionCompletedFrame"] | components["schemas"]["TaskPlanRequirementProgressFrame"] | components["schemas"]["TaskPlanDocumentProgressFrame"] | components["schemas"]["TaskPlanStepFrame"] | components["schemas"]["TaskPlanFinalSynthesisFrame"] | components["schemas"]["TaskPlanSourcesFrame"] | components["schemas"]["TaskPlanAnswerDeltaFrame"] | components["schemas"]["TaskPlanGuardFrame"] | components["schemas"]["TaskPlanDoneFrame"] | components["schemas"]["TaskPlanErrorFrame"];
+        /** TaskPlanRequirementProgressData */
+        TaskPlanRequirementProgressData: {
+            /**
+             * Contract Version
+             * @description TaskPlan 公共 SSE 契约版本，当前固定为 1.0。
+             * @constant
+             */
+            contract_version: "1.0";
+            /**
+             * Evidence Count
+             * @description 满足该要求的公开证据数量。
+             * @default 0
+             */
+            evidence_count: number;
+            /**
+             * Reason Codes
+             * @description 经过 allowlist 格式约束的稳定原因码。
+             */
+            reason_codes?: string[];
+            /**
+             * Request Id
+             * @description 与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。
+             */
+            request_id?: string | null;
+            /**
+             * Requirement Id
+             * @description 研究证据要求的公开 ID。
+             */
+            requirement_id: string;
+            /**
+             * Status
+             * @description 证据要求的稳定满足状态。
+             * @enum {string}
+             */
+            status: "pending" | "partially_satisfied" | "satisfied" | "failed";
+            /**
+             * Task Plan Id
+             * @description 当前公开事件所属且已经过入口授权的 TaskPlan ID。
+             */
+            task_plan_id: string;
+        };
+        /** TaskPlanRequirementProgressFrame */
+        TaskPlanRequirementProgressFrame: {
+            /** @description 研究证据要求进度的安全公开 payload。 */
+            data: components["schemas"]["TaskPlanRequirementProgressData"];
+            /**
+             * @description 研究证据要求进度事件名。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            event: "requirement_evidence_updated" | "requirement_insufficient" | "requirement_satisfied";
+        };
+        /** TaskPlanResearchProgressData */
+        TaskPlanResearchProgressData: {
+            /**
+             * Active Operation Count
+             * @description 活动操作数量；不公开操作名称或参数。
+             * @default 0
+             */
+            active_operation_count: number;
+            /**
+             * Attempt
+             * @description 当前研究尝试序号；不适用时为空。
+             */
+            attempt?: number | null;
+            /**
+             * Contract Version
+             * @description TaskPlan 公共 SSE 契约版本，当前固定为 1.0。
+             * @constant
+             */
+            contract_version: "1.0";
+            /**
+             * Evidence Count
+             * @description 当前有效证据数量；未知时为空。
+             */
+            evidence_count?: number | null;
+            /**
+             * Reason Code
+             * @description 稳定公开原因码；不存在或不安全时为空。
+             */
+            reason_code?: string | null;
+            /**
+             * Request Id
+             * @description 与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。
+             */
+            request_id?: string | null;
+            /**
+             * Stage
+             * @description 当前研究 worker 的稳定公开阶段；不适用时为空。
+             */
+            stage?: ("starting" | "tool_setup" | "tool_selection" | "tool_execution" | "answer_generation" | "evidence_evaluation" | "retry_preparation" | "completed") | null;
+            /**
+             * Status
+             * @description 公开研究工作状态；无状态事实时为空。
+             */
+            status?: ("pending" | "running" | "completed" | "partial" | "failed" | "skipped" | "retrying") | null;
+            /**
+             * Sub Question Id
+             * @description 研究子问题公开 ID；事件不关联单题时为空。
+             */
+            sub_question_id?: string | null;
+            /**
+             * Task Plan Id
+             * @description 当前公开事件所属且已经过入口授权的 TaskPlan ID。
+             */
+            task_plan_id: string;
+            /**
+             * Tool Call Count
+             * @description 已执行工具调用数量；未知时为空。
+             */
+            tool_call_count?: number | null;
+            /**
+             * Wave
+             * @description 研究调度波次；事件不关联波次时为空。
+             */
+            wave?: number | null;
+        };
+        /** TaskPlanResearchProgressFrame */
+        TaskPlanResearchProgressFrame: {
+            /** @description Research 进度的安全公开 payload。 */
+            data: components["schemas"]["TaskPlanResearchProgressData"];
+            /**
+             * @description Research TaskPlan 公开进度事件名。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            event: "agent_task_evidence_evaluated" | "agent_task_research_wave_started" | "agent_task_research_worker_progress" | "agent_task_research_worker_timed_out" | "agent_task_sub_question_retrying" | "sub_question_started";
+        };
+        /** TaskPlanSourcesData */
+        TaskPlanSourcesData: {
+            /**
+             * Contract Version
+             * @description TaskPlan 公共 SSE 契约版本，当前固定为 1.0。
+             * @constant
+             */
+            contract_version: "1.0";
+            /**
+             * Request Id
+             * @description 与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。
+             */
+            request_id?: string | null;
+            /**
+             * Sources
+             * @description 经过公共 RagSource 校验的安全来源列表。
+             */
+            sources: components["schemas"]["RagSource"][];
+            /**
+             * Task Plan Id
+             * @description 当前公开事件所属且已经过入口授权的 TaskPlan ID。
+             */
+            task_plan_id: string;
+        };
+        /** TaskPlanSourcesFrame */
+        TaskPlanSourcesFrame: {
+            /** @description TaskPlan 回答来源的安全公开 payload。 */
+            data: components["schemas"]["TaskPlanSourcesData"];
+            /**
+             * @description TaskPlan 回答来源事件名。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            event: "sources";
+        };
+        /** TaskPlanStatusData */
+        TaskPlanStatusData: {
+            /**
+             * Contract Version
+             * @description TaskPlan 公共 SSE 契约版本，当前固定为 1.0。
+             * @constant
+             */
+            contract_version: "1.0";
+            /**
+             * Request Id
+             * @description 与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。
+             */
+            request_id?: string | null;
+            /** @description 当前持久化 TaskPlan 状态。 */
+            status: components["schemas"]["AgentTaskPlanStatus"];
+            /**
+             * Task Plan Id
+             * @description 当前公开事件所属且已经过入口授权的 TaskPlan ID。
+             */
+            task_plan_id: string;
+        };
+        /** TaskPlanStatusFrame */
+        TaskPlanStatusFrame: {
+            /** @description TaskPlan 状态快照的安全公开 payload。 */
+            data: components["schemas"]["TaskPlanStatusData"];
+            /**
+             * @description TaskPlan 状态快照事件名。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            event: "agent_task_status";
+        };
+        /** TaskPlanStepData */
+        TaskPlanStepData: {
+            /**
+             * Contract Version
+             * @description TaskPlan 公共 SSE 契约版本，当前固定为 1.0。
+             * @constant
+             */
+            contract_version: "1.0";
+            /**
+             * Error Code
+             * @description 步骤失败的稳定公开错误码；成功时为空。
+             */
+            error_code?: string | null;
+            /**
+             * Request Id
+             * @description 与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。
+             */
+            request_id?: string | null;
+            /**
+             * Status
+             * @description 步骤稳定终态。
+             * @enum {string}
+             */
+            status: "completed" | "failed";
+            /**
+             * Step Id
+             * @description 已结束 TaskPlan 步骤的公开 ID。
+             */
+            step_id: string;
+            /**
+             * Task Plan Id
+             * @description 当前公开事件所属且已经过入口授权的 TaskPlan ID。
+             */
+            task_plan_id: string;
+            /**
+             * Tool Name
+             * @description 该步骤使用的稳定工具名称；不包含参数或输出。
+             */
+            tool_name: string;
+        };
+        /** TaskPlanStepFrame */
+        TaskPlanStepFrame: {
+            /** @description TaskPlan 步骤终态的安全公开 payload。 */
+            data: components["schemas"]["TaskPlanStepData"];
+            /**
+             * @description TaskPlan 步骤终态事件名。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            event: "agent_task_step_completed" | "agent_task_step_failed";
+        };
+        /** TaskPlanSubQuestionCompletedData */
+        TaskPlanSubQuestionCompletedData: {
+            /**
+             * Contract Version
+             * @description TaskPlan 公共 SSE 契约版本，当前固定为 1.0。
+             * @constant
+             */
+            contract_version: "1.0";
+            /**
+             * Error Code
+             * @description 稳定公开错误码；没有失败或无法安全映射时为空。
+             */
+            error_code?: string | null;
+            /**
+             * Evidence Count
+             * @description 该子问题关联的公开证据数量。
+             * @default 0
+             */
+            evidence_count: number;
+            /**
+             * Request Id
+             * @description 与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。
+             */
+            request_id?: string | null;
+            /**
+             * Status
+             * @description 该子问题的稳定终态。
+             * @enum {string}
+             */
+            status: "completed" | "partial" | "failed" | "skipped";
+            /**
+             * Sub Question Id
+             * @description 已完成研究子问题的公开 ID。
+             */
+            sub_question_id: string;
+            /**
+             * Task Plan Id
+             * @description 当前公开事件所属且已经过入口授权的 TaskPlan ID。
+             */
+            task_plan_id: string;
+        };
+        /** TaskPlanSubQuestionCompletedFrame */
+        TaskPlanSubQuestionCompletedFrame: {
+            /** @description 研究子问题完成的安全公开 payload。 */
+            data: components["schemas"]["TaskPlanSubQuestionCompletedData"];
+            /**
+             * @description 研究子问题完成事件名。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            event: "sub_question_completed";
+        };
         /**
          * TokenPairResponse
          * @description 登录或刷新成功后的响应体：同时返回短期 access token 和长期 refresh token。
@@ -5344,21 +5957,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
-                    "text/event-stream": {
-                        /**
-                         * Data
-                         * @description 经过对应事件 Schema 校验的 JSON payload。
-                         */
-                        data: {
-                            [key: string]: unknown;
-                        };
-                        /**
-                         * Event
-                         * @description SSE event 字段；未知新增事件应由前端安全忽略。
-                         */
-                        event: string;
-                    };
+                    "text/event-stream": components["schemas"]["TaskPlanPublicEventFrame"];
                 };
             };
             /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */

@@ -5912,6 +5912,1340 @@
         "title": "SearchResponse",
         "type": "object"
       },
+      "TaskPlanAnswerDeltaData": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "const": "1.0",
+            "description": "TaskPlan 公共 SSE 契约版本，当前固定为 1.0。",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。",
+            "title": "Request Id"
+          },
+          "task_plan_id": {
+            "description": "当前公开事件所属且已经过入口授权的 TaskPlan ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Task Plan Id",
+            "type": "string"
+          },
+          "text": {
+            "description": "已通过输出安全边界的回答增量。",
+            "maxLength": 20000,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_version",
+          "task_plan_id",
+          "text"
+        ],
+        "title": "TaskPlanAnswerDeltaData",
+        "type": "object"
+      },
+      "TaskPlanAnswerDeltaFrame": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TaskPlanAnswerDeltaData",
+            "description": "TaskPlan 安全回答增量 payload。"
+          },
+          "event": {
+            "const": "answer_delta",
+            "description": "TaskPlan 安全回答增量事件名。",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "TaskPlanAnswerDeltaFrame",
+        "type": "object"
+      },
+      "TaskPlanDocumentProgressData": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "文档审查公开置信度；非审查事件为空。",
+            "title": "Confidence"
+          },
+          "contract_version": {
+            "const": "1.0",
+            "description": "TaskPlan 公共 SSE 契约版本，当前固定为 1.0。",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "deliverable_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "文档交付物数量；事件未提供时为空。",
+            "title": "Deliverable Count"
+          },
+          "deliverable_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "文档交付物公开 ID；不适用时为空。",
+            "title": "Deliverable Id"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "稳定公开文档工作流错误码；无失败时为空。",
+            "title": "Error Code"
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "enum": [
+                  "create",
+                  "update",
+                  "delete"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "文档操作类型；事件不关联具体操作时为空。",
+            "title": "Operation"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。",
+            "title": "Request Id"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "running",
+                  "completed",
+                  "partial",
+                  "failed",
+                  "skipped"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "文档工作流稳定状态；不适用时为空。",
+            "title": "Status"
+          },
+          "step_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "关联 TaskPlan 步骤 ID；不适用时为空。",
+            "title": "Step Id"
+          },
+          "task_plan_id": {
+            "description": "当前公开事件所属且已经过入口授权的 TaskPlan ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Task Plan Id",
+            "type": "string"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "enum": [
+                  "approved",
+                  "revision_required",
+                  "rejected"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "文档审查结论；非审查事件为空。",
+            "title": "Verdict"
+          }
+        },
+        "required": [
+          "contract_version",
+          "task_plan_id"
+        ],
+        "title": "TaskPlanDocumentProgressData",
+        "type": "object"
+      },
+      "TaskPlanDocumentProgressFrame": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TaskPlanDocumentProgressData",
+            "description": "Document 进度的安全公开 payload。"
+          },
+          "event": {
+            "description": "Document TaskPlan 公开进度事件名。",
+            "enum": [
+              "agent_task_document_supervised",
+              "agent_task_document_subagent_started",
+              "agent_task_document_subagent_completed",
+              "agent_task_document_subagent_failed",
+              "agent_task_document_draft_created",
+              "agent_task_document_review_completed",
+              "agent_task_document_revision_started",
+              "agent_task_document_action_prepared"
+            ],
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "TaskPlanDocumentProgressFrame",
+        "type": "object"
+      },
+      "TaskPlanDoneData": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "const": "1.0",
+            "description": "TaskPlan 公共 SSE 契约版本，当前固定为 1.0。",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。",
+            "title": "Request Id"
+          },
+          "status": {
+            "const": "done",
+            "description": "TaskPlan SSE 正常完成标记。",
+            "title": "Status",
+            "type": "string"
+          },
+          "task_plan_id": {
+            "description": "当前公开事件所属且已经过入口授权的 TaskPlan ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Task Plan Id",
+            "type": "string"
+          },
+          "task_status": {
+            "$ref": "#/components/schemas/AgentTaskPlanStatus",
+            "description": "流结束时的最终 TaskPlan 状态。"
+          }
+        },
+        "required": [
+          "contract_version",
+          "task_plan_id",
+          "status",
+          "task_status"
+        ],
+        "title": "TaskPlanDoneData",
+        "type": "object"
+      },
+      "TaskPlanDoneFrame": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TaskPlanDoneData",
+            "description": "TaskPlan SSE 正常终止的安全公开 payload。"
+          },
+          "event": {
+            "const": "done",
+            "description": "TaskPlan SSE 正常终止事件名。",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "TaskPlanDoneFrame",
+        "type": "object"
+      },
+      "TaskPlanErrorData": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "稳定公开错误码。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "contract_version": {
+            "const": "1.0",
+            "description": "TaskPlan 公共 SSE 契约版本，当前固定为 1.0。",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "error_category": {
+            "const": "system_error",
+            "description": "TaskPlan 流失败的稳定公开错误分类。",
+            "title": "Error Category",
+            "type": "string"
+          },
+          "message": {
+            "const": "TaskPlan 执行失败",
+            "description": "固定且不回显内部异常的公开错误消息。",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。",
+            "title": "Request Id"
+          },
+          "task_plan_id": {
+            "description": "当前公开事件所属且已经过入口授权的 TaskPlan ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Task Plan Id",
+            "type": "string"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "允许公开的链路追踪 ID；未提供或不安全时为空。",
+            "title": "Trace Id"
+          }
+        },
+        "required": [
+          "contract_version",
+          "task_plan_id",
+          "code",
+          "message",
+          "error_category"
+        ],
+        "title": "TaskPlanErrorData",
+        "type": "object"
+      },
+      "TaskPlanErrorFrame": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TaskPlanErrorData",
+            "description": "TaskPlan SSE 失败终止的安全公开 payload。"
+          },
+          "event": {
+            "const": "error",
+            "description": "TaskPlan SSE 失败终止事件名。",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "TaskPlanErrorFrame",
+        "type": "object"
+      },
+      "TaskPlanExecutionStartedData": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "const": "1.0",
+            "description": "TaskPlan 公共 SSE 契约版本，当前固定为 1.0。",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。",
+            "title": "Request Id"
+          },
+          "task_plan_id": {
+            "description": "当前公开事件所属且已经过入口授权的 TaskPlan ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Task Plan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_version",
+          "task_plan_id"
+        ],
+        "title": "TaskPlanExecutionStartedData",
+        "type": "object"
+      },
+      "TaskPlanExecutionStartedFrame": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TaskPlanExecutionStartedData",
+            "description": "TaskPlan 执行开始的安全公开 payload。"
+          },
+          "event": {
+            "const": "agent_task_execution_started",
+            "description": "TaskPlan 执行开始事件名。",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "TaskPlanExecutionStartedFrame",
+        "type": "object"
+      },
+      "TaskPlanFinalSynthesisData": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "const": "1.0",
+            "description": "TaskPlan 公共 SSE 契约版本，当前固定为 1.0。",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。",
+            "title": "Request Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentTaskPlanStatus",
+            "description": "最终合成时的 TaskPlan 状态。"
+          },
+          "task_plan_id": {
+            "description": "当前公开事件所属且已经过入口授权的 TaskPlan ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Task Plan Id",
+            "type": "string"
+          },
+          "used_tool_count": {
+            "description": "最终合成使用的工具数量；不公开工具参数或输出。",
+            "minimum": 0.0,
+            "title": "Used Tool Count",
+            "type": "integer"
+          },
+          "warning_count": {
+            "description": "最终合成产生的公开警告数量。",
+            "minimum": 0.0,
+            "title": "Warning Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "contract_version",
+          "task_plan_id",
+          "status",
+          "used_tool_count",
+          "warning_count"
+        ],
+        "title": "TaskPlanFinalSynthesisData",
+        "type": "object"
+      },
+      "TaskPlanFinalSynthesisFrame": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TaskPlanFinalSynthesisData",
+            "description": "最终合成完成的安全公开 payload。"
+          },
+          "event": {
+            "const": "agent_task_final_synthesis_completed",
+            "description": "TaskPlan 最终合成完成事件名。",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "TaskPlanFinalSynthesisFrame",
+        "type": "object"
+      },
+      "TaskPlanGuardData": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "description": "Prompt Guard 公开处理动作。",
+            "enum": [
+              "sanitize",
+              "block"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "categories": {
+            "description": "经过格式约束的 Prompt Guard 分类码。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "contract_version": {
+            "const": "1.0",
+            "description": "TaskPlan 公共 SSE 契约版本，当前固定为 1.0。",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "reason": {
+            "description": "允许展示的稳定安全处理原因。",
+            "maxLength": 256,
+            "title": "Reason",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。",
+            "title": "Request Id"
+          },
+          "risk_level": {
+            "description": "Prompt Guard 公开风险级别。",
+            "maxLength": 64,
+            "title": "Risk Level",
+            "type": "string"
+          },
+          "task_plan_id": {
+            "description": "当前公开事件所属且已经过入口授权的 TaskPlan ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Task Plan Id",
+            "type": "string"
+          },
+          "text": {
+            "description": "允许展示的脱敏或阻断文本。",
+            "maxLength": 20000,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_version",
+          "task_plan_id",
+          "text",
+          "action",
+          "risk_level",
+          "categories",
+          "reason"
+        ],
+        "title": "TaskPlanGuardData",
+        "type": "object"
+      },
+      "TaskPlanGuardFrame": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TaskPlanGuardData",
+            "description": "Prompt Guard 处理后的安全公开 payload。"
+          },
+          "event": {
+            "description": "TaskPlan Prompt Guard 处理事件名。",
+            "enum": [
+              "guard_sanitized",
+              "guard_blocked"
+            ],
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "TaskPlanGuardFrame",
+        "type": "object"
+      },
+      "TaskPlanPublicEventFrame": {
+        "description": "OpenAPI 使用的 TaskPlan 业务事件判别式 union。",
+        "discriminator": {
+          "mapping": {
+            "agent_task_document_action_prepared": "#/components/schemas/TaskPlanDocumentProgressFrame",
+            "agent_task_document_draft_created": "#/components/schemas/TaskPlanDocumentProgressFrame",
+            "agent_task_document_review_completed": "#/components/schemas/TaskPlanDocumentProgressFrame",
+            "agent_task_document_revision_started": "#/components/schemas/TaskPlanDocumentProgressFrame",
+            "agent_task_document_subagent_completed": "#/components/schemas/TaskPlanDocumentProgressFrame",
+            "agent_task_document_subagent_failed": "#/components/schemas/TaskPlanDocumentProgressFrame",
+            "agent_task_document_subagent_started": "#/components/schemas/TaskPlanDocumentProgressFrame",
+            "agent_task_document_supervised": "#/components/schemas/TaskPlanDocumentProgressFrame",
+            "agent_task_evidence_evaluated": "#/components/schemas/TaskPlanResearchProgressFrame",
+            "agent_task_execution_started": "#/components/schemas/TaskPlanExecutionStartedFrame",
+            "agent_task_final_synthesis_completed": "#/components/schemas/TaskPlanFinalSynthesisFrame",
+            "agent_task_research_wave_started": "#/components/schemas/TaskPlanResearchProgressFrame",
+            "agent_task_research_worker_progress": "#/components/schemas/TaskPlanResearchProgressFrame",
+            "agent_task_research_worker_timed_out": "#/components/schemas/TaskPlanResearchProgressFrame",
+            "agent_task_status": "#/components/schemas/TaskPlanStatusFrame",
+            "agent_task_step_completed": "#/components/schemas/TaskPlanStepFrame",
+            "agent_task_step_failed": "#/components/schemas/TaskPlanStepFrame",
+            "agent_task_sub_question_retrying": "#/components/schemas/TaskPlanResearchProgressFrame",
+            "answer_delta": "#/components/schemas/TaskPlanAnswerDeltaFrame",
+            "done": "#/components/schemas/TaskPlanDoneFrame",
+            "error": "#/components/schemas/TaskPlanErrorFrame",
+            "guard_blocked": "#/components/schemas/TaskPlanGuardFrame",
+            "guard_sanitized": "#/components/schemas/TaskPlanGuardFrame",
+            "requirement_evidence_updated": "#/components/schemas/TaskPlanRequirementProgressFrame",
+            "requirement_insufficient": "#/components/schemas/TaskPlanRequirementProgressFrame",
+            "requirement_satisfied": "#/components/schemas/TaskPlanRequirementProgressFrame",
+            "sources": "#/components/schemas/TaskPlanSourcesFrame",
+            "sub_question_completed": "#/components/schemas/TaskPlanSubQuestionCompletedFrame",
+            "sub_question_started": "#/components/schemas/TaskPlanResearchProgressFrame"
+          },
+          "propertyName": "event"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TaskPlanExecutionStartedFrame"
+          },
+          {
+            "$ref": "#/components/schemas/TaskPlanStatusFrame"
+          },
+          {
+            "$ref": "#/components/schemas/TaskPlanResearchProgressFrame"
+          },
+          {
+            "$ref": "#/components/schemas/TaskPlanSubQuestionCompletedFrame"
+          },
+          {
+            "$ref": "#/components/schemas/TaskPlanRequirementProgressFrame"
+          },
+          {
+            "$ref": "#/components/schemas/TaskPlanDocumentProgressFrame"
+          },
+          {
+            "$ref": "#/components/schemas/TaskPlanStepFrame"
+          },
+          {
+            "$ref": "#/components/schemas/TaskPlanFinalSynthesisFrame"
+          },
+          {
+            "$ref": "#/components/schemas/TaskPlanSourcesFrame"
+          },
+          {
+            "$ref": "#/components/schemas/TaskPlanAnswerDeltaFrame"
+          },
+          {
+            "$ref": "#/components/schemas/TaskPlanGuardFrame"
+          },
+          {
+            "$ref": "#/components/schemas/TaskPlanDoneFrame"
+          },
+          {
+            "$ref": "#/components/schemas/TaskPlanErrorFrame"
+          }
+        ],
+        "title": "TaskPlanPublicEventFrame"
+      },
+      "TaskPlanRequirementProgressData": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "const": "1.0",
+            "description": "TaskPlan 公共 SSE 契约版本，当前固定为 1.0。",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "evidence_count": {
+            "default": 0,
+            "description": "满足该要求的公开证据数量。",
+            "minimum": 0.0,
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "reason_codes": {
+            "description": "经过 allowlist 格式约束的稳定原因码。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。",
+            "title": "Request Id"
+          },
+          "requirement_id": {
+            "description": "研究证据要求的公开 ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Requirement Id",
+            "type": "string"
+          },
+          "status": {
+            "description": "证据要求的稳定满足状态。",
+            "enum": [
+              "pending",
+              "partially_satisfied",
+              "satisfied",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "task_plan_id": {
+            "description": "当前公开事件所属且已经过入口授权的 TaskPlan ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Task Plan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_version",
+          "task_plan_id",
+          "requirement_id",
+          "status"
+        ],
+        "title": "TaskPlanRequirementProgressData",
+        "type": "object"
+      },
+      "TaskPlanRequirementProgressFrame": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TaskPlanRequirementProgressData",
+            "description": "研究证据要求进度的安全公开 payload。"
+          },
+          "event": {
+            "description": "研究证据要求进度事件名。",
+            "enum": [
+              "requirement_evidence_updated",
+              "requirement_satisfied",
+              "requirement_insufficient"
+            ],
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "TaskPlanRequirementProgressFrame",
+        "type": "object"
+      },
+      "TaskPlanResearchProgressData": {
+        "additionalProperties": false,
+        "properties": {
+          "active_operation_count": {
+            "default": 0,
+            "description": "活动操作数量；不公开操作名称或参数。",
+            "minimum": 0.0,
+            "title": "Active Operation Count",
+            "type": "integer"
+          },
+          "attempt": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前研究尝试序号；不适用时为空。",
+            "title": "Attempt"
+          },
+          "contract_version": {
+            "const": "1.0",
+            "description": "TaskPlan 公共 SSE 契约版本，当前固定为 1.0。",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "evidence_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前有效证据数量；未知时为空。",
+            "title": "Evidence Count"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "稳定公开原因码；不存在或不安全时为空。",
+            "title": "Reason Code"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。",
+            "title": "Request Id"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "starting",
+                  "tool_setup",
+                  "tool_selection",
+                  "tool_execution",
+                  "answer_generation",
+                  "evidence_evaluation",
+                  "retry_preparation",
+                  "completed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前研究 worker 的稳定公开阶段；不适用时为空。",
+            "title": "Stage"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "running",
+                  "completed",
+                  "partial",
+                  "failed",
+                  "skipped",
+                  "retrying"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "公开研究工作状态；无状态事实时为空。",
+            "title": "Status"
+          },
+          "sub_question_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "研究子问题公开 ID；事件不关联单题时为空。",
+            "title": "Sub Question Id"
+          },
+          "task_plan_id": {
+            "description": "当前公开事件所属且已经过入口授权的 TaskPlan ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Task Plan Id",
+            "type": "string"
+          },
+          "tool_call_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "已执行工具调用数量；未知时为空。",
+            "title": "Tool Call Count"
+          },
+          "wave": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "研究调度波次；事件不关联波次时为空。",
+            "title": "Wave"
+          }
+        },
+        "required": [
+          "contract_version",
+          "task_plan_id"
+        ],
+        "title": "TaskPlanResearchProgressData",
+        "type": "object"
+      },
+      "TaskPlanResearchProgressFrame": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TaskPlanResearchProgressData",
+            "description": "Research 进度的安全公开 payload。"
+          },
+          "event": {
+            "description": "Research TaskPlan 公开进度事件名。",
+            "enum": [
+              "sub_question_started",
+              "agent_task_research_wave_started",
+              "agent_task_research_worker_progress",
+              "agent_task_research_worker_timed_out",
+              "agent_task_evidence_evaluated",
+              "agent_task_sub_question_retrying"
+            ],
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "TaskPlanResearchProgressFrame",
+        "type": "object"
+      },
+      "TaskPlanSourcesData": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "const": "1.0",
+            "description": "TaskPlan 公共 SSE 契约版本，当前固定为 1.0。",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。",
+            "title": "Request Id"
+          },
+          "sources": {
+            "description": "经过公共 RagSource 校验的安全来源列表。",
+            "items": {
+              "$ref": "#/components/schemas/RagSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "task_plan_id": {
+            "description": "当前公开事件所属且已经过入口授权的 TaskPlan ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Task Plan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_version",
+          "task_plan_id",
+          "sources"
+        ],
+        "title": "TaskPlanSourcesData",
+        "type": "object"
+      },
+      "TaskPlanSourcesFrame": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TaskPlanSourcesData",
+            "description": "TaskPlan 回答来源的安全公开 payload。"
+          },
+          "event": {
+            "const": "sources",
+            "description": "TaskPlan 回答来源事件名。",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "TaskPlanSourcesFrame",
+        "type": "object"
+      },
+      "TaskPlanStatusData": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "const": "1.0",
+            "description": "TaskPlan 公共 SSE 契约版本，当前固定为 1.0。",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。",
+            "title": "Request Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentTaskPlanStatus",
+            "description": "当前持久化 TaskPlan 状态。"
+          },
+          "task_plan_id": {
+            "description": "当前公开事件所属且已经过入口授权的 TaskPlan ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Task Plan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_version",
+          "task_plan_id",
+          "status"
+        ],
+        "title": "TaskPlanStatusData",
+        "type": "object"
+      },
+      "TaskPlanStatusFrame": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TaskPlanStatusData",
+            "description": "TaskPlan 状态快照的安全公开 payload。"
+          },
+          "event": {
+            "const": "agent_task_status",
+            "description": "TaskPlan 状态快照事件名。",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "TaskPlanStatusFrame",
+        "type": "object"
+      },
+      "TaskPlanStepData": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "const": "1.0",
+            "description": "TaskPlan 公共 SSE 契约版本，当前固定为 1.0。",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "步骤失败的稳定公开错误码；成功时为空。",
+            "title": "Error Code"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。",
+            "title": "Request Id"
+          },
+          "status": {
+            "description": "步骤稳定终态。",
+            "enum": [
+              "completed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "step_id": {
+            "description": "已结束 TaskPlan 步骤的公开 ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Step Id",
+            "type": "string"
+          },
+          "task_plan_id": {
+            "description": "当前公开事件所属且已经过入口授权的 TaskPlan ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Task Plan Id",
+            "type": "string"
+          },
+          "tool_name": {
+            "description": "该步骤使用的稳定工具名称；不包含参数或输出。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_version",
+          "task_plan_id",
+          "step_id",
+          "tool_name",
+          "status"
+        ],
+        "title": "TaskPlanStepData",
+        "type": "object"
+      },
+      "TaskPlanStepFrame": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TaskPlanStepData",
+            "description": "TaskPlan 步骤终态的安全公开 payload。"
+          },
+          "event": {
+            "description": "TaskPlan 步骤终态事件名。",
+            "enum": [
+              "agent_task_step_completed",
+              "agent_task_step_failed"
+            ],
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "TaskPlanStepFrame",
+        "type": "object"
+      },
+      "TaskPlanSubQuestionCompletedData": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "const": "1.0",
+            "description": "TaskPlan 公共 SSE 契约版本，当前固定为 1.0。",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "稳定公开错误码；没有失败或无法安全映射时为空。",
+            "title": "Error Code"
+          },
+          "evidence_count": {
+            "default": 0,
+            "description": "该子问题关联的公开证据数量。",
+            "minimum": 0.0,
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "与当前 HTTP 请求和 X-Request-ID 对齐的公开请求关联 ID。",
+            "title": "Request Id"
+          },
+          "status": {
+            "description": "该子问题的稳定终态。",
+            "enum": [
+              "completed",
+              "partial",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "sub_question_id": {
+            "description": "已完成研究子问题的公开 ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Sub Question Id",
+            "type": "string"
+          },
+          "task_plan_id": {
+            "description": "当前公开事件所属且已经过入口授权的 TaskPlan ID。",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Task Plan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_version",
+          "task_plan_id",
+          "sub_question_id",
+          "status"
+        ],
+        "title": "TaskPlanSubQuestionCompletedData",
+        "type": "object"
+      },
+      "TaskPlanSubQuestionCompletedFrame": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TaskPlanSubQuestionCompletedData",
+            "description": "研究子问题完成的安全公开 payload。"
+          },
+          "event": {
+            "const": "sub_question_completed",
+            "description": "研究子问题完成事件名。",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "TaskPlanSubQuestionCompletedFrame",
+        "type": "object"
+      },
       "TokenPairResponse": {
         "description": "登录或刷新成功后的响应体：同时返回短期 access token 和长期 refresh token。",
         "properties": {
@@ -8183,32 +9517,9 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
-              },
               "text/event-stream": {
                 "schema": {
-                  "additionalProperties": false,
-                  "description": "OpenAPI/fixture 使用的 SSE 逻辑帧；线上 wire 仍是 event/data 两行。",
-                  "properties": {
-                    "data": {
-                      "additionalProperties": true,
-                      "description": "经过对应事件 Schema 校验的 JSON payload。",
-                      "title": "Data",
-                      "type": "object"
-                    },
-                    "event": {
-                      "description": "SSE event 字段；未知新增事件应由前端安全忽略。",
-                      "title": "Event",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "event",
-                    "data"
-                  ],
-                  "title": "RagSseEventFrame",
-                  "type": "object"
+                  "$ref": "#/components/schemas/TaskPlanPublicEventFrame"
                 }
               }
             },
