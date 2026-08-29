@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 6 - TaskPlan
 
-Current Step: Slice 6 结构化 status/task-kind action policy 已由 frontend checkpoint `c24e9e5` 完成并验证；尚未接入按钮、cancel/retry mutation 或 confirm stream，现进入 cancel/retry mutation seam
+Current Step: Slice 6 cancel/retry mutation seam 已由 frontend checkpoint `875a0a8` 完成并验证；结构化 controls、明确 cancel 确认、pending lock 与成功/`409` 服务端收敛已建立，现进入 confirm-stream transport 与 TaskPlan public event reducer
 
-Next Action: 先为 cancel/retry mutation 的 route/method、pending lock、成功后 detail/list invalidation 及 `409` refetch 新增 focused expected-red tests，再实现最小 mutation seam；不提前实现 confirm stream
+Next Action: 先为 TaskPlan 已生成公共事件的集中 typed projection 与独立 reducer 新增 focused expected-red tests，再实现最小 known/unknown event seam；尚不发送 confirm POST
 
 Blocking Issues: None
 
@@ -261,7 +261,7 @@ Goal: 完成 TaskPlan 列表、详情、Markdown、确认流、取消、重试�
 - [x] 读取 TaskPlan spec，复核 list wrapper、task-kind detail、控制接口、SSE 和 Idempotency contract。
 - [x] 实现 list/detail/markdown adapters、Query Keys、filters 和 keyset pagination。
 - [x] 按 task kind 保留完整 Domain Model，不压平成丢字段的通用模型。
-- [ ] 实现结构化 status 驱动的 controls；禁止解析自然语言 message 决定按钮。
+- [x] 实现结构化 status 驱动的 controls；禁止解析自然语言 message 决定按钮。
 - [ ] Initial React 确认只使用 `/{id}/confirm/stream`。
 - [ ] 确认流复用公共 SSE envelope/transport，业务 event 使用独立 TaskPlan union/reducer。
 - [ ] 同一 deliberate action 保留 Idempotency-Key；`409` 和流终止后 refetch detail/list。
@@ -482,11 +482,18 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 6 / IN_PROGRESS。CG004-CG007 已全部关闭；checkpoint `758929d` 完成 data seam，checkpoint `ab8f2d9` 完成真实 `/tasks` list/detail/Markdown 只读页面，checkpoint `c24e9e5` 完成结构化 status/task-kind action policy，现进入 cancel/retry mutation seam。
+- Slice 6 / IN_PROGRESS。CG004-CG007 已全部关闭；checkpoint `758929d` 完成 data seam，`ab8f2d9` 完成只读页面，`c24e9e5` 完成结构化 action policy，`875a0a8` 完成 cancel/retry controls 与 mutation 收敛，现进入 confirm-stream transport 与 TaskPlan public event reducer。
 
 Next Action:
 
-- 先为 cancel/retry mutation 的 route/method、pending lock、成功后 detail/list invalidation 及 `409` refetch 新增 focused expected-red tests，再实现最小 mutation seam；不提前实现 confirm stream。
+- 先为 TaskPlan 已生成公共事件的集中 typed projection 与独立 reducer 新增 focused expected-red tests，再实现最小 known/unknown event seam；尚不发送 confirm POST。
+
+Slice 6 Cancel/Retry Mutation Evidence (verified 2026-08-29):
+
+- API expected-red 先因 `cancelTaskPlan` 不存在失败；最小 adapter 随后只对 generated `AgentTaskPlanControlResponse` 对应的 cancel/retry Route 发送 `POST`，并原样携带每次 deliberate action 的 `Idempotency-Key`。
+- 页面/MSW expected-red 分别证明 retry 和 cancel controls 尚不存在；green 后按 `status + task_kind` 展示操作，retry 与 cancel 提交中均锁定，cancel 必须通过明确 Dialog 确认才调用服务端操作。
+- cancel/retry 成功后均 invalidate/refetch 当前用户的 detail/list，不做乐观状态修改；`409` expected-red 先证明两类 Query 未失效，精确增加 conflict refresh 后转为 green。
+- focused TaskPlan tests 为 4 files / 12 tests 通过，typecheck/lint 通过；完整 `pnpm check` 通过 contract drift、lint、typecheck、23 files / 94 tests 与 production build。无 package/lockfile/generated/backend 变化，未调用非流式 `/confirm`。
 
 Slice 6 Structured Control Policy Evidence (verified 2026-08-29):
 
