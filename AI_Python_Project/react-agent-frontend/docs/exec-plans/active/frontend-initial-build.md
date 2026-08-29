@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 6 - TaskPlan
 
-Current Step: Slice 6 data seam 已由 frontend checkpoint `758929d` 完成并验证；list/detail/Markdown transport、两种 task kind Domain Model、private Query Keys 与 keyset pagination 已建立，现进入 TaskPlan 页面与结构化 controls
+Current Step: Slice 6 只读页面已由 frontend checkpoint `ab8f2d9` 完成并验证；真实 `/tasks` routes 已接入 filters/list/detail/Markdown 与两种 task kind 展示，现进入 status-driven control policy、cancel/retry 与 confirm-stream reducer
 
-Next Action: 为 `/tasks` 与 `/tasks/:taskPlanId` 新增真实 App/AuthProvider/QueryClient/MSW expected-red tests，覆盖 filters/cursor、两种详情与 Markdown、status 驱动 controls、404/refreshing/error 页面状态，再实现最小页面 composition
+Next Action: 为结构化 status/task kind control policy、cancel/retry mutation、confirm-stream request ID/Idempotency-Key、TaskPlan public event reducer、409/abort/interrupted refetch 新增 focused expected-red tests，再实现最小 control/stream seam
 
 Blocking Issues: None
 
@@ -482,11 +482,18 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 6 / IN_PROGRESS。CG004-CG007 已全部关闭并同步 generated contract；frontend checkpoint `758929d` 已完成 list/detail/Markdown data seam、两类详情 Domain Model、private Query Keys 与 keyset pagination，现进入页面与结构化 controls。
+- Slice 6 / IN_PROGRESS。CG004-CG007 已全部关闭；checkpoint `758929d` 完成 data seam，checkpoint `ab8f2d9` 完成真实 `/tasks` list/detail/Markdown 只读页面与两类详情展示，现进入结构化 controls/confirm-stream。
 
 Next Action:
 
-- 为 `/tasks` 与 `/tasks/:taskPlanId` 新增真实 App/AuthProvider/QueryClient/MSW expected-red tests，覆盖 filters/cursor、两种详情与 Markdown、status 驱动 controls、404/refreshing/error 页面状态，再实现最小页面 composition。
+- 为结构化 status/task kind control policy、cancel/retry mutation、confirm-stream request ID/Idempotency-Key、TaskPlan public event reducer、409/abort/interrupted refetch 新增 focused expected-red tests，再实现最小 control/stream seam。
+
+Slice 6 Read-only Page Evidence (verified 2026-08-29):
+
+- 真实 App/AuthProvider/QueryClient/MSW expected-red 先证明 `/tasks` 仍是 placeholder；frontend checkpoint `ab8f2d9` 随后用 `TaskPlanPage` 与 `TaskPlanWorkspace` 接入真实 routes，pages 只负责 feature composition。
+- list 页面从 URL 读取 `status/session_id`，保留 backend order、支持 keyset load-more 并展示 task kind/status；detail 页面按 research/document variant 展示独有结构，计划 Markdown 复用共享安全 `MarkdownViewer`，raw HTML 不执行。
+- focused App/MSW tests 2/2 通过，覆盖 filters 传输、列表顺序、research detail、结构化状态和安全 Markdown；首次 green 尝试由测试捕获错误的 Markdown prop 接线，修正后 typecheck/lint 通过。
+- 完整 `pnpm check` 通过 contract drift、lint、typecheck、21 files / 88 tests 与 production build。该 checkpoint 尚不宣称 controls、confirm stream、404/refreshing/error 完整 acceptance 或 manual browser smoke 已完成。
 
 Slice 6 Data Seam Evidence (verified 2026-08-29):
 
