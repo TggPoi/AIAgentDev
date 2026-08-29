@@ -10,6 +10,7 @@ import { LoginPage } from '@/pages/LoginPage'
 import { PlaceholderPage } from '@/pages/PlaceholderPage'
 import { ChatPage } from '@/pages/ChatPage'
 import { SecuritySettingsPage } from '@/pages/SecuritySettingsPage'
+import { TaskPlanPage } from '@/pages/TaskPlanPage'
 
 function StartupScreen() {
   return (
@@ -29,16 +30,6 @@ function StartupScreen() {
     </main>
   )
 }
-
-const taskPlanPage = (
-  <PlaceholderPage
-    description="查看需要确认、执行中或已经完成的结构化任务计划。"
-    emptyDescription="任务计划数据将在业务模块接入后显示。"
-    emptyTitle="暂无任务计划"
-    eyebrow="Agent Operations"
-    title="TaskPlan"
-  />
-)
 
 const documentsPage = (
   <PlaceholderPage
@@ -85,8 +76,8 @@ function AppContent() {
       <Route element={<ApplicationShell />}>
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/chat/:sessionId" element={<ChatPage />} />
-        <Route path="/tasks" element={taskPlanPage} />
-        <Route path="/tasks/:taskPlanId" element={taskPlanPage} />
+        <Route path="/tasks" element={<TaskPlanPage />} />
+        <Route path="/tasks/:taskPlanId" element={<TaskPlanPage />} />
         <Route
           path="/documents"
           element={

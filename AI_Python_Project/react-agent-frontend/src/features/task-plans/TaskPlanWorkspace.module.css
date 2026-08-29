@@ -1,0 +1,151 @@
+.page {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.header h2,
+.detailHeader h2,
+.panel h3 {
+  margin: 0;
+}
+
+.header p,
+.detailHeader p,
+.panel p {
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  margin: var(--space-2) 0 0;
+}
+
+.eyebrow {
+  color: var(--color-primary-700) !important;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.filters {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.filters label {
+  color: var(--color-text-secondary);
+  display: grid;
+  font-size: 0.875rem;
+  font-weight: 700;
+  gap: var(--space-2);
+}
+
+.filters input,
+.filters select {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  min-height: 2.75rem;
+  padding: 0 var(--space-3);
+}
+
+.list,
+.steps {
+  display: grid;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cardLink,
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.cardLink {
+  color: var(--color-text-secondary);
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  text-decoration: none;
+}
+
+.cardLink:hover,
+.cardLink:focus-visible {
+  border-color: var(--color-primary-500);
+}
+
+.cardTitle {
+  color: var(--color-text);
+  font-weight: 800;
+}
+
+.status {
+  background: var(--color-primary-50);
+  border-radius: 999px;
+  color: var(--color-primary-700);
+  display: inline-flex;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  padding: var(--space-1) var(--space-3);
+  width: fit-content;
+}
+
+.detailHeader {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.panel {
+  padding: var(--space-5);
+}
+
+.facts {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: var(--space-4) 0 0;
+}
+
+.facts div {
+  background: var(--color-background);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.facts dt {
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.facts dd {
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin: var(--space-1) 0 0;
+}
+
+.steps li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.steps span {
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 767px) {
+  .filters,
+  .facts {
+    grid-template-columns: 1fr;
+  }
+
+  .steps li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
