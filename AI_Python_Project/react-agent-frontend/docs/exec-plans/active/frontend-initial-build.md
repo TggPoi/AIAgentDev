@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 6 - TaskPlan
 
-Current Step: Slice 6 cancel/retry mutation seam 已由 frontend checkpoint `875a0a8` 完成并验证；结构化 controls、明确 cancel 确认、pending lock 与成功/`409` 服务端收敛已建立，现进入 confirm-stream transport 与 TaskPlan public event reducer
+Current Step: Slice 6 TaskPlan public event projection 与独立 reducer 已由 frontend checkpoint `9bb23c2` 完成并验证；13 类 generated frame 已进入明确 known/unknown 安全边界，现进入 confirm-stream POST transport 与 action lifecycle
 
-Next Action: 先为 TaskPlan 已生成公共事件的集中 typed projection 与独立 reducer 新增 focused expected-red tests，再实现最小 known/unknown event seam；尚不发送 confirm POST
+Next Action: 先为唯一 `/{id}/confirm/stream` POST 的 `confirmed:true`、request ID/Idempotency-Key、SSE parsing 与 pre-stream failure 新增 focused expected-red tests，再实现最小 TaskPlan stream API；不调用非流式 `/confirm`
 
 Blocking Issues: None
 
@@ -482,11 +482,18 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 6 / IN_PROGRESS。CG004-CG007 已全部关闭；checkpoint `758929d` 完成 data seam，`ab8f2d9` 完成只读页面，`c24e9e5` 完成结构化 action policy，`875a0a8` 完成 cancel/retry controls 与 mutation 收敛，现进入 confirm-stream transport 与 TaskPlan public event reducer。
+- Slice 6 / IN_PROGRESS。CG004-CG007 已全部关闭；checkpoint `758929d` 完成 data seam，`ab8f2d9` 完成只读页面，`c24e9e5` 完成结构化 action policy，`875a0a8` 完成 cancel/retry，`9bb23c2` 完成 TaskPlan public event projection 与独立 reducer，现进入 confirm-stream POST transport 与 action lifecycle。
 
 Next Action:
 
-- 先为 TaskPlan 已生成公共事件的集中 typed projection 与独立 reducer 新增 focused expected-red tests，再实现最小 known/unknown event seam；尚不发送 confirm POST。
+- 先为唯一 `/{id}/confirm/stream` POST 的 `confirmed:true`、request ID/Idempotency-Key、SSE parsing 与 pre-stream failure 新增 focused expected-red tests，再实现最小 TaskPlan stream API；不调用非流式 `/confirm`。
+
+Slice 6 Public Event/Reducer Evidence (verified 2026-08-29):
+
+- centralized parser expected-red 先因 `parseTaskPlanPublicEvent` 不存在失败；green 后直接引用 generated TaskPlan data/frame/status types，对 status、research/document/requirement/step/sub-question progress、execution/final、answer/sources/guard 及 done/error 13 类 frame 做 runtime allowlist projection。
+- 每个 payload 先验证 `contract_version:1.0` 与当前 request ID；known event 只保留明确字段，TaskPlan error 只接受固定安全 message/category，unknown event 只保留 event/request/time/unsupported 投影，额外 Tool/credential payload 不进入对象或 reducer。
+- TaskPlan 独立 reducer expected-red/green 覆盖 action request/plan 绑定、status、answer/sources、progress timeline、done/error terminal、other-plan 和 terminal-late isolation；未复用 Chat 业务 reducer。
+- focused event/reducer tests 为 2 files / 12 tests 通过，lint/typecheck 通过；完整 `pnpm check` 通过 contract drift、lint、typecheck、24 files / 100 tests 与 production build。该 checkpoint 尚未发送 confirm POST，不声称 transport/UI/abort/refetch 完成。
 
 Slice 6 Cancel/Retry Mutation Evidence (verified 2026-08-29):
 
