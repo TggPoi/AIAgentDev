@@ -225,8 +225,19 @@ def assert_task_plan_stream_contract() -> None:
         "/agent/task-plans/{task_plan_id}/confirm/stream"
     ]["post"]["responses"]["200"]
     assert "X-Request-ID" in openapi_response["headers"]
-    schema = openapi_response["content"]["text/event-stream"]["schema"]
-    assert set(schema["properties"]) == {"event", "data"}
+    response_schema = openapi_response["content"]["text/event-stream"]["schema"]
+    assert response_schema == {
+        "$ref": "#/components/schemas/TaskPlanPublicEventFrame"
+    }
+    schema = app.openapi()["components"]["schemas"]["TaskPlanPublicEventFrame"]
+    assert schema["discriminator"]["propertyName"] == "event"
+    assert len(schema["oneOf"]) >= 10
+    mapping = schema["discriminator"]["mapping"]
+    assert "agent_task_research_worker_progress" in mapping
+    assert "agent_task_document_review_completed" in mapping
+    assert "agent_task_step_completed" in mapping
+    assert "done" in mapping
+    assert "error" in mapping
 
 
 def _parse_frame(chunk: str) -> tuple[str, dict[str, object]]:

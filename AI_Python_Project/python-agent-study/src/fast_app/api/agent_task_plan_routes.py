@@ -4,7 +4,6 @@ from collections.abc import AsyncGenerator
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, Query
-from fastapi.encoders import jsonable_encoder
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -38,11 +37,11 @@ from fast_app.schemas.agent_task_plan_schema import (
     AgentTaskPlanListResponse,
     build_document_task_plan_public_view,
 )
-from fast_app.schemas.error_schema import RequestValidationErrorResponse
-from fast_app.schemas.rag_stream_schema import (
-    RagSseEventFrame,
-    normalize_sse_event_envelope,
+from fast_app.schemas.agent_task_plan_stream_schema import (
+    TaskPlanPublicEventFrame,
+    project_task_plan_public_event,
 )
+from fast_app.schemas.error_schema import RequestValidationErrorResponse
 from fast_app.services.exceptions import (
     AgentTaskPlanNotFoundError,
     AppServiceError,
@@ -415,6 +414,8 @@ async def confirm_agent_task_plan_endpoint(
 
 @router.post(
     "/{task_plan_id}/confirm/stream",
+    response_model=TaskPlanPublicEventFrame,
+    response_class=StreamingResponse,
     responses={
         200: {
             "description": "TaskPlan 确认执行结构化 SSE；每个 data payload 包含 contract_version 和 request_id。",
@@ -426,7 +427,9 @@ async def confirm_agent_task_plan_endpoint(
             },
             "content": {
                 "text/event-stream": {
-                    "schema": RagSseEventFrame.model_json_schema(),
+                    "schema": {
+                        "$ref": "#/components/schemas/TaskPlanPublicEventFrame"
+                    },
                 }
             },
         },
@@ -583,6 +586,7 @@ async def _confirm_task_plan_sse_generator(
                 yield _format_sse_event(
                     "sources",
                     {
+                        "task_plan_id": plan.task_plan_id,
                         "sources": (
                             _public_plan_payload(plan).get("evidence", [])
                             if isinstance(plan, ResearchTaskPlan)
@@ -601,7 +605,10 @@ async def _confirm_task_plan_sse_generator(
                     max_chars=settings.prompt_guard_stream_chunk_max_chars,
                     state=stream_state,
                 ):
-                    yield _format_sse_event(event.event, event.data)
+                    yield _format_sse_event(
+                        event.event,
+                        {"task_plan_id": plan.task_plan_id, **event.data},
+                    )
 
                 yield _format_sse_event(
                     "agent_task_final_synthesis_completed",
@@ -800,7 +807,7 @@ def _task_plan_progress_events(
 
     # 检查当前子任务执行结果的json文件 格式是否正确
     if not isinstance(results, list):
-        return events
+        return [event for event in events if event]
     
     # 检查单个子任务的格式是否正确
     for result in results:
@@ -874,17 +881,21 @@ def _task_plan_progress_events(
                     },
                 )
             )
-    return events
+    return [event for event in events if event]
 
 
 def _format_sse_event(event: str, data: object) -> str:
-    payload = normalize_sse_event_envelope(
+    frame = project_task_plan_public_event(
+        event,
         data,
         request_id=get_request_id(),
     )
+    if frame is None:
+        return ""
+    payload = frame.root.data.model_dump(mode="json")
     return (
-        f"event: {event}\n"
-        f"data: {json.dumps(jsonable_encoder(payload), ensure_ascii=False)}\n\n"
+        f"event: {frame.root.event}\n"
+        f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
     )
 
 
