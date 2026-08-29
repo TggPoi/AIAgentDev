@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 6 - TaskPlan
 
-Current Step: Slice 6 只读页面已由 frontend checkpoint `ab8f2d9` 完成并验证；真实 `/tasks` routes 已接入 filters/list/detail/Markdown 与两种 task kind 展示，现进入 status-driven control policy、cancel/retry 与 confirm-stream reducer
+Current Step: Slice 6 结构化 status/task-kind action policy 已由 frontend checkpoint `c24e9e5` 完成并验证；尚未接入按钮、cancel/retry mutation 或 confirm stream，现进入 cancel/retry mutation seam
 
-Next Action: 为结构化 status/task kind control policy、cancel/retry mutation、confirm-stream request ID/Idempotency-Key、TaskPlan public event reducer、409/abort/interrupted refetch 新增 focused expected-red tests，再实现最小 control/stream seam
+Next Action: 先为 cancel/retry mutation 的 route/method、pending lock、成功后 detail/list invalidation 及 `409` refetch 新增 focused expected-red tests，再实现最小 mutation seam；不提前实现 confirm stream
 
 Blocking Issues: None
 
@@ -482,11 +482,17 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 6 / IN_PROGRESS。CG004-CG007 已全部关闭；checkpoint `758929d` 完成 data seam，checkpoint `ab8f2d9` 完成真实 `/tasks` list/detail/Markdown 只读页面与两类详情展示，现进入结构化 controls/confirm-stream。
+- Slice 6 / IN_PROGRESS。CG004-CG007 已全部关闭；checkpoint `758929d` 完成 data seam，checkpoint `ab8f2d9` 完成真实 `/tasks` list/detail/Markdown 只读页面，checkpoint `c24e9e5` 完成结构化 status/task-kind action policy，现进入 cancel/retry mutation seam。
 
 Next Action:
 
-- 为结构化 status/task kind control policy、cancel/retry mutation、confirm-stream request ID/Idempotency-Key、TaskPlan public event reducer、409/abort/interrupted refetch 新增 focused expected-red tests，再实现最小 control/stream seam。
+- 先为 cancel/retry mutation 的 route/method、pending lock、成功后 detail/list invalidation 及 `409` refetch 新增 focused expected-red tests，再实现最小 mutation seam；不提前实现 confirm stream。
+
+Slice 6 Structured Control Policy Evidence (verified 2026-08-29):
+
+- focused expected-red 先因 `task-plan-controls` module 不存在失败；frontend checkpoint `c24e9e5` 随后建立只依赖结构化 `status` 与 `task_kind` 的 action policy，不解析自然语言 message。
+- focused test 1/1 通过，覆盖 research/document 在 waiting、executing、preparing、failed、completed-with-warnings、completed 和 cancelled 状态下的 confirm/retry/cancel 矩阵。
+- 完整 `pnpm check` 通过 contract drift、lint、typecheck、22 files / 89 tests 与 production build。该 checkpoint 只完成 action policy，尚未声称页面按钮、mutation、confirm stream 或 manual browser smoke 完成。
 
 Slice 6 Read-only Page Evidence (verified 2026-08-29):
 
