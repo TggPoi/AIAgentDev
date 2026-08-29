@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 6 - TaskPlan
 
-Current Step: CG006 已由 backend checkpoint `2ca4bcc` 与 frontend contract sync `d30d7ea` 完成并验证；CG004-CG007 全部关闭，现开始 Slice 6 frontend list/detail/Markdown data seam
+Current Step: Slice 6 data seam 已由 frontend checkpoint `758929d` 完成并验证；list/detail/Markdown transport、两种 task kind Domain Model、private Query Keys 与 keyset pagination 已建立，现进入 TaskPlan 页面与结构化 controls
 
-Next Action: 为 TaskPlan list/detail/Markdown generated transport adapters、user-bound Query Keys、opaque cursor merge 与两种 `task_kind` Domain Model 新增 focused expected-red tests，再实现最小 data seam
+Next Action: 为 `/tasks` 与 `/tasks/:taskPlanId` 新增真实 App/AuthProvider/QueryClient/MSW expected-red tests，覆盖 filters/cursor、两种详情与 Markdown、status 驱动 controls、404/refreshing/error 页面状态，再实现最小页面 composition
 
 Blocking Issues: None
 
@@ -259,8 +259,8 @@ Status: IN_PROGRESS
 Goal: 完成 TaskPlan 列表、详情、Markdown、确认流、取消、重试和恢复。
 
 - [x] 读取 TaskPlan spec，复核 list wrapper、task-kind detail、控制接口、SSE 和 Idempotency contract。
-- [ ] 实现 list/detail/markdown adapters、Query Keys、filters 和 keyset pagination。
-- [ ] 按 task kind 保留完整 Domain Model，不压平成丢字段的通用模型。
+- [x] 实现 list/detail/markdown adapters、Query Keys、filters 和 keyset pagination。
+- [x] 按 task kind 保留完整 Domain Model，不压平成丢字段的通用模型。
 - [ ] 实现结构化 status 驱动的 controls；禁止解析自然语言 message 决定按钮。
 - [ ] Initial React 确认只使用 `/{id}/confirm/stream`。
 - [ ] 确认流复用公共 SSE envelope/transport，业务 event 使用独立 TaskPlan union/reducer。
@@ -482,11 +482,17 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 6 / IN_PROGRESS。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；CG004-CG007 已全部关闭并同步 generated contract，现开始 list/detail/Markdown data seam，frontend TaskPlan coding 尚未开始。
+- Slice 6 / IN_PROGRESS。CG004-CG007 已全部关闭并同步 generated contract；frontend checkpoint `758929d` 已完成 list/detail/Markdown data seam、两类详情 Domain Model、private Query Keys 与 keyset pagination，现进入页面与结构化 controls。
 
 Next Action:
 
-- 为 TaskPlan list/detail/Markdown generated transport adapters、user-bound Query Keys、opaque cursor merge 与两种 `task_kind` Domain Model 新增 focused expected-red tests，再实现最小 data seam。
+- 为 `/tasks` 与 `/tasks/:taskPlanId` 新增真实 App/AuthProvider/QueryClient/MSW expected-red tests，覆盖 filters/cursor、两种详情与 Markdown、status 驱动 controls、404/refreshing/error 页面状态，再实现最小页面 composition。
+
+Slice 6 Data Seam Evidence (verified 2026-08-29):
+
+- focused expected-red 先因 `task-plan-api` 等 module 不存在失败；frontend checkpoint `758929d` 随后建立 generated DTO aliases、list/detail/Markdown adapters、research/document 判别 Domain Model、opaque cursor merge、user-bound keys 与 TanStack Query hooks。
+- focused `task-plan-data.test.ts` 4/4 通过，覆盖跨用户 key isolation、服务端顺序/ID 去重、两种 task kind 判别与完整顶层字段、list filter/cursor URL 编码、detail 和参数化 `text/plain` Markdown response。
+- `pnpm typecheck`、`pnpm lint` 与完整 `pnpm check` 通过：contract drift、lint、typecheck、20 files / 86 tests、production build 全部成功；package/lockfile/generated contract 未在该 checkpoint 变化，browser smoke 对纯 data seam 不适用。
 
 CG006 Closure Evidence (verified 2026-08-29):
 
