@@ -494,6 +494,15 @@ Slice 6 Structured Control Policy Evidence (verified 2026-08-29):
 - focused test 1/1 通过，覆盖 research/document 在 waiting、executing、preparing、failed、completed-with-warnings、completed 和 cancelled 状态下的 confirm/retry/cancel 矩阵。
 - 完整 `pnpm check` 通过 contract drift、lint、typecheck、22 files / 89 tests 与 production build。该 checkpoint 只完成 action policy，尚未声称页面按钮、mutation、confirm stream 或 manual browser smoke 完成。
 
+Context Recovery Evidence (verified 2026-08-29 before cancel/retry continuation):
+
+- frontend/backend 重新确认共享 Git root，branch 为 `master...origin/master [ahead 45]`，confirmed HEAD 为 `e99a1db89b06d0d221f797f067174c9d7c01289d`；frontend 没有 tracked、staged 或 untracked diff，backend 没有 tracked/staged diff。
+- backend 有 16 个 evaluation builder/report/test/fixture 未跟踪文件，不属于 Initial React Slice 6 working set；本次恢复没有读取、修改或暂存它们。
+- 最近 checkpoints 与源码一致：`758929d` 为 TaskPlan data seam，`ab8f2d9` 为只读页面，`c24e9e5` 为结构化 action policy，`e99a1db` 为其计划记录；Slice 0-5 的已验证 checkpoints 未被重做。
+- package/lockfile 仍精确保留 pnpm `10.32.1`、`openapi-typescript@7.13.0`、`react-markdown@10.1.0` 与 `remark-gfm@4.0.1`；committed OpenAPI/generated types 均存在 `TaskPlanPublicEventFrame` 及 cancel/retry operation，`pnpm contracts:check` 通过。
+- frontend focused recovery baseline 为 TaskPlan data/control/workspace 3 files / 7 tests 全部通过。backend `test_agent_task_plan_validation_contract.py` 与 `test_agent_task_plan_resource_visibility_contract.py` 通过，确认 cancel/retry 的安全 422、owned-resource 404 与同 owner 成功基线。
+- Repository/Git/Tests 与本计划 Current Slice/Step 一致，未发现过期状态或新 Contract Gap。恢复后唯一 Next Action 仍是为 cancel/retry mutation 的 route/method、pending lock、成功后 detail/list invalidation 及 `409` refetch 建立 focused expected-red，再实现最小 mutation seam；不提前实现 confirm stream。
+
 Slice 6 Read-only Page Evidence (verified 2026-08-29):
 
 - 真实 App/AuthProvider/QueryClient/MSW expected-red 先证明 `/tasks` 仍是 placeholder；frontend checkpoint `ab8f2d9` 随后用 `TaskPlanPage` 与 `TaskPlanWorkspace` 接入真实 routes，pages 只负责 feature composition。
