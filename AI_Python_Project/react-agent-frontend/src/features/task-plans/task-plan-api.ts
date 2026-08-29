@@ -1,5 +1,6 @@
 import type { HttpClient } from '@/api/http-client'
 import type {
+  TaskPlanControlResponseDto,
   TaskPlanDetailDto,
   TaskPlanListResponseDto,
 } from '@/features/task-plans/task-plan-contracts'
@@ -21,9 +22,11 @@ export interface TaskPlanListRequest {
 }
 
 export interface TaskPlanApi {
+  cancelTaskPlan(taskPlanId: string, idempotencyKey: string): Promise<void>
   getTaskPlan(taskPlanId: string, signal?: AbortSignal): Promise<TaskPlanDetail>
   getTaskPlanMarkdown(taskPlanId: string, signal?: AbortSignal): Promise<string>
   listTaskPlans(request: TaskPlanListRequest): Promise<TaskPlanPage>
+  retryTaskPlan(taskPlanId: string, idempotencyKey: string): Promise<void>
 }
 
 function taskPlanPath(taskPlanId: string): string {
@@ -41,6 +44,16 @@ function listPath(request: TaskPlanListRequest): string {
 
 export function createTaskPlanApi(httpClient: HttpClient): TaskPlanApi {
   return {
+    async cancelTaskPlan(taskPlanId, idempotencyKey) {
+      await httpClient.request<TaskPlanControlResponseDto>(
+        `${taskPlanPath(taskPlanId)}/cancel`,
+        {
+          headers: { 'Idempotency-Key': idempotencyKey },
+          method: 'POST',
+        },
+      )
+    },
+
     async getTaskPlan(taskPlanId, signal) {
       const response = await httpClient.request<TaskPlanDetailDto>(
         taskPlanPath(taskPlanId),
@@ -63,6 +76,16 @@ export function createTaskPlanApi(httpClient: HttpClient): TaskPlanApi {
         { signal: request.signal },
       )
       return mapTaskPlanPage(response.data)
+    },
+
+    async retryTaskPlan(taskPlanId, idempotencyKey) {
+      await httpClient.request<TaskPlanControlResponseDto>(
+        `${taskPlanPath(taskPlanId)}/retry`,
+        {
+          headers: { 'Idempotency-Key': idempotencyKey },
+          method: 'POST',
+        },
+      )
     },
   }
 }

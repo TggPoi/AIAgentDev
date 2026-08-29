@@ -1,10 +1,13 @@
+import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/api-error'
 import { Button } from '@/components/ui/Button'
+import { Dialog } from '@/components/ui/Dialog'
 import { MarkdownViewer } from '@/components/ui/MarkdownViewer'
 import { EmptyState, ErrorState, PageSkeleton } from '@/components/ui/PageState'
 import type { TaskPlanApi } from '@/features/task-plans/task-plan-api'
+import { availableTaskPlanActions } from '@/features/task-plans/task-plan-controls'
 import {
   mergeTaskPlanPages,
   type DocumentTaskPlanDetail,
@@ -12,9 +15,11 @@ import {
   type TaskPlanStatus,
 } from '@/features/task-plans/task-plan-models'
 import {
+  useCancelTaskPlan,
   useTaskPlanDetail,
   useTaskPlanList,
   useTaskPlanMarkdown,
+  useRetryTaskPlan,
 } from '@/features/task-plans/task-plan-queries'
 import styles from '@/features/task-plans/TaskPlanWorkspace.module.css'
 
@@ -166,10 +171,15 @@ function TaskPlanDetailView({
 }: TaskPlanWorkspaceProps & { taskPlanId: string }) {
   const detailQuery = useTaskPlanDetail(api, userBoundary, taskPlanId)
   const markdownQuery = useTaskPlanMarkdown(api, userBoundary, taskPlanId)
+  const cancelMutation = useCancelTaskPlan(api, userBoundary, taskPlanId)
+  const retryMutation = useRetryTaskPlan(api, userBoundary, taskPlanId)
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
 
   if (detailQuery.isPending) return <PageSkeleton />
   if (detailQuery.isError) return errorState(detailQuery.error, 'TaskPlan 详情不可用')
   const detail = detailQuery.data
+  const actions = availableTaskPlanActions(detail.taskKind, detail.status)
+  const controlsPending = cancelMutation.isPending || retryMutation.isPending
 
   return (
     <article className={styles.page} aria-labelledby="task-plan-detail-title">
@@ -181,6 +191,35 @@ function TaskPlanDetailView({
         <h2 id="task-plan-detail-title">{detail.objective}</h2>
         <span className={styles.status}>{statusLabels[detail.status]}</span>
       </header>
+      {actions.includes('retry') || actions.includes('cancel') ? (
+        <div className={styles.actions}>
+          {actions.includes('retry') ? (
+            <Button
+              disabled={controlsPending}
+              onClick={() => retryMutation.mutate(crypto.randomUUID())}
+              type="button"
+            >
+              {retryMutation.isPending ? '正在重试…' : '重试任务'}
+            </Button>
+          ) : null}
+          {actions.includes('cancel') ? (
+            <Button
+              disabled={controlsPending}
+              onClick={() => setCancelDialogOpen(true)}
+              type="button"
+              variant="secondary"
+            >
+              取消任务
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {retryMutation.isError
+        ? errorState(retryMutation.error, 'TaskPlan 重试失败')
+        : null}
+      {cancelMutation.isError
+        ? errorState(cancelMutation.error, 'TaskPlan 取消失败')
+        : null}
       {detail.kind === 'research' ? (
         <ResearchFacts detail={detail} />
       ) : (
@@ -196,6 +235,36 @@ function TaskPlanDetailView({
           <MarkdownViewer markdown={markdownQuery.data} />
         ) : null}
       </section>
+      <Dialog
+        label="取消 TaskPlan"
+        onClose={() => {
+          if (!cancelMutation.isPending) setCancelDialogOpen(false)
+        }}
+        open={cancelDialogOpen}
+      >
+        <p>取消是服务端操作，运行中的任务会在安全屏障后停止。</p>
+        <div className={styles.actions}>
+          <Button
+            disabled={controlsPending}
+            onClick={() =>
+              cancelMutation.mutate(crypto.randomUUID(), {
+                onSuccess: () => setCancelDialogOpen(false),
+              })
+            }
+            type="button"
+          >
+            {cancelMutation.isPending ? '正在取消…' : '确认取消'}
+          </Button>
+          <Button
+            disabled={controlsPending}
+            onClick={() => setCancelDialogOpen(false)}
+            type="button"
+            variant="secondary"
+          >
+            返回
+          </Button>
+        </div>
+      </Dialog>
     </article>
   )
 }

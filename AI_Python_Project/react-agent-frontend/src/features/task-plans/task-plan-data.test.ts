@@ -227,4 +227,33 @@ describe('TaskPlan HTTP adapter', () => {
     expect(detail.kind).toBe('research')
     expect(markdown).toBe('# 审查计划')
   })
+
+  it('posts cancel and retry with the deliberate action idempotency key', async () => {
+    const operations: string[] = []
+    server.use(
+      http.post(
+        `${apiBaseUrl}/agent/task-plans/task%2Fcontrol/:operation`,
+        ({ params, request }) => {
+          operations.push(String(params.operation))
+          expect(request.headers.get('Idempotency-Key')).toBe(
+            `task-plan-${String(params.operation)}-key`,
+          )
+          return HttpResponse.json({
+            message: '操作已受理',
+            request_id: 'task-plan-request-id',
+            status:
+              params.operation === 'cancel' ? 'cancelled' : 'executing_confirmed',
+            task_plan_id: 'task/control',
+            trace_id: null,
+          })
+        },
+      ),
+    )
+
+    const api = createApi()
+    await api.cancelTaskPlan('task/control', 'task-plan-cancel-key')
+    await api.retryTaskPlan('task/control', 'task-plan-retry-key')
+
+    expect(operations).toEqual(['cancel', 'retry'])
+  })
 })

@@ -1,5 +1,13 @@
-import { type InfiniteData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import {
+  type InfiniteData,
+  type QueryClient,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
+import { ApiError } from '@/api/api-error'
 import type { TaskPlanApi } from '@/features/task-plans/task-plan-api'
 import type {
   TaskPlanDetail,
@@ -90,5 +98,58 @@ export function useTaskPlanMarkdown(
       userBoundary,
       taskPlanId ?? '__no-task-plan__',
     ),
+  })
+}
+
+function refreshTaskPlanFacts(
+  queryClient: QueryClient,
+  userBoundary: string,
+  taskPlanId: string,
+) {
+  return Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: taskPlanKeys.detail(userBoundary, taskPlanId),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: taskPlanKeys.listRoot(userBoundary),
+    }),
+  ])
+}
+
+export function useCancelTaskPlan(
+  api: TaskPlanApi,
+  userBoundary: string,
+  taskPlanId: string,
+) {
+  const queryClient = useQueryClient()
+  const refreshFacts = () =>
+    refreshTaskPlanFacts(queryClient, userBoundary, taskPlanId)
+  return useMutation({
+    mutationFn: (idempotencyKey: string) =>
+      api.cancelTaskPlan(taskPlanId, idempotencyKey),
+    onError: (error) =>
+      error instanceof ApiError && error.status === 409
+        ? refreshFacts()
+        : undefined,
+    onSuccess: refreshFacts,
+  })
+}
+
+export function useRetryTaskPlan(
+  api: TaskPlanApi,
+  userBoundary: string,
+  taskPlanId: string,
+) {
+  const queryClient = useQueryClient()
+  const refreshFacts = () =>
+    refreshTaskPlanFacts(queryClient, userBoundary, taskPlanId)
+  return useMutation({
+    mutationFn: (idempotencyKey: string) =>
+      api.retryTaskPlan(taskPlanId, idempotencyKey),
+    onError: (error) =>
+      error instanceof ApiError && error.status === 409
+        ? refreshFacts()
+        : undefined,
+    onSuccess: refreshFacts,
   })
 }
