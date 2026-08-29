@@ -8,15 +8,13 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 6 - TaskPlan
 
-Current Step: CG005 已由 backend checkpoint `c337db6` 与 frontend contract sync `1e6882f` 完成并验证；六条 TaskPlan Route 的 Runtime/OpenAPI/generated 422 已一致，现进入已批准的 CG006 confirm-stream 业务事件公开契约修复
+Current Step: CG006 已由 backend checkpoint `2ca4bcc` 与 frontend contract sync `d30d7ea` 完成并验证；CG004-CG007 全部关闭，现开始 Slice 6 frontend list/detail/Markdown data seam
 
-Next Action: 为 CG006 新增 TaskPlan confirm-stream public event contract expected-red test，固定两种 task kind 的安全业务事件名称/payload、公共 envelope/request ID、OpenAPI logical event union，并证明 raw arbitrary progress、step output、tool_calls、Tool arguments、ACL/Scope、Dataset rows、internal URL/trace 和未知事件不会进入公开 SSE
+Next Action: 为 TaskPlan list/detail/Markdown generated transport adapters、user-bound Query Keys、opaque cursor merge 与两种 `task_kind` Domain Model 新增 focused expected-red tests，再实现最小 data seam
 
-Blocking Issues:
+Blocking Issues: None
 
-- CG006：TaskPlan confirm stream 只有公共 envelope，没有稳定、安全的业务 event payload schemas；当前 runtime 可把 progress arbitrary fields、step output 或 tool_calls 放入已知事件。
-
-Last Updated: 2026-08-28 (Asia/Shanghai)
+Last Updated: 2026-08-29 (Asia/Shanghai)
 
 ## Goal
 
@@ -484,11 +482,27 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 6 / IN_PROGRESS。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；CG007、CG004、CG005 已关闭，当前按 test-first 执行已批准的 CG006，frontend TaskPlan coding 尚未开始。
+- Slice 6 / IN_PROGRESS。frontend 只有 `/tasks` route placeholder 与 Chat/Conversation TaskPlan link，没有未记录的 TaskPlan feature implementation；CG004-CG007 已全部关闭并同步 generated contract，现开始 list/detail/Markdown data seam，frontend TaskPlan coding 尚未开始。
 
 Next Action:
 
-- 为 CG006 新增 TaskPlan confirm-stream public event contract expected-red test，固定两种 task kind 的安全业务事件名称/payload、公共 envelope/request ID、OpenAPI logical event union，并证明 raw arbitrary progress、step output、tool_calls、Tool arguments、ACL/Scope、Dataset rows、internal URL/trace 和未知事件不会进入公开 SSE。
+- 为 TaskPlan list/detail/Markdown generated transport adapters、user-bound Query Keys、opaque cursor merge 与两种 `task_kind` Domain Model 新增 focused expected-red tests，再实现最小 data seam。
+
+CG006 Closure Evidence (verified 2026-08-29):
+
+- backend checkpoint `2ca4bcc` 为 confirm-stream 建立严格公共 Pydantic event models/discriminated union 和逐字段 projection；unknown/internal events 被丢弃，raw step output、sub-question answer、tool calls/arguments、ACL/Scope、Dataset rows、internal URL 与 payload 自带 request ID 不进入公开事件。
+- Route 只在写 SSE 前经过公共 projection；OpenAPI 200 使用 FastAPI 注册的 `#/components/schemas/TaskPlanPublicEventFrame`，避免局部 `$defs` 无法生成 transport types。executor、状态机、真实工具执行、非流式 confirm 与 legacy Chat stream 未修改。
+- CG006 public contract、RAG stream、schema descriptions、CG004 detail、CG005 validation、CG007 visibility、Research v2、TaskPlan list HTTP 及 shared Auth/Conversation/Chat regressions通过。完整 TaskPlan list database test 因本机 PostgreSQL 未运行而连接被拒绝；同文件不依赖数据库的 `assert_http_contract()` 单独通过，该环境限制与 CG006 修改无关。
+- frontend snapshot/type sync checkpoint `d30d7ea` 从 backend `2ca4bcc` 导出 OpenAPI `3.1.0` / 58 paths / 136 schemas；逐路径比较只有 confirm-stream 200 改变。`pnpm contracts:generate`、`pnpm contracts:check`、typecheck 与完整 `pnpm check` 通过（19 files / 82 tests + production build）。CG006 Runtime = OpenAPI = generated types = Tests，关闭该 gap。
+
+Context Recovery Evidence (verified 2026-08-29 after quota interruption):
+
+- frontend/backend 再次确认共享 Git root，branch 为 `master...origin/master [ahead 36]`，HEAD 为 `5aa31358f32e7c5654a341a78e591d1c5c4a7bc7`；staged diff 为空。
+- frontend tracked working tree 与 package/lockfile/generated contract 均无 CG006 修改；committed OpenAPI confirm-stream 仍是 generic `RagSseEventFrame`，generated types 尚无 TaskPlan public event union，证明 frontend contract sync 尚未发生。
+- backend tracked working set 只有 CG006 Route 与既有 RAG stream contract test；另有 CG006 新 public event schema/test 两个未跟踪文件。外部 evaluation builder/report/test/fixture 未跟踪文件仍不属于 Initial React working set，本 Slice 不读取、不修改、不暂存。
+- CG006 expected-red 曾在旧 `_format_sse_event()` 原样保留 step output 时失败；当前 `test_agent_task_plan_stream_public_contract.py` 与更新后的 `test_rag_stream_contract.py` 已实际通过，确认代表性 research/document/step/error/done 安全投影、unknown event 丢弃与 OpenAPI discriminator union。
+- CG004 detail、CG005 validation、CG007 resource visibility 与 Research v2 focused regressions在中断前同一批命令中通过；`test_schema_field_descriptions.py` 于本次恢复再次通过，但真实测试源码尚未收录新 `agent_task_plan_stream_schema.py`，因此不能作为 CG006 schema-description 完成证据。
+- Repository/Git/Tests 表明计划原 Next Action“新增 expected-red test”已过期；已先修正为唯一 Next Action：补齐并纳入 public schema field descriptions，再完成 focused regressions、独立 backend checkpoint、frontend OpenAPI/types sync 与 plan closure。
 
 Relevant Files:
 
@@ -1021,7 +1035,7 @@ Resolution:
 
 #### CG006 - TaskPlan Confirm Stream Business Events Lack Safe Public Schemas
 
-Status: APPROVED / FIX IN PROGRESS
+Status: RESOLVED IN SLICE 6
 
 Evidence:
 
@@ -1044,6 +1058,12 @@ Recommended Backend Change:
 Decision:
 
 - 用户已于 2026-08-28 批准上述严格受限的 TaskPlan public SSE contract fix；只允许 confirm-stream 公共业务事件 models/projection/OpenAPI/tests，不改变 executor、TaskPlan 状态机、真实工具执行或 legacy Chat stream。
+
+Resolution:
+
+- backend checkpoint `2ca4bcc` 新增严格公共 event data/frame models、按事件名判别的 union 与 explicit safe projection；request-context ID 不能被 payload 覆盖，raw arbitrary progress/step/sub-question/tool/sensitive fields 与 unknown event 均在写 SSE 前丢弃。
+- confirm-stream OpenAPI 通过 FastAPI response model 注册标准 components 引用；backend contract/no-sensitive/schema-description/shared regressions 与 frontend `openapi-typescript` generation 均通过。
+- frontend contract sync checkpoint `d30d7ea` 只更新 OpenAPI snapshot/generated types；路径 diff 仅包含 confirm-stream 200，完整 `pnpm check` 通过。CG006 已关闭，Slice 6 恢复正常 frontend implementation。
 
 #### CG007 - TaskPlan Ownership and Missing Resources Do Not Use the Required Hidden 404 Contract
 
