@@ -1,3 +1,5 @@
+import { useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/api-error'
@@ -6,6 +8,10 @@ import { MarkdownViewer } from '@/components/ui/MarkdownViewer'
 import { EmptyState, ErrorState, PageSkeleton } from '@/components/ui/PageState'
 import { TextField } from '@/components/ui/TextField'
 import type { KnowledgeDocumentApi } from '@/features/knowledge-documents/knowledge-document-api'
+import {
+  saveKnowledgeDocumentDownload,
+  type KnowledgeDocumentDownloadEnvironment,
+} from '@/features/knowledge-documents/knowledge-document-download'
 import {
   mergeKnowledgeDocumentPages,
   type KnowledgeDocumentAccessSource,
@@ -16,6 +22,7 @@ import {
   useKnowledgeDocumentContent,
   useKnowledgeDocumentDetail,
   useKnowledgeDocumentList,
+  knowledgeDocumentKeys,
 } from '@/features/knowledge-documents/knowledge-document-queries'
 import styles from '@/features/knowledge-documents/KnowledgeDocumentWorkspace.module.css'
 
@@ -23,6 +30,7 @@ import styles from '@/features/knowledge-documents/KnowledgeDocumentWorkspace.mo
 interface KnowledgeDocumentWorkspaceProps {
   api: KnowledgeDocumentApi
   docId: string | null
+  downloadEnvironment?: KnowledgeDocumentDownloadEnvironment
   userBoundary: string
 }
 
@@ -230,14 +238,79 @@ function DocumentContentView({ content }: { content: KnowledgeDocumentContent })
 function KnowledgeDocumentDetailView({
   api,
   docId,
+  downloadEnvironment,
   userBoundary,
 }: KnowledgeDocumentWorkspaceProps & { docId: string }) {
+  const queryClient = useQueryClient()
   const detailQuery = useKnowledgeDocumentDetail(api, userBoundary, docId)
   const contentQuery = useKnowledgeDocumentContent(
     api,
     userBoundary,
     detailQuery.isSuccess ? docId : null,
   )
+  const [downloadError, setDownloadError] = useState<unknown>(null)
+  const [downloadedFileName, setDownloadedFileName] = useState<string | null>(
+    null,
+  )
+  const [downloading, setDownloading] = useState(false)
+  const [revisionNotice, setRevisionNotice] = useState(false)
+  const reconciledMismatch = useRef<string | null>(null)
+  const detailRevision = detailQuery.data?.sourceRevision ?? null
+  const contentRevision = contentQuery.data?.sourceRevision ?? null
+  const revisionsMismatch =
+    detailRevision !== null &&
+    contentRevision !== null &&
+    detailRevision !== contentRevision
+  const refreshFacts = useCallback(
+    () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: knowledgeDocumentKeys.detail(userBoundary, docId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: knowledgeDocumentKeys.content(userBoundary, docId),
+        }),
+      ]),
+    [docId, queryClient, userBoundary],
+  )
+
+  useEffect(() => {
+    if (!revisionsMismatch) {
+      reconciledMismatch.current = null
+      return
+    }
+    const mismatch = `${detailRevision}:${contentRevision}`
+    if (reconciledMismatch.current === mismatch) return
+    reconciledMismatch.current = mismatch
+    setRevisionNotice(true)
+    void refreshFacts()
+  }, [contentRevision, detailRevision, refreshFacts, revisionsMismatch])
+
+  const downloadDocument = async () => {
+    if (!detailQuery.isSuccess || !contentQuery.isSuccess || downloading) return
+    setDownloading(true)
+    setDownloadError(null)
+    setDownloadedFileName(null)
+    try {
+      const result = await saveKnowledgeDocumentDownload({
+        contentRevision: contentQuery.data.sourceRevision,
+        detailRevision: detailQuery.data.sourceRevision,
+        docId,
+        downloader: api,
+        environment: downloadEnvironment,
+      })
+      if (result.status === 'revision_mismatch') {
+        setRevisionNotice(true)
+        await refreshFacts()
+      } else {
+        setDownloadedFileName(result.fileName)
+      }
+    } catch (error) {
+      setDownloadError(error)
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   if (detailQuery.isPending) return <PageSkeleton />
   if (detailQuery.isError) {
@@ -277,13 +350,35 @@ function KnowledgeDocumentDetailView({
           <dd>{detail.updatedAt}</dd>
         </div>
       </dl>
+      <div className={styles.actions}>
+        <Button
+          disabled={
+            downloading || !contentQuery.isSuccess || revisionsMismatch
+          }
+          onClick={() => void downloadDocument()}
+          type="button"
+        >
+          {downloading ? '正在下载…' : '下载原文件'}
+        </Button>
+      </div>
+      {downloadedFileName ? (
+        <p aria-live="polite" className={styles.success}>
+          已开始下载 {downloadedFileName}。
+        </p>
+      ) : null}
+      {downloadError
+        ? safeErrorState(downloadError, '文档下载失败')
+        : null}
+      {revisionNotice || revisionsMismatch
+        ? safeErrorState(undefined, '文档版本已更新')
+        : null}
       <section aria-labelledby="knowledge-document-content-title" className={styles.panel}>
         <h3 id="knowledge-document-content-title">内容预览</h3>
         {contentQuery.isPending ? <PageSkeleton /> : null}
         {contentQuery.isError
           ? safeErrorState(contentQuery.error, '文档内容不可用')
           : null}
-        {contentQuery.isSuccess ? (
+        {contentQuery.isSuccess && !revisionsMismatch ? (
           <DocumentContentView content={contentQuery.data} />
         ) : null}
       </section>
@@ -294,6 +389,7 @@ function KnowledgeDocumentDetailView({
 export function KnowledgeDocumentWorkspace({
   api,
   docId,
+  downloadEnvironment,
   userBoundary,
 }: KnowledgeDocumentWorkspaceProps) {
   return docId === null ? (
@@ -302,6 +398,7 @@ export function KnowledgeDocumentWorkspace({
     <KnowledgeDocumentDetailView
       api={api}
       docId={docId}
+      downloadEnvironment={downloadEnvironment}
       userBoundary={userBoundary}
     />
   )

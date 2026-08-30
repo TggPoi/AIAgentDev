@@ -7,6 +7,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom'
 
 import { createHttpClient } from '@/api/http-client'
 import { createKnowledgeDocumentApi } from '@/features/knowledge-documents/knowledge-document-api'
+import type { KnowledgeDocumentDownloadEnvironment } from '@/features/knowledge-documents/knowledge-document-download'
 import { KnowledgeDocumentWorkspace } from '@/features/knowledge-documents/KnowledgeDocumentWorkspace'
 import { server } from '@/test/server'
 
@@ -32,7 +33,11 @@ function LocationProbe() {
   )
 }
 
-function renderWorkspace(initialEntry: string, docId: string | null = null) {
+function renderWorkspace(
+  initialEntry: string,
+  docId: string | null = null,
+  downloadEnvironment?: KnowledgeDocumentDownloadEnvironment,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -42,6 +47,7 @@ function renderWorkspace(initialEntry: string, docId: string | null = null) {
         <KnowledgeDocumentWorkspace
           api={createApi()}
           docId={docId}
+          downloadEnvironment={downloadEnvironment}
           userBoundary="reader-1"
         />
         <LocationProbe />
@@ -258,5 +264,162 @@ describe('KnowledgeDocumentWorkspace detail', () => {
       '/documents',
     )
     expect(contentRequests).toBe(0)
+  })
+
+  it('downloads a matching revision with the safe header filename and cleans up the object URL', async () => {
+    const sideEffects: string[] = []
+    const downloadEnvironment: KnowledgeDocumentDownloadEnvironment = {
+      createObjectUrl: () => {
+        sideEffects.push('create')
+        return 'blob:workspace-download'
+      },
+      revokeObjectUrl: (url) => sideEffects.push(`revoke:${url}`),
+      triggerDownload: (url, fileName) =>
+        sideEffects.push(`download:${url}:${fileName}`),
+    }
+    server.use(
+      http.get(`${apiBaseUrl}/knowledge/documents/doc-download`, () =>
+        HttpResponse.json(detailDto('doc-download', '下载文档')),
+      ),
+      http.get(`${apiBaseUrl}/knowledge/documents/doc-download/content`, () =>
+        HttpResponse.json({
+          content: '下载预览',
+          doc_id: 'doc-download',
+          document_type: 'markdown',
+          render_mode: 'markdown',
+          source_revision: 'revision-1',
+          truncated: false,
+          warnings: [],
+        }),
+      ),
+      http.get(`${apiBaseUrl}/knowledge/documents/doc-download/download`, () =>
+        new HttpResponse('document bytes', {
+          headers: {
+            'Content-Disposition': "attachment; filename*=UTF-8''guide%20v1.md",
+            'Content-Type': 'application/octet-stream',
+            'X-Source-Revision': 'revision-1',
+          },
+        }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderWorkspace(
+      '/documents/doc-download',
+      'doc-download',
+      downloadEnvironment,
+    )
+
+    await screen.findByText('下载预览')
+    await user.click(screen.getByRole('button', { name: '下载原文件' }))
+
+    expect(await screen.findByText('已开始下载 guide v1.md。')).toBeInTheDocument()
+    expect(sideEffects).toEqual([
+      'create',
+      'download:blob:workspace-download:guide v1.md',
+      'revoke:blob:workspace-download',
+    ])
+  })
+
+  it('discards a mismatched download and refetches detail and content', async () => {
+    let detailRequests = 0
+    let contentRequests = 0
+    const sideEffects: string[] = []
+    const downloadEnvironment: KnowledgeDocumentDownloadEnvironment = {
+      createObjectUrl: () => {
+        sideEffects.push('create')
+        return 'blob:must-not-be-created'
+      },
+      revokeObjectUrl: (url) => sideEffects.push(`revoke:${url}`),
+      triggerDownload: (url, fileName) =>
+        sideEffects.push(`download:${url}:${fileName}`),
+    }
+    server.use(
+      http.get(`${apiBaseUrl}/knowledge/documents/doc-mismatch`, () => {
+        detailRequests += 1
+        return HttpResponse.json({
+          ...detailDto('doc-mismatch', '版本变化文档'),
+          source_revision: detailRequests === 1 ? 'revision-1' : 'revision-2',
+        })
+      }),
+      http.get(`${apiBaseUrl}/knowledge/documents/doc-mismatch/content`, () => {
+        contentRequests += 1
+        return HttpResponse.json({
+          content: '当前预览',
+          doc_id: 'doc-mismatch',
+          document_type: 'markdown',
+          render_mode: 'markdown',
+          source_revision: contentRequests === 1 ? 'revision-1' : 'revision-2',
+          truncated: false,
+          warnings: [],
+        })
+      }),
+      http.get(`${apiBaseUrl}/knowledge/documents/doc-mismatch/download`, () =>
+        new HttpResponse('new document bytes', {
+          headers: {
+            'Content-Disposition': "attachment; filename*=UTF-8''new.md",
+            'Content-Type': 'application/octet-stream',
+            'X-Source-Revision': 'revision-2',
+          },
+        }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderWorkspace(
+      '/documents/doc-mismatch',
+      'doc-mismatch',
+      downloadEnvironment,
+    )
+
+    await screen.findByText('当前预览')
+    await user.click(screen.getByRole('button', { name: '下载原文件' }))
+
+    expect(
+      await screen.findByRole('heading', { name: '文档版本已更新' }),
+    ).toBeInTheDocument()
+    await waitFor(() => {
+      expect(detailRequests).toBeGreaterThanOrEqual(2)
+      expect(contentRequests).toBeGreaterThanOrEqual(2)
+    })
+    expect(sideEffects).toEqual([])
+  })
+
+  it('does not render a detail/content revision mix and refetches both facts', async () => {
+    let detailRequests = 0
+    let contentRequests = 0
+    server.use(
+      http.get(`${apiBaseUrl}/knowledge/documents/doc-content-mismatch`, () => {
+        detailRequests += 1
+        return HttpResponse.json({
+          ...detailDto('doc-content-mismatch', '内容版本变化'),
+          source_revision: detailRequests === 1 ? 'revision-1' : 'revision-2',
+        })
+      }),
+      http.get(
+        `${apiBaseUrl}/knowledge/documents/doc-content-mismatch/content`,
+        () => {
+          contentRequests += 1
+          return HttpResponse.json({
+            content:
+              contentRequests === 1 ? 'must-not-render-stale-content' : '最新内容',
+            doc_id: 'doc-content-mismatch',
+            document_type: 'markdown',
+            render_mode: 'markdown',
+            source_revision: 'revision-2',
+            truncated: false,
+            warnings: [],
+          })
+        },
+      ),
+    )
+
+    renderWorkspace('/documents/doc-content-mismatch', 'doc-content-mismatch')
+
+    expect(
+      await screen.findByRole('heading', { name: '文档版本已更新' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('must-not-render-stale-content')).not.toBeInTheDocument()
+    expect(await screen.findByText('最新内容')).toBeInTheDocument()
+    expect(detailRequests).toBeGreaterThanOrEqual(2)
+    expect(contentRequests).toBeGreaterThanOrEqual(2)
   })
 })

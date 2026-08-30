@@ -27,6 +27,7 @@ export interface KnowledgeDocumentListRequest {
 export interface KnowledgeDocumentDownload {
   blob: Blob
   contentDisposition: string | null
+  requestId: string
   sourceRevision: string | null
 }
 
@@ -76,6 +77,7 @@ export function createKnowledgeDocumentApi(
       return {
         blob: response.data,
         contentDisposition: response.headers.get('Content-Disposition'),
+        requestId: response.requestId,
         sourceRevision: response.headers.get('X-Source-Revision'),
       }
     },

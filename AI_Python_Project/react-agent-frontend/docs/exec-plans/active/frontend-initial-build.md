@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 7 - Knowledge Documents
 
-Current Step: Slice 7 列表、详情、内容 render mode、公共/部门/grant 说明与隐藏式 404 已完成 expected-red → focused green；正在做 scoped review 与独立只读 UI checkpoint
+Current Step: Slice 7 authenticated download、revision reconciliation、安全文件名、Blob 丢弃与 object URL cleanup 已完成 expected-red → focused green；正在做 scoped review 与独立 download checkpoint
 
-Next Action: 完成 Knowledge Documents 只读 UI 的 scoped diff/security review 并创建独立 frontend checkpoint；随后为 download revision 三方一致性、文件名解析、Blob 丢弃与 object URL cleanup 建立 focused expected-red
+Next Action: 完成 download/revision seam 的 scoped diff/security review 并创建独立 frontend checkpoint；随后运行完整 `pnpm check`、backend Documents contract regressions 与 manual browser smoke 完成 Slice Gate
 
 Blocking Issues: None; CG008 resolved in backend checkpoint `0676928` and frontend contract-sync checkpoint `8072b65`
 
@@ -279,10 +279,10 @@ Goal: 完成公共/部门/grant 范围内的文档列表、详情、预览、来
 - [x] 实现 list/detail/content/download adapters、Query Keys、filters 和 keyset pagination。
 - [x] 正确呈现 public 公共区域与非 public 部门语义，不在浏览器计算 ACL。
 - [x] 按 render mode 安全展示 Markdown/plain/extracted text，并显示 truncation/warnings。
-- [ ] 实现 authenticated Blob download、`X-Source-Revision` 三方一致性校验和安全 `Content-Disposition` 文件名。
-- [ ] revision 不一致时丢弃 Blob、refetch detail/content；object URL 使用后立即 revoke。
+- [x] 实现 authenticated Blob download、`X-Source-Revision` 三方一致性校验和安全 `Content-Disposition` 文件名。
+- [x] revision 不一致时丢弃 Blob、refetch detail/content；object URL 使用后立即 revoke。
 - [x] 实现聊天 `doc_id` 来源站内跳转和隐藏式 404 体验。
-- [ ] 增加 public/department/grant UI 状态、revision mismatch、Blob URL cleanup、header filename、404 和安全渲染测试。
+- [x] 增加 public/department/grant UI 状态、revision mismatch、Blob URL cleanup、header filename、404 和安全渲染测试。
 - [ ] 完成 Slice Gate；执行 Documents manual smoke；创建独立 Git checkpoint。
 
 ### Slice 8 - User Access Management
@@ -483,11 +483,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 7 / IN_PROGRESS。Knowledge Documents data seam 已由独立 frontend checkpoint `45873a3` 完成；列表/详情/内容只读 UI 当前为未提交 focused green working set，尚未实现下载保存与 revision reconciliation。
+- Slice 7 / IN_PROGRESS。Knowledge Documents data seam `45873a3` 与只读 UI `248378c` 已完成；authenticated download/revision working set 当前 focused green，尚未创建 checkpoint 或通过完整 Slice Gate。
 
 Next Action:
 
-- 完成 Knowledge Documents 只读 UI 的 scoped diff/security review 并创建独立 frontend checkpoint；随后为 download revision 三方一致性、文件名解析、Blob 丢弃与 object URL cleanup 建立 focused expected-red。
+- 完成 download/revision seam 的 scoped diff/security review 并创建独立 frontend checkpoint；随后运行完整 `pnpm check`、backend Documents contract regressions 与 manual browser smoke 完成 Slice Gate。
 
 Slice 7 Contract Reconnaissance Evidence (verified 2026-08-30):
 
@@ -514,6 +514,10 @@ Context Recovery Evidence (verified 2026-08-30 after quota interruption during S
 - scoped lint、typecheck、focused 1 file / 6 tests、generated contract drift 与安全搜索通过；data seam 由 checkpoint `45873a3` 持久化，明确不包含 UI、revision 比对、object URL 或下载保存副作用。唯一 Next Action 随 checkpoint 推进为只读 UI expected-red。
 - 只读 UI expected-red 先因缺少 `KnowledgeDocumentWorkspace` public seam 失败；最小实现接入真实 `/documents` 与 `/documents/:docId` route composition，URL filters/opaque pagination、access-source 说明、三种 render mode、allowlisted warning projection 和 hidden 404 后 focused 1 file / 6 tests 通过。
 - scoped lint、typecheck 与 data/UI/App regression 3 files / 19 tests 通过；Markdown raw HTML/credential URL、未知 warning 和 backend raw error message 均未进入页面，详情 404 时 content Route 不发起请求。当前唯一 Next Action 是完成 scoped review/checkpoint，再进入 download revision TDD。
+- scoped diff/security review 通过；只读 UI 由 checkpoint `248378c` 持久化，未包含下载保存、object URL 或 revision reconciliation。唯一 Next Action 已推进为 download policy expected-red。
+- download policy expected-red 先因缺少 side-effect seam 失败；最小实现要求 detail/content revision 预先一致、下载 `X-Source-Revision` 再一致，并只接受安全 `attachment` 文件名。missing/unsafe filename 转为固定 protocol error；create object URL 后无论 save trigger 成败均在 `finally` revoke。
+- policy tests 1 file / 8 tests 与页面 integration 1 file / 9 tests 通过；页面在 detail/content mismatch 时隐藏旧内容并 refetch 两个 Query，在下载头 mismatch 时丢弃 Blob、不创建 object URL并重新同步，成功时只显示解析后的安全文件名。
+- scoped lint、typecheck 与 Documents/App/Conversation regressions 5 files / 41 tests 通过。当前唯一 Next Action 是完成 scoped review/checkpoint，再执行完整 Slice Gate 与 manual smoke。
 
 Slice 6 Final Gate Evidence (verified 2026-08-30):
 
