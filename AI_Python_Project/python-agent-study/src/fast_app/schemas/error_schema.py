@@ -16,6 +16,8 @@ class RequestValidationFieldError(BaseModel):
         "new_password",
         "title",
         "query",
+        "department_code",
+        "document_type",
         "status",
         "session_id",
         "limit",

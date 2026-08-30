@@ -17,6 +17,7 @@ from fast_app.schemas.knowledge_document_schema import (
     KnowledgeDocumentDetail,
     KnowledgeDocumentListResponse,
 )
+from fast_app.schemas.error_schema import RequestValidationErrorResponse
 from fast_app.services.knowledge.knowledge_document_read_service import (
     KnowledgeDocumentReadService,
 )
@@ -24,8 +25,19 @@ from fast_app.services.knowledge.knowledge_document_read_service import (
 
 router = APIRouter(prefix="/knowledge/documents", tags=["knowledge-documents"])
 
+_KNOWLEDGE_DOCUMENT_VALIDATION_ERROR_RESPONSES = {
+    422: {
+        "model": RequestValidationErrorResponse,
+        "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。",
+    }
+}
 
-@router.get("", response_model=KnowledgeDocumentListResponse)
+
+@router.get(
+    "",
+    response_model=KnowledgeDocumentListResponse,
+    responses=_KNOWLEDGE_DOCUMENT_VALIDATION_ERROR_RESPONSES,
+)
 async def list_knowledge_documents_endpoint(
     cursor: str | None = Query(default=None, description="上一页返回的不透明 keyset cursor。"),
     limit: int = Query(default=20, ge=1, le=100, description="本页最多返回的文档数。"),
@@ -63,7 +75,11 @@ async def list_knowledge_documents_endpoint(
     )
 
 
-@router.get("/{doc_id}", response_model=KnowledgeDocumentDetail)
+@router.get(
+    "/{doc_id}",
+    response_model=KnowledgeDocumentDetail,
+    responses=_KNOWLEDGE_DOCUMENT_VALIDATION_ERROR_RESPONSES,
+)
 async def get_knowledge_document_detail_endpoint(
     doc_id: str = Path(min_length=1, max_length=64, description="稳定 GitLab 文档 ID。"),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -74,7 +90,11 @@ async def get_knowledge_document_detail_endpoint(
     return await service.get_detail(user, doc_id)
 
 
-@router.get("/{doc_id}/content", response_model=KnowledgeDocumentContentResponse)
+@router.get(
+    "/{doc_id}/content",
+    response_model=KnowledgeDocumentContentResponse,
+    responses=_KNOWLEDGE_DOCUMENT_VALIDATION_ERROR_RESPONSES,
+)
 async def get_knowledge_document_content_endpoint(
     doc_id: str = Path(min_length=1, max_length=64, description="稳定 GitLab 文档 ID。"),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -106,7 +126,8 @@ async def get_knowledge_document_content_endpoint(
                     "schema": {"type": "string", "format": "binary"},
                 }
             },
-        }
+        },
+        **_KNOWLEDGE_DOCUMENT_VALIDATION_ERROR_RESPONSES,
     },
 )
 async def download_knowledge_document_endpoint(

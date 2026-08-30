@@ -33,6 +33,14 @@ _VALIDATION_FIELDS: dict[tuple[str, str], dict[str, frozenset[str]]] = {
         "body": frozenset({"title"})
     },
     ("POST", "/rag/chat/stream/events"): {"body": frozenset({"query"})},
+    ("GET", "/knowledge/documents"): {
+        "query": frozenset(
+            {"query", "department_code", "document_type", "limit"}
+        )
+    },
+    ("GET", "/knowledge/documents/{doc_id}"): {},
+    ("GET", "/knowledge/documents/{doc_id}/content"): {},
+    ("GET", "/knowledge/documents/{doc_id}/download"): {},
     ("GET", "/agent/task-plans"): {
         "query": frozenset({"status", "session_id", "limit"})
     },
@@ -50,6 +58,7 @@ _PUBLIC_VALIDATION_ERRORS: dict[str, tuple[str, str]] = {
     "string_too_long": ("too_long", "输入长度过长"),
     "value_error": ("invalid", "输入值不合法"),
     "enum": ("invalid", "输入值不合法"),
+    "literal_error": ("invalid", "输入值不合法"),
     "int_parsing": ("invalid_type", "请输入有效数字"),
     "greater_than_equal": ("invalid", "输入值不合法"),
     "less_than_equal": ("invalid", "输入值不合法"),
