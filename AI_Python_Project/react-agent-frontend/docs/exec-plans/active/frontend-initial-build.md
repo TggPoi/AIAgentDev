@@ -8,11 +8,11 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 7 - Knowledge Documents
 
-Current Step: Slice 7 Knowledge Documents spec/backend Route/Schema/OpenAPI/runtime-test reconnaissance 已完成；Runtime 与 OpenAPI 的 422 response shape 冲突已确认为 CG008，尚未开始 Slice 7 业务编码
+Current Step: CG008 已按严格受限授权修复并由 Runtime = OpenAPI = Tests 关闭；Slice 7 恢复，下一步从 list/detail/content/download transport adapter 与 Query Key 的 focused expected-red 开始
 
-Next Action: 等待用户审核并决定是否批准 CG008 的严格受限 backend contract fix；批准前不修改 backend，不实现依赖该错误契约的 Slice 7 adapters/pages
+Next Action: 为 Knowledge Documents 的 generated transport adapter、用户隔离 Query Keys、filters 与 keyset pagination 建立最小 focused expected-red test，再实现对应 data seam
 
-Blocking Issues: CG008 - Knowledge Documents 422 Schema Does Not Match Runtime
+Blocking Issues: None; CG008 resolved in backend checkpoint `0676928` and frontend contract-sync checkpoint `8072b65`
 
 Last Updated: 2026-08-30 (Asia/Shanghai)
 
@@ -271,7 +271,7 @@ Goal: 完成 TaskPlan 列表、详情、Markdown、确认流、取消、重试�
 
 ### Slice 7 - Knowledge Documents
 
-Status: BLOCKED
+Status: IN_PROGRESS
 
 Goal: 完成公共/部门/grant 范围内的文档列表、详情、预览、来源跳转和受保护下载。
 
@@ -483,11 +483,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 7 / BLOCKED。Slice 6 已由独立 frontend checkpoint `76a6875` 完成；Knowledge Documents spec 与实际 backend contract reconnaissance 已确认 CG008，尚未开始 Slice 7 业务编码。
+- Slice 7 / IN_PROGRESS。Slice 6 已由独立 frontend checkpoint `76a6875` 完成；CG008 已由 backend checkpoint `0676928` 与 frontend contract-sync checkpoint `8072b65` 关闭，当前恢复 Slice 7 frontend data seam，尚未实现 Knowledge Documents 业务 UI。
 
 Next Action:
 
-- 等待用户审核并决定是否批准 CG008 的严格受限 backend contract fix；批准前不修改 backend，不实现依赖该错误契约的 Slice 7 adapters/pages。
+- 为 Knowledge Documents 的 generated transport adapter、用户隔离 Query Keys、filters 与 keyset pagination 建立最小 focused expected-red test，再实现对应 data seam。
 
 Slice 7 Contract Reconnaissance Evidence (verified 2026-08-30):
 
@@ -496,6 +496,14 @@ Slice 7 Contract Reconnaissance Evidence (verified 2026-08-30):
 - backend 四条 approved Route、`KnowledgeDocumentItem/Detail/ContentResponse`、keyset list、public/department/explicit-grant access source、hidden 404 service policy、download `X-Source-Revision`/`Content-Disposition` 与 CORS expose headers 均存在；generated snapshot 也声明相同 download headers。
 - backend `assert_http_contract()` 与 `assert_cors_contract()` focused baseline 通过；frontend Conversations source-link test 1 file / 11 tests、Chat/public-event source model 2 files / 16 tests 与 `pnpm contracts:check` 通过。
 - 使用真实 Route + global exception handler + dependency overrides 的无敏感 TestClient probe 证明 list `limit=0`、invalid `document_type` 与 65 字符 path 均返回 422，runtime keys 只有 `code/error_category/message/request_id/trace_id`，marker 未回显；四条 Route 的 OpenAPI 422 却全部引用 `HTTPValidationError`。CG008 因而满足 Blocking Condition。
+
+CG008 Closure Evidence (verified 2026-08-30):
+
+- expected-red 公开 TestClient contract test 先因四条 Route runtime 缺少 `field_errors` 失败；最小 backend 修复只为 list query `query`、`department_code`、`document_type`、`limit` 建立 allowlisted projection，`cursor`、path `doc_id`、model/unknown error 保持 `field_errors=[]`，且不回显 validation input/ctx/raw msg 或文档敏感信息。
+- 独立 backend checkpoint `0676928` 只包含四条 Knowledge Documents GET Route 的安全 422 response model、allowlist 和 runtime/OpenAPI/no-sensitive/form-level/non-allowlisted regression tests；ingestion/admin、compatibility、mutation、ACL、read/download 业务行为均未修改。
+- backend Knowledge Documents/Auth/Conversation/RAG Chat/TaskPlan validation contract 与 Knowledge Documents HTTP/CORS regressions 全部通过；新 contract test 明确验证四条 Route 的 Runtime = OpenAPI = Tests。
+- frontend OpenAPI snapshot 与 generated transport types 已从 backend `0676928` 重新导出并由独立 checkpoint `8072b65` 持久化；差异仅为四条 Route 的 422 引用及公共字段枚举新增 `department_code`、`document_type`，package/lockfile 未变化。
+- `pnpm contracts:check` 通过。首次 `pnpm check` 在既有 Conversations 创建导航断言出现一次非稳定时序失败；同文件 focused 11/11 立即通过，完整重跑 `pnpm check` 通过 contract drift、lint、typecheck、24 files / 111 tests 与 production build。CG008 因而关闭，Slice 7 恢复。
 
 Slice 6 Final Gate Evidence (verified 2026-08-30):
 
@@ -1185,7 +1193,7 @@ Resolution:
 
 #### CG008 - Knowledge Documents 422 Schema Does Not Match Runtime
 
-Status: OPEN / BLOCKING SLICE 7
+Status: RESOLVED
 
 Evidence:
 
@@ -1208,7 +1216,7 @@ Recommended Backend Change:
 
 Decision Required:
 
-- 用户需要明确批准或拒绝上述严格受限 backend contract fix；现有前端实施授权不自动外推到 backend 修改。
+- 用户已于 2026-08-30 明确批准上述严格受限 backend contract fix；修复已由 backend checkpoint `0676928` 与 frontend contract-sync checkpoint `8072b65` 完成并通过 Runtime/OpenAPI/tests 验证。授权只覆盖四条 Initial React Knowledge Documents GET Route 的安全 422 projection/OpenAPI/tests，未外推到文档 ACL/read/download 业务、ingestion/admin/compatibility/未来 Route 或其他 mutation endpoint。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
