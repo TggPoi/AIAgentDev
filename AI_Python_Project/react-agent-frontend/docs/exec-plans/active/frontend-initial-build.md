@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 7 - Knowledge Documents
 
-Current Step: Slice 7 list/detail/content/download generated adapter、用户隔离 Query Keys、filters 与 keyset pagination 已完成 expected-red → focused green；正在做 scoped review 与独立 data checkpoint
+Current Step: Slice 7 列表、详情、内容 render mode、公共/部门/grant 说明与隐藏式 404 已完成 expected-red → focused green；正在做 scoped review 与独立只读 UI checkpoint
 
-Next Action: 完成 Knowledge Documents data seam 的 lint、scoped diff/security review 并创建独立 frontend checkpoint；随后从列表/详情/内容只读 UI 的 focused expected-red 继续
+Next Action: 完成 Knowledge Documents 只读 UI 的 scoped diff/security review 并创建独立 frontend checkpoint；随后为 download revision 三方一致性、文件名解析、Blob 丢弃与 object URL cleanup 建立 focused expected-red
 
 Blocking Issues: None; CG008 resolved in backend checkpoint `0676928` and frontend contract-sync checkpoint `8072b65`
 
@@ -276,12 +276,12 @@ Status: IN_PROGRESS
 Goal: 完成公共/部门/grant 范围内的文档列表、详情、预览、来源跳转和受保护下载。
 
 - [x] 读取 Knowledge Documents spec，复核 Route/Schema/OpenAPI/CORS/runtime tests。
-- [ ] 实现 list/detail/content/download adapters、Query Keys、filters 和 keyset pagination。
-- [ ] 正确呈现 public 公共区域与非 public 部门语义，不在浏览器计算 ACL。
-- [ ] 按 render mode 安全展示 Markdown/plain/extracted text，并显示 truncation/warnings。
+- [x] 实现 list/detail/content/download adapters、Query Keys、filters 和 keyset pagination。
+- [x] 正确呈现 public 公共区域与非 public 部门语义，不在浏览器计算 ACL。
+- [x] 按 render mode 安全展示 Markdown/plain/extracted text，并显示 truncation/warnings。
 - [ ] 实现 authenticated Blob download、`X-Source-Revision` 三方一致性校验和安全 `Content-Disposition` 文件名。
 - [ ] revision 不一致时丢弃 Blob、refetch detail/content；object URL 使用后立即 revoke。
-- [ ] 实现聊天 `doc_id` 来源站内跳转和隐藏式 404 体验。
+- [x] 实现聊天 `doc_id` 来源站内跳转和隐藏式 404 体验。
 - [ ] 增加 public/department/grant UI 状态、revision mismatch、Blob URL cleanup、header filename、404 和安全渲染测试。
 - [ ] 完成 Slice Gate；执行 Documents manual smoke；创建独立 Git checkpoint。
 
@@ -483,11 +483,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 7 / IN_PROGRESS。Slice 6 已由独立 frontend checkpoint `76a6875` 完成；CG008 已由 backend checkpoint `0676928` 与 frontend contract-sync checkpoint `8072b65` 关闭。Knowledge Documents data seam 当前为未提交 focused green working set，尚未实现业务 UI。
+- Slice 7 / IN_PROGRESS。Knowledge Documents data seam 已由独立 frontend checkpoint `45873a3` 完成；列表/详情/内容只读 UI 当前为未提交 focused green working set，尚未实现下载保存与 revision reconciliation。
 
 Next Action:
 
-- 完成 Knowledge Documents data seam 的 lint、scoped diff/security review 并创建独立 frontend checkpoint；随后从列表/详情/内容只读 UI 的 focused expected-red 继续。
+- 完成 Knowledge Documents 只读 UI 的 scoped diff/security review 并创建独立 frontend checkpoint；随后为 download revision 三方一致性、文件名解析、Blob 丢弃与 object URL cleanup 建立 focused expected-red。
 
 Slice 7 Contract Reconnaissance Evidence (verified 2026-08-30):
 
@@ -511,6 +511,9 @@ Context Recovery Evidence (verified 2026-08-30 after quota interruption during S
 - frontend 唯一未 checkpoint 的本任务 working set 是 `src/features/knowledge-documents/` 下 5 个新文件；backend 另有外部 RAG Eval tracked/untracked working set，本任务未读取其内容、未修改或暂存。package、lockfile、OpenAPI snapshot 与 generated transport types均无未提交差异。
 - Repository source 显示 generated DTO alias、DTO-to-domain allowlisted projection、四条 approved GET Route adapter、opaque cursor/non-empty filters、用户隔离 list/detail/content Query Keys 与 hooks 已存在。expected-red 曾准确因缺失 `knowledge-document-api` seam 失败；恢复后 focused test 1 file / 6 tests、`pnpm contracts:check` 与 typecheck 均通过。
 - backend `test_knowledge_document_validation_contract.py` 与 Knowledge Documents `assert_http_contract()`/`assert_cors_contract()` 恢复重跑通过，确认当前 data seam 所依赖的 Runtime/OpenAPI contract 未回退。原 Current Step/Next Action 因而过期，唯一 Next Action 修正为完成该 data seam 的 scoped review 和独立 checkpoint。
+- scoped lint、typecheck、focused 1 file / 6 tests、generated contract drift 与安全搜索通过；data seam 由 checkpoint `45873a3` 持久化，明确不包含 UI、revision 比对、object URL 或下载保存副作用。唯一 Next Action 随 checkpoint 推进为只读 UI expected-red。
+- 只读 UI expected-red 先因缺少 `KnowledgeDocumentWorkspace` public seam 失败；最小实现接入真实 `/documents` 与 `/documents/:docId` route composition，URL filters/opaque pagination、access-source 说明、三种 render mode、allowlisted warning projection 和 hidden 404 后 focused 1 file / 6 tests 通过。
+- scoped lint、typecheck 与 data/UI/App regression 3 files / 19 tests 通过；Markdown raw HTML/credential URL、未知 warning 和 backend raw error message 均未进入页面，详情 404 时 content Route 不发起请求。当前唯一 Next Action 是完成 scoped review/checkpoint，再进入 download revision TDD。
 
 Slice 6 Final Gate Evidence (verified 2026-08-30):
 

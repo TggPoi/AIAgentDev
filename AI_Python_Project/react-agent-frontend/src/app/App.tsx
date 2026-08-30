@@ -9,6 +9,7 @@ import { ApplicationShell } from '@/layouts/ApplicationShell'
 import { LoginPage } from '@/pages/LoginPage'
 import { PlaceholderPage } from '@/pages/PlaceholderPage'
 import { ChatPage } from '@/pages/ChatPage'
+import { DocumentPage } from '@/pages/DocumentPage'
 import { SecuritySettingsPage } from '@/pages/SecuritySettingsPage'
 import { TaskPlanPage } from '@/pages/TaskPlanPage'
 
@@ -30,16 +31,6 @@ function StartupScreen() {
     </main>
   )
 }
-
-const documentsPage = (
-  <PlaceholderPage
-    description="浏览当前身份可读取的公共、部门与精确授权知识文档。"
-    emptyDescription="可读取的文档将在业务模块接入后显示。"
-    emptyTitle="暂无知识文档"
-    eyebrow="Knowledge"
-    title="知识文档"
-  />
-)
 
 const usersPage = (
   <PlaceholderPage
@@ -82,7 +73,7 @@ function AppContent() {
           path="/documents"
           element={
             <CapabilityGuard capability="canReadDocuments">
-              {documentsPage}
+              <DocumentPage />
             </CapabilityGuard>
           }
         />
@@ -90,7 +81,7 @@ function AppContent() {
           path="/documents/:docId"
           element={
             <CapabilityGuard capability="canReadDocuments">
-              {documentsPage}
+              <DocumentPage />
             </CapabilityGuard>
           }
         />
