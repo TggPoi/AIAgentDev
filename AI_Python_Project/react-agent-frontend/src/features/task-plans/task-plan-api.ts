@@ -1,5 +1,11 @@
 import type { HttpClient } from '@/api/http-client'
+import {
+  parseTaskPlanPublicEvent,
+  type TaskPlanPublicEvent,
+} from '@/api/sse/public-events'
+import { parseSseStream } from '@/api/sse/parser'
 import type {
+  TaskPlanConfirmRequestDto,
   TaskPlanControlResponseDto,
   TaskPlanDetailDto,
   TaskPlanListResponseDto,
@@ -23,6 +29,12 @@ export interface TaskPlanListRequest {
 
 export interface TaskPlanApi {
   cancelTaskPlan(taskPlanId: string, idempotencyKey: string): Promise<void>
+  confirmTaskPlan(
+    taskPlanId: string,
+    requestId: string,
+    idempotencyKey: string,
+    signal: AbortSignal,
+  ): AsyncGenerator<TaskPlanPublicEvent>
   getTaskPlan(taskPlanId: string, signal?: AbortSignal): Promise<TaskPlanDetail>
   getTaskPlanMarkdown(taskPlanId: string, signal?: AbortSignal): Promise<string>
   listTaskPlans(request: TaskPlanListRequest): Promise<TaskPlanPage>
@@ -52,6 +64,23 @@ export function createTaskPlanApi(httpClient: HttpClient): TaskPlanApi {
           method: 'POST',
         },
       )
+    },
+
+    async *confirmTaskPlan(taskPlanId, requestId, idempotencyKey, signal) {
+      const body: TaskPlanConfirmRequestDto = { confirmed: true }
+      const response = await httpClient.openEventStream(
+        `${taskPlanPath(taskPlanId)}/confirm/stream`,
+        {
+          headers: { 'Idempotency-Key': idempotencyKey },
+          json: body,
+          method: 'POST',
+          requestId,
+          signal,
+        },
+      )
+      for await (const frame of parseSseStream(response.body)) {
+        yield parseTaskPlanPublicEvent(frame, requestId)
+      }
     },
 
     async getTaskPlan(taskPlanId, signal) {

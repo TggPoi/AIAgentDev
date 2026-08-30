@@ -256,4 +256,130 @@ describe('TaskPlan HTTP adapter', () => {
 
     expect(operations).toEqual(['cancel', 'retry'])
   })
+
+  it('uses only confirm stream with one request ID and idempotency key', async () => {
+    server.use(
+      http.post(
+        `${apiBaseUrl}/agent/task-plans/research-1/confirm/stream`,
+        async ({ request }) => {
+          expect(request.headers.get('X-Request-ID')).toBe('confirm-request-id')
+          expect(request.headers.get('Idempotency-Key')).toBe(
+            'task-plan-confirm-key',
+          )
+          expect(await request.json()).toEqual({ confirmed: true })
+          return HttpResponse.text(
+            'event: agent_task_status\n' +
+              'data: {"contract_version":"1.0","request_id":"confirm-request-id","task_plan_id":"research-1","status":"executing_confirmed"}\n\n',
+            {
+              headers: {
+                'Content-Type': 'text/event-stream; charset=utf-8',
+                'X-Request-ID': 'confirm-request-id',
+              },
+            },
+          )
+        },
+      ),
+    )
+
+    const events = []
+    for await (const event of createApi().confirmTaskPlan(
+      'research-1',
+      'confirm-request-id',
+      'task-plan-confirm-key',
+      new AbortController().signal,
+    )) {
+      events.push(event)
+    }
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        event: 'agent_task_status',
+        requestId: 'confirm-request-id',
+        status: 'executing_confirmed',
+        taskPlanId: 'research-1',
+      }),
+    ])
+  })
+
+  it('replays one pre-stream 401 with the same action identifiers', async () => {
+    let accessToken = 'expired-token'
+    let refreshes = 0
+    const requests: Array<{
+      authorization: string | null
+      idempotencyKey: string | null
+      requestId: string | null
+    }> = []
+    server.use(
+      http.post(
+        `${apiBaseUrl}/agent/task-plans/research-1/confirm/stream`,
+        ({ request }) => {
+          requests.push({
+            authorization: request.headers.get('Authorization'),
+            idempotencyKey: request.headers.get('Idempotency-Key'),
+            requestId: request.headers.get('X-Request-ID'),
+          })
+          if (requests.length === 1) {
+            return HttpResponse.json(
+              {
+                code: 'AUTHENTICATION_REQUIRED',
+                message: '身份认证已失效',
+                request_id: 'confirm-replay-request-id',
+              },
+              { status: 401 },
+            )
+          }
+          return HttpResponse.text(
+            'event: done\n' +
+              'data: {"contract_version":"1.0","request_id":"confirm-replay-request-id","task_plan_id":"research-1","status":"done","task_status":"completed"}\n\n',
+            {
+              headers: {
+                'Content-Type': 'text/event-stream',
+                'X-Request-ID': 'confirm-replay-request-id',
+              },
+            },
+          )
+        },
+      ),
+    )
+    const api = createTaskPlanApi(
+      createHttpClient({
+        baseUrl: apiBaseUrl,
+        getAccessToken: () => accessToken,
+        refreshAccessToken: async () => {
+          refreshes += 1
+          accessToken = 'rotated-token'
+        },
+      }),
+    )
+
+    const events = []
+    for await (const event of api.confirmTaskPlan(
+      'research-1',
+      'confirm-replay-request-id',
+      'confirm-replay-idempotency-key',
+      new AbortController().signal,
+    )) {
+      events.push(event)
+    }
+
+    expect(refreshes).toBe(1)
+    expect(requests).toEqual([
+      {
+        authorization: 'Bearer expired-token',
+        idempotencyKey: 'confirm-replay-idempotency-key',
+        requestId: 'confirm-replay-request-id',
+      },
+      {
+        authorization: 'Bearer rotated-token',
+        idempotencyKey: 'confirm-replay-idempotency-key',
+        requestId: 'confirm-replay-request-id',
+      },
+    ])
+    expect(events).toEqual([
+      expect.objectContaining({
+        event: 'done',
+        requestId: 'confirm-replay-request-id',
+      }),
+    ])
+  })
 })

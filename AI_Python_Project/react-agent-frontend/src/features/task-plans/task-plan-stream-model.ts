@@ -40,6 +40,10 @@ type TaskPlanStreamAction =
       type: 'start'
     }
   | { event: TaskPlanPublicEvent; type: 'event' }
+  | {
+      message: string | null
+      type: 'cancel' | 'fail' | 'interrupt'
+    }
 
 export function createInitialTaskPlanStreamState(): TaskPlanStreamState {
   return {
@@ -64,6 +68,27 @@ export function taskPlanStreamReducer(
       requestId: action.requestId,
       status: 'connecting',
       taskPlanId: action.taskPlanId,
+    }
+  }
+
+  if (action.type !== 'event') {
+    if (
+      state.status === 'cancelled' ||
+      state.status === 'completed' ||
+      state.status === 'failed' ||
+      state.status === 'interrupted'
+    ) {
+      return state
+    }
+    return {
+      ...state,
+      errorMessage: action.message,
+      status:
+        action.type === 'cancel'
+          ? 'cancelled'
+          : action.type === 'fail'
+            ? 'failed'
+            : 'interrupted',
     }
   }
 

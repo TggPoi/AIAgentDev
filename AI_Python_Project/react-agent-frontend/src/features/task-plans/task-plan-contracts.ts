@@ -2,6 +2,8 @@ import type { components } from '@/api/generated/backend-schema'
 
 
 export type TaskPlanStatusDto = components['schemas']['AgentTaskPlanStatus']
+export type TaskPlanConfirmRequestDto =
+  components['schemas']['AgentTaskPlanConfirmRequest']
 export type TaskPlanControlResponseDto =
   components['schemas']['AgentTaskPlanControlResponse']
 export type TaskPlanListItemDto = components['schemas']['AgentTaskPlanListItem']

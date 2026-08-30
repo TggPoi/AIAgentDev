@@ -187,4 +187,41 @@ describe('TaskPlan stream reducer', () => {
       status: 'failed',
     })
   })
+
+  it.each([
+    ['fail', 'failed'],
+    ['interrupt', 'interrupted'],
+    ['cancel', 'cancelled'],
+  ] as const)('records a local %s terminal and ignores late events', (type, status) => {
+    let state = taskPlanStreamReducer(createInitialTaskPlanStreamState(), {
+      requestId: 'request-1',
+      taskPlanId: 'task-plan-1',
+      type: 'start',
+    })
+
+    state = taskPlanStreamReducer(state, {
+      message: type === 'fail' ? '确认请求失败' : null,
+      type,
+    })
+    const lateEvent = parseTaskPlanPublicEvent(
+      {
+        data: JSON.stringify({
+          contract_version: '1.0',
+          request_id: 'request-1',
+          task_plan_id: 'task-plan-1',
+          text: '迟到内容',
+        }),
+        event: 'answer_delta',
+        receivedAt: 40,
+      },
+      'request-1',
+    )
+    state = taskPlanStreamReducer(state, { event: lateEvent, type: 'event' })
+
+    expect(state).toMatchObject({
+      answer: '',
+      errorMessage: type === 'fail' ? '确认请求失败' : null,
+      status,
+    })
+  })
 })

@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/api-error'
 import { Button } from '@/components/ui/Button'
@@ -20,7 +21,12 @@ import {
   useTaskPlanList,
   useTaskPlanMarkdown,
   useRetryTaskPlan,
+  taskPlanKeys,
 } from '@/features/task-plans/task-plan-queries'
+import {
+  createInitialTaskPlanStreamState,
+  taskPlanStreamReducer,
+} from '@/features/task-plans/task-plan-stream-model'
 import styles from '@/features/task-plans/TaskPlanWorkspace.module.css'
 
 
@@ -164,22 +170,154 @@ function DocumentFacts({ detail }: { detail: DocumentTaskPlanDetail }) {
   )
 }
 
+function streamStatusMessage(status: ReturnType<typeof createInitialTaskPlanStreamState>['status']) {
+  switch (status) {
+    case 'connecting':
+      return '正在连接执行流…'
+    case 'streaming':
+      return '任务正在执行…'
+    case 'completed':
+      return '执行流已完成，正在同步最新状态。'
+    case 'failed':
+      return '执行流失败，已重新读取服务端状态。'
+    case 'interrupted':
+      return '连接提前结束，已重新读取服务端状态。'
+    case 'cancelled':
+      return '已停止本地接收，服务端任务状态正在重新同步。'
+    default:
+      return ''
+  }
+}
+
+function timelineEventLabel(event: string): string {
+  switch (event) {
+    case 'agent_task_status':
+      return '任务状态已更新'
+    case 'agent_task_execution_started':
+      return '任务已开始执行'
+    case 'agent_task_final_synthesis_completed':
+      return '最终结论已汇总'
+    case 'agent_task_step_completed':
+      return '执行步骤已完成'
+    case 'agent_task_step_failed':
+      return '执行步骤失败'
+    case 'sub_question_completed':
+      return '研究子问题已完成'
+    case 'guard_blocked':
+      return '安全检查已阻止不安全内容'
+    case 'guard_sanitized':
+      return '安全检查已净化内容'
+    case 'done':
+      return '执行流已完成'
+    case 'error':
+      return '执行流失败'
+    default:
+      if (event.startsWith('agent_task_document_') || event === 'document_progress') {
+        return '文档执行进度已更新'
+      }
+      if (
+        event.startsWith('agent_task_research_') ||
+        event.startsWith('agent_task_sub_question_') ||
+        event.startsWith('sub_question_')
+      ) {
+        return '研究执行进度已更新'
+      }
+      if (event.startsWith('requirement_')) {
+        return '证据要求状态已更新'
+      }
+      return '执行进度已更新'
+  }
+}
+
 function TaskPlanDetailView({
   api,
   taskPlanId,
   userBoundary,
 }: TaskPlanWorkspaceProps & { taskPlanId: string }) {
+  const queryClient = useQueryClient()
   const detailQuery = useTaskPlanDetail(api, userBoundary, taskPlanId)
   const markdownQuery = useTaskPlanMarkdown(api, userBoundary, taskPlanId)
   const cancelMutation = useCancelTaskPlan(api, userBoundary, taskPlanId)
   const retryMutation = useRetryTaskPlan(api, userBoundary, taskPlanId)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
+  const [confirmError, setConfirmError] = useState<ApiError | null>(null)
+  const [streamState, dispatchStream] = useReducer(
+    taskPlanStreamReducer,
+    undefined,
+    createInitialTaskPlanStreamState,
+  )
+  const activeController = useRef<AbortController | null>(null)
+  const streamActive =
+    streamState.status === 'connecting' || streamState.status === 'streaming'
+
+  useEffect(() => {
+    return () => activeController.current?.abort()
+  }, [])
+
+  const reconcileFacts = () =>
+    Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: taskPlanKeys.detail(userBoundary, taskPlanId),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: taskPlanKeys.listRoot(userBoundary),
+      }),
+    ])
+
+  const confirmTaskPlan = async () => {
+    if (streamActive) return
+    const requestId = crypto.randomUUID()
+    const idempotencyKey = crypto.randomUUID()
+    const controller = new AbortController()
+    activeController.current = controller
+    setConfirmDialogOpen(false)
+    setConfirmError(null)
+    dispatchStream({ requestId, taskPlanId, type: 'start' })
+
+    try {
+      let terminalReceived = false
+      for await (const event of api.confirmTaskPlan(
+        taskPlanId,
+        requestId,
+        idempotencyKey,
+        controller.signal,
+      )) {
+        dispatchStream({ event, type: 'event' })
+        if (event.event === 'done' || event.event === 'error') {
+          terminalReceived = true
+          break
+        }
+      }
+      if (!terminalReceived) {
+        dispatchStream({ message: null, type: 'interrupt' })
+      }
+    } catch (error) {
+      if (controller.signal.aborted) {
+        dispatchStream({ message: null, type: 'cancel' })
+      } else if (
+        error instanceof ApiError &&
+        error.statusKind !== 'protocol'
+      ) {
+        setConfirmError(error)
+        dispatchStream({ message: null, type: 'fail' })
+      } else {
+        dispatchStream({ message: null, type: 'interrupt' })
+      }
+    } finally {
+      if (activeController.current === controller) {
+        activeController.current = null
+      }
+      await reconcileFacts()
+    }
+  }
 
   if (detailQuery.isPending) return <PageSkeleton />
   if (detailQuery.isError) return errorState(detailQuery.error, 'TaskPlan 详情不可用')
   const detail = detailQuery.data
   const actions = availableTaskPlanActions(detail.taskKind, detail.status)
-  const controlsPending = cancelMutation.isPending || retryMutation.isPending
+  const controlsPending =
+    cancelMutation.isPending || retryMutation.isPending || streamActive
 
   return (
     <article className={styles.page} aria-labelledby="task-plan-detail-title">
@@ -191,8 +329,17 @@ function TaskPlanDetailView({
         <h2 id="task-plan-detail-title">{detail.objective}</h2>
         <span className={styles.status}>{statusLabels[detail.status]}</span>
       </header>
-      {actions.includes('retry') || actions.includes('cancel') ? (
+      {actions.length > 0 ? (
         <div className={styles.actions}>
+          {actions.includes('confirm') ? (
+            <Button
+              disabled={controlsPending}
+              onClick={() => setConfirmDialogOpen(true)}
+              type="button"
+            >
+              确认执行
+            </Button>
+          ) : null}
           {actions.includes('retry') ? (
             <Button
               disabled={controlsPending}
@@ -212,6 +359,15 @@ function TaskPlanDetailView({
               取消任务
             </Button>
           ) : null}
+          {streamActive ? (
+            <Button
+              onClick={() => activeController.current?.abort()}
+              type="button"
+              variant="secondary"
+            >
+              停止接收
+            </Button>
+          ) : null}
         </div>
       ) : null}
       {retryMutation.isError
@@ -220,6 +376,35 @@ function TaskPlanDetailView({
       {cancelMutation.isError
         ? errorState(cancelMutation.error, 'TaskPlan 取消失败')
         : null}
+      {confirmError ? errorState(confirmError, 'TaskPlan 确认失败') : null}
+      {streamState.status !== 'idle' ? (
+        <section aria-live="polite" className={styles.panel}>
+          <h3>执行进度</h3>
+          <p>{streamStatusMessage(streamState.status)}</p>
+          {streamState.errorMessage ? <p>{streamState.errorMessage}</p> : null}
+          {streamState.answer ? (
+            <MarkdownViewer markdown={streamState.answer} />
+          ) : null}
+          {streamState.timeline.length > 0 ? (
+            <ol aria-label="TaskPlan 执行时间线" className={styles.steps}>
+              {streamState.timeline.map((item, index) => (
+                <li key={`${item.receivedAt}-${item.event}-${index}`}>
+                  {item.status === 'unsupported_event'
+                    ? '收到当前版本暂不支持的公开事件'
+                    : timelineEventLabel(item.event)}
+                </li>
+              ))}
+            </ol>
+          ) : null}
+          {streamState.sources.length > 0 ? (
+            <ul aria-label="TaskPlan 执行来源" className={styles.steps}>
+              {streamState.sources.map((source) => (
+                <li key={source.id}>{source.title}</li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
       {detail.kind === 'research' ? (
         <ResearchFacts detail={detail} />
       ) : (
@@ -235,6 +420,32 @@ function TaskPlanDetailView({
           <MarkdownViewer markdown={markdownQuery.data} />
         ) : null}
       </section>
+      <Dialog
+        label="确认执行 TaskPlan"
+        onClose={() => {
+          if (!streamActive) setConfirmDialogOpen(false)
+        }}
+        open={confirmDialogOpen}
+      >
+        <p>确认后服务端将开始执行真实任务。请先完成上方计划审查。</p>
+        <div className={styles.actions}>
+          <Button
+            disabled={controlsPending}
+            onClick={() => void confirmTaskPlan()}
+            type="button"
+          >
+            开始执行
+          </Button>
+          <Button
+            disabled={controlsPending}
+            onClick={() => setConfirmDialogOpen(false)}
+            type="button"
+            variant="secondary"
+          >
+            返回
+          </Button>
+        </div>
+      </Dialog>
       <Dialog
         label="取消 TaskPlan"
         onClose={() => {

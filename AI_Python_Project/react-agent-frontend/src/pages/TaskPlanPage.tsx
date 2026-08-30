@@ -16,6 +16,7 @@ export function TaskPlanPage() {
   return (
     <TaskPlanWorkspace
       api={api}
+      key={`${snapshot.currentUser.userId}:${taskPlanId ?? '__list__'}`}
       taskPlanId={taskPlanId ?? null}
       userBoundary={snapshot.currentUser.userId}
     />
