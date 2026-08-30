@@ -3996,7 +3996,7 @@ export interface components {
              * @description 允许向客户端公开的顶层请求字段名；不包含请求值或嵌套内部位置。
              * @enum {string}
              */
-            field: "username_or_email" | "password" | "refresh_token" | "current_password" | "new_password" | "title" | "query" | "status" | "session_id" | "limit";
+            field: "username_or_email" | "password" | "refresh_token" | "current_password" | "new_password" | "title" | "query" | "department_code" | "document_type" | "status" | "session_id" | "limit";
             /**
              * Message
              * @description 可安全显示的固定校验提示，不包含客户端提交值或服务端内部信息。
@@ -7034,13 +7034,13 @@ export interface operations {
                     "application/json": components["schemas"]["KnowledgeDocumentListResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };
@@ -7070,13 +7070,13 @@ export interface operations {
                     "application/json": components["schemas"]["KnowledgeDocumentDetail"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };
@@ -7106,13 +7106,13 @@ export interface operations {
                     "application/json": components["schemas"]["KnowledgeDocumentContentResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };
@@ -7146,13 +7146,13 @@ export interface operations {
                     "application/octet-stream": string;
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };

@@ -5002,6 +5002,8 @@
               "new_password",
               "title",
               "query",
+              "department_code",
+              "document_type",
               "status",
               "session_id",
               "limit"
@@ -12094,11 +12096,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "List Knowledge Documents Endpoint",
@@ -12188,11 +12190,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Get Knowledge Document Detail Endpoint",
@@ -12282,11 +12284,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Get Knowledge Document Content Endpoint",
@@ -12391,11 +12393,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Download Knowledge Document Endpoint",
