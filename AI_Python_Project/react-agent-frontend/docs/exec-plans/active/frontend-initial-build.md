@@ -8,11 +8,11 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 8 - User Access Management
 
-Current Step: Slice 7 的 data、read-only UI、download/revision、完整 automated Gate 与闪退后重新执行的 1280px/360px manual browser smoke 均已通过；正在进入 Slice 8 contract reconnaissance，尚未开始 User Access 业务编码
+Current Step: Slice 8 User Access feature、backend Route/Schema/OpenAPI/runtime/tests reconnaissance 已完成；CG009 证明 request-validation 与 access-snapshot business 422 都缺少与 runtime 一致的安全字段级公开 contract，已停止业务编码
 
-Next Action: 完整读取 User Access Management feature spec，并对照 backend catalog/user Route、Pydantic Schema、OpenAPI、runtime validation 与 focused tests，确认 Slice 8 可安全使用的真实 contract 或记录新的 Contract Gap
+Next Action: 等待用户批准或拒绝 CG009 的严格受限 backend contract fix；批准前不修改 backend，不生成 User Access frontend DTO 或页面实现
 
-Blocking Issues: None; CG008 resolved in backend checkpoint `0676928` and frontend contract-sync checkpoint `8072b65`
+Blocking Issues: CG009 - User Access 422 OpenAPI/runtime/field-mapping contract gap; CG008 remains resolved in backend checkpoint `0676928` and frontend contract-sync checkpoint `8072b65`
 
 Last Updated: 2026-08-30 (Asia/Shanghai)
 
@@ -287,7 +287,7 @@ Goal: 完成公共/部门/grant 范围内的文档列表、详情、预览、来
 
 ### Slice 8 - User Access Management
 
-Status: IN_PROGRESS
+Status: BLOCKED
 
 Goal: 完成管理员和部门主管范围内的用户列表、详情、创建、完整 access 替换、状态修改和密码重置。
 
@@ -484,11 +484,20 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；User Access Management 尚未开始业务编码，当前只执行 feature/backend contract reconnaissance。
+- Slice 8 / BLOCKED。Slice 7 已通过 Gate；User Access Management business coding 尚未开始。当前真实 Route/OpenAPI/runtime/tests 已确认 CG009，受影响实现等待单独授权。
 
 Next Action:
 
-- 完整读取 User Access Management feature spec，并对照 backend catalog/user Route、Pydantic Schema、OpenAPI、runtime validation 与 focused tests，确认 Slice 8 可安全使用的真实 contract 或记录新的 Contract Gap。
+- 等待用户批准或拒绝 CG009 的严格受限 backend contract fix；批准前不修改 backend，不生成 User Access frontend DTO 或页面实现。
+
+Slice 8 Contract Reconnaissance Evidence (verified 2026-08-30):
+
+- 进入 Slice 8 的 plan checkpoint 为 `a66916c`；Slice 7 已完成且没有重新实现。完整读取 User Access Management feature spec，并复核 SPEC 的 `can_manage_users` route/capability、catalog-only options 与通用 `422` 字段映射要求。
+- backend `user_admin_routes.py` 与 `user_admin_schema.py` 确认 Initial React 使用 catalog、list/detail、create、完整 access PUT、status PATCH 与 reset-password 共 7 条 Route；请求模型禁止 extra，写入字段与列表 filters 都有明确 Pydantic constraints。
+- 当前 frontend OpenAPI snapshot 中上述 7 条 Route 的 `422` 全部引用 `#/components/schemas/HTTPValidationError`。真实 Route + global handler + dependency override 的无敏感 TestClient probe 对 invalid list `limit/status`、invalid path、empty create/access、invalid status 与 empty reset-password 全部返回 422，但 runtime keys 只有 `code/error_category/message/request_id/trace_id`，没有 `detail` 或 `field_errors`。
+- 进一步以受控 fake service 触发 `ManagedUserAccessInvalidError`，证明 create/access 的业务约束 422 runtime code 为 `MANAGED_USER_ACCESS_INVALID`，同样只有五个顶层公共字段，没有可判别 account/department/role/permission field。当前公共 validation allowlist 没有任何 Admin Route，generated contract 因而不能支持 feature 要求。
+- backend `test_user_administration_read.py` 与 `test_user_administration_write.py` 均通过；后者只验证一个 extra status field 返回 422 status，不断言 runtime/OpenAPI schema equality 或业务 422 field mapping，因此成功 baseline 不能关闭 CG009。
+- package、lockfile、OpenAPI snapshot 与 generated types 无未提交变化；共享 backend 外部 RAG Eval working set 保持隔离。唯一 Next Action 已修正为等待 CG009 严格受限授权，批准前停止受影响编码。
 
 Slice 7 Contract Reconnaissance Evidence (verified 2026-08-30):
 
@@ -958,7 +967,7 @@ Resolution:
 
 ### KI006 - Future Mutation 422 Contract Inventory
 
-Status: INVENTORIED / CHAT QUERY RESOLVED AS CG003 / TASKPLAN RISKS ELEVATED TO CG004-CG006
+Status: INVENTORIED / CHAT QUERY RESOLVED AS CG003 / TASKPLAN RISKS RESOLVED AS CG004-CG006 / USER MANAGEMENT ELEVATED TO CG009
 
 Evidence:
 
@@ -970,7 +979,7 @@ Evidence:
 
 Impact:
 
-- Slice 8 User Management 是高可信未来 contract risk；Slice 9 Document Access Grants 是待对应 Slice 核实的潜在风险。Slice 6 已实际复核并确认 detail type、422 drift 与 business event schema 都直接阻塞安全 typed frontend implementation。
+- Slice 8 reconnaissance 已将 User Management request-validation 与 business-validation 422 风险提升为正式 blocking CG009；Slice 9 Document Access Grants 仍是待对应 Slice 核实的潜在风险。Slice 6 已实际复核并解决 detail type、422 drift 与 business event schema gaps。
 - Slice 5 reconnaissance 已确认 `query` 字段确实受影响，因此该部分风险已提升为正式 blocking CG003；其他未来 Route 仍只保留 inventory 状态。
 - inventory 未发现新的 Slice 4 Route gap；因此它不阻塞 Slice 4，也不授权提前修改任何未来 backend Route。
 
@@ -978,7 +987,7 @@ Resolution:
 
 - 仅记录风险。进入对应 Slice 时重新执行 Route/Schema/OpenAPI/runtime/spec 核对；只有确认影响该 Slice 的公开行为后，才建立精确 Contract Gap 并按 Blocking Condition 请求受限授权。
 - 禁止把 CG001/CG002 授权外推到上述 Route，禁止现在预修复。
-- Chat `query` 风险已由严格受限的 CG003 backend checkpoint `d3d95ba` 解决；TaskPlan 风险已提升为 CG004-CG006 并等待单独授权，Admin 与 Grant 风险仍保持 inventory，未被任何当前授权覆盖。
+- Chat `query` 风险已由严格受限的 CG003 backend checkpoint `d3d95ba` 解决；TaskPlan CG004-CG006 均已按独立授权解决；Admin 风险已提升为 CG009 并等待单独授权，Grant 风险仍保持 inventory，未被任何当前授权覆盖。
 
 ### Contract Gaps
 
@@ -1242,6 +1251,36 @@ Recommended Backend Change:
 Decision Required:
 
 - 用户已于 2026-08-30 明确批准上述严格受限 backend contract fix；修复已由 backend checkpoint `0676928` 与 frontend contract-sync checkpoint `8072b65` 完成并通过 Runtime/OpenAPI/tests 验证。授权只覆盖四条 Initial React Knowledge Documents GET Route 的安全 422 projection/OpenAPI/tests，未外推到文档 ACL/read/download 业务、ingestion/admin/compatibility/未来 Route 或其他 mutation endpoint。
+
+#### CG009 - User Access 422 Contracts Do Not Support Safe Field Mapping
+
+Status: OPEN / BLOCKING SLICE 8 / DECISION REQUIRED
+
+Evidence:
+
+- User Access Management feature 要求 `422` 能映射到账号、主部门、角色或权限字段；SPEC 也要求表单 `422` 映射到字段错误。Slice 8 实际使用 catalog、list/detail、create、完整 access PUT、status PATCH 与 reset-password 共 7 条 `/admin/*` Route。
+- 当前 7 条 Route 的 OpenAPI `422` 全部引用 `#/components/schemas/HTTPValidationError`，声明 FastAPI `detail[].loc/msg/type`；`user_admin_routes.py` 没有声明安全公共 422 response model，global `_VALIDATION_FIELDS` 也没有任何 Admin Route。
+- 无敏感 TestClient probe 对 invalid list `limit/status`、65 字符 path、empty create/access、invalid status 与 empty reset-password 均得到 422；runtime keys 只有 `code/error_category/message/request_id/trace_id`，没有 OpenAPI 声明的 `detail`，也没有安全 `field_errors`。
+- create/access 还会由 service 对唯一主部门、部门/角色/直接权限 catalog 与重复 code 等规则抛出 `MANAGED_USER_ACCESS_INVALID / 422`。受控 service probe 证明该 runtime 也只有五个通用字段，无法判别应归属 `account_type`、`department_access` 或 `direct_permission_codes`。
+- `test_user_administration_read.py` 与 `test_user_administration_write.py` 当前通过，证明管理范围、事务、冲突、自操作、最后管理员、凭证撤销及基础 HTTP 行为没有回退；但 HTTP test 只检查 validation status，不检查 Runtime/OpenAPI shape、no-sensitive-echo 或业务字段映射。
+
+Impact:
+
+- Frontend 若按 generated `HTTPValidationError.detail` 读取会与 runtime 不符；若只显示 form-level message，则 create/access/status/reset-password 不能满足批准的字段级表单行为。
+- 前端也不能从自然语言业务 message 猜出主部门、角色或权限字段；这样既不稳定，也会把未经公开模型约束的后端 message 当协议。Catalog/list/detail 的只读 contract reconnaissance 可以完成，但 coherent Slice 8 的 typed mutations、表单与 Gate 被阻塞。
+
+Recommended Backend Change:
+
+- 复用已建立的安全 `RequestValidationErrorResponse`，仅为 User Access 明确批准的公开字段建立 Route/location/field allowlist：list query 的 `query/status/department_code/limit`；create body 的 `username/password/email/display_name/account_type/department_access/direct_permission_codes`；access PUT 的 `account_type/department_access/direct_permission_codes`；status PATCH 的 `status`；reset-password 的 `new_password`。
+- 嵌套 `department_access` validation 只能安全折叠为公开顶层 `department_access` 字段；不得回显数组 index、嵌套 path、提交的 department/role code 或原始 Pydantic 位置。`cursor`、path `user_id`、model-level、dependency/header 与未知错误保持 `field_errors=[]` 的 form-level response。
+- 为 `ManagedUserAccessInvalidError` 建立独立、安全、可判别的公共 422 response model或等价稳定 projection；field 只能来自 `username/account_type/department_access/direct_permission_codes` 的显式 allowlist。service 必须按确定性业务分支提供稳定 field/code，不允许前端或 handler 解析自然语言 message 推断字段。
+- 为 7 条 Initial React User Access Route 声明与 runtime 实际可能返回一致的 422 OpenAPI schema；create/access 需要覆盖 request-validation 与 business-validation 两种安全响应。不得改变用户管理事务、授权范围、catalog、冲突/404/自操作/最后管理员、密码强度或凭证撤销行为。
+- 不读取或回显 validation `input`、`ctx`、raw `msg`、password/new_password、email 值、department/role/permission code、token、API Key、ACL、内部信息或未知字段；增加 runtime/OpenAPI/no-sensitive-echo/nested-collapse/form-level/non-Admin-route/regression tests。
+- 修复必须形成只包含 CG009 contract fix 的独立 backend checkpoint；随后重新导出 frontend OpenAPI snapshot/types，运行 contract drift、User Administration focused regressions 与 `pnpm check`。只有 Runtime = OpenAPI = Tests 后才能关闭 CG009 并恢复 Slice 8。
+
+Decision Required:
+
+- 等待用户明确批准或拒绝上述严格受限 backend contract fix。此前对 CG001-CG008 的授权均不能外推到 User Access Route；批准前不得修改 backend 或猜测 frontend 422 DTO。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
