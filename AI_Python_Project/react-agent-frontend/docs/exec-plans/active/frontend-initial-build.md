@@ -6,15 +6,15 @@ Status: ACTIVE
 
 Plan Approval: APPROVED BY USER ON 2026-08-25
 
-Current Slice: 6 - TaskPlan
+Current Slice: 7 - Knowledge Documents
 
-Current Step: Slice 6 TaskPlan public event projection 与独立 reducer 已由 frontend checkpoint `9bb23c2` 完成并验证；13 类 generated frame 已进入明确 known/unknown 安全边界，现进入 confirm-stream POST transport 与 action lifecycle
+Current Step: Slice 6 已由独立 frontend checkpoint `76a6875` 完成；现进入 Slice 7 Knowledge Documents 的 spec/backend Route/Schema/OpenAPI/runtime-test contract reconnaissance，尚未开始 Slice 7 业务编码
 
-Next Action: 先为唯一 `/{id}/confirm/stream` POST 的 `confirmed:true`、request ID/Idempotency-Key、SSE parsing 与 pre-stream failure 新增 focused expected-red tests，再实现最小 TaskPlan stream API；不调用非流式 `/confirm`
+Next Action: 完整读取 Knowledge Documents feature spec，核对当前 frontend document/source seams 与 backend list/detail/content/download Route、Pydantic Schema、OpenAPI/CORS/runtime tests，并运行最小 focused baseline；若发现冲突先记录 Contract Gap，不猜测或编码
 
 Blocking Issues: None
 
-Last Updated: 2026-08-29 (Asia/Shanghai)
+Last Updated: 2026-08-30 (Asia/Shanghai)
 
 ## Goal
 
@@ -254,7 +254,7 @@ Explicit Boundary:
 
 ### Slice 6 - TaskPlan
 
-Status: IN_PROGRESS
+Status: COMPLETED
 
 Goal: 完成 TaskPlan 列表、详情、Markdown、确认流、取消、重试和恢复。
 
@@ -262,16 +262,16 @@ Goal: 完成 TaskPlan 列表、详情、Markdown、确认流、取消、重试�
 - [x] 实现 list/detail/markdown adapters、Query Keys、filters 和 keyset pagination。
 - [x] 按 task kind 保留完整 Domain Model，不压平成丢字段的通用模型。
 - [x] 实现结构化 status 驱动的 controls；禁止解析自然语言 message 决定按钮。
-- [ ] Initial React 确认只使用 `/{id}/confirm/stream`。
-- [ ] 确认流复用公共 SSE envelope/transport，业务 event 使用独立 TaskPlan union/reducer。
-- [ ] 同一 deliberate action 保留 Idempotency-Key；`409` 和流终止后 refetch detail/list。
-- [ ] 区分浏览器 abort 与服务端 cancel，禁止自动重放真实工具操作。
-- [ ] 增加 list cursor、两种 task kind、幂等、409、confirm stream、abort/recovery、ownership 404 测试。
-- [ ] 完成 Slice Gate；执行 TaskPlan manual smoke；创建独立 Git checkpoint。
+- [x] Initial React 确认只使用 `/{id}/confirm/stream`。
+- [x] 确认流复用公共 SSE envelope/transport，业务 event 使用独立 TaskPlan union/reducer。
+- [x] 同一 deliberate action 保留 Idempotency-Key；`409` 和流终止后 refetch detail/list。
+- [x] 区分浏览器 abort 与服务端 cancel，禁止自动重放真实工具操作。
+- [x] 增加 list cursor、两种 task kind、幂等、409、confirm stream、abort/recovery、ownership 404 测试。
+- [x] 完成 Slice Gate；执行 TaskPlan manual smoke；创建独立 Git checkpoint。
 
 ### Slice 7 - Knowledge Documents
 
-Status: NOT_STARTED
+Status: IN_PROGRESS
 
 Goal: 完成公共/部门/grant 范围内的文档列表、详情、预览、来源跳转和受保护下载。
 
@@ -427,7 +427,7 @@ Goal: 在不扩大 Scope 的前提下完成跨 Feature 集成、可访问性、�
 
 Current Slice:
 
-- 6 - TaskPlan
+- 7 - Knowledge Documents
 
 Completed in Current Slice:
 
@@ -479,14 +479,50 @@ Completed in Current Slice:
 - dependency graph 变化后的 `pnpm audit --audit-level high` 返回 `No known vulnerabilities found`。
 - Chat manual browser smoke 使用仅监听本机的虚构 Auth/Conversation/structured SSE service：desktop 与 360px 均验证历史、实时和持久化 Markdown；raw HTML/unknown secret 不进入页面，credential URL 不生成链接，安全外链带 `_blank` 与 `noopener noreferrer`，实时 source preview 使用 Markdown，TaskPlan link 正确，Web 设置刷新恢复，360px 无横向溢出且 console warning/error 为空。临时 browser tab、service、dev server 和 smoke script 已清理。
 - Slice 5 Markdown completion 已由独立 frontend checkpoint `633a07a` 持久化；完整 Slice 5 由 non-Markdown core `1444099`、Markdown completion `633a07a` 及本计划记录的 Gate evidence 共同证明。
+- Slice 6 已由 data `758929d`、read-only UI `ab8f2d9`、control policy `c24e9e5`、cancel/retry `875a0a8`、public event/reducer `9bb23c2` 与最终 confirm-stream/recovery implementation checkpoint `76a6875` 共同完成；最终 `pnpm check` 为 24 files / 111 tests，三个 backend TaskPlan contract tests、1280px/360px manual browser smoke 与 scoped diff review 均通过。
 
 Currently Working On:
 
-- Slice 6 / IN_PROGRESS。CG004-CG007 已全部关闭；checkpoint `758929d` 完成 data seam，`ab8f2d9` 完成只读页面，`c24e9e5` 完成结构化 action policy，`875a0a8` 完成 cancel/retry，`9bb23c2` 完成 TaskPlan public event projection 与独立 reducer，现进入 confirm-stream POST transport 与 action lifecycle。
+- Slice 7 / IN_PROGRESS。Slice 6 已由独立 frontend checkpoint `76a6875` 完成；当前只执行 Knowledge Documents spec 与实际 backend contract reconnaissance，尚未开始 Slice 7 业务编码。
 
 Next Action:
 
-- 先为唯一 `/{id}/confirm/stream` POST 的 `confirmed:true`、request ID/Idempotency-Key、SSE parsing 与 pre-stream failure 新增 focused expected-red tests，再实现最小 TaskPlan stream API；不调用非流式 `/confirm`。
+- 完整读取 Knowledge Documents feature spec，核对当前 frontend document/source seams 与 backend list/detail/content/download Route、Pydantic Schema、OpenAPI/CORS/runtime tests，并运行最小 focused baseline；若发现冲突先记录 Contract Gap，不猜测或编码。
+
+Slice 6 Final Gate Evidence (verified 2026-08-30):
+
+- focused TaskPlan tests：5 files / 26 tests 通过；覆盖唯一 confirm-stream Route、`confirmed:true`、request ID/Idempotency-Key、pre-stream 401 replay、409 refetch/no replay、protocol interruption、terminal/abort/recovery、route-boundary abort 和不可枚举 ownership 404。
+- `pnpm check`：generated contract drift、Oxlint `--deny-warnings`、TypeScript、24 files / 111 tests 与 Vite production build 全部通过；373 modules transformed。package/lockfile/dependency graph 未变化，沿用同一 lockfile 下 Slice 5 的 `pnpm audit --audit-level high` 无已知漏洞证据。
+- backend `test_agent_task_plan_stream_public_contract.py`、`test_agent_task_plan_validation_contract.py`、`test_agent_task_plan_resource_visibility_contract.py` 全部通过；确认 Runtime = OpenAPI = Tests、安全 public-event projection、422 form-level fallback、owned-resource 404 及 Initial React/non-stream confirm 范围边界仍成立。
+- manual browser smoke 使用仅监听 `127.0.0.1` 的虚构 Auth/TaskPlan service：1280px 与 360px 页面布局通过，360px body/main `scrollWidth=360`；确认 Dialog 在两种 viewport 内完整可见，Escape 关闭后焦点回到“确认执行”。
+- browser 网络记录只有 `/agent/task-plans/{id}/confirm/stream` POST，body 为 `{"confirmed":true}`，每个 action 均有 UUID request ID 与 Idempotency-Key；成功流显示结构化 timeline 并 refetch 为“已完成”，持续流在 route change 后 abort，新 TaskPlan 不继承旧 progress/停止接收按钮。console warning/error 为空。
+- scoped `git diff --check -- .` 通过；endpoint/sensitive-output 搜索与完整 frontend diff 复核无非流式 `/confirm`、raw unknown payload、生产 token/password/ACL/internal URL、临时 smoke 文件或无关改动。backend evaluation working set 保持隔离。
+
+Context Recovery Evidence (verified 2026-08-30 after latest Codex app interruption):
+
+- frontend/backend 共享 Git root，branch 为 `master...origin/master [ahead 50]`，confirmed HEAD 为 `b173e46`，staged diff 为空。最后 verified completed Slice 仍为 5；Slice 6 最近有效 checkpoints 仍为 data `758929d`、read-only UI `ab8f2d9`、control policy `c24e9e5`、cancel/retry `875a0a8` 与 public event/reducer `9bb23c2`，没有重新实现已通过 Gate 的 Slice。
+- frontend tracked working set 为本计划和 8 个 TaskPlan frontend 文件，共 9 个文件；其中 `TaskPlanPage` 已按 `currentUser.userId:taskPlanId` 为 `TaskPlanWorkspace` 建立 remount key，真实 App/AuthProvider/Router/QueryClient/MSW test 已验证切换 TaskPlan route 会 abort 旧 confirm stream，且新详情不继承旧 progress/controller。旧 Current Step、Next Action 和 working-set 数量因此过期。
+- backend 恢复检查时有 5 个 tracked evaluation 文件修改和 17 个 untracked evaluation builder/report/test/fixture status entries；创建 Slice 6 checkpoint 前又出现第 18 个 untracked evaluation report directory。它们均属于本任务外部 working set，本次恢复未读取其内容、未修改、未暂存。Slice 6 对应 Route/Schema/OpenAPI/contract tests 单独核对，未发现新的 Contract Gap。
+- `package.json`、`pnpm-lock.yaml`、`contracts/backend-openapi.json` 与 generated transport types 无工作区差异；Node `24.14.0`、pnpm `10.32.1`、`openapi-typescript@7.13.0`、`react-markdown@10.1.0` 与 `remark-gfm@4.0.1` 保持锁定，`pnpm contracts:check` 通过。
+- frontend TaskPlan focused recovery 命令为仓库标准 `pnpm test -- ...`，结果为 5 files / 26 tests 全部通过；确认唯一 confirm Route、`confirmed:true`、request ID/Idempotency-Key、pre-stream 401 replay、409 refetch/no replay、terminal/abort/recovery、安全 404 及 route-boundary abort。
+- backend public-event contract 与 validation contract 已通过；批量命令在 resource-visibility test 完成标志输出前结束，因此不把该项误报为已通过，恢复后的唯一 Next Action 从单独重跑该 test 开始，然后执行剩余 Slice Gate。
+
+Context Recovery Evidence (verified 2026-08-30 after Codex app interruption):
+
+- frontend/backend 再次确认共享 Git root，branch 为 `master...origin/master [ahead 50]`，confirmed HEAD 为 `b173e46`；staged diff 为空。最后 verified completed Slice 仍为 5；Slice 6 的 data/read-only/control/cancel-retry/public-event checkpoints 仍为 `758929d`、`ab8f2d9`、`c24e9e5`、`875a0a8`、`9bb23c2`，已通过 Gate 的 Slice 未重新实现。
+- frontend tracked working set 为本计划和 7 个 TaskPlan 文件，共 8 个文件；完整 unstaged diff 已读取。backend 无 tracked/staged 修改；17 个 evaluation builder/report/test/fixture status entries 属于外部 working set，本次恢复未读取、修改或暂存。
+- package/lockfile/OpenAPI/generated contract 均无工作区差异；Node `24.14.0`、pnpm `10.32.1`、`openapi-typescript@7.13.0`、`react-markdown@10.1.0`、`remark-gfm@4.0.1` 保持锁定，generated types 仍包含 confirm request/operation 与 13 类 `TaskPlanPublicEventFrame`，`pnpm contracts:check` 通过。
+- backend `test_agent_task_plan_stream_public_contract.py`、`test_agent_task_plan_validation_contract.py`、`test_agent_task_plan_resource_visibility_contract.py` 使用 repository `.venv` 与 `PYTHONPATH=src` 全部通过，确认 public event projection、安全 422、owned-resource 404 与非流式 `/confirm` 范围边界仍成立。
+- frontend TaskPlan focused recovery 使用仓库标准 `pnpm test -- ...` 为 5 files / 25 tests 全部通过；首次 `pnpm exec vitest ...` 因 Windows 下未解析本地 executable 失败，改用 `package.json` 的真实 test script 后通过，不是测试失败。完整 `pnpm check` 通过 contract drift、lint、typecheck、24 files / 110 tests 与 production build。
+- Repository/Git/Tests 证明旧“409 ErrorState expected-red”记录已过期：当前实现与测试已显示固定页面消息、安全 code/request ID 且 409 后只 refetch 不 replay。最终源码审查同时确认新的当前缺口：`TaskPlanPage` 未像 Chat route 一样按 `userBoundary:taskPlanId` remount，`TaskPlanDetailView` 仅在 unmount abort，因此 param/user boundary 变化可能保留旧 reducer/controller。恢复后的唯一 Next Action 是先用公开 App/Router seam 固定该行为 expected-red，再做最小 route-identity remount。
+
+Context Recovery Evidence (verified 2026-08-30 after session continuation):
+
+- frontend/backend 再次确认共享 Git root，branch 为 `master...origin/master [ahead 50]`，confirmed HEAD 为 `b173e46`；staged diff 为空。最后 verified completed Slice 仍为 5，Slice 6 最近有效 checkpoints 为 data `758929d`、read-only UI `ab8f2d9`、control policy `c24e9e5`、cancel/retry `875a0a8` 与 public event/reducer `9bb23c2`，已通过 Gate 的 Slice 未重新实现。
+- frontend tracked working set 只有 7 个 TaskPlan 文件，包含 generated confirm request alias、唯一 confirm-stream API、独立 reducer local terminals、confirm Dialog、request ID/Idempotency-Key、pre-stream replay、terminal/abort/refetch 与 App/MSW tests；完整 diff/staged diff 已读取。backend 没有 tracked/staged 修改；17 个 evaluation builder/report/test/fixture status entries 属于外部 working set，本次恢复未读取、修改或暂存。
+- package/lockfile/generated contract 无工作区差异；Node `24.14.0`、pnpm `10.32.1`、`openapi-typescript@7.13.0`、`react-markdown@10.1.0` 与 `remark-gfm@4.0.1` 保持原锁定状态。generated types 仍包含 `AgentTaskPlanConfirmRequest`、confirm-stream operation 与 13 类 `TaskPlanPublicEventFrame` union，`pnpm contracts:check` 通过。
+- backend `test_agent_task_plan_stream_public_contract.py`、`test_agent_task_plan_validation_contract.py` 与使用正确 `PYTHONPATH=src` 的 `test_agent_task_plan_resource_visibility_contract.py` 通过，确认 public event projection、安全 422 与 Initial React Route 统一隐藏式 404 仍成立；首次单独重跑 visibility test 时遗漏 `PYTHONPATH` 导致 import environment error，修正命令后通过，不是代码失败。
+- frontend TaskPlan focused recovery 为 5 files / 25 tests 中 24 通过、1 个预期失败：`refetches a conflicting confirm without replaying the stream` 已证明 `409` 后 detail 收敛到 `executing_confirmed` 且未 replay，但页面尚无名为“TaskPlan 确认失败”的共享 `ErrorState` 和安全 error code。Repository/Git/Tests 因此证明旧 Current Step/Next Action 已过期，恢复后的唯一 Next Action 是最小补齐该安全错误展示，再继续同一 Slice Gate。
 
 Slice 6 Public Event/Reducer Evidence (verified 2026-08-29):
 
@@ -803,7 +839,7 @@ Status: RESOLVED / SUPERSEDED
 Evidence:
 
 - Slice 1 已在 checkpoint `7cdbcaa` 完成 contract snapshot、generated transport types、共享 HTTP/error seam 与 SSE protocol infrastructure，并以 4 files / 17 tests 和 `pnpm check` 验证。
-- Slice 2 随后已在 checkpoint `265e900` 完成 AuthProvider、token lifecycle、认证表单与路由保护，10 files / 47 tests 和 browser smoke 通过；Slice 3 已在 checkpoint `c324170` 完成，Slice 4 已在 checkpoint `5821b25` 完成，当前已进入 Slice 5。
+- Slice 2 随后已在 checkpoint `265e900` 完成 AuthProvider、token lifecycle、认证表单与路由保护，10 files / 47 tests 和 browser smoke 通过；Slice 3、4、5、6 也已分别通过 Gate，当前已进入 Slice 7。
 
 Impact:
 
@@ -811,7 +847,7 @@ Impact:
 
 Resolution:
 
-- 由 Slice 1 checkpoint `7cdbcaa` supersede；CG001 已由 backend checkpoint `313d634` 关闭，Slice 2 已由 frontend checkpoint `265e900` 完成，Slice 3 已由 frontend checkpoint `c324170` 完成，CG002 已由 backend checkpoint `2a13eb3` 关闭，Slice 4 已由 frontend checkpoint `5821b25` 完成，当前为 Slice 5 / IN_PROGRESS。
+- 由 Slice 1 checkpoint `7cdbcaa` supersede；CG001-CG007 均已按批准范围关闭，Slice 2-6 已通过各自 Gate，Slice 6 最终实现 checkpoint 为 `76a6875`，当前为 Slice 7 / IN_PROGRESS。
 
 ### KI002 - OpenAPI Type Generator Is Not Installed
 
