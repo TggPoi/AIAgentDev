@@ -6,11 +6,11 @@ Status: ACTIVE
 
 Plan Approval: APPROVED BY USER ON 2026-08-25
 
-Current Slice: 7 - Knowledge Documents
+Current Slice: 8 - User Access Management
 
-Current Step: Slice 7 authenticated download、revision reconciliation、安全文件名、Blob 丢弃与 object URL cleanup 已完成 expected-red → focused green；正在做 scoped review 与独立 download checkpoint
+Current Step: Slice 7 的 data、read-only UI、download/revision、完整 automated Gate 与闪退后重新执行的 1280px/360px manual browser smoke 均已通过；正在进入 Slice 8 contract reconnaissance，尚未开始 User Access 业务编码
 
-Next Action: 完成 download/revision seam 的 scoped diff/security review 并创建独立 frontend checkpoint；随后运行完整 `pnpm check`、backend Documents contract regressions 与 manual browser smoke 完成 Slice Gate
+Next Action: 完整读取 User Access Management feature spec，并对照 backend catalog/user Route、Pydantic Schema、OpenAPI、runtime validation 与 focused tests，确认 Slice 8 可安全使用的真实 contract 或记录新的 Contract Gap
 
 Blocking Issues: None; CG008 resolved in backend checkpoint `0676928` and frontend contract-sync checkpoint `8072b65`
 
@@ -271,7 +271,7 @@ Goal: 完成 TaskPlan 列表、详情、Markdown、确认流、取消、重试�
 
 ### Slice 7 - Knowledge Documents
 
-Status: IN_PROGRESS
+Status: COMPLETED
 
 Goal: 完成公共/部门/grant 范围内的文档列表、详情、预览、来源跳转和受保护下载。
 
@@ -283,11 +283,11 @@ Goal: 完成公共/部门/grant 范围内的文档列表、详情、预览、来
 - [x] revision 不一致时丢弃 Blob、refetch detail/content；object URL 使用后立即 revoke。
 - [x] 实现聊天 `doc_id` 来源站内跳转和隐藏式 404 体验。
 - [x] 增加 public/department/grant UI 状态、revision mismatch、Blob URL cleanup、header filename、404 和安全渲染测试。
-- [ ] 完成 Slice Gate；执行 Documents manual smoke；创建独立 Git checkpoint。
+- [x] 完成 Slice Gate；执行 Documents manual smoke；创建独立 Git checkpoint。
 
 ### Slice 8 - User Access Management
 
-Status: NOT_STARTED
+Status: IN_PROGRESS
 
 Goal: 完成管理员和部门主管范围内的用户列表、详情、创建、完整 access 替换、状态修改和密码重置。
 
@@ -427,7 +427,7 @@ Goal: 在不扩大 Scope 的前提下完成跨 Feature 集成、可访问性、�
 
 Current Slice:
 
-- 7 - Knowledge Documents
+- 8 - User Access Management
 
 Completed in Current Slice:
 
@@ -480,14 +480,15 @@ Completed in Current Slice:
 - Chat manual browser smoke 使用仅监听本机的虚构 Auth/Conversation/structured SSE service：desktop 与 360px 均验证历史、实时和持久化 Markdown；raw HTML/unknown secret 不进入页面，credential URL 不生成链接，安全外链带 `_blank` 与 `noopener noreferrer`，实时 source preview 使用 Markdown，TaskPlan link 正确，Web 设置刷新恢复，360px 无横向溢出且 console warning/error 为空。临时 browser tab、service、dev server 和 smoke script 已清理。
 - Slice 5 Markdown completion 已由独立 frontend checkpoint `633a07a` 持久化；完整 Slice 5 由 non-Markdown core `1444099`、Markdown completion `633a07a` 及本计划记录的 Gate evidence 共同证明。
 - Slice 6 已由 data `758929d`、read-only UI `ab8f2d9`、control policy `c24e9e5`、cancel/retry `875a0a8`、public event/reducer `9bb23c2` 与最终 confirm-stream/recovery implementation checkpoint `76a6875` 共同完成；最终 `pnpm check` 为 24 files / 111 tests，三个 backend TaskPlan contract tests、1280px/360px manual browser smoke 与 scoped diff review 均通过。
+- Slice 7 已由 data `45873a3`、read-only UI `248378c` 与 download/revision `42af700` 三个 frontend checkpoints 完成；最终 `pnpm check` 为 27 files / 134 tests，backend Knowledge Documents validation/read/CORS contracts、1280px/360px manual browser smoke 与闪退后 focused recovery 均通过。
 
 Currently Working On:
 
-- Slice 7 / IN_PROGRESS。Knowledge Documents data seam `45873a3` 与只读 UI `248378c` 已完成；authenticated download/revision working set 当前 focused green，尚未创建 checkpoint 或通过完整 Slice Gate。
+- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；User Access Management 尚未开始业务编码，当前只执行 feature/backend contract reconnaissance。
 
 Next Action:
 
-- 完成 download/revision seam 的 scoped diff/security review 并创建独立 frontend checkpoint；随后运行完整 `pnpm check`、backend Documents contract regressions 与 manual browser smoke 完成 Slice Gate。
+- 完整读取 User Access Management feature spec，并对照 backend catalog/user Route、Pydantic Schema、OpenAPI、runtime validation 与 focused tests，确认 Slice 8 可安全使用的真实 contract 或记录新的 Contract Gap。
 
 Slice 7 Contract Reconnaissance Evidence (verified 2026-08-30):
 
@@ -518,6 +519,16 @@ Context Recovery Evidence (verified 2026-08-30 after quota interruption during S
 - download policy expected-red 先因缺少 side-effect seam 失败；最小实现要求 detail/content revision 预先一致、下载 `X-Source-Revision` 再一致，并只接受安全 `attachment` 文件名。missing/unsafe filename 转为固定 protocol error；create object URL 后无论 save trigger 成败均在 `finally` revoke。
 - policy tests 1 file / 8 tests 与页面 integration 1 file / 9 tests 通过；页面在 detail/content mismatch 时隐藏旧内容并 refetch 两个 Query，在下载头 mismatch 时丢弃 Blob、不创建 object URL并重新同步，成功时只显示解析后的安全文件名。
 - scoped lint、typecheck 与 Documents/App/Conversation regressions 5 files / 41 tests 通过。当前唯一 Next Action 是完成 scoped review/checkpoint，再执行完整 Slice Gate 与 manual smoke。
+- scoped diff/security review 通过；download/revision seam 由 checkpoint `42af700` 持久化，只调用批准的 authenticated download Route，不保留 response headers、partial Blob 或 object URL。唯一 Next Action 推进为完整 Slice Gate。
+
+Slice 7 Final Gate and Crash Recovery Evidence (verified 2026-08-30):
+
+- Codex app 闪退后重新从 Git/Repository/Tests 恢复：共享 branch 为 `master...origin/master [ahead 59]`，confirmed HEAD 为 `42af700`，staged diff 为空；Slice 7 的 data `45873a3`、read-only UI `248378c` 与 download/revision `42af700` checkpoints 均真实存在，package、lockfile、OpenAPI snapshot 与 generated transport types 无未提交差异。共享 backend 外部 RAG Eval working set 保持隔离，本任务未读取其内容、未修改或暂存。
+- 完整 `pnpm check` 通过 generated contract drift、Oxlint `--deny-warnings`、TypeScript、27 files / 134 tests 与 Vite production build（380 modules transformed）。Vite 仅报告约 505.44 kB 的非阻塞 chunk-size warning；本 Slice 未因此引入未经批准的代码拆分或依赖变化。
+- backend `test_knowledge_document_validation_contract.py` 与 Knowledge Documents `assert_http_contract()` / `assert_cors_contract()` 通过；闪退恢复后再次运行 `pnpm contracts:check`、Documents focused 3 files / 23 tests 以及同组三项 backend contracts，全部通过。
+- 闪退后使用只监听 `127.0.0.1` 的虚构 Auth/Knowledge Documents service 重新执行 browser smoke：1280px 列表、URL filters、opaque cursor pagination、详情安全 Markdown、download revision mismatch、hidden 404 均通过；raw backend 404 message 和 raw HTML 未进入页面，`main` 内无 script element。
+- 360px 列表与详情的 body/main `clientWidth=scrollWidth=345`，无横向溢出；browser console warning/error 为空。browser tab、viewport、临时 service、dev server 与 smoke script 均已清理。
+- Repository/Git/Tests 与本计划比较后，过期的 Slice 7 Current Step、Next Action、Current Working Set 和未完成 Gate 已修正。Slice 7 现为 COMPLETED；恢复后的唯一 Next Action 是进入 Slice 8，只做 User Access feature/backend contract reconnaissance，未重做任何已通过 Gate 的 Slice。
 
 Slice 6 Final Gate Evidence (verified 2026-08-30):
 
