@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 7 - Knowledge Documents
 
-Current Step: CG008 已按严格受限授权修复并由 Runtime = OpenAPI = Tests 关闭；Slice 7 恢复，下一步从 list/detail/content/download transport adapter 与 Query Key 的 focused expected-red 开始
+Current Step: Slice 7 list/detail/content/download generated adapter、用户隔离 Query Keys、filters 与 keyset pagination 已完成 expected-red → focused green；正在做 scoped review 与独立 data checkpoint
 
-Next Action: 为 Knowledge Documents 的 generated transport adapter、用户隔离 Query Keys、filters 与 keyset pagination 建立最小 focused expected-red test，再实现对应 data seam
+Next Action: 完成 Knowledge Documents data seam 的 lint、scoped diff/security review 并创建独立 frontend checkpoint；随后从列表/详情/内容只读 UI 的 focused expected-red 继续
 
 Blocking Issues: None; CG008 resolved in backend checkpoint `0676928` and frontend contract-sync checkpoint `8072b65`
 
@@ -483,11 +483,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 7 / IN_PROGRESS。Slice 6 已由独立 frontend checkpoint `76a6875` 完成；CG008 已由 backend checkpoint `0676928` 与 frontend contract-sync checkpoint `8072b65` 关闭，当前恢复 Slice 7 frontend data seam，尚未实现 Knowledge Documents 业务 UI。
+- Slice 7 / IN_PROGRESS。Slice 6 已由独立 frontend checkpoint `76a6875` 完成；CG008 已由 backend checkpoint `0676928` 与 frontend contract-sync checkpoint `8072b65` 关闭。Knowledge Documents data seam 当前为未提交 focused green working set，尚未实现业务 UI。
 
 Next Action:
 
-- 为 Knowledge Documents 的 generated transport adapter、用户隔离 Query Keys、filters 与 keyset pagination 建立最小 focused expected-red test，再实现对应 data seam。
+- 完成 Knowledge Documents data seam 的 lint、scoped diff/security review 并创建独立 frontend checkpoint；随后从列表/详情/内容只读 UI 的 focused expected-red 继续。
 
 Slice 7 Contract Reconnaissance Evidence (verified 2026-08-30):
 
@@ -504,6 +504,13 @@ CG008 Closure Evidence (verified 2026-08-30):
 - backend Knowledge Documents/Auth/Conversation/RAG Chat/TaskPlan validation contract 与 Knowledge Documents HTTP/CORS regressions 全部通过；新 contract test 明确验证四条 Route 的 Runtime = OpenAPI = Tests。
 - frontend OpenAPI snapshot 与 generated transport types 已从 backend `0676928` 重新导出并由独立 checkpoint `8072b65` 持久化；差异仅为四条 Route 的 422 引用及公共字段枚举新增 `department_code`、`document_type`，package/lockfile 未变化。
 - `pnpm contracts:check` 通过。首次 `pnpm check` 在既有 Conversations 创建导航断言出现一次非稳定时序失败；同文件 focused 11/11 立即通过，完整重跑 `pnpm check` 通过 contract drift、lint、typecheck、24 files / 111 tests 与 production build。CG008 因而关闭，Slice 7 恢复。
+
+Context Recovery Evidence (verified 2026-08-30 after quota interruption during Slice 7 data seam):
+
+- frontend/backend 共享 branch 为 `master...origin/master [ahead 56]`，confirmed HEAD 为 plan checkpoint `426047b`，staged diff 为空。CG008 backend `0676928`、frontend contract sync `8072b65` 与 plan closure `426047b` 均真实存在；最后 verified completed Slice 仍为 6，没有重新实现已通过 Gate 的 Slice。
+- frontend 唯一未 checkpoint 的本任务 working set 是 `src/features/knowledge-documents/` 下 5 个新文件；backend 另有外部 RAG Eval tracked/untracked working set，本任务未读取其内容、未修改或暂存。package、lockfile、OpenAPI snapshot 与 generated transport types均无未提交差异。
+- Repository source 显示 generated DTO alias、DTO-to-domain allowlisted projection、四条 approved GET Route adapter、opaque cursor/non-empty filters、用户隔离 list/detail/content Query Keys 与 hooks 已存在。expected-red 曾准确因缺失 `knowledge-document-api` seam 失败；恢复后 focused test 1 file / 6 tests、`pnpm contracts:check` 与 typecheck 均通过。
+- backend `test_knowledge_document_validation_contract.py` 与 Knowledge Documents `assert_http_contract()`/`assert_cors_contract()` 恢复重跑通过，确认当前 data seam 所依赖的 Runtime/OpenAPI contract 未回退。原 Current Step/Next Action 因而过期，唯一 Next Action 修正为完成该 data seam 的 scoped review 和独立 checkpoint。
 
 Slice 6 Final Gate Evidence (verified 2026-08-30):
 
