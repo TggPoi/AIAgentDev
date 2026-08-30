@@ -8,11 +8,11 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 7 - Knowledge Documents
 
-Current Step: Slice 6 已由独立 frontend checkpoint `76a6875` 完成；现进入 Slice 7 Knowledge Documents 的 spec/backend Route/Schema/OpenAPI/runtime-test contract reconnaissance，尚未开始 Slice 7 业务编码
+Current Step: Slice 7 Knowledge Documents spec/backend Route/Schema/OpenAPI/runtime-test reconnaissance 已完成；Runtime 与 OpenAPI 的 422 response shape 冲突已确认为 CG008，尚未开始 Slice 7 业务编码
 
-Next Action: 完整读取 Knowledge Documents feature spec，核对当前 frontend document/source seams 与 backend list/detail/content/download Route、Pydantic Schema、OpenAPI/CORS/runtime tests，并运行最小 focused baseline；若发现冲突先记录 Contract Gap，不猜测或编码
+Next Action: 等待用户审核并决定是否批准 CG008 的严格受限 backend contract fix；批准前不修改 backend，不实现依赖该错误契约的 Slice 7 adapters/pages
 
-Blocking Issues: None
+Blocking Issues: CG008 - Knowledge Documents 422 Schema Does Not Match Runtime
 
 Last Updated: 2026-08-30 (Asia/Shanghai)
 
@@ -271,11 +271,11 @@ Goal: 完成 TaskPlan 列表、详情、Markdown、确认流、取消、重试�
 
 ### Slice 7 - Knowledge Documents
 
-Status: IN_PROGRESS
+Status: BLOCKED
 
 Goal: 完成公共/部门/grant 范围内的文档列表、详情、预览、来源跳转和受保护下载。
 
-- [ ] 读取 Knowledge Documents spec，复核 Route/Schema/OpenAPI/CORS/runtime tests。
+- [x] 读取 Knowledge Documents spec，复核 Route/Schema/OpenAPI/CORS/runtime tests。
 - [ ] 实现 list/detail/content/download adapters、Query Keys、filters 和 keyset pagination。
 - [ ] 正确呈现 public 公共区域与非 public 部门语义，不在浏览器计算 ACL。
 - [ ] 按 render mode 安全展示 Markdown/plain/extracted text，并显示 truncation/warnings。
@@ -483,11 +483,19 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 7 / IN_PROGRESS。Slice 6 已由独立 frontend checkpoint `76a6875` 完成；当前只执行 Knowledge Documents spec 与实际 backend contract reconnaissance，尚未开始 Slice 7 业务编码。
+- Slice 7 / BLOCKED。Slice 6 已由独立 frontend checkpoint `76a6875` 完成；Knowledge Documents spec 与实际 backend contract reconnaissance 已确认 CG008，尚未开始 Slice 7 业务编码。
 
 Next Action:
 
-- 完整读取 Knowledge Documents feature spec，核对当前 frontend document/source seams 与 backend list/detail/content/download Route、Pydantic Schema、OpenAPI/CORS/runtime tests，并运行最小 focused baseline；若发现冲突先记录 Contract Gap，不猜测或编码。
+- 等待用户审核并决定是否批准 CG008 的严格受限 backend contract fix；批准前不修改 backend，不实现依赖该错误契约的 Slice 7 adapters/pages。
+
+Slice 7 Contract Reconnaissance Evidence (verified 2026-08-30):
+
+- confirmed HEAD 为 plan checkpoint `f276006`；进入 Slice 7 时 frontend worktree clean。共享 backend 外部 evaluation working set 在本次 reconnaissance 期间变为 8 个 tracked modifications 与 18 个 untracked status entries，本任务未读取其内容、未修改、未暂存。
+- 完整读取 Knowledge Documents feature spec；当前 frontend 已有 Chat/Conversation 的安全 `doc_id -> /documents/{docId}` 站内来源链接，但没有 knowledge-documents feature 数据层、adapter、query 或 page implementation，未通过目录名推断完成度。
+- backend 四条 approved Route、`KnowledgeDocumentItem/Detail/ContentResponse`、keyset list、public/department/explicit-grant access source、hidden 404 service policy、download `X-Source-Revision`/`Content-Disposition` 与 CORS expose headers 均存在；generated snapshot 也声明相同 download headers。
+- backend `assert_http_contract()` 与 `assert_cors_contract()` focused baseline 通过；frontend Conversations source-link test 1 file / 11 tests、Chat/public-event source model 2 files / 16 tests 与 `pnpm contracts:check` 通过。
+- 使用真实 Route + global exception handler + dependency overrides 的无敏感 TestClient probe 证明 list `limit=0`、invalid `document_type` 与 65 字符 path 均返回 422，runtime keys 只有 `code/error_category/message/request_id/trace_id`，marker 未回显；四条 Route 的 OpenAPI 422 却全部引用 `HTTPValidationError`。CG008 因而满足 Blocking Condition。
 
 Slice 6 Final Gate Evidence (verified 2026-08-30):
 
@@ -1174,6 +1182,33 @@ Resolution:
 
 - 独立 backend checkpoint `3a14f4a` 新增稳定 `AgentTaskPlanNotFoundError` 与 Route 层 owned-resource resolver；五条 Initial React Route 对 missing、普通 other-owner、system-admin other-owner 均统一为安全 `404 / AGENT_TASK_PLAN_NOT_FOUND`，same-owner 保持正常。
 - runtime/no-sensitive-echo/regression contract test 与共享 Auth/Conversation/RAG validation、TaskPlan list、SSE envelope、schema-description baseline 均通过；非流式 `/confirm`、executor、store、状态机和真实工具实现未修改。CG007 Runtime = Tests，关闭该 gap 并恢复 CG004。
+
+#### CG008 - Knowledge Documents 422 Schema Does Not Match Runtime
+
+Status: OPEN / BLOCKING SLICE 7
+
+Evidence:
+
+- Initial React Slice 7 使用 `GET /knowledge/documents`、`GET /knowledge/documents/{doc_id}`、`GET /knowledge/documents/{doc_id}/content` 与 `GET /knowledge/documents/{doc_id}/download`；当前四条 Route 的 OpenAPI 422 全部引用 `#/components/schemas/HTTPValidationError`，声明 FastAPI `detail[]`。
+- 当前 global validation handler 未为 Knowledge Documents Route 启用安全 projection。真实 Route + handler + dependency override 的 TestClient probe 对 list `limit=0`、invalid `document_type=unsafe_contract_marker` 与 65 字符 path 均返回 `422`，runtime keys 只有 `code/error_category/message/request_id/trace_id`，没有 `detail` 或 `field_errors`，marker 未回显。
+- 现有 `test_knowledge_document_read.assert_http_contract()` 与 `assert_cors_contract()` 通过，证明四条 Route、download headers 和 CORS expose baseline；但它只断言 invalid path 的 422 status，没有断言 runtime/OpenAPI 422 schema equality，因此不能关闭该 gap。
+
+Impact:
+
+- generated transport response 与 runtime 不一致；列表页的公开筛选字段无法遵守 approved 422 field-mapping contract，path/content/download validation 也无法使用统一安全 form-level response model。
+- Repository rule 明确要求 network behavior 出现 Route/Schema/OpenAPI/tested implementation 冲突时停止并记录 Contract Gap；前端不能通过手写兼容分支或忽略 generated schema 来隐藏冲突。
+
+Recommended Backend Change:
+
+- 复用 CG001-CG005 已建立的安全公共 `RequestValidationErrorResponse` 与 Route/location/field allowlist；只为 `GET /knowledge/documents` 的公开普通 query fields `query`、`department_code`、`document_type`、`limit` 建立明确 field projection。
+- `cursor` 是服务端返回的不透明分页值，四条 Route 的 path `doc_id` 也不能安全映射为用户可编辑字段；其 validation error、model-level 与未知错误保持 `field_errors=[]` 的 form-level response。
+- 只为上述四条 Initial React Knowledge Documents Route 声明正确的 422 OpenAPI response model；不扩展到 `/knowledge-documents/*` ingestion/admin Route、`/rag/documents/*` compatibility Route、未来 Route 或 mutation endpoints。
+- 不读取或回显 validation `input`、`ctx`、raw `msg`、cursor、doc ID、repository path、GitLab URL/token、ACL/grant、正文、secret 或内部字段；增加 runtime/OpenAPI/no-sensitive-echo/form-level/non-allowlisted regression tests。
+- 创建只包含 CG008 backend contract fix 的独立 checkpoint；随后重新导出 frontend OpenAPI snapshot/types，运行 contract drift、backend focused regressions 与 `pnpm check`，只有 Runtime = OpenAPI = Tests 后才关闭 CG008 并恢复 Slice 7。
+
+Decision Required:
+
+- 用户需要明确批准或拒绝上述严格受限 backend contract fix；现有前端实施授权不自动外推到 backend 修改。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
