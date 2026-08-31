@@ -6,11 +6,11 @@ Status: ACTIVE
 
 Plan Approval: APPROVED BY USER ON 2026-08-25
 
-Current Slice: 8 - User Access Management
+Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: Slice 8 最终 admin/manager/employee scope 与安全回归矩阵已由 checkpoint `c1e037b` 完成；frontend/backend automated Slice Gate 已通过，当前进入 User Management manual browser smoke
+Current Step: Slice 8 已完成全部 implementation、frontend/backend automated Gate 与 1280px/360px manual smoke；当前进入 Slice 9 contract reconnaissance，尚未开始 Grant business coding
 
-Next Action: 使用本机虚构 Auth/User Administration service 执行 1280px 与 360px manual smoke，覆盖 list/filter/cursor、create、detail/access/status/reset confirmations、credential summary、scope-loss、安全错误与无横向溢出/console 检查；完成并记录前不把 Slice 8 标记 COMPLETED 或进入 Slice 9
+Next Action: 完整读取 Cross-Department Document Grants feature spec，并复核真实 backend Grant Route、Pydantic Schema、OpenAPI、authorization/visibility semantics 与 focused tests；先判定 KI006 inventory 是否形成真实 Contract Gap，在 reconnaissance 结论前不写 Grant DTO、Query 或页面
 
 Blocking Issues: None；CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭，Conversations async assertion timing defect 已由 `e6dd779` 关闭
 
@@ -287,7 +287,7 @@ Goal: 完成公共/部门/grant 范围内的文档列表、详情、预览、来
 
 ### Slice 8 - User Access Management
 
-Status: IN_PROGRESS
+Status: COMPLETED
 
 Goal: 完成管理员和部门主管范围内的用户列表、详情、创建、完整 access 替换、状态修改和密码重置。
 
@@ -299,11 +299,11 @@ Goal: 完成管理员和部门主管范围内的用户列表、详情、创建�
 - [x] 密码仅存在表单局部状态并在提交后清空；destructive mutations 不做乐观更新。
 - [x] 当前用户身份/能力受影响时调用 AuthProvider reload；其他用户只失效业务 Query。
 - [x] 增加 admin/manager/employee scope、422、403/404、409、自操作保护、credential revocation summary 测试。
-- [ ] 完成 Slice Gate；执行 User Management manual smoke；创建独立 Git checkpoint。
+- [x] 完成 Slice Gate；执行 User Management manual smoke；创建独立 Git checkpoint。
 
 ### Slice 9 - Cross-Department Document Grants
 
-Status: NOT_STARTED
+Status: IN_PROGRESS
 
 Goal: 完成非 public 文档的精确跨部门只读授权、列表、审计展示和幂等撤销。
 
@@ -427,7 +427,7 @@ Goal: 在不扩大 Scope 的前提下完成跨 Feature 集成、可访问性、�
 
 Current Slice:
 
-- 8 - User Access Management
+- 9 - Cross-Department Document Grants
 
 Latest Context Recovery Evidence (verified 2026-08-31 before CG009 implementation):
 
@@ -522,11 +522,21 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 8 / IN_PROGRESS。CG009、全部 User Management data/UI/mutation controls、identity/scope recovery 与角色矩阵均已完成；frontend/backend automated Gate 已通过。当前只剩 manual browser smoke、最终 scoped review 与 Slice completion/state checkpoint。
+- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。当前只做 Cross-Department Document Grants contract reconnaissance，尚未创建 Grant frontend working set。
 
 Next Action:
 
-- 使用本机虚构 Auth/User Administration service 执行 1280px 与 360px manual smoke，覆盖 list/filter/cursor、create、detail/access/status/reset confirmations、credential summary、scope-loss、安全错误与无横向溢出/console 检查；完成并记录前不把 Slice 8 标记 COMPLETED 或进入 Slice 9。
+- 完整读取 Cross-Department Document Grants feature spec，并复核真实 backend Grant Route、Pydantic Schema、OpenAPI、authorization/visibility semantics 与 focused tests；先判定 KI006 inventory 是否形成真实 Contract Gap，在 reconnaissance 结论前不写 Grant DTO、Query 或页面。
+
+Slice 8 Final Manual Smoke and Completion Evidence (verified 2026-08-31):
+
+- manual smoke 使用只监听 `127.0.0.1` 的临时虚构 Auth/User Administration service 与实际 Vite app；1280px 完成登录、list、opaque cursor 加载、URL query filter、catalog-backed create并导航详情。创建 Dialog 的账号/部门/角色/直接权限均来自服务端 catalog。
+- detail smoke 完成 access 完整 PUT：账号类型变化第一次保存不发最终 mutation，明确出现“确认账号类型变更并保存”后才成功；随后禁用确认与 reset-password 均成功，页面分别只显示撤销 `refresh token/API Key` 数量，没有凭证内容。
+- `LAST_ADMIN_CONFLICT / 409` 保留目标详情、显示固定“保存访问失败”与 safe code，临时 raw marker 未渲染；hidden target reset `404` 精确 replace navigate 到 `/admin/users`、Dialog 已卸载且 raw marker 未渲染。
+- 1280px list 的 body `clientWidth=scrollWidth=1280`，main 为 `1000=1000`。360px list/detail 的 body/main 均为 `clientWidth=scrollWidth=345`；create/access Dialog 均为 328px wide、left 8.5/right 336.5，完整位于 360px viewport 内且自身无横向 overflow。
+- 移动端 access Dialog 视觉检查保持蓝白主调、字段分组与可见 primary action；Escape 关闭后焦点回到“编辑访问”，reset Dialog 关闭后焦点回到“重置密码”。browser console warning/error 为空。
+- browser viewport override、tab、临时 Vite/backend services 和 smoke script均已清理。清理后 frontend scoped worktree/staged diff为空，package/lockfile/OpenAPI/generated artifacts无差异，`pnpm contracts:check` 再次通过；backend 外部 RAG Eval working set继续保持隔离。
+- Slice 8 由 data `6eeb740`、read-only UI `cabfd97`、mutation seam `54ea938`、draft policy `5df8950`、create UI `2b2a998`、access editor `2ddd1ed`、account controls `395d988`、identity reload `43defeb`、scope recovery `5c7f792` 与 role matrix `c1e037b` 共同完成。最后 verified completed Slice 现为 8；唯一 Next Action 已推进为 Slice 9 contract reconnaissance。
 
 Slice 8 Automated Final Matrix Evidence (verified 2026-08-31):
 
@@ -1024,7 +1034,7 @@ Status: RESOLVED / SUPERSEDED
 Evidence:
 
 - Slice 1 已在 checkpoint `7cdbcaa` 完成 contract snapshot、generated transport types、共享 HTTP/error seam 与 SSE protocol infrastructure，并以 4 files / 17 tests 和 `pnpm check` 验证。
-- Slice 2 随后已在 checkpoint `265e900` 完成 AuthProvider、token lifecycle、认证表单与路由保护，10 files / 47 tests 和 browser smoke 通过；Slice 3、4、5、6、7 也已分别通过 Gate，当前为 Slice 8 / IN_PROGRESS；CG009 已关闭，data seam 与 read-only workspace 已建立 checkpoint。
+- Slice 2 随后已在 checkpoint `265e900` 完成 AuthProvider、token lifecycle、认证表单与路由保护，10 files / 47 tests 和 browser smoke 通过；Slice 3-8 也已分别通过 Gate，当前为 Slice 9 / IN_PROGRESS；CG009 已关闭，Slice 8 最终 Gate 与 manual smoke 已完成。
 
 Impact:
 
@@ -1032,7 +1042,7 @@ Impact:
 
 Resolution:
 
-- 由 Slice 1 checkpoint `7cdbcaa` supersede；CG001-CG009 均已按各自批准范围关闭，Slice 2-7 已通过各自 Gate，Slice 7 最终实现 checkpoint 为 `42af700`；当前 Slice 8 / IN_PROGRESS，data seam `6eeb740` 与 read-only workspace `cabfd97` 已完成。
+- 由 Slice 1 checkpoint `7cdbcaa` supersede；CG001-CG009 均已按各自批准范围关闭，Slice 2-8 已通过各自 Gate，Slice 8 最终实现链止于 role matrix `c1e037b`；当前 Slice 9 / IN_PROGRESS，只进行 Grant contract reconnaissance。
 
 ### KI002 - OpenAPI Type Generator Is Not Installed
 
