@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 8 - User Access Management
 
-Current Step: CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 完成并关闭；Slice 7 保持已完成，Slice 8 现在进入 User Management data/query seam 的 TDD expected-red
+Current Step: Slice 8 User Management data/query seam 已由 checkpoint `6eeb740` 完成；当前进入 catalog/list/detail read-only workspace 与真实 App route composition 的 TDD expected-red
 
-Next Action: 新增 `src/features/user-management/user-management-data.test.ts`，先为 generated DTO aliases、catalog/list/detail adapters、opaque cursor merge、URL 参数与 user-bound Query Keys 建立 focused expected-red
+Next Action: 新增 `src/features/user-management/UserManagementWorkspace.test.tsx`，先通过真实 QueryClient/Router/MSW seam 证明 `/admin/users` 仍为 placeholder，并固定 catalog-driven filters、list cursor、detail access facts 与安全 422/403/404 状态
 
 Blocking Issues: None；CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭，CG008 仍由 backend `0676928` 与 frontend contract-sync `8072b65` 保持 resolved
 
@@ -448,6 +448,13 @@ CG009 Completion Evidence (verified 2026-08-31):
 - `pnpm contracts:generate` 与 `pnpm contracts:check` 通过；generated create/access 422 为 `RequestValidationErrorResponse | ManagedUserAccessInvalidErrorResponse`。首次 `pnpm check` 在既有 Conversations create navigation test 出现一次时序失败，随后该文件 focused 11/11 通过，第二次完整 `pnpm check` 通过 contract drift、lint、typecheck、27 files / 134 tests 与 production build；既有 505.44 kB chunk warning 仍非阻塞。
 - CG009 已达到 Runtime = OpenAPI = generated types = Tests 并关闭。Slice 8 frontend business implementation 获准开始；恢复后的唯一 Next Action 是先建立 User Management data/query seam expected-red，不直接跳到页面或 mutation UI。
 
+Slice 8 Data Seam Evidence (verified 2026-08-31):
+
+- `user-management-data.test.ts` 先因 `user-management-api` 等 production modules 不存在 expected-red；最小实现随后建立 generated catalog/list/detail DTO aliases、显式 allowlisted DTO-to-Domain mapping、opaque cursor merge、URL filter encoding 与 user-bound catalog/list/detail Query Keys。
+- catalog 完全来自 server-trimmed response；adapter 不硬编码部门、账号类型、角色或权限 code，也不把 arbitrary scope/ACL 字段带入 Domain Model。list 只提交批准的 `query/status/department_code/cursor/limit`，detail user ID 经过 URL encoding。
+- focused 6/6、typecheck、lint 与完整 `pnpm check` 通过：contract drift、lint、typecheck、28 files / 140 tests 与 production build 全部成功；package、lockfile和 generated contract 未变化，既有 505.44 kB chunk warning 仍非阻塞。
+- frontend checkpoint `6eeb740` 只包含 `src/features/user-management/` 的 5 个 data/query files。唯一 Next Action 是为 read-only workspace 与真实 App route composition 建立 expected-red；不提前实现 mutation 表单。
+
 Prior Context Recovery Evidence (verified 2026-08-30 after session change):
 
 - frontend 与 backend 目录实际共享 Git root `D:/AI_Agent_Project`，共同 confirmed HEAD 为 `01e2bc07cf3e1ad9cea0e5979911a882e593f231`，branch 为 `master...origin/master [ahead 61]`。恢复检查开始时 frontend scoped worktree clean；整个 monorepo staged diff 为空。完成恢复校正后，frontend scoped worktree 只包含本 Execution Plan 的未暂存修改。
@@ -515,11 +522,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009 已关闭，当前开始 User Access Management frontend data/query seam，尚未实现页面或 mutation UI。
+- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009 与 User Management data/query seam 已完成，当前开始 catalog/list/detail read-only workspace，尚未实现 mutation 表单。
 
 Next Action:
 
-- 新增 `src/features/user-management/user-management-data.test.ts`，为 generated DTO aliases、catalog/list/detail adapters、opaque cursor merge、URL 参数与 user-bound Query Keys 建立 focused expected-red；在 red 证据出现前不创建生产 module。
+- 新增 `src/features/user-management/UserManagementWorkspace.test.tsx`，通过真实 QueryClient/Router/MSW seam 固定 catalog-driven filters、list cursor、detail access facts、安全 422/403/404 与 App route composition；在 red 证据出现前不替换 placeholder。
 
 Slice 8 Contract Reconnaissance Evidence (verified 2026-08-30):
 
