@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -250,9 +250,11 @@ describe('Conversations workspace', () => {
     await user.type(within(dialog).getByLabelText('会话标题（可选）'), '新建标题')
     await user.click(within(dialog).getByRole('button', { name: '创建' }))
 
-    expect(await screen.findByLabelText('current-route')).toHaveTextContent(
-      '/chat/session-new',
-    )
+    await waitFor(() => {
+      expect(screen.getByLabelText('current-route')).toHaveTextContent(
+        '/chat/session-new',
+      )
+    })
     expect(listRequestCount).toBeGreaterThan(1)
   })
 
