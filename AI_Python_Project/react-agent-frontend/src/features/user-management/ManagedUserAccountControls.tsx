@@ -17,6 +17,7 @@ import styles from '@/features/user-management/UserManagementWorkspace.module.cs
 interface ManagedUserAccountControlsProps {
   api: UserManagementApi
   detail: ManagedUserDetail
+  onMutationError: (error: unknown) => void
   onMutationSuccess: () => void
   userBoundary: string
 }
@@ -55,6 +56,7 @@ function revocationMessage(notice: CredentialRevocationNotice): string {
 export function ManagedUserAccountControls({
   api,
   detail,
+  onMutationError,
   onMutationSuccess,
   userBoundary,
 }: ManagedUserAccountControlsProps) {
@@ -101,8 +103,9 @@ export function ManagedUserAccountControls({
       })
       setStatusDialogOpen(false)
       onMutationSuccess()
-    } catch {
+    } catch (error) {
       // Mutation state owns the safe public error projection.
+      onMutationError(error)
     }
   }
 
@@ -119,8 +122,9 @@ export function ManagedUserAccountControls({
       })
       setPasswordDialogOpen(false)
       onMutationSuccess()
-    } catch {
+    } catch (error) {
       // Mutation state owns the safe public error projection.
+      onMutationError(error)
     } finally {
       setNewPassword('')
     }

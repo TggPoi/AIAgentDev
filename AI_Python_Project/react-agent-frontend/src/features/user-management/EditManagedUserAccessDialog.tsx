@@ -25,6 +25,7 @@ interface EditManagedUserAccessDialogProps {
   catalog: AccessCatalog
   detail: ManagedUserDetail
   onClose: () => void
+  onMutationError: (error: unknown) => void
   onMutationSuccess: () => void
   open: boolean
   userBoundary: string
@@ -61,6 +62,7 @@ export function EditManagedUserAccessDialog({
   catalog,
   detail,
   onClose,
+  onMutationError,
   onMutationSuccess,
   open,
   userBoundary,
@@ -122,8 +124,9 @@ export function EditManagedUserAccessDialog({
       await mutation.mutateAsync(result.request)
       onClose()
       onMutationSuccess()
-    } catch {
+    } catch (error) {
       // Mutation state owns the safe public error projection.
+      onMutationError(error)
     }
   }
 

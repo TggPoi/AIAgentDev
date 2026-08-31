@@ -505,6 +505,39 @@ describe('User Management access editor', () => {
       expect(capabilityRequests).toBeGreaterThan(initialCapabilityRequests)
     })
   })
+
+  it('leaves the target detail when access scope is lost with 403', async () => {
+    server.use(
+      http.put(`${apiBaseUrl}/admin/users/user-reader/access`, () =>
+        HttpResponse.json(
+          {
+            code: 'MANAGED_USER_SCOPE_FORBIDDEN',
+            error_category: 'authorization',
+            message: 'must-not-be-rendered',
+            request_id: 'access-forbidden-request',
+            trace_id: null,
+          },
+          { status: 403 },
+        ),
+      ),
+    )
+    renderApp('/admin/users/user-reader')
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: '编辑访问' }))
+    const dialog = await screen.findByRole('dialog', { name: '编辑用户访问' })
+    await user.click(within(dialog).getByRole('button', { name: '保存访问' }))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('current-route')).toHaveTextContent(
+        /^\/admin\/users$/,
+      )
+    })
+    expect(screen.queryByText('must-not-be-rendered')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('dialog', { name: '编辑用户访问' }),
+    ).not.toBeInTheDocument()
+  })
 })
 
 describe('User Management account controls', () => {
@@ -684,5 +717,41 @@ describe('User Management account controls', () => {
     expect(within(dialog).queryByText('must-not-be-rendered')).not.toBeInTheDocument()
     expect(password).toHaveValue('')
     expect(confirm).toBeEnabled()
+  })
+
+  it('leaves the target detail when password-reset scope is lost with 404', async () => {
+    server.use(
+      http.post(`${apiBaseUrl}/admin/users/user-reader/reset-password`, () =>
+        HttpResponse.json(
+          {
+            code: 'MANAGED_USER_NOT_FOUND',
+            error_category: 'not_found',
+            message: 'must-not-be-rendered',
+            request_id: 'password-hidden-request',
+            trace_id: null,
+          },
+          { status: 404 },
+        ),
+      ),
+    )
+    renderApp('/admin/users/user-reader')
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: '重置密码' }))
+    const dialog = await screen.findByRole('dialog', { name: '重置用户密码' })
+    await user.type(within(dialog).getByLabelText('新密码'), 'hidden-target')
+    await user.click(
+      within(dialog).getByRole('button', { name: '确认重置密码' }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('current-route')).toHaveTextContent(
+        /^\/admin\/users$/,
+      )
+    })
+    expect(screen.queryByText('must-not-be-rendered')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('dialog', { name: '重置用户密码' }),
+    ).not.toBeInTheDocument()
   })
 })

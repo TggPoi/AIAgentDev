@@ -262,6 +262,7 @@ function UserDetailView({
   userBoundary,
   userId,
 }: UserManagementWorkspaceProps & { userId: string }) {
+  const navigate = useNavigate()
   const [editAccessOpen, setEditAccessOpen] = useState(false)
   const catalogQuery = useAccessCatalog(api, userBoundary)
   const detailQuery = useManagedUserDetail(api, userBoundary, userId)
@@ -298,6 +299,15 @@ function UserDetailView({
     void reloadIdentitySnapshot().catch(() => {
       // AuthProvider retains the previous complete snapshot as stale.
     })
+  }
+  const recoverUnavailableTarget = (error: unknown) => {
+    if (
+      error instanceof ApiError &&
+      (error.statusKind === 'authorization' ||
+        error.statusKind === 'not_found')
+    ) {
+      navigate('/admin/users', { replace: true })
+    }
   }
   return (
     <article aria-labelledby="managed-user-detail-title" className={styles.page}>
@@ -368,6 +378,7 @@ function UserDetailView({
       <ManagedUserAccountControls
         api={api}
         detail={detail}
+        onMutationError={recoverUnavailableTarget}
         onMutationSuccess={reconcileCurrentIdentity}
         userBoundary={userBoundary}
       />
@@ -377,6 +388,7 @@ function UserDetailView({
           catalog={catalog}
           detail={detail}
           onClose={() => setEditAccessOpen(false)}
+          onMutationError={recoverUnavailableTarget}
           onMutationSuccess={reconcileCurrentIdentity}
           open
           userBoundary={userBoundary}
