@@ -41,6 +41,8 @@ function renderWorkspace(initialEntry: string, userId: string | null = null) {
       <MemoryRouter initialEntries={[initialEntry]}>
         <UserManagementWorkspace
           api={createApi()}
+          currentUserId="admin-actor"
+          reloadIdentitySnapshot={async () => undefined}
           userBoundary="admin-actor"
           userId={userId}
         />

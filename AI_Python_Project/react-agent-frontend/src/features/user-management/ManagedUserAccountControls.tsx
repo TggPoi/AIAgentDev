@@ -17,6 +17,7 @@ import styles from '@/features/user-management/UserManagementWorkspace.module.cs
 interface ManagedUserAccountControlsProps {
   api: UserManagementApi
   detail: ManagedUserDetail
+  onMutationSuccess: () => void
   userBoundary: string
 }
 
@@ -54,6 +55,7 @@ function revocationMessage(notice: CredentialRevocationNotice): string {
 export function ManagedUserAccountControls({
   api,
   detail,
+  onMutationSuccess,
   userBoundary,
 }: ManagedUserAccountControlsProps) {
   const statusMutation = useUpdateManagedUserStatus(
@@ -98,6 +100,7 @@ export function ManagedUserAccountControls({
         refreshTokenCount: result.revokedRefreshTokenCount,
       })
       setStatusDialogOpen(false)
+      onMutationSuccess()
     } catch {
       // Mutation state owns the safe public error projection.
     }
@@ -115,6 +118,7 @@ export function ManagedUserAccountControls({
         refreshTokenCount: result.revokedRefreshTokenCount,
       })
       setPasswordDialogOpen(false)
+      onMutationSuccess()
     } catch {
       // Mutation state owns the safe public error projection.
     } finally {

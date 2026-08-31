@@ -84,6 +84,37 @@ function detailDto(
   }
 }
 
+function adminIdentityDto() {
+  return {
+    account_type: 'admin',
+    api_key_id: null,
+    auth_source: 'jwt',
+    department_codes: [],
+    department_permission_codes: {},
+    display_name: 'Admin',
+    email: null,
+    global_permission_codes: [],
+    global_role_codes: ['admin'],
+    is_authenticated: true,
+    primary_department_code: null,
+    token_id: null,
+    user_id: 'admin-actor',
+    username: 'admin',
+  }
+}
+
+function adminCapabilitiesDto() {
+  return {
+    can_manage_document_grants: false,
+    can_manage_documents: true,
+    can_manage_users: true,
+    can_read_documents: true,
+    can_use_nl2sql: false,
+    can_use_web_search: true,
+    user_management_scope: 'all',
+  }
+}
+
 function installAdminIdentity() {
   createAuthTokenStore(window.sessionStorage).setTokenPair({
     access_token: ['access', 'stored'].join('-'),
@@ -101,33 +132,10 @@ function installAdminIdentity() {
       }),
     ),
     http.get(`${apiBaseUrl}/auth/me`, () =>
-      HttpResponse.json({
-        account_type: 'admin',
-        api_key_id: null,
-        auth_source: 'jwt',
-        department_codes: [],
-        department_permission_codes: {},
-        display_name: 'Admin',
-        email: null,
-        global_permission_codes: [],
-        global_role_codes: ['admin'],
-        is_authenticated: true,
-        primary_department_code: null,
-        token_id: null,
-        user_id: 'admin-actor',
-        username: 'admin',
-      }),
+      HttpResponse.json(adminIdentityDto()),
     ),
     http.get(`${apiBaseUrl}/auth/capabilities`, () =>
-      HttpResponse.json({
-        can_manage_document_grants: false,
-        can_manage_documents: true,
-        can_manage_users: true,
-        can_read_documents: true,
-        can_use_nl2sql: false,
-        can_use_web_search: true,
-        user_management_scope: 'all',
-      }),
+      HttpResponse.json(adminCapabilitiesDto()),
     ),
     http.get(`${apiBaseUrl}/admin/access/catalog`, () =>
       HttpResponse.json(catalogDto()),
@@ -292,11 +300,21 @@ describe('User Management access editor', () => {
 
   it('requires a second account-type confirmation and puts the complete snapshot', async () => {
     let receivedBody: unknown
+    let meRequests = 0
+    let capabilityRequests = 0
     let releaseResponse: (() => void) | undefined
     const responseGate = new Promise<void>((resolve) => {
       releaseResponse = resolve
     })
     server.use(
+      http.get(`${apiBaseUrl}/auth/me`, () => {
+        meRequests += 1
+        return HttpResponse.json(adminIdentityDto())
+      }),
+      http.get(`${apiBaseUrl}/auth/capabilities`, () => {
+        capabilityRequests += 1
+        return HttpResponse.json(adminCapabilitiesDto())
+      }),
       http.put(
         `${apiBaseUrl}/admin/users/user-reader/access`,
         async ({ request }) => {
@@ -315,6 +333,8 @@ describe('User Management access editor', () => {
     const user = userEvent.setup()
 
     await user.click(await screen.findByRole('button', { name: '编辑访问' }))
+    const initialMeRequests = meRequests
+    const initialCapabilityRequests = capabilityRequests
     const dialog = await screen.findByRole('dialog', { name: '编辑用户访问' })
     expect(within(dialog).getByLabelText('选择部门 研发部')).toBeChecked()
     expect(within(dialog).getByLabelText('研发部：部门读者')).toBeChecked()
@@ -353,6 +373,8 @@ describe('User Management access editor', () => {
       ).not.toBeInTheDocument()
     })
     expect(screen.getByText('部门主管')).toBeInTheDocument()
+    expect(meRequests).toBe(initialMeRequests)
+    expect(capabilityRequests).toBe(initialCapabilityRequests)
   })
 
   it('maps safe access 422 fields without rendering the raw message', async () => {
@@ -422,6 +444,66 @@ describe('User Management access editor', () => {
     expect(within(dialog).queryByText('must-not-be-rendered')).not.toBeInTheDocument()
     await waitFor(() => expect(detailRequests).toBeGreaterThan(1))
     expect(screen.getAllByText('联网搜索').length).toBeGreaterThan(0)
+  })
+
+  it('atomically reloads identity after an allowed current-user access mutation', async () => {
+    let meRequests = 0
+    let capabilityRequests = 0
+    const catalog = catalogDto()
+    server.use(
+      http.get(`${apiBaseUrl}/auth/me`, () => {
+        meRequests += 1
+        return HttpResponse.json(adminIdentityDto())
+      }),
+      http.get(`${apiBaseUrl}/auth/capabilities`, () => {
+        capabilityRequests += 1
+        return HttpResponse.json(adminCapabilitiesDto())
+      }),
+      http.get(`${apiBaseUrl}/admin/access/catalog`, () =>
+        HttpResponse.json({
+          ...catalog,
+          account_types: [
+            {
+              code: 'admin',
+              description: null,
+              name: '管理员',
+              risk_level: 'high',
+            },
+            ...catalog.account_types,
+          ],
+        }),
+      ),
+      http.get(`${apiBaseUrl}/admin/users/admin-actor`, () =>
+        HttpResponse.json(
+          detailDto('admin-actor', { account_type: 'admin' }),
+        ),
+      ),
+      http.put(`${apiBaseUrl}/admin/users/admin-actor/access`, () =>
+        HttpResponse.json(
+          detailDto('admin-actor', { account_type: 'admin' }),
+        ),
+      ),
+    )
+    renderApp('/admin/users/admin-actor')
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: '编辑访问' }))
+    const initialMeRequests = meRequests
+    const initialCapabilityRequests = capabilityRequests
+    expect(initialMeRequests).toBeGreaterThan(0)
+    expect(initialCapabilityRequests).toBeGreaterThan(0)
+    const dialog = await screen.findByRole('dialog', { name: '编辑用户访问' })
+    await user.click(within(dialog).getByRole('button', { name: '保存访问' }))
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: '编辑用户访问' }),
+      ).not.toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(meRequests).toBeGreaterThan(initialMeRequests)
+      expect(capabilityRequests).toBeGreaterThan(initialCapabilityRequests)
+    })
   })
 })
 

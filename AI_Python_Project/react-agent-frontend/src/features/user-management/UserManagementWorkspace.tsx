@@ -25,6 +25,8 @@ import styles from '@/features/user-management/UserManagementWorkspace.module.cs
 
 interface UserManagementWorkspaceProps {
   api: UserManagementApi
+  currentUserId: string
+  reloadIdentitySnapshot: () => Promise<void>
   userBoundary: string
   userId: string | null
 }
@@ -60,7 +62,7 @@ function catalogLabel(
 function UserListView({
   api,
   userBoundary,
-}: Omit<UserManagementWorkspaceProps, 'userId'>) {
+}: Pick<UserManagementWorkspaceProps, 'api' | 'userBoundary'>) {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [createOpen, setCreateOpen] = useState(false)
@@ -255,6 +257,8 @@ function CodeList({
 
 function UserDetailView({
   api,
+  currentUserId,
+  reloadIdentitySnapshot,
   userBoundary,
   userId,
 }: UserManagementWorkspaceProps & { userId: string }) {
@@ -289,6 +293,12 @@ function UserDetailView({
 
   const detail = detailQuery.data
   const catalog: AccessCatalog = catalogQuery.data
+  const reconcileCurrentIdentity = () => {
+    if (detail.userId !== currentUserId) return
+    void reloadIdentitySnapshot().catch(() => {
+      // AuthProvider retains the previous complete snapshot as stale.
+    })
+  }
   return (
     <article aria-labelledby="managed-user-detail-title" className={styles.page}>
       <Link to="/admin/users">← 返回用户列表</Link>
@@ -358,6 +368,7 @@ function UserDetailView({
       <ManagedUserAccountControls
         api={api}
         detail={detail}
+        onMutationSuccess={reconcileCurrentIdentity}
         userBoundary={userBoundary}
       />
       {editAccessOpen ? (
@@ -366,6 +377,7 @@ function UserDetailView({
           catalog={catalog}
           detail={detail}
           onClose={() => setEditAccessOpen(false)}
+          onMutationSuccess={reconcileCurrentIdentity}
           open
           userBoundary={userBoundary}
         />
@@ -376,6 +388,8 @@ function UserDetailView({
 
 export function UserManagementWorkspace({
   api,
+  currentUserId,
+  reloadIdentitySnapshot,
   userBoundary,
   userId,
 }: UserManagementWorkspaceProps) {
@@ -384,6 +398,8 @@ export function UserManagementWorkspace({
   ) : (
     <UserDetailView
       api={api}
+      currentUserId={currentUserId}
+      reloadIdentitySnapshot={reloadIdentitySnapshot}
       userBoundary={userBoundary}
       userId={userId}
     />

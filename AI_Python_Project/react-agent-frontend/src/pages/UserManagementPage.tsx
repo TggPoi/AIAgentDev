@@ -20,7 +20,9 @@ export function UserManagementPage() {
   return (
     <UserManagementWorkspace
       api={api}
+      currentUserId={snapshot.currentUser.userId}
       key={`${userBoundary}:${userId ?? '__list__'}`}
+      reloadIdentitySnapshot={auth.reloadIdentitySnapshot}
       userBoundary={userBoundary}
       userId={userId ?? null}
     />
