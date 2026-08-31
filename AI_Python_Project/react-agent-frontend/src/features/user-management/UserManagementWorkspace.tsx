@@ -7,6 +7,7 @@ import { EmptyState, ErrorState, PageSkeleton } from '@/components/ui/PageState'
 import { TextField } from '@/components/ui/TextField'
 import { CreateManagedUserDialog } from '@/features/user-management/CreateManagedUserDialog'
 import { EditManagedUserAccessDialog } from '@/features/user-management/EditManagedUserAccessDialog'
+import { ManagedUserAccountControls } from '@/features/user-management/ManagedUserAccountControls'
 import type { UserManagementApi } from '@/features/user-management/user-management-api'
 import {
   mergeManagedUserPages,
@@ -354,6 +355,11 @@ function UserDetailView({
           emptyText="无有效全局权限"
         />
       </section>
+      <ManagedUserAccountControls
+        api={api}
+        detail={detail}
+        userBoundary={userBoundary}
+      />
       {editAccessOpen ? (
         <EditManagedUserAccessDialog
           api={api}

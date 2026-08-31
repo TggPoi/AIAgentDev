@@ -56,6 +56,7 @@ function detailDto(
   overrides: Partial<{
     account_type: 'admin' | 'department_manager' | 'employee'
     direct_permission_codes: string[]
+    status: 'active' | 'disabled'
   }> = {},
 ) {
   return {
@@ -421,5 +422,185 @@ describe('User Management access editor', () => {
     expect(within(dialog).queryByText('must-not-be-rendered')).not.toBeInTheDocument()
     await waitFor(() => expect(detailRequests).toBeGreaterThan(1))
     expect(screen.getAllByText('联网搜索').length).toBeGreaterThan(0)
+  })
+})
+
+describe('User Management account controls', () => {
+  beforeEach(() => {
+    window.sessionStorage.clear()
+    installAdminIdentity()
+  })
+
+  it('confirms disabling, locks submission and reports revoked credentials', async () => {
+    let receivedBody: unknown
+    let releaseResponse: (() => void) | undefined
+    const responseGate = new Promise<void>((resolve) => {
+      releaseResponse = resolve
+    })
+    server.use(
+      http.patch(
+        `${apiBaseUrl}/admin/users/user-reader/status`,
+        async ({ request }) => {
+          receivedBody = await request.json()
+          await responseGate
+          return HttpResponse.json({
+            revoked_api_key_count: 3,
+            revoked_refresh_token_count: 2,
+            user: detailDto('user-reader', { status: 'disabled' }),
+          })
+        },
+      ),
+    )
+    renderApp('/admin/users/user-reader')
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: '禁用账号' }))
+    const dialog = await screen.findByRole('dialog', { name: '确认禁用账号' })
+    const confirm = within(dialog).getByRole('button', { name: '确认禁用' })
+    await user.click(confirm)
+
+    await waitFor(() => expect(confirm).toBeDisabled())
+    expect(receivedBody).toEqual({ status: 'disabled' })
+    releaseResponse?.()
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: '确认禁用账号' }),
+      ).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('已禁用')).toBeInTheDocument()
+    expect(screen.getByText(/已撤销 2 个 refresh token/)).toBeInTheDocument()
+    expect(screen.getByText(/3 个 API Key/)).toBeInTheDocument()
+  })
+
+  it('keeps the server status and refetches detail after a 409 conflict', async () => {
+    let detailRequests = 0
+    server.use(
+      http.get(`${apiBaseUrl}/admin/users/user-reader`, () => {
+        detailRequests += 1
+        return HttpResponse.json(detailDto('user-reader'))
+      }),
+      http.patch(`${apiBaseUrl}/admin/users/user-reader/status`, () =>
+        HttpResponse.json(
+          {
+            code: 'MANAGED_USER_SELF_OPERATION_FORBIDDEN',
+            error_category: 'conflict',
+            message: 'must-not-be-rendered',
+            request_id: 'status-conflict-request',
+            trace_id: null,
+          },
+          { status: 409 },
+        ),
+      ),
+    )
+    renderApp('/admin/users/user-reader')
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: '禁用账号' }))
+    const dialog = await screen.findByRole('dialog', { name: '确认禁用账号' })
+    await user.click(within(dialog).getByRole('button', { name: '确认禁用' }))
+
+    expect(
+      await within(dialog).findByText('修改账号状态失败'),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(/MANAGED_USER_SELF_OPERATION_FORBIDDEN/),
+    ).toBeInTheDocument()
+    expect(within(dialog).queryByText('must-not-be-rendered')).not.toBeInTheDocument()
+    await waitFor(() => expect(detailRequests).toBeGreaterThan(1))
+    expect(screen.getByText('启用')).toBeInTheDocument()
+  })
+
+  it('resets a password, clears it and reports revoked credentials', async () => {
+    let receivedBody: unknown
+    let releaseResponse: (() => void) | undefined
+    const responseGate = new Promise<void>((resolve) => {
+      releaseResponse = resolve
+    })
+    server.use(
+      http.post(
+        `${apiBaseUrl}/admin/users/user-reader/reset-password`,
+        async ({ request }) => {
+          receivedBody = await request.json()
+          await responseGate
+          return HttpResponse.json({
+            password_reset: true,
+            revoked_api_key_count: 4,
+            revoked_refresh_token_count: 1,
+          })
+        },
+      ),
+    )
+    renderApp('/admin/users/user-reader')
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: '重置密码' }))
+    const dialog = await screen.findByRole('dialog', { name: '重置用户密码' })
+    const password = within(dialog).getByLabelText('新密码')
+    await user.type(password, 'replacement-password')
+    const confirm = within(dialog).getByRole('button', {
+      name: '确认重置密码',
+    })
+    await user.click(confirm)
+
+    await waitFor(() => {
+      expect(confirm).toBeDisabled()
+      expect(password).toBeDisabled()
+    })
+    expect(receivedBody).toEqual({ new_password: 'replacement-password' })
+    releaseResponse?.()
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: '重置用户密码' }),
+      ).not.toBeInTheDocument()
+    })
+    expect(screen.getByText(/已撤销 1 个 refresh token/)).toBeInTheDocument()
+    expect(screen.getByText(/4 个 API Key/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '重置密码' }))
+    expect(
+      within(
+        await screen.findByRole('dialog', { name: '重置用户密码' }),
+      ).getByLabelText('新密码'),
+    ).toHaveValue('')
+  })
+
+  it('maps a safe password 422 field and clears the password after failure', async () => {
+    server.use(
+      http.post(`${apiBaseUrl}/admin/users/user-reader/reset-password`, () =>
+        HttpResponse.json(
+          {
+            code: 'REQUEST_VALIDATION_ERROR',
+            error_category: 'user_error',
+            field_errors: [
+              {
+                code: 'invalid',
+                field: 'new_password',
+                message: '新密码不符合要求',
+              },
+            ],
+            message: 'must-not-be-rendered',
+            request_id: 'password-validation-request',
+            trace_id: null,
+          },
+          { status: 422 },
+        ),
+      ),
+    )
+    renderApp('/admin/users/user-reader')
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: '重置密码' }))
+    const dialog = await screen.findByRole('dialog', { name: '重置用户密码' })
+    const password = within(dialog).getByLabelText('新密码')
+    await user.type(password, 'rejected-password')
+    const confirm = within(dialog).getByRole('button', {
+      name: '确认重置密码',
+    })
+    await user.click(confirm)
+
+    expect(await within(dialog).findByText('新密码不符合要求')).toBeInTheDocument()
+    expect(within(dialog).queryByText('must-not-be-rendered')).not.toBeInTheDocument()
+    expect(password).toHaveValue('')
+    expect(confirm).toBeEnabled()
   })
 })
