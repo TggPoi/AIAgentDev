@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 8 - User Access Management
 
-Current Step: Slice 8 mutation 403/404 scope-loss recovery 已由 checkpoint `5c7f792` 完成并通过完整 Gate；当前进入最终 admin/manager/employee scope 与安全回归矩阵
+Current Step: Slice 8 最终 admin/manager/employee scope 与安全回归矩阵已由 checkpoint `c1e037b` 完成；frontend/backend automated Slice Gate 已通过，当前进入 User Management manual browser smoke
 
-Next Action: 增加真实 App/AuthProvider 的 department-manager server-trimmed catalog 测试，并与既有 admin、employee capability-denial、422、403/404、409/self-protection、credential summary tests 组成 focused matrix；随后重跑 CG009 backend contracts 与完整 Slice Gate，不提前进入 manual smoke 或 Slice 9
+Next Action: 使用本机虚构 Auth/User Administration service 执行 1280px 与 360px manual smoke，覆盖 list/filter/cursor、create、detail/access/status/reset confirmations、credential summary、scope-loss、安全错误与无横向溢出/console 检查；完成并记录前不把 Slice 8 标记 COMPLETED 或进入 Slice 9
 
 Blocking Issues: None；CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭，Conversations async assertion timing defect 已由 `e6dd779` 关闭
 
@@ -298,7 +298,7 @@ Goal: 完成管理员和部门主管范围内的用户列表、详情、创建�
 - [x] 实现禁用、重置密码、账号类型变更的确认和 pending lock。
 - [x] 密码仅存在表单局部状态并在提交后清空；destructive mutations 不做乐观更新。
 - [x] 当前用户身份/能力受影响时调用 AuthProvider reload；其他用户只失效业务 Query。
-- [ ] 增加 admin/manager/employee scope、422、403/404、409、自操作保护、credential revocation summary 测试。
+- [x] 增加 admin/manager/employee scope、422、403/404、409、自操作保护、credential revocation summary 测试。
 - [ ] 完成 Slice Gate；执行 User Management manual smoke；创建独立 Git checkpoint。
 
 ### Slice 9 - Cross-Department Document Grants
@@ -522,11 +522,20 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、全部 User Management data/UI/mutation controls、current-user AuthProvider reload 与 mutation scope-loss recovery 均已完成。当前执行最终角色/scope automated matrix；backend contract recheck、完整 Slice Gate 与 manual smoke 尚未完成。
+- Slice 8 / IN_PROGRESS。CG009、全部 User Management data/UI/mutation controls、identity/scope recovery 与角色矩阵均已完成；frontend/backend automated Gate 已通过。当前只剩 manual browser smoke、最终 scoped review 与 Slice completion/state checkpoint。
 
 Next Action:
 
-- 增加真实 App/AuthProvider 的 department-manager server-trimmed catalog 测试，并与既有 admin、employee capability-denial、422、403/404、409/self-protection、credential summary tests 组成 focused matrix；随后重跑 CG009 backend contracts 与完整 Slice Gate，不提前进入 manual smoke 或 Slice 9。
+- 使用本机虚构 Auth/User Administration service 执行 1280px 与 360px manual smoke，覆盖 list/filter/cursor、create、detail/access/status/reset confirmations、credential summary、scope-loss、安全错误与无横向溢出/console 检查；完成并记录前不把 Slice 8 标记 COMPLETED 或进入 Slice 9。
+
+Slice 8 Automated Final Matrix Evidence (verified 2026-08-31):
+
+- 新增真实 department-manager AuthProvider 场景：`can_manage_users=true / own_department` 开放入口，但创建 Dialog 只展示 server-trimmed employee account type 与当前 catalog 部门；admin/department-manager 选项不存在，前端没有复制 actor scope 或构造任意 code。
+- 既有 App tests 已固定 employee `can_manage_users=false` 时导航入口隐藏且 direct visit 安全返回 Chat；admin mutation suite覆盖创建、access/status/reset。与新增 manager test共同形成三类 actor discoverability/catalog matrix，实际授权仍由每次 backend request 裁决。
+- focused role matrix 为 User Management mutation + App 2 files / 20 tests；完整 `pnpm check` 通过 contract drift、lint、typecheck、32 files / 172 tests 与 production build，仅保留约 531.05 kB 非阻塞 chunk warning。package、lockfile、OpenAPI snapshot与 generated types无差异。
+- backend repository `.venv` + `PYTHONPATH=src` 下 `test_user_administration_validation_contract.py`、`test_user_administration_read.py`、`test_user_administration_write.py` 全部输出 passed；确认 CG009 Runtime/OpenAPI/no-sensitive contract、真实 read scope 和 write transaction/self/last-admin/credential behavior未回退。
+- scoped endpoint/sensitive-data review只发现批准的 catalog、list/detail/create/access/status/reset-password routes；production 未使用任意外部 URL、console、browser storage、raw HTML 或凭证内容。checkpoint `c1e037b` 只增加 manager role test，backend 外部 RAG Eval working set仍未修改、未暂存。
+- 唯一 Next Action 已推进为 User Management manual browser smoke；完成前 Slice 8 保持 IN_PROGRESS。
 
 Slice 8 Mutation Scope-loss Evidence (verified 2026-08-31):
 
