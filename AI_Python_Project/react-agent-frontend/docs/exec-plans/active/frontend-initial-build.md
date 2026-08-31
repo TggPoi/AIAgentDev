@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 8 - User Access Management
 
-Current Step: Slice 8 四条 mutation 的 typed transport/query reconciliation seam 已由 checkpoint `54ea938` 完成；当前进入 catalog-backed access draft policy TDD expected-red，尚未实现 mutation 表单
+Current Step: Slice 8 catalog-backed access draft policy 已由 checkpoint `5df8950` 完成；当前进入 list-side 创建账号表单的 App/Router/MSW TDD expected-red，尚未实现 detail mutation controls
 
-Next Action: 新增 `src/features/user-management/user-management-draft.test.ts`，先固定 catalog drift 清理、唯一主部门校验、拒绝任意 account/department/role/permission code，以及 create/access 完整 snapshot 生成；在 expected-red 前不实现表单 UI
+Next Action: 新增 `src/features/user-management/UserManagementMutations.test.tsx` 的创建流程 expected-red，固定 catalog-only 选项、完整 create snapshot、field-level 422、pending lock、密码成功/失败清空与成功导航；在 red 前不实现创建表单
 
 Blocking Issues: None；CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭，CG008 仍由 backend `0676928` 与 frontend contract-sync `8072b65` 保持 resolved
 
@@ -522,11 +522,19 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、data/query seam、read-only workspace 与 mutation transport/query reconciliation seam 已完成，当前开始 catalog-backed access draft policy，尚未实现 mutation 表单。
+- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、data/query、read-only workspace、mutation data seam 与 catalog-backed draft policy 已完成，当前开始 list-side 创建账号表单，尚未实现 detail mutation controls。
 
 Next Action:
 
-- 新增 `src/features/user-management/user-management-draft.test.ts`，先固定 catalog drift 清理、唯一主部门校验、拒绝任意 account/department/role/permission code，以及 create/access 完整 snapshot 生成；在 red 证据出现前不实现表单 UI。
+- 新增 `src/features/user-management/UserManagementMutations.test.tsx` 的创建流程 expected-red，通过 App/Router/MSW seam 固定 catalog-only 选项、完整 create snapshot、field-level 422、pending lock、密码成功/失败清空与成功导航；在 red 证据出现前不实现创建表单。
+
+Slice 8 Catalog-backed Draft Policy Evidence (verified 2026-08-31):
+
+- `user-management-draft.test.ts` 先因 production module 不存在 expected-red；最小纯函数模块只建立 access draft、catalog reconciliation、提交前 validation 与 generated create/access DTO builder，不调用网络、不计算有效权限。
+- catalog drift 会移除已撤销或重复的 department/role/direct-permission code、清空不再允许的 account type 并设置 `requiresReconfirmation=true`；未变化 draft 保持原样。提交 builder 独立拒绝任意 code 与重复项，要求且只允许一个主部门，防止绕过 UI 直接构造草稿。
+- focused 1 file / 9 tests、typecheck 与 lint 通过。第一次完整 `pnpm check` 仅在既有 Conversations create navigation 时序断言失败；该文件 focused 11/11 通过后，完整重跑通过 contract drift、31 files / 159 tests 与 production build，未弱化断言。
+- package、lockfile、generated contract 与 backend 均未变化；scoped diff/check 通过。frontend checkpoint `5df8950` 只包含 draft policy 与 test 两个文件，backend 外部 RAG Eval working set未修改、未暂存。
+- 唯一 Next Action 已推进为 list-side 创建账号表单 App/Router/MSW expected-red；detail access/status/reset-password controls、确认 Dialog、AuthProvider reload 与 manual smoke 尚未实现或宣称完成。
 
 Slice 8 Mutation Data Seam Evidence (verified 2026-08-31):
 
@@ -708,6 +716,8 @@ Relevant Files:
 - `src/features/user-management/user-management-api.ts`
 - `src/features/user-management/user-management-queries.ts`
 - `src/features/user-management/user-management-mutations.test.tsx`
+- `src/features/user-management/user-management-draft.ts`
+- `src/features/user-management/user-management-draft.test.ts`
 - `src/features/user-management/UserManagementWorkspace.tsx`
 - `src/features/user-management/UserManagementWorkspace.test.tsx`
 - `src/pages/UserManagementPage.tsx`
