@@ -8,11 +8,11 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 8 - User Access Management
 
-Current Step: Slice 8 catalog-backed access draft policy 已由 checkpoint `5df8950` 完成；当前进入 list-side 创建账号表单的 App/Router/MSW TDD expected-red，尚未实现 detail mutation controls
+Current Step: Slice 8 list-side 创建账号 UI 已由 checkpoint `2b2a998` 完成；既有 Conversations async assertion blocker 已由 test-only checkpoint `e6dd779` 关闭，当前进入 detail access 完整 PUT 编辑器 TDD expected-red
 
-Next Action: 新增 `src/features/user-management/UserManagementMutations.test.tsx` 的创建流程 expected-red，固定 catalog-only 选项、完整 create snapshot、field-level 422、pending lock、密码成功/失败清空与成功导航；在 red 前不实现创建表单
+Next Action: 扩展 `UserManagementMutations.test.tsx`，先固定 detail access catalog-only draft、账号类型变化二次确认、完整 PUT snapshot、safe 422/409 reconciliation 与 pending lock；在 expected-red 前不实现 access 编辑器或 status/reset-password controls
 
-Blocking Issues: None；CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭，CG008 仍由 backend `0676928` 与 frontend contract-sync `8072b65` 保持 resolved
+Blocking Issues: None；CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭，Conversations async assertion timing defect 已由 `e6dd779` 关闭
 
 Last Updated: 2026-08-31 (Asia/Shanghai)
 
@@ -522,11 +522,29 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、data/query、read-only workspace、mutation data seam 与 catalog-backed draft policy 已完成，当前开始 list-side 创建账号表单，尚未实现 detail mutation controls。
+- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、data/query、read-only workspace、mutation data seam、catalog-backed draft policy 与 list-side 创建账号 UI 已完成。当前开始 detail access 完整 PUT 编辑器，status/reset-password controls 尚未实现。
 
 Next Action:
 
-- 新增 `src/features/user-management/UserManagementMutations.test.tsx` 的创建流程 expected-red，通过 App/Router/MSW seam 固定 catalog-only 选项、完整 create snapshot、field-level 422、pending lock、密码成功/失败清空与成功导航；在 red 证据出现前不实现创建表单。
+- 扩展 `UserManagementMutations.test.tsx`，先固定 detail access catalog-only draft、账号类型变化二次确认、完整 PUT snapshot、safe 422/409 reconciliation 与 pending lock；在 expected-red 前不实现 access 编辑器或 status/reset-password controls。
+
+Slice 8 Create UI and Gate Stabilization Evidence (verified 2026-08-31):
+
+- `UserManagementMutations.test.tsx` 的创建流程先因页面没有“创建账号”入口 2/2 expected-red；最小 UI 随后用 server-trimmed catalog 渲染 account/department/role/direct-permission choices，构建完整 create snapshot，并在成功后导航到 URL-encoded detail。
+- 创建密码仅存在 Dialog local state；pending 时表单与提交锁定，每次成功、HTTP failure 或本地 draft validation 后都清空。测试从成功详情返回列表并重新打开 Dialog，以及在 delayed 422 后检查 input，分别证明成功/失败清空；Query cache不保存密码。
+- request/business `422` 只按批准 field allowlist 映射，raw backend message 不渲染；catalog drift 使用纯 reconciliation 派生最新 draft并要求显式确认，未通过确认不提交。非 field error 只显示固定安全消息、code 与 request ID。
+- 恢复后 lint 首先捕获 render-time ref access；改为可渲染 state 后 focused 3 files / 16 tests、lint/typecheck green。完整 Gate 连续两次暴露既有 Conversations probe 非等待式异步断言；test-only checkpoint `e6dd779` 仅用 `waitFor` 等待相同 `/chat/session-new` 期望，不改 production behavior或断言值。
+- Conversations focused 11/11 与随后两次完整 `pnpm check` 通过；最终 Gate 为 contract drift、lint、typecheck、32 files / 161 tests 与 production build。创建 UI checkpoint `2b2a998` 只包含 5 个 User Management UI/test files；package、lockfile、generated contract 与 backend 均未变化，外部 RAG Eval working set保持隔离。
+- 唯一 Next Action 已推进为 detail access 完整 PUT 编辑器 expected-red；status/reset-password、current-user AuthProvider reload、最终 scope/409/credential summary matrix 与 manual smoke 尚未实现或宣称完成。
+
+Context Recovery Evidence (verified 2026-08-31 after usage-limit interruption during Slice 8 create UI):
+
+- frontend/backend 仍共享 Git root `D:/AI_Agent_Project`；共同 confirmed HEAD 为 plan checkpoint `0577228`，branch 为 `master...origin/master [ahead 73]`，staged diff 为空。最近 checkpoints `6eeb740`、`cabfd97`、`54ea938`、`5df8950` 及各自 plan checkpoints都真实存在；最后 verified completed Slice 仍为 7，Slice 8 最后已 checkpoint 的实施边界为 catalog-backed draft policy。
+- frontend 当前未 checkpoint working set 仅为创建账号 UI：tracked `UserManagementWorkspace.tsx`/CSS，加上 untracked `CreateManagedUserDialog.tsx`、`ManagedUserAccessFields.tsx` 与 `UserManagementMutations.test.tsx`。完整 scoped source/diff 已读取；创建 App/Router/MSW test 的 2/2 expected-red 曾因“创建账号”入口不存在，当前恢复重跑与 read-only test 合计 2 files / 7 tests green。
+- 当前创建实现只提供 server-trimmed catalog 选项、完整 create snapshot、safe 422 field mapping、pending lock、password finally clear、成功导航与 catalog drift reconfirmation；尚未 checkpoint，也不代表 detail access/status/reset-password、AuthProvider reload 或 Slice Gate 完成。
+- `pnpm typecheck` 与 `pnpm contracts:check` 通过；package、lockfile、OpenAPI snapshot 与 generated types均无差异。`pnpm lint` 真实失败于 `CreateManagedUserDialog.tsx:84` 的 `react(refs)`：render 阶段读取 `confirmedCatalog.current`。当前唯一 Next Action 是用可渲染 state 表达该确认状态，不禁用规则、不改测试。
+- backend 仍为 9 个 tracked RAG Eval modifications 与既有 untracked RAG Eval/dataset/report/runtime entries；它们不触及 User Administration contract，本恢复未修改、未暂存，也没有依据中断前口头状态重跑无关 backend tests。
+- catalog confirmation 已从 render-time ref 改为可渲染 state；随后 lint、typecheck 与 User Management focused 3 files / 16 tests 全绿。完整 `pnpm check` 连续两次只在既有 `ConversationsWorkspace.test.tsx` 创建导航断言失败，而该文件单独 11/11 通过。断言当前使用 `findByLabelText('current-route')` 查找测试开始即存在的 probe，不能等待其文本异步变化；唯一 Next Action 因而修正为用 `waitFor` 保持相同最终路径期望，不改 Slice 4 production behavior。
 
 Slice 8 Catalog-backed Draft Policy Evidence (verified 2026-08-31):
 
