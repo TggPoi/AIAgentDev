@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 8 - User Access Management
 
-Current Step: Slice 8 User Management data/query seam `6eeb740` 与 catalog/list/detail read-only workspace `cabfd97` 已完成；当前进入四条 mutation 的 typed transport/query reconciliation seam TDD expected-red，尚未实现 mutation 表单
+Current Step: Slice 8 四条 mutation 的 typed transport/query reconciliation seam 已由 checkpoint `54ea938` 完成；当前进入 catalog-backed access draft policy TDD expected-red，尚未实现 mutation 表单
 
-Next Action: 新增 `src/features/user-management/user-management-mutations.test.tsx`，先固定 create/access/status/reset-password 的 method/path/body、成功后的 detail/list 收敛、`409` detail/list refetch 与无 optimistic write；在 expected-red 前不实现 mutation hooks 或表单
+Next Action: 新增 `src/features/user-management/user-management-draft.test.ts`，先固定 catalog drift 清理、唯一主部门校验、拒绝任意 account/department/role/permission code，以及 create/access 完整 snapshot 生成；在 expected-red 前不实现表单 UI
 
 Blocking Issues: None；CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭，CG008 仍由 backend `0676928` 与 frontend contract-sync `8072b65` 保持 resolved
 
@@ -522,11 +522,19 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、User Management data/query seam 与 catalog/list/detail read-only workspace 已完成，当前开始四条 mutation 的 typed transport/query reconciliation seam，尚未实现 mutation 表单。
+- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、data/query seam、read-only workspace 与 mutation transport/query reconciliation seam 已完成，当前开始 catalog-backed access draft policy，尚未实现 mutation 表单。
 
 Next Action:
 
-- 新增 `src/features/user-management/user-management-mutations.test.tsx`，通过真实 QueryClient/MSW seam 固定 create/access/status/reset-password 的 method/path/body、成功 detail/list 收敛、`409` detail/list refetch 与无 optimistic write；在 red 证据出现前不实现 mutation hooks 或表单。
+- 新增 `src/features/user-management/user-management-draft.test.ts`，先固定 catalog drift 清理、唯一主部门校验、拒绝任意 account/department/role/permission code，以及 create/access 完整 snapshot 生成；在 red 证据出现前不实现表单 UI。
+
+Slice 8 Mutation Data Seam Evidence (verified 2026-08-31):
+
+- `user-management-mutations.test.tsx` 先以 5/5 expected-red 证明 create/access/status/reset-password hooks 全部不存在；最小实现只扩展 generated request/response aliases、allowlisted response-to-domain mapping、四条 HTTP adapter 与 TanStack Query reconciliation，没有加入表单或页面控件。
+- MSW 固定 `POST /admin/users`、encoded target `PUT .../access`、`PATCH .../status` 与 `POST .../reset-password` 的 method/path/body；create/access/status 成功用 server response 写入 detail 并失效 list，reset-password 因 response 不含 detail 而失效 detail/list。
+- delayed status response 证明 pending 时旧 server snapshot 保持不变、没有 optimistic write；target mutation `409` 保留旧 snapshot 并失效 detail/list，create `409` 只失效 list。密码只作为 mutation argument 进入 request，不写入 Query cache，响应只保留撤销计数。
+- focused expected-red/green 为 1 file / 5 tests；User Management + App 回归为 4 files / 23 tests。typecheck、lint 与完整 `pnpm check` 通过 contract drift、30 files / 150 tests 与 production build；package、lockfile、generated contract 与 backend 均未变化。
+- scoped staged diff/check 通过，frontend checkpoint `54ea938` 只包含 5 个 User Management contract/model/API/query/test 文件；backend 外部 RAG Eval working set未修改、未暂存。唯一 Next Action 已推进为 catalog-backed access draft policy expected-red。
 
 Slice 8 Read-only Workspace Evidence (verified 2026-08-31):
 
@@ -699,6 +707,7 @@ Relevant Files:
 - `src/features/user-management/user-management-models.ts`
 - `src/features/user-management/user-management-api.ts`
 - `src/features/user-management/user-management-queries.ts`
+- `src/features/user-management/user-management-mutations.test.tsx`
 - `src/features/user-management/UserManagementWorkspace.tsx`
 - `src/features/user-management/UserManagementWorkspace.test.tsx`
 - `src/pages/UserManagementPage.tsx`
