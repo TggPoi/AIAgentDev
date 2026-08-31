@@ -1,9 +1,11 @@
-import { Link, useSearchParams } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/api-error'
 import { Button } from '@/components/ui/Button'
 import { EmptyState, ErrorState, PageSkeleton } from '@/components/ui/PageState'
 import { TextField } from '@/components/ui/TextField'
+import { CreateManagedUserDialog } from '@/features/user-management/CreateManagedUserDialog'
 import type { UserManagementApi } from '@/features/user-management/user-management-api'
 import {
   mergeManagedUserPages,
@@ -57,7 +59,9 @@ function UserListView({
   api,
   userBoundary,
 }: Omit<UserManagementWorkspaceProps, 'userId'>) {
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const [createOpen, setCreateOpen] = useState(false)
   const query = searchParams.get('query') || null
   const departmentCode = searchParams.get('department_code') || null
   const statusValue = searchParams.get('status')
@@ -90,9 +94,18 @@ function UserListView({
   return (
     <section aria-labelledby="managed-user-list-title" className={styles.page}>
       <header className={styles.header}>
-        <p className={styles.eyebrow}>Administration</p>
-        <h2 id="managed-user-list-title">用户管理</h2>
-        <p>查看当前身份获准管理的账号、部门归属与访问状态。</p>
+        <div>
+          <p className={styles.eyebrow}>Administration</p>
+          <h2 id="managed-user-list-title">用户管理</h2>
+          <p>查看当前身份获准管理的账号、部门归属与访问状态。</p>
+        </div>
+        <Button
+          disabled={!catalogQuery.isSuccess}
+          onClick={() => setCreateOpen(true)}
+          type="button"
+        >
+          创建账号
+        </Button>
       </header>
       <div className={styles.filters}>
         <TextField
@@ -201,6 +214,18 @@ function UserListView({
         >
           {listQuery.isFetchingNextPage ? '正在加载…' : '加载更多用户'}
         </Button>
+      ) : null}
+      {catalogQuery.isSuccess ? (
+        <CreateManagedUserDialog
+          api={api}
+          catalog={catalogQuery.data}
+          onClose={() => setCreateOpen(false)}
+          onCreated={(createdUserId) =>
+            navigate(`/admin/users/${encodeURIComponent(createdUserId)}`)
+          }
+          open={createOpen}
+          userBoundary={userBoundary}
+        />
       ) : null}
     </section>
   )
