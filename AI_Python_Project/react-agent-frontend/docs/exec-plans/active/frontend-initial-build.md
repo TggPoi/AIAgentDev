@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 8 - User Access Management
 
-Current Step: Slice 8 detail access 完整 PUT 编辑器已由 checkpoint `2ddd1ed` 完成并通过完整 Gate；当前进入 status PATCH 与 reset-password controls TDD expected-red
+Current Step: Slice 8 status PATCH 与 reset-password controls 已由 checkpoint `395d988` 完成并通过完整 Gate；当前进入 current-user AuthProvider identity reload TDD expected-red
 
-Next Action: 扩展 `UserManagementMutations.test.tsx`，先固定 status PATCH 与 reset-password 的确认流程、精确请求体、safe 422/409、pending lock、password success/failure clear 和 credential-revocation summary；在 expected-red 前不实现 status/reset-password controls 或扩大到 Slice 9
+Next Action: 扩展真实 App/AuthProvider/User Management MSW test，先固定“仅当成功 mutation 的 target user ID 等于当前身份时调用 `reloadIdentitySnapshot()` 原子重取 me/capabilities，其他用户只收敛业务 Query”；在 expected-red 前不修改 identity wiring 或扩大到 Slice 9
 
 Blocking Issues: None；CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭，Conversations async assertion timing defect 已由 `e6dd779` 关闭
 
@@ -295,8 +295,8 @@ Goal: 完成管理员和部门主管范围内的用户列表、详情、创建�
 - [x] 实现 server-trimmed catalog、用户 list/detail adapters、filters、cursor 和 Query Keys。
 - [x] 从 catalog 构建账号、部门、角色、权限选项；禁止硬编码或任意 code 输入。
 - [x] 实现创建与完整 access PUT snapshot、唯一主部门校验和 catalog drift 处理。
-- [ ] 实现禁用、重置密码、账号类型变更的确认和 pending lock。
-- [ ] 密码仅存在表单局部状态并在提交后清空；destructive mutations 不做乐观更新。
+- [x] 实现禁用、重置密码、账号类型变更的确认和 pending lock。
+- [x] 密码仅存在表单局部状态并在提交后清空；destructive mutations 不做乐观更新。
 - [ ] 当前用户身份/能力受影响时调用 AuthProvider reload；其他用户只失效业务 Query。
 - [ ] 增加 admin/manager/employee scope、422、403/404、409、自操作保护、credential revocation summary 测试。
 - [ ] 完成 Slice Gate；执行 User Management manual smoke；创建独立 Git checkpoint。
@@ -522,11 +522,19 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、data/query、read-only workspace、mutation data seam、catalog-backed draft policy、创建账号与 detail access 完整 PUT 编辑器均已完成。当前开始 status PATCH 与 reset-password controls，current-user AuthProvider reload、最终 scope/credential matrix 与 manual smoke 尚未完成。
+- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、data/query、read-only workspace、mutation data seam、catalog-backed draft policy、创建账号、detail access 完整 PUT 编辑器及 status/reset-password controls 均已完成。当前开始 current-user AuthProvider reload，最终 scope/403/404 matrix 与 manual smoke 尚未完成。
 
 Next Action:
 
-- 扩展 `UserManagementMutations.test.tsx`，先固定 status PATCH 与 reset-password 的确认流程、精确请求体、safe 422/409、pending lock、password success/failure clear 和 credential-revocation summary；在 expected-red 前不实现 status/reset-password controls 或扩大到 Slice 9。
+- 扩展真实 App/AuthProvider/User Management MSW test，先固定“仅当成功 mutation 的 target user ID 等于当前身份时调用 `reloadIdentitySnapshot()` 原子重取 me/capabilities，其他用户只收敛业务 Query”；在 expected-red 前不修改 identity wiring 或扩大到 Slice 9。
+
+Slice 8 Account Controls Evidence (verified 2026-08-31):
+
+- `UserManagementMutations.test.tsx` 的 status/reset-password 4/4 expected-red 准确失败于详情页缺少“禁用账号”和“重置密码”入口；最小账号控制组件随后接入既有 status/reset mutation hooks，没有新增 endpoint 或复制 transport policy。
+- 禁用使用显式确认 Dialog，只提交 `{status:"disabled"}`；reset 只提交 `{new_password}`。delayed response 测试证明提交期间确认按钮及密码字段锁定，detail 在成功 response 前不被乐观修改。
+- password 只存在组件 local state，在成功关闭后重新打开为空，request/422 failure 后也立即清空；`new_password` 422 只显示 allowlisted field message，raw backend message 不渲染。status `409` 保留旧服务端状态、显示固定安全错误和 code/request ID，并重新拉取 detail/list。
+- status/reset 成功只展示被撤销的 refresh token 与 API Key 数量，不展示任何凭证内容。focused mutation UI 为 1 file / 9 tests，全部 User Management 为 5 files / 34 tests；lint/typecheck 及完整 `pnpm check` 通过，最终为 32 files / 168 tests 与 production build，仅保留约 530.49 kB 非阻塞 chunk warning。
+- frontend checkpoint `395d988` 只包含账号控制组件、详情 composition 与 mutation UI tests；package、lockfile、generated contract 和 backend 均未变化，外部 RAG Eval working set保持隔离。唯一 Next Action 已推进为 current-user AuthProvider reload expected-red。
 
 Slice 8 Access Editor Evidence (verified 2026-08-31):
 
