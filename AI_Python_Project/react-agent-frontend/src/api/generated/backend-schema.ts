@@ -3288,6 +3288,66 @@ export interface components {
              */
             role_codes?: string[];
         };
+        /**
+         * ManagedUserAccessFieldError
+         * @description 账号访问快照业务校验的安全公开字段错误。
+         */
+        ManagedUserAccessFieldError: {
+            /**
+             * Code
+             * @description 账号访问快照不满足目录或组织约束时的稳定字段错误 code。
+             * @constant
+             */
+            code: "invalid";
+            /**
+             * Field
+             * @description 由服务端确定性业务分支选择的公开表单字段；不包含提交值或嵌套位置。
+             * @enum {string}
+             */
+            field: "username" | "account_type" | "department_access" | "direct_permission_codes";
+            /**
+             * Message
+             * @description 固定安全字段提示，不包含自然语言业务异常、提交值或内部信息。
+             */
+            message: string;
+        };
+        /**
+         * ManagedUserAccessInvalidErrorResponse
+         * @description 账号访问快照业务校验失败的安全公共 422 响应。
+         */
+        ManagedUserAccessInvalidErrorResponse: {
+            /**
+             * @description 账号访问快照不满足服务端目录或组织约束时的稳定顶层错误 code。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            code: "MANAGED_USER_ACCESS_INVALID";
+            /**
+             * Error Category
+             * @description 错误责任分类；账号访问快照业务校验失败固定为 user_error。
+             * @constant
+             */
+            error_category: "user_error";
+            /**
+             * Field Errors
+             * @description 只包含服务端确定性分支批准公开的账号访问字段错误。
+             */
+            field_errors: components["schemas"]["ManagedUserAccessFieldError"][];
+            /**
+             * Message
+             * @description 账号访问快照业务校验失败时可安全显示的固定通用提示。
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 当前 HTTP 请求 ID；测试或缺少请求上下文时可以为空。
+             */
+            request_id: string | null;
+            /**
+             * Trace Id
+             * @description 当前服务端 trace ID；缺少 trace 上下文时可以为空。
+             */
+            trace_id: string | null;
+        };
         /** ManagedUserDetail */
         ManagedUserDetail: {
             /** @description 由服务端角色事实推导的账号类型。 */
@@ -3948,9 +4008,8 @@ export interface components {
          */
         RequestValidationErrorResponse: {
             /**
-             * Code
-             * @description 请求模型校验失败时的稳定顶层错误 code。
-             * @constant
+             * @description 请求模型校验失败时的稳定顶层错误 code。 (enum property replaced by openapi-typescript)
+             * @enum {string}
              */
             code: "REQUEST_VALIDATION_ERROR";
             /**
@@ -3996,7 +4055,7 @@ export interface components {
              * @description 允许向客户端公开的顶层请求字段名；不包含请求值或嵌套内部位置。
              * @enum {string}
              */
-            field: "username_or_email" | "password" | "refresh_token" | "current_password" | "new_password" | "title" | "query" | "department_code" | "document_type" | "status" | "session_id" | "limit";
+            field: "username_or_email" | "username" | "password" | "email" | "display_name" | "account_type" | "department_access" | "direct_permission_codes" | "refresh_token" | "current_password" | "new_password" | "title" | "query" | "department_code" | "document_type" | "status" | "session_id" | "limit";
             /**
              * Message
              * @description 可安全显示的固定校验提示，不包含客户端提交值或服务端内部信息。
@@ -5263,13 +5322,13 @@ export interface operations {
                     "application/json": components["schemas"]["AccessCatalogResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };
@@ -5569,13 +5628,13 @@ export interface operations {
                     "application/json": components["schemas"]["ManagedUserListResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };
@@ -5606,13 +5665,13 @@ export interface operations {
                     "application/json": components["schemas"]["ManagedUserDetail"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段或账号访问快照业务校验失败的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"] | components["schemas"]["ManagedUserAccessInvalidErrorResponse"];
                 };
             };
         };
@@ -5642,13 +5701,13 @@ export interface operations {
                     "application/json": components["schemas"]["ManagedUserDetail"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };
@@ -5682,13 +5741,13 @@ export interface operations {
                     "application/json": components["schemas"]["ManagedUserDetail"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段或账号访问快照业务校验失败的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"] | components["schemas"]["ManagedUserAccessInvalidErrorResponse"];
                 };
             };
         };
@@ -5722,13 +5781,13 @@ export interface operations {
                     "application/json": components["schemas"]["ManagedUserPasswordResetResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };
@@ -5762,13 +5821,13 @@ export interface operations {
                     "application/json": components["schemas"]["ManagedUserStatusResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };

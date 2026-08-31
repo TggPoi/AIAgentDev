@@ -3688,6 +3688,104 @@
         "title": "ManagedDepartmentAccessInput",
         "type": "object"
       },
+      "ManagedUserAccessFieldError": {
+        "description": "账号访问快照业务校验的安全公开字段错误。",
+        "properties": {
+          "code": {
+            "const": "invalid",
+            "description": "账号访问快照不满足目录或组织约束时的稳定字段错误 code。",
+            "title": "Code",
+            "type": "string"
+          },
+          "field": {
+            "description": "由服务端确定性业务分支选择的公开表单字段；不包含提交值或嵌套位置。",
+            "enum": [
+              "username",
+              "account_type",
+              "department_access",
+              "direct_permission_codes"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "message": {
+            "description": "固定安全字段提示，不包含自然语言业务异常、提交值或内部信息。",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "code",
+          "message"
+        ],
+        "title": "ManagedUserAccessFieldError",
+        "type": "object"
+      },
+      "ManagedUserAccessInvalidErrorResponse": {
+        "description": "账号访问快照业务校验失败的安全公共 422 响应。",
+        "properties": {
+          "code": {
+            "const": "MANAGED_USER_ACCESS_INVALID",
+            "description": "账号访问快照不满足服务端目录或组织约束时的稳定顶层错误 code。",
+            "title": "Code",
+            "type": "string"
+          },
+          "error_category": {
+            "const": "user_error",
+            "description": "错误责任分类；账号访问快照业务校验失败固定为 user_error。",
+            "title": "Error Category",
+            "type": "string"
+          },
+          "field_errors": {
+            "description": "只包含服务端确定性分支批准公开的账号访问字段错误。",
+            "items": {
+              "$ref": "#/components/schemas/ManagedUserAccessFieldError"
+            },
+            "title": "Field Errors",
+            "type": "array"
+          },
+          "message": {
+            "description": "账号访问快照业务校验失败时可安全显示的固定通用提示。",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前 HTTP 请求 ID；测试或缺少请求上下文时可以为空。",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前服务端 trace ID；缺少 trace 上下文时可以为空。",
+            "title": "Trace Id"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "error_category",
+          "request_id",
+          "trace_id",
+          "field_errors"
+        ],
+        "title": "ManagedUserAccessInvalidErrorResponse",
+        "type": "object"
+      },
       "ManagedUserDetail": {
         "properties": {
           "account_type": {
@@ -4996,7 +5094,13 @@
             "description": "允许向客户端公开的顶层请求字段名；不包含请求值或嵌套内部位置。",
             "enum": [
               "username_or_email",
+              "username",
               "password",
+              "email",
+              "display_name",
+              "account_type",
+              "department_access",
+              "direct_permission_codes",
               "refresh_token",
               "current_password",
               "new_password",
@@ -7499,11 +7603,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Get Access Catalog Endpoint",
@@ -8441,11 +8545,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "List Users Endpoint",
@@ -8531,11 +8635,26 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "discriminator": {
+                    "mapping": {
+                      "MANAGED_USER_ACCESS_INVALID": "#/components/schemas/ManagedUserAccessInvalidErrorResponse",
+                      "REQUEST_VALIDATION_ERROR": "#/components/schemas/RequestValidationErrorResponse"
+                    },
+                    "propertyName": "code"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ManagedUserAccessInvalidErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create User Endpoint Admin Users Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段或账号访问快照业务校验失败的安全错误投影。"
           }
         },
         "summary": "Create User Endpoint",
@@ -8626,11 +8745,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Get User Endpoint",
@@ -8731,11 +8850,26 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "discriminator": {
+                    "mapping": {
+                      "MANAGED_USER_ACCESS_INVALID": "#/components/schemas/ManagedUserAccessInvalidErrorResponse",
+                      "REQUEST_VALIDATION_ERROR": "#/components/schemas/RequestValidationErrorResponse"
+                    },
+                    "propertyName": "code"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ManagedUserAccessInvalidErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Replace User Access Endpoint Admin Users  User Id  Access Put"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段或账号访问快照业务校验失败的安全错误投影。"
           }
         },
         "summary": "Replace User Access Endpoint",
@@ -8836,11 +8970,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Reset User Password Endpoint",
@@ -8941,11 +9075,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Update User Status Endpoint",
