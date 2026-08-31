@@ -1,0 +1,174 @@
+.page {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.header h2,
+.detailHeader h2,
+.panel h3,
+.accessCard h4 {
+  margin: 0;
+}
+
+.header p,
+.detailHeader p,
+.panel p {
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  margin: var(--space-2) 0 0;
+}
+
+.eyebrow {
+  color: var(--color-primary-700) !important;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.filters {
+  align-items: start;
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.selectField {
+  color: var(--color-text-secondary);
+  display: grid;
+  font-size: 0.875rem;
+  font-weight: 700;
+  gap: var(--space-2);
+}
+
+.selectField select {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  min-height: 2.75rem;
+  padding: 0 var(--space-3);
+}
+
+.selectField select[aria-invalid='true'] {
+  border-color: var(--color-danger-600);
+}
+
+.fieldError {
+  color: var(--color-danger-700);
+  font-size: 0.8125rem;
+}
+
+.list,
+.codeList {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+}
+
+.cardLink,
+.facts div,
+.panel,
+.accessCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.cardLink {
+  color: var(--color-text-secondary);
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  text-decoration: none;
+}
+
+.cardLink:hover,
+.cardLink:focus-visible {
+  border-color: var(--color-primary-500);
+}
+
+.cardHeader {
+  align-items: center;
+  color: var(--color-text);
+  display: flex;
+  gap: var(--space-3);
+  justify-content: space-between;
+}
+
+.badge {
+  background: var(--color-primary-50);
+  border-radius: 999px;
+  color: var(--color-primary-700);
+  font-size: 0.8125rem;
+  font-weight: 800;
+  padding: var(--space-1) var(--space-3);
+  white-space: nowrap;
+}
+
+.detailHeader {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.facts {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.facts div {
+  min-width: 0;
+  padding: var(--space-3);
+}
+
+.facts dt {
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.facts dd {
+  overflow-wrap: anywhere;
+  font-weight: 800;
+  margin: var(--space-1) 0 0;
+}
+
+.panel {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-5);
+}
+
+.accessCard {
+  box-shadow: none;
+  padding: var(--space-4);
+}
+
+.codeList {
+  padding-left: var(--space-5);
+}
+
+.muted {
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+@media (max-width: 767px) {
+  .filters,
+  .facts {
+    grid-template-columns: 1fr;
+  }
+
+  .cardHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

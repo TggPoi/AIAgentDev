@@ -280,6 +280,19 @@ describe('App authentication entry', () => {
       can_read_documents: true,
       user_management_scope: 'all',
     })
+    server.use(
+      http.get(`${apiBaseUrl}/admin/access/catalog`, () =>
+        HttpResponse.json({
+          account_types: [],
+          department_roles: [],
+          departments: [],
+          direct_permissions: [],
+        }),
+      ),
+      http.get(`${apiBaseUrl}/admin/users`, () =>
+        HttpResponse.json({ items: [], next_cursor: null }),
+      ),
+    )
     const user = userEvent.setup()
 
     renderApp('/admin/users', true)

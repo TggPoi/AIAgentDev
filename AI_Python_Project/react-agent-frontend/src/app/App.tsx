@@ -12,6 +12,7 @@ import { ChatPage } from '@/pages/ChatPage'
 import { DocumentPage } from '@/pages/DocumentPage'
 import { SecuritySettingsPage } from '@/pages/SecuritySettingsPage'
 import { TaskPlanPage } from '@/pages/TaskPlanPage'
+import { UserManagementPage } from '@/pages/UserManagementPage'
 
 function StartupScreen() {
   return (
@@ -31,16 +32,6 @@ function StartupScreen() {
     </main>
   )
 }
-
-const usersPage = (
-  <PlaceholderPage
-    description="管理当前授权范围内的用户账号与访问能力。"
-    emptyDescription="用户目录将在业务模块接入后显示。"
-    emptyTitle="暂无用户数据"
-    eyebrow="Administration"
-    title="用户管理"
-  />
-)
 
 const documentGrantsPage = (
   <PlaceholderPage
@@ -89,7 +80,7 @@ function AppContent() {
           path="/admin/users"
           element={
             <CapabilityGuard capability="canManageUsers">
-              {usersPage}
+              <UserManagementPage />
             </CapabilityGuard>
           }
         />
@@ -97,7 +88,7 @@ function AppContent() {
           path="/admin/users/:userId"
           element={
             <CapabilityGuard capability="canManageUsers">
-              {usersPage}
+              <UserManagementPage />
             </CapabilityGuard>
           }
         />
