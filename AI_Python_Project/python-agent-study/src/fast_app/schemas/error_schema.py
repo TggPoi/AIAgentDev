@@ -1,6 +1,6 @@
 """前端可安全消费的公共 HTTP 错误响应模型。"""
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -10,7 +10,13 @@ class RequestValidationFieldError(BaseModel):
 
     field: Literal[
         "username_or_email",
+        "username",
         "password",
+        "email",
+        "display_name",
+        "account_type",
+        "department_access",
+        "direct_permission_codes",
         "refresh_token",
         "current_password",
         "new_password",
@@ -61,7 +67,58 @@ class RequestValidationErrorResponse(BaseModel):
     )
 
 
+class ManagedUserAccessFieldError(BaseModel):
+    """账号访问快照业务校验的安全公开字段错误。"""
+
+    field: Literal[
+        "username",
+        "account_type",
+        "department_access",
+        "direct_permission_codes",
+    ] = Field(
+        description="由服务端确定性业务分支选择的公开表单字段；不包含提交值或嵌套位置。",
+    )
+    code: Literal["invalid"] = Field(
+        description="账号访问快照不满足目录或组织约束时的稳定字段错误 code。",
+    )
+    message: str = Field(
+        description="固定安全字段提示，不包含自然语言业务异常、提交值或内部信息。",
+    )
+
+
+class ManagedUserAccessInvalidErrorResponse(BaseModel):
+    """账号访问快照业务校验失败的安全公共 422 响应。"""
+
+    code: Literal["MANAGED_USER_ACCESS_INVALID"] = Field(
+        description="账号访问快照不满足服务端目录或组织约束时的稳定顶层错误 code。",
+    )
+    message: str = Field(
+        description="账号访问快照业务校验失败时可安全显示的固定通用提示。",
+    )
+    error_category: Literal["user_error"] = Field(
+        description="错误责任分类；账号访问快照业务校验失败固定为 user_error。",
+    )
+    request_id: str | None = Field(
+        description="当前 HTTP 请求 ID；测试或缺少请求上下文时可以为空。",
+    )
+    trace_id: str | None = Field(
+        description="当前服务端 trace ID；缺少 trace 上下文时可以为空。",
+    )
+    field_errors: list[ManagedUserAccessFieldError] = Field(
+        description="只包含服务端确定性分支批准公开的账号访问字段错误。",
+    )
+
+
+UserAdministrationValidationErrorResponse = Annotated[
+    RequestValidationErrorResponse | ManagedUserAccessInvalidErrorResponse,
+    Field(discriminator="code"),
+]
+
+
 __all__ = [
+    "ManagedUserAccessFieldError",
+    "ManagedUserAccessInvalidErrorResponse",
     "RequestValidationErrorResponse",
     "RequestValidationFieldError",
+    "UserAdministrationValidationErrorResponse",
 ]

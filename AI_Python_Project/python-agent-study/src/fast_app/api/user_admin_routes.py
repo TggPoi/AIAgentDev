@@ -6,6 +6,10 @@ from fast_app.dependencies.user_admin_dependencies import (
 from fast_app.dependencies.user_context import get_current_user_context
 from fast_app.domain.auth_models import UserStatus
 from fast_app.domain.user_context import CurrentUserContext
+from fast_app.schemas.error_schema import (
+    RequestValidationErrorResponse,
+    UserAdministrationValidationErrorResponse,
+)
 from fast_app.schemas.user_admin_schema import (
     AccessCatalogResponse,
     CreateManagedUserRequest,
@@ -24,8 +28,26 @@ from fast_app.services.auth.user_administration_service import (
 
 router = APIRouter(prefix="/admin", tags=["user-administration"])
 
+_USER_ADMIN_REQUEST_VALIDATION_RESPONSES = {
+    422: {
+        "model": RequestValidationErrorResponse,
+        "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。",
+    }
+}
 
-@router.get("/access/catalog", response_model=AccessCatalogResponse)
+_USER_ADMIN_ACCESS_VALIDATION_RESPONSES = {
+    422: {
+        "model": UserAdministrationValidationErrorResponse,
+        "description": "请求字段或账号访问快照业务校验失败的安全错误投影。",
+    }
+}
+
+
+@router.get(
+    "/access/catalog",
+    response_model=AccessCatalogResponse,
+    responses=_USER_ADMIN_REQUEST_VALIDATION_RESPONSES,
+)
 async def get_access_catalog_endpoint(
     actor: CurrentUserContext = Depends(get_current_user_context),
     service: UserAdministrationService = Depends(get_user_administration_service),
@@ -35,7 +57,11 @@ async def get_access_catalog_endpoint(
     return await service.get_access_catalog(actor)
 
 
-@router.get("/users", response_model=ManagedUserListResponse)
+@router.get(
+    "/users",
+    response_model=ManagedUserListResponse,
+    responses=_USER_ADMIN_REQUEST_VALIDATION_RESPONSES,
+)
 async def list_users_endpoint(
     cursor: str | None = Query(default=None, description="上一页返回的不透明 keyset cursor。"),
     limit: int = Query(default=20, ge=1, le=100, description="本页最多返回的用户数。"),
@@ -57,7 +83,11 @@ async def list_users_endpoint(
     )
 
 
-@router.get("/users/{user_id}", response_model=ManagedUserDetail)
+@router.get(
+    "/users/{user_id}",
+    response_model=ManagedUserDetail,
+    responses=_USER_ADMIN_REQUEST_VALIDATION_RESPONSES,
+)
 async def get_user_endpoint(
     user_id: str = Path(
         min_length=1,
@@ -76,6 +106,7 @@ async def get_user_endpoint(
     "/users",
     response_model=ManagedUserDetail,
     status_code=status.HTTP_201_CREATED,
+    responses=_USER_ADMIN_ACCESS_VALIDATION_RESPONSES,
 )
 async def create_user_endpoint(
     request: CreateManagedUserRequest,
@@ -87,7 +118,11 @@ async def create_user_endpoint(
     return await service.create_user(actor, request)
 
 
-@router.put("/users/{user_id}/access", response_model=ManagedUserDetail)
+@router.put(
+    "/users/{user_id}/access",
+    response_model=ManagedUserDetail,
+    responses=_USER_ADMIN_ACCESS_VALIDATION_RESPONSES,
+)
 async def replace_user_access_endpoint(
     request: ReplaceManagedUserAccessRequest,
     user_id: str = Path(
@@ -103,7 +138,11 @@ async def replace_user_access_endpoint(
     return await service.replace_user_access(actor, user_id, request)
 
 
-@router.patch("/users/{user_id}/status", response_model=ManagedUserStatusResponse)
+@router.patch(
+    "/users/{user_id}/status",
+    response_model=ManagedUserStatusResponse,
+    responses=_USER_ADMIN_REQUEST_VALIDATION_RESPONSES,
+)
 async def update_user_status_endpoint(
     request: UpdateManagedUserStatusRequest,
     user_id: str = Path(
@@ -122,6 +161,7 @@ async def update_user_status_endpoint(
 @router.post(
     "/users/{user_id}/reset-password",
     response_model=ManagedUserPasswordResetResponse,
+    responses=_USER_ADMIN_REQUEST_VALIDATION_RESPONSES,
 )
 async def reset_user_password_endpoint(
     request: ResetManagedUserPasswordRequest,

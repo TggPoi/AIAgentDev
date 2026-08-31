@@ -11,10 +11,12 @@ from fast_app.core.error_responses import (
 )
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.schemas.error_schema import (
+    ManagedUserAccessFieldError,
+    ManagedUserAccessInvalidErrorResponse,
     RequestValidationErrorResponse,
     RequestValidationFieldError,
 )
-from fast_app.services.exceptions import AppServiceError
+from fast_app.services.exceptions import AppServiceError, ManagedUserAccessInvalidError
 
 
 logger = get_logger(__name__)
@@ -49,7 +51,54 @@ _VALIDATION_FIELDS: dict[tuple[str, str], dict[str, frozenset[str]]] = {
     ("POST", "/agent/task-plans/{task_plan_id}/confirm/stream"): {},
     ("POST", "/agent/task-plans/{task_plan_id}/cancel"): {},
     ("POST", "/agent/task-plans/{task_plan_id}/retry"): {},
+    ("GET", "/admin/access/catalog"): {},
+    ("GET", "/admin/users"): {
+        "query": frozenset({"query", "status", "department_code", "limit"})
+    },
+    ("GET", "/admin/users/{user_id}"): {},
+    ("POST", "/admin/users"): {
+        "body": frozenset(
+            {
+                "username",
+                "password",
+                "email",
+                "display_name",
+                "account_type",
+                "department_access",
+                "direct_permission_codes",
+            }
+        )
+    },
+    ("PUT", "/admin/users/{user_id}/access"): {
+        "body": frozenset(
+            {"account_type", "department_access", "direct_permission_codes"}
+        )
+    },
+    ("PATCH", "/admin/users/{user_id}/status"): {
+        "body": frozenset({"status"})
+    },
+    ("POST", "/admin/users/{user_id}/reset-password"): {
+        "body": frozenset({"new_password"})
+    },
 }
+
+_NESTED_VALIDATION_FIELDS: dict[
+    tuple[str, str], dict[str, frozenset[str]]
+] = {
+    ("POST", "/admin/users"): {
+        "body": frozenset({"department_access"})
+    },
+    ("PUT", "/admin/users/{user_id}/access"): {
+        "body": frozenset({"department_access"})
+    },
+}
+
+_MANAGED_USER_ACCESS_BUSINESS_ROUTES = frozenset(
+    {
+        ("POST", "/admin/users"),
+        ("PUT", "/admin/users/{user_id}/access"),
+    }
+)
 
 _PUBLIC_VALIDATION_ERRORS: dict[str, tuple[str, str]] = {
     "missing": ("required", "该字段为必填项"),
@@ -60,6 +109,8 @@ _PUBLIC_VALIDATION_ERRORS: dict[str, tuple[str, str]] = {
     "enum": ("invalid", "输入值不合法"),
     "literal_error": ("invalid", "输入值不合法"),
     "int_parsing": ("invalid_type", "请输入有效数字"),
+    "list_type": ("invalid_type", "请输入有效列表"),
+    "bool_parsing": ("invalid_type", "请输入有效布尔值"),
     "greater_than_equal": ("invalid", "输入值不合法"),
     "less_than_equal": ("invalid", "输入值不合法"),
 }
@@ -177,14 +228,34 @@ def register_exception_handlers(app: FastAPI) -> None:
         if isinstance(retry_after, int) and retry_after > 0:
             headers = {"Retry-After": str(retry_after)}
 
-        return JSONResponse(
-            status_code=exc.status_code,
-            headers=headers,
-            content=build_app_error_response_content(
+        if isinstance(exc, ManagedUserAccessInvalidError) and (
+            request.method.upper(), _get_route_path(request)
+        ) in _MANAGED_USER_ACCESS_BUSINESS_ROUTES:
+            content = ManagedUserAccessInvalidErrorResponse(
+                code="MANAGED_USER_ACCESS_INVALID",
+                message=exc.public_message,
+                error_category="user_error",
+                request_id=request_id,
+                trace_id=trace_id,
+                field_errors=[
+                    ManagedUserAccessFieldError(
+                        field=exc.field,
+                        code=exc.field_code,
+                        message="输入值不合法",
+                    )
+                ],
+            ).model_dump(mode="json")
+        else:
+            content = build_app_error_response_content(
                 exc,
                 request_id=request_id,
                 trace_id=trace_id,
-            ),
+            )
+
+        return JSONResponse(
+            status_code=exc.status_code,
+            headers=headers,
+            content=content,
         )
 
     @app.exception_handler(Exception)
@@ -219,9 +290,8 @@ def _project_validation_field_errors(
     request: Request,
     errors: list[dict[str, object]],
 ) -> list[RequestValidationFieldError] | None:
-    route = request.scope.get("route")
-    route_path = getattr(route, "path", None)
-    if not isinstance(route_path, str):
+    route_path = _get_route_path(request)
+    if route_path is None:
         return None
 
     allowed_locations = _VALIDATION_FIELDS.get(
@@ -236,7 +306,7 @@ def _project_validation_field_errors(
         location = error.get("loc")
         if (
             not isinstance(location, (list, tuple))
-            or len(location) != 2
+            or len(location) < 2
             or not isinstance(location[0], str)
             or not isinstance(location[1], str)
         ):
@@ -246,6 +316,12 @@ def _project_validation_field_errors(
         if allowed_fields is None:
             continue
         field = location[1]
+        if len(location) > 2:
+            nested_fields = _NESTED_VALIDATION_FIELDS.get(
+                (request.method.upper(), route_path), {}
+            ).get(location[0], frozenset())
+            if field not in nested_fields:
+                continue
         public_error = _PUBLIC_VALIDATION_ERRORS.get(str(error.get("type", "")))
         if (
             field not in allowed_fields
@@ -265,3 +341,9 @@ def _project_validation_field_errors(
         projected_fields.add(field)
 
     return projected
+
+
+def _get_route_path(request: Request) -> str | None:
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", None)
+    return route_path if isinstance(route_path, str) else None

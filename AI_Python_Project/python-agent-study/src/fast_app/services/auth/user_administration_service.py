@@ -265,7 +265,10 @@ class UserAdministrationService:
             else None
         )
         if not username:
-            raise ManagedUserAccessInvalidError("用户名不能只包含空白字符")
+            raise ManagedUserAccessInvalidError(
+                "用户名不能只包含空白字符",
+                field="username",
+            )
         validate_password_strength(request.password)
         user_id = generate_user_id()
         try:
@@ -481,15 +484,24 @@ class UserAdministrationService:
         department_items = list(department_access)
         department_codes = [item.department_code for item in department_items]
         if len(set(department_codes)) != len(department_codes):
-            raise ManagedUserAccessInvalidError("部门作用域不能包含重复 department_code")
+            raise ManagedUserAccessInvalidError(
+                "部门作用域不能包含重复 department_code",
+                field="department_access",
+            )
         primary_items = [item for item in department_items if item.is_primary]
         if len(primary_items) != 1:
-            raise ManagedUserAccessInvalidError("部门作用域必须且只能包含一个主部门")
+            raise ManagedUserAccessInvalidError(
+                "部门作用域必须且只能包含一个主部门",
+                field="department_access",
+            )
         if any(
             len(set(item.role_codes)) != len(item.role_codes)
             for item in department_items
         ):
-            raise ManagedUserAccessInvalidError("同一部门的角色不能包含重复 code")
+            raise ManagedUserAccessInvalidError(
+                "同一部门的角色不能包含重复 code",
+                field="department_access",
+            )
         if not actor_is_admin and set(department_codes) != {manager_department}:
             raise AccessManagementPermissionDeniedError(
                 "部门主管只能管理自己主部门的普通员工"
@@ -498,7 +510,10 @@ class UserAdministrationService:
             set(department_codes)
         )
         if set(departments_by_code) != set(department_codes):
-            raise ManagedUserAccessInvalidError("部门作用域包含未知 department_code")
+            raise ManagedUserAccessInvalidError(
+                "部门作用域包含未知 department_code",
+                field="department_access",
+            )
 
         submitted_role_codes = {
             role_code
@@ -506,11 +521,15 @@ class UserAdministrationService:
             for role_code in item.role_codes
         }
         if not submitted_role_codes <= EMPLOYEE_DEPARTMENT_ROLE_CODES:
-            raise ManagedUserAccessInvalidError("部门角色不在可分配目录中")
+            raise ManagedUserAccessInvalidError(
+                "部门角色不在可分配目录中",
+                field="department_access",
+            )
         if account_type == AccountType.DEPARTMENT_MANAGER:
             if len(department_items) != 1 or submitted_role_codes:
                 raise ManagedUserAccessInvalidError(
-                    "部门主管账号必须只有一个主部门，且主管角色由服务端自动绑定"
+                    "部门主管账号必须只有一个主部门，且主管角色由服务端自动绑定",
+                    field="account_type",
                 )
         required_role_codes = set(submitted_role_codes)
         if account_type == AccountType.DEPARTMENT_MANAGER:
@@ -519,11 +538,17 @@ class UserAdministrationService:
             required_role_codes.add(RoleCode.SYSTEM_ADMIN.value)
         roles_by_code = await self._repository.get_roles_by_codes(required_role_codes)
         if set(roles_by_code) != required_role_codes:
-            raise ManagedUserAccessInvalidError("系统角色目录不完整，无法保存访问快照")
+            raise ManagedUserAccessInvalidError(
+                "系统角色目录不完整，无法保存访问快照",
+                field="account_type",
+            )
 
         permission_codes = set(direct_permission_codes)
         if len(permission_codes) != len(direct_permission_codes):
-            raise ManagedUserAccessInvalidError("直接权限不能包含重复 code")
+            raise ManagedUserAccessInvalidError(
+                "直接权限不能包含重复 code",
+                field="direct_permission_codes",
+            )
         actor_assignable_permissions = (
             DIRECT_PERMISSION_CODES_ADMIN
             if actor_is_admin
@@ -537,7 +562,10 @@ class UserAdministrationService:
             permission_codes
         )
         if set(permissions_by_code) != permission_codes:
-            raise ManagedUserAccessInvalidError("直接权限包含未知 code")
+            raise ManagedUserAccessInvalidError(
+                "直接权限包含未知 code",
+                field="direct_permission_codes",
+            )
 
         normalized_departments: list[tuple[str, bool, set[str]]] = []
         for item in department_items:

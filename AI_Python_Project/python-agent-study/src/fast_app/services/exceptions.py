@@ -1,3 +1,6 @@
+from typing import Literal
+
+
 class AppServiceError(Exception):
     """业务异常基类。"""
 
@@ -78,6 +81,35 @@ class ManagedUserAccessInvalidError(AppServiceError):
 
     error_code = "MANAGED_USER_ACCESS_INVALID"
     status_code = 422
+    _PUBLIC_FIELDS = frozenset(
+        {
+            "username",
+            "account_type",
+            "department_access",
+            "direct_permission_codes",
+        }
+    )
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        field: Literal[
+            "username",
+            "account_type",
+            "department_access",
+            "direct_permission_codes",
+        ],
+        field_code: Literal["invalid"] = "invalid",
+    ):
+        if field not in self._PUBLIC_FIELDS:
+            raise ValueError("ManagedUserAccessInvalidError field 不在公开 allowlist")
+        if field_code != "invalid":
+            raise ValueError("ManagedUserAccessInvalidError field_code 不受支持")
+        super().__init__(message)
+        self.public_message = "账号访问设置不合法"
+        self.field = field
+        self.field_code = field_code
 
 
 class ManagedUserSelfOperationError(AppServiceError):

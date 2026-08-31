@@ -118,7 +118,13 @@ def assert_rag_chat_validation_openapi_contract() -> None:
     ]
     assert field_error_schema["properties"]["field"]["enum"] == [
         "username_or_email",
+        "username",
         "password",
+        "email",
+        "display_name",
+        "account_type",
+        "department_access",
+        "direct_permission_codes",
         "refresh_token",
         "current_password",
         "new_password",
