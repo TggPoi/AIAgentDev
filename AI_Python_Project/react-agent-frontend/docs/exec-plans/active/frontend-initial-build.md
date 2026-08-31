@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 8 - User Access Management
 
-Current Step: Slice 8 User Management data/query seam 已由 checkpoint `6eeb740` 完成；当前进入 catalog/list/detail read-only workspace 与真实 App route composition 的 TDD expected-red
+Current Step: Slice 8 User Management data/query seam `6eeb740` 与 catalog/list/detail read-only workspace `cabfd97` 已完成；当前进入四条 mutation 的 typed transport/query reconciliation seam TDD expected-red，尚未实现 mutation 表单
 
-Next Action: 新增 `src/features/user-management/UserManagementWorkspace.test.tsx`，先通过真实 QueryClient/Router/MSW seam 证明 `/admin/users` 仍为 placeholder，并固定 catalog-driven filters、list cursor、detail access facts 与安全 422/403/404 状态
+Next Action: 新增 `src/features/user-management/user-management-mutations.test.tsx`，先固定 create/access/status/reset-password 的 method/path/body、成功后的 detail/list 收敛、`409` detail/list refetch 与无 optimistic write；在 expected-red 前不实现 mutation hooks 或表单
 
 Blocking Issues: None；CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭，CG008 仍由 backend `0676928` 与 frontend contract-sync `8072b65` 保持 resolved
 
@@ -292,7 +292,7 @@ Status: IN_PROGRESS
 Goal: 完成管理员和部门主管范围内的用户列表、详情、创建、完整 access 替换、状态修改和密码重置。
 
 - [x] 读取 User Access Management spec，复核 catalog/user Route/Schema/OpenAPI/runtime tests。
-- [ ] 实现 server-trimmed catalog、用户 list/detail adapters、filters、cursor 和 Query Keys。
+- [x] 实现 server-trimmed catalog、用户 list/detail adapters、filters、cursor 和 Query Keys。
 - [ ] 从 catalog 构建账号、部门、角色、权限选项；禁止硬编码或任意 code 输入。
 - [ ] 实现创建与完整 access PUT snapshot、唯一主部门校验和 catalog drift 处理。
 - [ ] 实现禁用、重置密码、账号类型变更的确认和 pending lock。
@@ -522,11 +522,19 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009 与 User Management data/query seam 已完成，当前开始 catalog/list/detail read-only workspace，尚未实现 mutation 表单。
+- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、User Management data/query seam 与 catalog/list/detail read-only workspace 已完成，当前开始四条 mutation 的 typed transport/query reconciliation seam，尚未实现 mutation 表单。
 
 Next Action:
 
-- 新增 `src/features/user-management/UserManagementWorkspace.test.tsx`，通过真实 QueryClient/Router/MSW seam 固定 catalog-driven filters、list cursor、detail access facts、安全 422/403/404 与 App route composition；在 red 证据出现前不替换 placeholder。
+- 新增 `src/features/user-management/user-management-mutations.test.tsx`，通过真实 QueryClient/MSW seam 固定 create/access/status/reset-password 的 method/path/body、成功 detail/list 收敛、`409` detail/list refetch 与无 optimistic write；在 red 证据出现前不实现 mutation hooks 或表单。
+
+Slice 8 Read-only Workspace Evidence (verified 2026-08-31):
+
+- `UserManagementWorkspace.test.tsx` 先因 public workspace module 不存在 expected-red；最小实现随后用真实 QueryClient/Router/MSW seam 接入 `/admin/users` 与 `/admin/users/:userId`，替换原 capability-gated placeholder，但不提前加入 mutation controls。
+- list 从 URL 读取 `query/status/department_code`，使用 server-trimmed catalog 展示部门与账号类型、保留 opaque cursor 并追加页面；detail 只展示 server 返回的账号、部门、角色、直接权限与有效权限事实，不在浏览器计算授权。
+- request `422` 只映射批准字段；`403/404` detail 统一为不可枚举的“用户不可用”，不渲染 backend raw message。focused workspace 5/5、workspace + App 12/12、typecheck、lint 与完整 `pnpm check` 全部通过；完整 Gate 为 29 files / 145 tests + production build。
+- package、lockfile、OpenAPI snapshot 与 generated types 未变化；scoped staged diff review 和 `git diff --cached --check` 通过。frontend checkpoint `cabfd97` 只包含 App route composition、User Management page/workspace/style/test 六个文件；backend 外部 RAG Eval working set未修改、未暂存。
+- 唯一 Next Action 已推进为四条 User Management mutation 的 typed transport/query reconciliation expected-red；创建/access/status/reset-password 表单、确认 Dialog、password lifecycle 与 AuthProvider reload 尚未实现或宣称完成。
 
 Slice 8 Contract Reconnaissance Evidence (verified 2026-08-30):
 
@@ -687,6 +695,13 @@ Relevant Files:
 - `src/api/http-client.ts`
 - `src/app/App.tsx`
 - `src/features/auth/AuthProvider.tsx`
+- `src/features/user-management/user-management-contracts.ts`
+- `src/features/user-management/user-management-models.ts`
+- `src/features/user-management/user-management-api.ts`
+- `src/features/user-management/user-management-queries.ts`
+- `src/features/user-management/UserManagementWorkspace.tsx`
+- `src/features/user-management/UserManagementWorkspace.test.tsx`
+- `src/pages/UserManagementPage.tsx`
 - `src/layouts/ApplicationShell.tsx`
 - `../python-agent-study/AGENTS.md`
 - `../python-agent-study/learning-docs/教学讲解规范.md`
@@ -931,7 +946,7 @@ Status: RESOLVED / SUPERSEDED
 Evidence:
 
 - Slice 1 已在 checkpoint `7cdbcaa` 完成 contract snapshot、generated transport types、共享 HTTP/error seam 与 SSE protocol infrastructure，并以 4 files / 17 tests 和 `pnpm check` 验证。
-- Slice 2 随后已在 checkpoint `265e900` 完成 AuthProvider、token lifecycle、认证表单与路由保护，10 files / 47 tests 和 browser smoke 通过；Slice 3、4、5、6、7 也已分别通过 Gate，当前为 Slice 8 / IN_PROGRESS，且只执行已授权 CG009 contract fix。
+- Slice 2 随后已在 checkpoint `265e900` 完成 AuthProvider、token lifecycle、认证表单与路由保护，10 files / 47 tests 和 browser smoke 通过；Slice 3、4、5、6、7 也已分别通过 Gate，当前为 Slice 8 / IN_PROGRESS；CG009 已关闭，data seam 与 read-only workspace 已建立 checkpoint。
 
 Impact:
 
@@ -939,7 +954,7 @@ Impact:
 
 Resolution:
 
-- 由 Slice 1 checkpoint `7cdbcaa` supersede；CG001-CG008 均已按批准范围关闭，Slice 2-7 已通过各自 Gate，Slice 7 最终实现 checkpoint 为 `42af700`；当前 Slice 8 / IN_PROGRESS，CG009 已单独授权并正在按 contract-only 范围修复。
+- 由 Slice 1 checkpoint `7cdbcaa` supersede；CG001-CG009 均已按各自批准范围关闭，Slice 2-7 已通过各自 Gate，Slice 7 最终实现 checkpoint 为 `42af700`；当前 Slice 8 / IN_PROGRESS，data seam `6eeb740` 与 read-only workspace `cabfd97` 已完成。
 
 ### KI002 - OpenAPI Type Generator Is Not Installed
 
@@ -1009,27 +1024,27 @@ Resolution:
 
 ### KI006 - Future Mutation 422 Contract Inventory
 
-Status: INVENTORIED / CHAT QUERY RESOLVED AS CG003 / TASKPLAN RISKS RESOLVED AS CG004-CG006 / USER MANAGEMENT ELEVATED TO CG009
+Status: INVENTORIED / CHAT QUERY RESOLVED AS CG003 / TASKPLAN RISKS RESOLVED AS CG004-CG006 / USER MANAGEMENT RESOLVED AS CG009
 
 Evidence:
 
-- 初始只读 inventory 曾发现 Chat、TaskPlan、User Administration 与 Document Grants mutation 的 422 drift。当前 OpenAPI snapshot 中 Chat 已由 CG003、TaskPlan 已由 CG005 改为安全公共 422 contract；仍引用 `#/components/schemas/HTTPValidationError` 的当前风险集中在 `POST /admin/users`、`PUT /admin/users/{user_id}/access`、`PATCH /admin/users/{user_id}/status`、`POST /admin/users/{user_id}/reset-password`、`POST /admin/document-access/grants` 和 grant DELETE。
-- User Administration 与 Document Grants backend Route/Pydantic Schema 仍由全局 `RequestValidationError` handler 处理，但不在已批准的 field allowlist 内；因此 runtime validation 使用公共 form-level `code/message/error_category/request_id/trace_id` shape，而 OpenAPI 仍声明 FastAPI `detail[]` shape。User Administration 已提升为 CG009；Document Grants 仍等待 Slice 9 重新核实。
-- 使用真实 admin user / document grant router、全局 handler 和 overridden service 的无敏感 TestClient 代表性验证：空 `POST /admin/users` 与空 `POST /admin/document-access/grants` 均返回 `422`，runtime keys 为 `code/error_category/message/request_id/trace_id`。
+- 初始只读 inventory 曾发现 Chat、TaskPlan、User Administration 与 Document Grants mutation 的 422 drift。当前 OpenAPI snapshot 中 Chat 已由 CG003、TaskPlan 已由 CG005、User Administration 已由 CG009 改为安全公共 422 contract；尚待对应 Slice 复核的风险只保留 Document Grants create/delete。
+- User Administration 七条 operation 已有批准的 request field allowlist，create/access 另有可判别 business-validation 422 union；Document Grants 仍等待 Slice 9 重新核实，不能把 CG009 授权外推到 Grant Route。
+- 修复前的无敏感 TestClient inventory 曾证明空 `POST /admin/users` 与空 `POST /admin/document-access/grants` 都只有五个通用 runtime keys；前者现已由 CG009 的 `field_errors` contract supersede，后者仍须在 Slice 9 重新验证。
 - User Management feature 明确要求把 `422` 映射到 account、primary department、roles、permissions 等字段；全局 SPEC 对表单 `422` 也要求字段级错误。Chat、TaskPlan、Document Grant 的实际字段映射需求仍须在各自 Slice 结合真实交互重新判定。
 - Slice 6 reconnaissance 已确认 TaskPlan 不只有 422 drift：detail 200 仍为 arbitrary object，confirm-stream 也只有 generic envelope 且缺少业务 payload schema；对应问题已分别提升为 CG004-CG006。
 
 Impact:
 
-- Slice 8 reconnaissance 已将 User Management request-validation 与 business-validation 422 风险提升为正式 blocking CG009；Slice 9 Document Access Grants 仍是待对应 Slice 核实的潜在风险。Slice 6 已实际复核并解决 detail type、422 drift 与 business event schema gaps。
+- Slice 8 reconnaissance 曾将 User Management request-validation 与 business-validation 422 风险提升为 CG009，现已关闭；Slice 9 Document Access Grants 仍是待对应 Slice 核实的潜在风险。Slice 6 已实际复核并解决 detail type、422 drift 与 business event schema gaps。
 - Slice 5 reconnaissance 已确认 `query` 字段确实受影响，因此该部分风险已提升为正式 blocking CG003；其他未来 Route 仍只保留 inventory 状态。
 - inventory 未发现新的 Slice 4 Route gap；因此它不阻塞 Slice 4，也不授权提前修改任何未来 backend Route。
 
 Resolution:
 
 - 仅记录风险。进入对应 Slice 时重新执行 Route/Schema/OpenAPI/runtime/spec 核对；只有确认影响该 Slice 的公开行为后，才建立精确 Contract Gap 并按 Blocking Condition 请求受限授权。
-- 禁止把 CG001/CG002 授权外推到上述 Route，禁止现在预修复。
-- Chat `query` 风险已由严格受限的 CG003 backend checkpoint `d3d95ba` 解决；TaskPlan CG004-CG006 均已按独立授权解决；Admin 风险已提升为 CG009 并等待单独授权，Grant 风险仍保持 inventory，未被任何当前授权覆盖。
+- 禁止把任何既有 Contract Gap 授权外推到 Document Grants Route，禁止现在预修复。
+- Chat `query` 风险已由严格受限的 CG003 backend checkpoint `d3d95ba` 解决；TaskPlan CG004-CG006 均已按独立授权解决；Admin CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭；Grant 风险仍保持 inventory，未被任何当前授权覆盖。
 
 ### Contract Gaps
 
