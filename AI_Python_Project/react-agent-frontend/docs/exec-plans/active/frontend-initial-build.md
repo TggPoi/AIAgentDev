@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 8 - User Access Management
 
-Current Step: Slice 8 status PATCH 与 reset-password controls 已由 checkpoint `395d988` 完成并通过完整 Gate；当前进入 current-user AuthProvider identity reload TDD expected-red
+Current Step: Slice 8 current-user AuthProvider identity reload 已由 checkpoint `43defeb` 完成并通过完整 Gate；当前进入 mutation 403/404 scope-loss recovery TDD expected-red
 
-Next Action: 扩展真实 App/AuthProvider/User Management MSW test，先固定“仅当成功 mutation 的 target user ID 等于当前身份时调用 `reloadIdentitySnapshot()` 原子重取 me/capabilities，其他用户只收敛业务 Query”；在 expected-red 前不修改 identity wiring 或扩大到 Slice 9
+Next Action: 扩展 `UserManagementMutations.test.tsx`，先固定 access/status/reset mutation 遇到 `403/404` 时关闭编辑、返回 `/admin/users` 且不渲染 raw backend message；在 expected-red 前不实现 scope-loss navigation 或扩大到 Slice 9
 
 Blocking Issues: None；CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭，Conversations async assertion timing defect 已由 `e6dd779` 关闭
 
@@ -297,7 +297,7 @@ Goal: 完成管理员和部门主管范围内的用户列表、详情、创建�
 - [x] 实现创建与完整 access PUT snapshot、唯一主部门校验和 catalog drift 处理。
 - [x] 实现禁用、重置密码、账号类型变更的确认和 pending lock。
 - [x] 密码仅存在表单局部状态并在提交后清空；destructive mutations 不做乐观更新。
-- [ ] 当前用户身份/能力受影响时调用 AuthProvider reload；其他用户只失效业务 Query。
+- [x] 当前用户身份/能力受影响时调用 AuthProvider reload；其他用户只失效业务 Query。
 - [ ] 增加 admin/manager/employee scope、422、403/404、409、自操作保护、credential revocation summary 测试。
 - [ ] 完成 Slice Gate；执行 User Management manual smoke；创建独立 Git checkpoint。
 
@@ -522,11 +522,19 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、data/query、read-only workspace、mutation data seam、catalog-backed draft policy、创建账号、detail access 完整 PUT 编辑器及 status/reset-password controls 均已完成。当前开始 current-user AuthProvider reload，最终 scope/403/404 matrix 与 manual smoke 尚未完成。
+- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、全部 User Management data/UI/mutation controls 与 current-user AuthProvider reload 均已完成。当前开始 mutation 403/404 scope-loss recovery；最终角色/scope matrix、完整 Slice Gate 与 manual smoke 尚未完成。
 
 Next Action:
 
-- 扩展真实 App/AuthProvider/User Management MSW test，先固定“仅当成功 mutation 的 target user ID 等于当前身份时调用 `reloadIdentitySnapshot()` 原子重取 me/capabilities，其他用户只收敛业务 Query”；在 expected-red 前不修改 identity wiring 或扩大到 Slice 9。
+- 扩展 `UserManagementMutations.test.tsx`，先固定 access/status/reset mutation 遇到 `403/404` 时关闭编辑、返回 `/admin/users` 且不渲染 raw backend message；在 expected-red 前不实现 scope-loss navigation 或扩大到 Slice 9。
+
+Slice 8 Current-user Identity Reload Evidence (verified 2026-08-31):
+
+- 真实 App/AuthProvider/Router/MSW test 先在当前用户 access mutation 成功后 `/auth/me` 与 `/auth/capabilities` 请求计数均未增长处 expected-red；最小 wiring 只把 AuthProvider 已有 `reloadIdentitySnapshot()` Interface 注入 User Management 页面，不复制 `/auth/me` 或 capabilities 到 TanStack Query。
+- mutation 成功 callback 在 target `user_id === currentUser.userId` 时调用该 Interface，由 AuthProvider 继续负责并行读取、原子发布、generation stale rejection 与 transient failure 的旧完整快照保留；feature 不直接修改 current user 或 capabilities 任一对象。
+- 同一 test file 的非当前用户 access 成功断言证明 me/capability 请求计数保持不变；其他用户仍只执行既有 detail/list Query reconciliation。callback 只在 access/status/reset 成功路径调用，422/409/403/404 不触发 identity reload。
+- User Management + Auth + App focused 为 12 files / 67 tests；lint/typecheck 与完整 `pnpm check` 通过，最终为 32 files / 169 tests 与 production build，仅保留约 530.83 kB 非阻塞 chunk warning。
+- frontend checkpoint `43defeb` 只包含 identity wiring 和测试；package、lockfile、generated contract 与 backend 均未变化，外部 RAG Eval working set保持隔离。唯一 Next Action 已推进为 mutation 403/404 scope-loss recovery expected-red。
 
 Slice 8 Account Controls Evidence (verified 2026-08-31):
 
