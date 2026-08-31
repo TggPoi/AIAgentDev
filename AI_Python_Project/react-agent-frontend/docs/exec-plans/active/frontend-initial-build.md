@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 8 - User Access Management
 
-Current Step: Slice 8 current-user AuthProvider identity reload 已由 checkpoint `43defeb` 完成并通过完整 Gate；当前进入 mutation 403/404 scope-loss recovery TDD expected-red
+Current Step: Slice 8 mutation 403/404 scope-loss recovery 已由 checkpoint `5c7f792` 完成并通过完整 Gate；当前进入最终 admin/manager/employee scope 与安全回归矩阵
 
-Next Action: 扩展 `UserManagementMutations.test.tsx`，先固定 access/status/reset mutation 遇到 `403/404` 时关闭编辑、返回 `/admin/users` 且不渲染 raw backend message；在 expected-red 前不实现 scope-loss navigation 或扩大到 Slice 9
+Next Action: 增加真实 App/AuthProvider 的 department-manager server-trimmed catalog 测试，并与既有 admin、employee capability-denial、422、403/404、409/self-protection、credential summary tests 组成 focused matrix；随后重跑 CG009 backend contracts 与完整 Slice Gate，不提前进入 manual smoke 或 Slice 9
 
 Blocking Issues: None；CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭，Conversations async assertion timing defect 已由 `e6dd779` 关闭
 
@@ -522,11 +522,19 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、全部 User Management data/UI/mutation controls 与 current-user AuthProvider reload 均已完成。当前开始 mutation 403/404 scope-loss recovery；最终角色/scope matrix、完整 Slice Gate 与 manual smoke 尚未完成。
+- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、全部 User Management data/UI/mutation controls、current-user AuthProvider reload 与 mutation scope-loss recovery 均已完成。当前执行最终角色/scope automated matrix；backend contract recheck、完整 Slice Gate 与 manual smoke 尚未完成。
 
 Next Action:
 
-- 扩展 `UserManagementMutations.test.tsx`，先固定 access/status/reset mutation 遇到 `403/404` 时关闭编辑、返回 `/admin/users` 且不渲染 raw backend message；在 expected-red 前不实现 scope-loss navigation 或扩大到 Slice 9。
+- 增加真实 App/AuthProvider 的 department-manager server-trimmed catalog 测试，并与既有 admin、employee capability-denial、422、403/404、409/self-protection、credential summary tests 组成 focused matrix；随后重跑 CG009 backend contracts 与完整 Slice Gate，不提前进入 manual smoke 或 Slice 9。
+
+Slice 8 Mutation Scope-loss Evidence (verified 2026-08-31):
+
+- access `403` 与 reset-password `404` App/Router/MSW tests 先证明当前实现会留在目标详情并继续显示 Dialog expected-red；同时发现路径断言最初使用子串匹配会把 `/admin/users/user-reader` 误判为列表，已收紧为精确 `^/admin/users$`，未改变产品期望。
+- 最小实现把 mutation error 交回详情 route owner；只在 `ApiError.statusKind` 为 `authorization/not_found` 时 replace navigate 到 `/admin/users`。access/status/reset 共用该 route recovery，不把 409、422 或网络错误误判为 scope loss。
+- 返回列表会卸载目标详情与 Dialog，密码 local state随组件销毁；403/404 raw backend message 均不渲染。409 仍保留详情并 refetch，422 仍保留表单并映射 allowlisted field，错误分支没有合并。
+- focused mutation UI 为 1 file / 12 tests，User Management + App 为 6 files / 44 tests；lint/typecheck 与完整 `pnpm check` 通过，最终为 32 files / 171 tests 与 production build，仅保留约 531.05 kB 非阻塞 chunk warning。
+- frontend checkpoint `5c7f792` 只包含 scope-loss route recovery 与 tests；package、lockfile、generated contract 和 backend 均未变化，外部 RAG Eval working set保持隔离。唯一 Next Action 已推进为最终角色/scope automated matrix。
 
 Slice 8 Current-user Identity Reload Evidence (verified 2026-08-31):
 
