@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 8 - User Access Management
 
-Current Step: Slice 8 list-side 创建账号 UI 已由 checkpoint `2b2a998` 完成；既有 Conversations async assertion blocker 已由 test-only checkpoint `e6dd779` 关闭，当前进入 detail access 完整 PUT 编辑器 TDD expected-red
+Current Step: Slice 8 detail access 完整 PUT 编辑器已由 checkpoint `2ddd1ed` 完成并通过完整 Gate；当前进入 status PATCH 与 reset-password controls TDD expected-red
 
-Next Action: 扩展 `UserManagementMutations.test.tsx`，先固定 detail access catalog-only draft、账号类型变化二次确认、完整 PUT snapshot、safe 422/409 reconciliation 与 pending lock；在 expected-red 前不实现 access 编辑器或 status/reset-password controls
+Next Action: 扩展 `UserManagementMutations.test.tsx`，先固定 status PATCH 与 reset-password 的确认流程、精确请求体、safe 422/409、pending lock、password success/failure clear 和 credential-revocation summary；在 expected-red 前不实现 status/reset-password controls 或扩大到 Slice 9
 
 Blocking Issues: None；CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭，Conversations async assertion timing defect 已由 `e6dd779` 关闭
 
@@ -293,8 +293,8 @@ Goal: 完成管理员和部门主管范围内的用户列表、详情、创建�
 
 - [x] 读取 User Access Management spec，复核 catalog/user Route/Schema/OpenAPI/runtime tests。
 - [x] 实现 server-trimmed catalog、用户 list/detail adapters、filters、cursor 和 Query Keys。
-- [ ] 从 catalog 构建账号、部门、角色、权限选项；禁止硬编码或任意 code 输入。
-- [ ] 实现创建与完整 access PUT snapshot、唯一主部门校验和 catalog drift 处理。
+- [x] 从 catalog 构建账号、部门、角色、权限选项；禁止硬编码或任意 code 输入。
+- [x] 实现创建与完整 access PUT snapshot、唯一主部门校验和 catalog drift 处理。
 - [ ] 实现禁用、重置密码、账号类型变更的确认和 pending lock。
 - [ ] 密码仅存在表单局部状态并在提交后清空；destructive mutations 不做乐观更新。
 - [ ] 当前用户身份/能力受影响时调用 AuthProvider reload；其他用户只失效业务 Query。
@@ -522,11 +522,19 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、data/query、read-only workspace、mutation data seam、catalog-backed draft policy 与 list-side 创建账号 UI 已完成。当前开始 detail access 完整 PUT 编辑器，status/reset-password controls 尚未实现。
+- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009、data/query、read-only workspace、mutation data seam、catalog-backed draft policy、创建账号与 detail access 完整 PUT 编辑器均已完成。当前开始 status PATCH 与 reset-password controls，current-user AuthProvider reload、最终 scope/credential matrix 与 manual smoke 尚未完成。
 
 Next Action:
 
-- 扩展 `UserManagementMutations.test.tsx`，先固定 detail access catalog-only draft、账号类型变化二次确认、完整 PUT snapshot、safe 422/409 reconciliation 与 pending lock；在 expected-red 前不实现 access 编辑器或 status/reset-password controls。
+- 扩展 `UserManagementMutations.test.tsx`，先固定 status PATCH 与 reset-password 的确认流程、精确请求体、safe 422/409、pending lock、password success/failure clear 和 credential-revocation summary；在 expected-red 前不实现 status/reset-password controls 或扩大到 Slice 9。
+
+Slice 8 Access Editor Evidence (verified 2026-08-31):
+
+- `UserManagementMutations.test.tsx` 的 access editor 3/3 expected-red 准确失败于详情页缺少“编辑访问”入口；最小实现随后从 server detail 初始化 catalog-only draft，并通过既有纯 policy builder 提交完整 PUT snapshot，不发送有效权限、内部 scope 或任意 code。
+- 账号类型变化第一次保存不会发请求，必须通过独立二次确认；mutation pending 时字段、普通保存与二次确认均锁定。成功 response 写入 detail cache并失效 list，页面只显示服务端返回的新账号类型。
+- request/business `422` 只映射 `account_type/department_access/direct_permission_codes` allowlist，raw backend message 不渲染；`409` 显示固定安全消息、code/request ID，并沿用 query seam 重新拉取 detail/list，保留服务端事实且不做 optimistic write。
+- focused mutation UI 为 1 file / 5 tests，全部 User Management 为 5 files / 30 tests；lint 与 typecheck 通过。完整 `pnpm check` 通过 generated drift、lint、typecheck、32 files / 164 tests 与 production build，仅保留约 527.20 kB 非阻塞 chunk-size warning。
+- frontend checkpoint `2ddd1ed` 只包含 access dialog、详情入口/style 与 mutation UI tests；package、lockfile、generated contract 和 backend 均未变化，外部 RAG Eval working set保持隔离。唯一 Next Action 已推进为 status/reset-password controls expected-red。
 
 Slice 8 Create UI and Gate Stabilization Evidence (verified 2026-08-31):
 
