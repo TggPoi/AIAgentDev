@@ -8,11 +8,11 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 8 - User Access Management
 
-Current Step: 2026-08-31 Context Recovery 已完成；用户已批准 CG009 严格受限 backend contract fix，Slice 7 保持已完成，Slice 8 business coding 仍未开始，当前进入 CG009 public HTTP contract 的 TDD expected-red
+Current Step: CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 完成并关闭；Slice 7 保持已完成，Slice 8 现在进入 User Management data/query seam 的 TDD expected-red
 
-Next Action: 新增 `scripts/tests/document_security/test_user_administration_validation_contract.py`，先通过真实 FastAPI Route + global handler public seam 建立 request/business 422 runtime/OpenAPI/no-sensitive/nested-collapse/form-level/non-Admin expected-red
+Next Action: 新增 `src/features/user-management/user-management-data.test.ts`，先为 generated DTO aliases、catalog/list/detail adapters、opaque cursor merge、URL 参数与 user-bound Query Keys 建立 focused expected-red
 
-Blocking Issues: None；CG009 已授权并处于修复中，CG008 仍由 backend `0676928` 与 frontend contract-sync `8072b65` 保持 resolved
+Blocking Issues: None；CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭，CG008 仍由 backend `0676928` 与 frontend contract-sync `8072b65` 保持 resolved
 
 Last Updated: 2026-08-31 (Asia/Shanghai)
 
@@ -439,6 +439,15 @@ Latest Context Recovery Evidence (verified 2026-08-31 before CG009 implementatio
 - backend `test_user_administration_read.py` 与 `test_user_administration_write.py` 实际通过。真实 FastAPI Route + global handler probe 再次确认 request validation 422 只有五个通用字段且没有 `field_errors`；create/access 的受控 `ManagedUserAccessInvalidError` 同样没有 `field_errors`，并会把 service message 原样公开，marker probe 为 `marker_echo=True`。这进一步证明 CG009 必须使用固定安全 public projection，不能暴露或解析自然语言 message。
 - Repository/Git/Tests 与计划记录的 Current Slice 一致；用户于 2026-08-31 明确批准 CG009 Recommended Backend Change。恢复后的唯一 Next Action 是新增独立 public HTTP contract test 并取得 expected-red；frontend User Access DTO/page 仍必须等 CG009 Runtime = OpenAPI = Tests、独立 backend checkpoint 与 contract sync 后才能开始。
 
+CG009 Completion Evidence (verified 2026-08-31):
+
+- `test_user_administration_validation_contract.py` 先在旧 `/admin/users` request runtime 缺少 `field_errors` 时 expected-red，再通过真实 FastAPI Route + global handler 转为 green；覆盖七条 operation 的 request 422、create/access discriminated business 422、固定安全 message、nested `department_access` 顶层折叠、path/malformed/unknown form-level fallback 与非 Admin Route 不扩展。
+- `ManagedUserAccessInvalidError` 只接受 `username/account_type/department_access/direct_permission_codes` 与稳定 `invalid` code；User Administration service 的确定性公开分支显式提供 field/code，handler 不解析自然语言 message。事务、actor scope、catalog、冲突/404/self/last-admin、密码强度与 credential revocation 未改变。
+- backend shared Auth/Conversation/Chat/Knowledge Documents/TaskPlan validation contracts、User Administration read/write database regressions、schema field-description regression与 relevant `py_compile` 全部通过。OpenAPI 相对旧 snapshot 只改变 6 个 User Administration path / 7 个 operation；仍为 58 paths，schemas 从 136 增至 138。
+- 独立 backend checkpoint `9952c69` 只包含 10 个 CG009 contract/test 文件；外部 RAG Eval working set 未暂存、未提交。frontend snapshot/generated sync checkpoint `c6f1645` 只包含两个 generated artifacts，package/lockfile 未变化。
+- `pnpm contracts:generate` 与 `pnpm contracts:check` 通过；generated create/access 422 为 `RequestValidationErrorResponse | ManagedUserAccessInvalidErrorResponse`。首次 `pnpm check` 在既有 Conversations create navigation test 出现一次时序失败，随后该文件 focused 11/11 通过，第二次完整 `pnpm check` 通过 contract drift、lint、typecheck、27 files / 134 tests 与 production build；既有 505.44 kB chunk warning 仍非阻塞。
+- CG009 已达到 Runtime = OpenAPI = generated types = Tests 并关闭。Slice 8 frontend business implementation 获准开始；恢复后的唯一 Next Action 是先建立 User Management data/query seam expected-red，不直接跳到页面或 mutation UI。
+
 Prior Context Recovery Evidence (verified 2026-08-30 after session change):
 
 - frontend 与 backend 目录实际共享 Git root `D:/AI_Agent_Project`，共同 confirmed HEAD 为 `01e2bc07cf3e1ad9cea0e5979911a882e593f231`，branch 为 `master...origin/master [ahead 61]`。恢复检查开始时 frontend scoped worktree clean；整个 monorepo staged diff 为空。完成恢复校正后，frontend scoped worktree 只包含本 Execution Plan 的未暂存修改。
@@ -506,11 +515,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；User Access Management business coding 尚未开始。CG009 已获严格受限授权，当前只执行 backend 422 public contract fix。
+- Slice 8 / IN_PROGRESS。Slice 7 已通过 Gate；CG009 已关闭，当前开始 User Access Management frontend data/query seam，尚未实现页面或 mutation UI。
 
 Next Action:
 
-- 新增 `scripts/tests/document_security/test_user_administration_validation_contract.py`，通过真实 FastAPI Route + global handler public seam 先建立 request/business 422 runtime/OpenAPI/no-sensitive/nested-collapse/form-level/non-Admin expected-red；在 red 证据出现前不修改生产代码。
+- 新增 `src/features/user-management/user-management-data.test.ts`，为 generated DTO aliases、catalog/list/detail adapters、opaque cursor merge、URL 参数与 user-bound Query Keys 建立 focused expected-red；在 red 证据出现前不创建生产 module。
 
 Slice 8 Contract Reconnaissance Evidence (verified 2026-08-30):
 
@@ -1280,7 +1289,7 @@ Decision Required:
 
 #### CG009 - User Access 422 Contracts Do Not Support Safe Field Mapping
 
-Status: AUTHORIZED / IN_PROGRESS / BLOCKING FRONTEND BUSINESS IMPLEMENTATION
+Status: RESOLVED
 
 Evidence:
 
@@ -1308,6 +1317,12 @@ Decision:
 
 - 用户于 2026-08-31 明确批准上述严格受限 backend contract fix。授权只覆盖七条 Initial React User Access Route 的安全 request/business 422 projection、OpenAPI schema 与 runtime/OpenAPI/no-sensitive/nested-collapse/form-level/non-Admin/regression tests；不得改变用户管理事务、授权范围、catalog、冲突/404/自操作/最后管理员、密码强度、凭证撤销或其他 Admin/Grant/未来 Route。
 - CG009 必须形成只包含该 contract fix 的独立 backend checkpoint；随后重新导出 frontend OpenAPI snapshot/generated types并通过 contract drift、focused regressions 与 `pnpm check`，只有 Runtime = OpenAPI = generated types = Tests 后才可关闭 CG009 并开始 Slice 8 frontend business implementation。
+
+Resolution:
+
+- backend checkpoint `9952c69` 为七条 User Administration operation 建立安全 request 422 contract，为 create/access 建立按顶层 `code` 判别的 request/business union，并让 nested `department_access` 只折叠到批准顶层字段；path/dependency/malformed/unknown 与非 Admin Route 保持 form-level或原有 shape。
+- service 的每个 `ManagedUserAccessInvalidError` 分支显式提供批准 field 与稳定 code，public response 使用固定通用 message，不再公开或解析自然语言业务 message；runtime/OpenAPI/no-sensitive/nested-collapse/non-Admin/shared regressions 全部通过。
+- frontend sync checkpoint `c6f1645` 从 backend `9952c69` 导出 58 paths / 138 schemas并生成 discriminated transport union；contract drift 与最终完整 `pnpm check` 通过。CG009 关闭，Slice 8 恢复正常 frontend implementation。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
