@@ -5,6 +5,8 @@ import type {
   ManagedDepartmentAccessDto,
   ManagedUserDetailDto,
   ManagedUserListResponseDto,
+  ManagedUserPasswordResetResponseDto,
+  ManagedUserStatusResponseDto,
   ManagedUserSummaryDto,
   UserStatusDto,
 } from '@/features/user-management/user-management-contracts'
@@ -65,6 +67,18 @@ export interface ManagedUserDetail {
   updatedAt: string
   userId: string
   username: string
+}
+
+export interface ManagedUserStatusResult {
+  revokedApiKeyCount: number
+  revokedRefreshTokenCount: number
+  user: ManagedUserDetail
+}
+
+export interface ManagedUserPasswordResetResult {
+  passwordReset: boolean
+  revokedApiKeyCount: number
+  revokedRefreshTokenCount: number
 }
 
 function mapCatalogItem(dto: AccessCatalogItemDto): AccessCatalogItem {
@@ -142,6 +156,26 @@ export function mapManagedUserDetail(
     updatedAt: dto.updated_at,
     userId: dto.user_id,
     username: dto.username,
+  }
+}
+
+export function mapManagedUserStatusResult(
+  dto: ManagedUserStatusResponseDto,
+): ManagedUserStatusResult {
+  return {
+    revokedApiKeyCount: dto.revoked_api_key_count,
+    revokedRefreshTokenCount: dto.revoked_refresh_token_count,
+    user: mapManagedUserDetail(dto.user),
+  }
+}
+
+export function mapManagedUserPasswordResetResult(
+  dto: ManagedUserPasswordResetResponseDto,
+): ManagedUserPasswordResetResult {
+  return {
+    passwordReset: dto.password_reset,
+    revokedApiKeyCount: dto.revoked_api_key_count,
+    revokedRefreshTokenCount: dto.revoked_refresh_token_count,
   }
 }
 
