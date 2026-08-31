@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { EmptyState, ErrorState, PageSkeleton } from '@/components/ui/PageState'
 import { TextField } from '@/components/ui/TextField'
 import { CreateManagedUserDialog } from '@/features/user-management/CreateManagedUserDialog'
+import { EditManagedUserAccessDialog } from '@/features/user-management/EditManagedUserAccessDialog'
 import type { UserManagementApi } from '@/features/user-management/user-management-api'
 import {
   mergeManagedUserPages,
@@ -256,6 +257,7 @@ function UserDetailView({
   userBoundary,
   userId,
 }: UserManagementWorkspaceProps & { userId: string }) {
+  const [editAccessOpen, setEditAccessOpen] = useState(false)
   const catalogQuery = useAccessCatalog(api, userBoundary)
   const detailQuery = useManagedUserDetail(api, userBoundary, userId)
 
@@ -293,6 +295,11 @@ function UserDetailView({
         <p className={styles.eyebrow}>{statusLabels[detail.status]}</p>
         <h2 id="managed-user-detail-title">{detail.username}</h2>
         <p>{detail.displayName ?? '未设置展示名称'}</p>
+        <div className={styles.detailActions}>
+          <Button onClick={() => setEditAccessOpen(true)} type="button">
+            编辑访问
+          </Button>
+        </div>
       </header>
       <dl className={styles.facts}>
         <div>
@@ -347,6 +354,16 @@ function UserDetailView({
           emptyText="无有效全局权限"
         />
       </section>
+      {editAccessOpen ? (
+        <EditManagedUserAccessDialog
+          api={api}
+          catalog={catalog}
+          detail={detail}
+          onClose={() => setEditAccessOpen(false)}
+          open
+          userBoundary={userBoundary}
+        />
+      ) : null}
     </article>
   )
 }

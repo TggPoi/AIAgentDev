@@ -51,7 +51,13 @@ function catalogDto() {
   }
 }
 
-function detailDto(userId: string) {
+function detailDto(
+  userId: string,
+  overrides: Partial<{
+    account_type: 'admin' | 'department_manager' | 'employee'
+    direct_permission_codes: string[]
+  }> = {},
+) {
   return {
     account_type: 'employee' as const,
     created_at: '2026-08-31T01:00:00Z',
@@ -73,6 +79,7 @@ function detailDto(userId: string) {
     updated_at: '2026-08-31T02:00:00Z',
     user_id: userId,
     username: 'reader',
+    ...overrides,
   }
 }
 
@@ -138,7 +145,7 @@ function LocationProbe() {
   return <output aria-label="current-route">{location.pathname}</output>
 }
 
-function renderApp() {
+function renderApp(initialEntry = '/admin/users') {
   return render(
     <QueryClientProvider
       client={
@@ -151,7 +158,7 @@ function renderApp() {
       }
     >
       <AuthProvider baseUrl={apiBaseUrl} storage={window.sessionStorage}>
-        <MemoryRouter initialEntries={['/admin/users']}>
+        <MemoryRouter initialEntries={[initialEntry]}>
           <App />
           <LocationProbe />
         </MemoryRouter>
@@ -273,5 +280,146 @@ describe('User Management create flow', () => {
     expect(within(dialog).queryByText('must-not-be-rendered')).not.toBeInTheDocument()
     expect(within(dialog).getByLabelText('初始密码')).toHaveValue('')
     expect(submit).toBeEnabled()
+  })
+})
+
+describe('User Management access editor', () => {
+  beforeEach(() => {
+    window.sessionStorage.clear()
+    installAdminIdentity()
+  })
+
+  it('requires a second account-type confirmation and puts the complete snapshot', async () => {
+    let receivedBody: unknown
+    let releaseResponse: (() => void) | undefined
+    const responseGate = new Promise<void>((resolve) => {
+      releaseResponse = resolve
+    })
+    server.use(
+      http.put(
+        `${apiBaseUrl}/admin/users/user-reader/access`,
+        async ({ request }) => {
+          receivedBody = await request.json()
+          await responseGate
+          return HttpResponse.json(
+            detailDto('user-reader', {
+              account_type: 'department_manager',
+              direct_permission_codes: [],
+            }),
+          )
+        },
+      ),
+    )
+    renderApp('/admin/users/user-reader')
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: '编辑访问' }))
+    const dialog = await screen.findByRole('dialog', { name: '编辑用户访问' })
+    expect(within(dialog).getByLabelText('选择部门 研发部')).toBeChecked()
+    expect(within(dialog).getByLabelText('研发部：部门读者')).toBeChecked()
+    await user.selectOptions(
+      within(dialog).getByLabelText('账号类型'),
+      'department_manager',
+    )
+    await user.click(within(dialog).getByLabelText('直接权限 联网搜索'))
+    await user.click(within(dialog).getByRole('button', { name: '保存访问' }))
+
+    expect(receivedBody).toBeUndefined()
+    const confirm = within(dialog).getByRole('button', {
+      name: '确认账号类型变更并保存',
+    })
+    await user.click(confirm)
+    await waitFor(() => expect(confirm).toBeDisabled())
+    expect(receivedBody).toEqual({
+      account_type: 'department_manager',
+      department_access: [
+        {
+          department_code: 'development',
+          is_primary: true,
+          role_codes: ['department_reader'],
+        },
+      ],
+      direct_permission_codes: [],
+    })
+
+    releaseResponse?.()
+    expect(
+      await screen.findByRole('heading', { name: 'reader' }),
+    ).toBeInTheDocument()
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: '编辑用户访问' }),
+      ).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('部门主管')).toBeInTheDocument()
+  })
+
+  it('maps safe access 422 fields without rendering the raw message', async () => {
+    server.use(
+      http.put(`${apiBaseUrl}/admin/users/user-reader/access`, () =>
+        HttpResponse.json(
+          {
+            code: 'MANAGED_USER_ACCESS_INVALID',
+            error_category: 'user_error',
+            field_errors: [
+              {
+                code: 'invalid',
+                field: 'direct_permission_codes',
+                message: '直接权限已变化',
+              },
+            ],
+            message: 'must-not-be-rendered',
+            request_id: 'access-validation-request',
+            trace_id: null,
+          },
+          { status: 422 },
+        ),
+      ),
+    )
+    renderApp('/admin/users/user-reader')
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: '编辑访问' }))
+    const dialog = await screen.findByRole('dialog', { name: '编辑用户访问' })
+    await user.click(within(dialog).getByLabelText('直接权限 联网搜索'))
+    await user.click(within(dialog).getByRole('button', { name: '保存访问' }))
+
+    expect(await within(dialog).findByText('直接权限已变化')).toBeInTheDocument()
+    expect(within(dialog).queryByText('must-not-be-rendered')).not.toBeInTheDocument()
+  })
+
+  it('keeps the server detail and refetches it after a 409 conflict', async () => {
+    let detailRequests = 0
+    server.use(
+      http.get(`${apiBaseUrl}/admin/users/user-reader`, () => {
+        detailRequests += 1
+        return HttpResponse.json(detailDto('user-reader'))
+      }),
+      http.put(`${apiBaseUrl}/admin/users/user-reader/access`, () =>
+        HttpResponse.json(
+          {
+            code: 'LAST_ADMIN_CONFLICT',
+            error_category: 'conflict',
+            message: 'must-not-be-rendered',
+            request_id: 'access-conflict-request',
+            trace_id: null,
+          },
+          { status: 409 },
+        ),
+      ),
+    )
+    renderApp('/admin/users/user-reader')
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: '编辑访问' }))
+    const dialog = await screen.findByRole('dialog', { name: '编辑用户访问' })
+    await user.click(within(dialog).getByLabelText('直接权限 联网搜索'))
+    await user.click(within(dialog).getByRole('button', { name: '保存访问' }))
+
+    expect(await within(dialog).findByText('保存访问失败')).toBeInTheDocument()
+    expect(within(dialog).getByText(/LAST_ADMIN_CONFLICT/)).toBeInTheDocument()
+    expect(within(dialog).queryByText('must-not-be-rendered')).not.toBeInTheDocument()
+    await waitFor(() => expect(detailRequests).toBeGreaterThan(1))
+    expect(screen.getAllByText('联网搜索').length).toBeGreaterThan(0)
   })
 })
