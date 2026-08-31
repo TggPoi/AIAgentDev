@@ -290,6 +290,60 @@ describe('User Management create flow', () => {
     expect(within(dialog).getByLabelText('初始密码')).toHaveValue('')
     expect(submit).toBeEnabled()
   })
+
+  it('lets a department manager use only the server-trimmed creation catalog', async () => {
+    const catalog = catalogDto()
+    server.use(
+      http.get(`${apiBaseUrl}/auth/me`, () =>
+        HttpResponse.json({
+          ...adminIdentityDto(),
+          account_type: 'department_manager',
+          department_codes: ['development'],
+          display_name: 'Development Manager',
+          global_role_codes: [],
+          primary_department_code: 'development',
+          user_id: 'manager-actor',
+          username: 'development-manager',
+        }),
+      ),
+      http.get(`${apiBaseUrl}/auth/capabilities`, () =>
+        HttpResponse.json({
+          ...adminCapabilitiesDto(),
+          user_management_scope: 'own_department',
+        }),
+      ),
+      http.get(`${apiBaseUrl}/admin/access/catalog`, () =>
+        HttpResponse.json({
+          ...catalog,
+          account_types: [
+            {
+              code: 'employee',
+              description: null,
+              name: '员工',
+              risk_level: null,
+            },
+          ],
+        }),
+      ),
+    )
+    renderApp()
+    const user = userEvent.setup()
+
+    expect(
+      await screen.findByRole('link', { name: '用户管理' }),
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '创建账号' }))
+    const dialog = await screen.findByRole('dialog', { name: '创建账号' })
+    const accountType = within(dialog).getByLabelText('账号类型')
+    expect(within(accountType).getByRole('option', { name: '员工' })).toBeInTheDocument()
+    expect(
+      within(accountType).queryByRole('option', { name: '部门主管' }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(accountType).queryByRole('option', { name: '管理员' }),
+    ).not.toBeInTheDocument()
+    expect(within(dialog).getByLabelText('选择部门 研发部')).toBeInTheDocument()
+  })
 })
 
 describe('User Management access editor', () => {
