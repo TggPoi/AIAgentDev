@@ -7,8 +7,8 @@ import styles from '@/features/auth/AuthPage.module.css'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { ApplicationShell } from '@/layouts/ApplicationShell'
 import { LoginPage } from '@/pages/LoginPage'
-import { PlaceholderPage } from '@/pages/PlaceholderPage'
 import { ChatPage } from '@/pages/ChatPage'
+import { DocumentGrantPage } from '@/pages/DocumentGrantPage'
 import { DocumentPage } from '@/pages/DocumentPage'
 import { SecuritySettingsPage } from '@/pages/SecuritySettingsPage'
 import { TaskPlanPage } from '@/pages/TaskPlanPage'
@@ -32,16 +32,6 @@ function StartupScreen() {
     </main>
   )
 }
-
-const documentGrantsPage = (
-  <PlaceholderPage
-    description="管理非公开文档的精确跨部门只读授权。"
-    emptyDescription="授权记录将在业务模块接入后显示。"
-    emptyTitle="暂无授权记录"
-    eyebrow="Administration"
-    title="跨部门授权"
-  />
-)
 
 function AppContent() {
   const auth = useAuth()
@@ -96,7 +86,7 @@ function AppContent() {
           path="/admin/document-grants"
           element={
             <CapabilityGuard capability="canManageDocumentGrants">
-              {documentGrantsPage}
+              <DocumentGrantPage />
             </CapabilityGuard>
           }
         />

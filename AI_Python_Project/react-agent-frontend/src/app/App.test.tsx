@@ -273,6 +273,55 @@ describe('App authentication entry', () => {
     ).toBeInTheDocument()
   })
 
+  it('composes the capability-gated document grant list from URL filters', async () => {
+    installRestoredIdentity({ can_manage_document_grants: true })
+    server.use(
+      http.get(`${apiBaseUrl}/admin/document-access/grants`, ({ request }) => {
+        const url = new URL(request.url)
+        expect(url.searchParams.get('target_account')).toBe('reader')
+        expect(url.searchParams.get('doc_id')).toBe('doc-1')
+        expect(url.searchParams.get('status')).toBe('active')
+        expect(url.searchParams.get('department_code')).toBe('development')
+        return HttpResponse.json({
+          items: [
+            {
+              document_department_code: 'development',
+              document_id: 'doc-1',
+              grant_id: 'grant-1',
+              granted_at: '2026-09-01T01:00:00Z',
+              granted_by_user_id: 'manager-1',
+              grantee: {
+                display_name: 'Reader',
+                primary_department_code: 'operations',
+                user_id: 'reader-1',
+                username: 'reader',
+              },
+              repository_path: 'docs/private.md',
+              revoked_at: null,
+              revoked_by_user_id: null,
+              status: 'active',
+            },
+          ],
+          next_cursor: null,
+        })
+      }),
+    )
+
+    renderApp(
+      '/admin/document-grants?target_account=reader&doc_id=doc-1&status=active&department_code=development',
+    )
+
+    expect(
+      await screen.findByRole('region', { name: '跨部门授权' }),
+    ).toBeInTheDocument()
+    const grantList = await screen.findByRole('list', {
+      name: '文档授权列表',
+    })
+    expect(grantList).toHaveTextContent('docs/private.md')
+    expect(within(grantList).getByText('生效中')).toBeInTheDocument()
+    expect(grantList).toHaveTextContent('授权人：manager-1')
+  })
+
   it('recomputes navigation and leaves a route immediately after capability loss', async () => {
     installRestoredIdentity({
       can_manage_document_grants: true,
