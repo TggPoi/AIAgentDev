@@ -1,0 +1,194 @@
+{
+  "baseline_report": null,
+  "case_count": 1,
+  "cases": [
+    {
+      "actual_route": "simple_rag -> knowledge_retrieval",
+      "answerable": true,
+      "case_id": "reader_combat_perfect_block",
+      "error": null,
+      "expected_route": "rag_answer",
+      "knowledge_retrieval_performed": true,
+      "knowledge_version": 0,
+      "latency_ms": 63987.25850000483,
+      "metrics": {
+        "retrieval_hit_rate_at_k": {
+          "error": null,
+          "metric_name": "retrieval_hit_rate_at_k",
+          "passed": null,
+          "score": 1.0,
+          "short_reason": "score=1.0000; threshold=not_configured",
+          "status": "evaluated",
+          "threshold": null
+        },
+        "retrieval_mrr": {
+          "error": null,
+          "metric_name": "retrieval_mrr",
+          "passed": null,
+          "score": 1.0,
+          "short_reason": "score=1.0000; threshold=not_configured",
+          "status": "evaluated",
+          "threshold": null
+        },
+        "retrieval_precision_at_k": {
+          "error": null,
+          "metric_name": "retrieval_precision_at_k",
+          "passed": null,
+          "score": 0.2,
+          "short_reason": "score=0.2000; threshold=not_configured",
+          "status": "evaluated",
+          "threshold": null
+        },
+        "retrieval_recall_at_k": {
+          "error": null,
+          "metric_name": "retrieval_recall_at_k",
+          "passed": null,
+          "score": 1.0,
+          "short_reason": "score=1.0000; threshold=not_configured",
+          "status": "evaluated",
+          "threshold": null
+        }
+      },
+      "request_id": "26ec8a96ecbe477199cfec059b2a1294",
+      "retrieval_evaluation": {
+        "capacity_limited": false,
+        "effective_k": 5,
+        "false_positive_logical_chunk_ids": [
+          "chunk_f8591f632e2a03b4",
+          "chunk_0fdbd0adedc5f1ca",
+          "chunk_59d89c39b0ad2fb6",
+          "chunk_596c97c877e49ef5"
+        ],
+        "first_relevant_rank": 1,
+        "gold_relevant_count": 1,
+        "matched_logical_chunk_ids": [
+          "chunk_afe53a82b6a0d200"
+        ],
+        "max_recall_at_k": 1.0,
+        "metrics": {
+          "retrieval_hit_rate_at_k": {
+            "error": null,
+            "metric_name": "retrieval_hit_rate_at_k",
+            "passed": null,
+            "score": 1.0,
+            "short_reason": "score=1.0000; threshold=not_configured",
+            "status": "evaluated",
+            "threshold": null
+          },
+          "retrieval_mrr": {
+            "error": null,
+            "metric_name": "retrieval_mrr",
+            "passed": null,
+            "score": 1.0,
+            "short_reason": "score=1.0000; threshold=not_configured",
+            "status": "evaluated",
+            "threshold": null
+          },
+          "retrieval_precision_at_k": {
+            "error": null,
+            "metric_name": "retrieval_precision_at_k",
+            "passed": null,
+            "score": 0.2,
+            "short_reason": "score=0.2000; threshold=not_configured",
+            "status": "evaluated",
+            "threshold": null
+          },
+          "retrieval_recall_at_k": {
+            "error": null,
+            "metric_name": "retrieval_recall_at_k",
+            "passed": null,
+            "score": 1.0,
+            "short_reason": "score=1.0000; threshold=not_configured",
+            "status": "evaluated",
+            "threshold": null
+          }
+        },
+        "relevant_retrieved_count": 1,
+        "requested_k": 5,
+        "returned_count": 5,
+        "source_policy": {
+          "forbidden_retrieved_logical_ids": [],
+          "matched_authoritative_logical_ids": [
+            "chunk_afe53a82b6a0d200"
+          ],
+          "missing_authoritative_logical_ids": [],
+          "passed": true
+        },
+        "underfilled": false
+      },
+      "retrieval_source_policy": {
+        "forbidden_retrieved_logical_ids": [],
+        "matched_authoritative_logical_ids": [
+          "chunk_afe53a82b6a0d200"
+        ],
+        "missing_authoritative_logical_ids": [],
+        "passed": true
+      },
+      "skipped_reason": null,
+      "snapshot_hash": "cbbdbe5cbc28b18aad887e3e0c9cddd521ad5379b53069f47a1ae3290eb31956",
+      "snapshot_id": "6d5e2815f6914f6b928b46ed08bd8991",
+      "status": "evaluated",
+      "trace_id": "26ec8a96ecbe477199cfec059b2a1294"
+    }
+  ],
+  "created_at": "2026-08-30T13:55:27.473591Z",
+  "dataset_hash": "395a572316ae43b29b201d97ab3026726f947651fc208ae5bf9a71475f1ea773",
+  "dataset_id": "stage11_acl_rag_eval",
+  "dataset_version": "2.1.6",
+  "duration_ms": 63990.79139999958,
+  "evaluated_case_count": 1,
+  "failed_case_count": 0,
+  "judge_model": null,
+  "metric_summaries": {
+    "retrieval_hit_rate_at_k": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 1.0,
+      "metric_name": "retrieval_hit_rate_at_k",
+      "passed_count": 0,
+      "skipped_count": 0
+    },
+    "retrieval_mrr": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 1.0,
+      "metric_name": "retrieval_mrr",
+      "passed_count": 0,
+      "skipped_count": 0
+    },
+    "retrieval_precision_at_k": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 0.2,
+      "metric_name": "retrieval_precision_at_k",
+      "passed_count": 0,
+      "skipped_count": 0
+    },
+    "retrieval_recall_at_k": {
+      "baseline_delta": null,
+      "error_count": 0,
+      "evaluated_count": 1,
+      "mean_score": 1.0,
+      "metric_name": "retrieval_recall_at_k",
+      "passed_count": 0,
+      "skipped_count": 0
+    }
+  },
+  "mode": "retrieval",
+  "pipeline_provider": "rag_agent",
+  "run_id": "9fecc191-a4cf-4300-a0c4-c6b94fd2d2c0",
+  "schema_version": "1.2",
+  "selected_metrics": [
+    "retrieval_recall_at_k",
+    "retrieval_precision_at_k",
+    "retrieval_hit_rate_at_k",
+    "retrieval_mrr"
+  ],
+  "skipped_case_count": 0,
+  "source_revision": "sha256:720ba93c1fa2f14d4da554921d0cd14a3e1d130c699fd2d641449f05600e0167",
+  "status": "completed",
+  "tested_model": "qwen:qwen3.7-plus-2026-05-26"
+}
