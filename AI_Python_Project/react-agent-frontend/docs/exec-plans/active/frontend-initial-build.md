@@ -8,11 +8,11 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: CG011已由backend `ea6df62`与frontend contract sync `03170c7`关闭；当前恢复Slice 9 grantable-document frontend data/query seam TDD
+Current Step: grantable-document frontend data/query seam已由checkpoint `3a7ac18`完成；当前建立create draft/selection policy expected-red
 
-Next Action: 在既有Document Grants data focused test中新增grantable-document transport/domain/query expected-red，只固定新GET、safe fields、filters、opaque cursor与user-bound query key
+Next Action: 新增纯create draft policy test并取得module缺失expected-red，固定精确target account、1–100个catalog-backed唯一document IDs与catalog drift显式收敛
 
-Blocking Issues: None；CG011 Runtime = OpenAPI = generated types = Tests已闭环，create Dialog仍须在grantable-document data/query seam与draft policy分别验证后实施
+Blocking Issues: None；CG011已闭环且catalog data/query seam已完成，create Dialog仍须在纯draft policy验证后实施
 
 Last Updated: 2026-09-01 (Asia/Shanghai)
 
@@ -546,11 +546,18 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010已关闭，Grant data/query seam `e824fc3`与read-only workspace `8dea121`已持久化；CG011由backend `ea6df62`与frontend sync `03170c7`关闭，create draft/Dialog与revoke UI仍未创建。
+- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`与grantable catalog data `3a7ac18`已持久化；create draft/Dialog与revoke UI仍未创建。
 
 Next Action:
 
-- 在既有Document Grants data focused test中新增grantable-document transport/domain/query expected-red，只固定新GET、safe fields、filters、opaque cursor与user-bound query key。
+- 新增纯create draft policy test并取得module缺失expected-red，固定精确target account、1–100个catalog-backed唯一document IDs与catalog drift显式收敛。
+
+Slice 9 Grantable Document Data Evidence (verified 2026-09-01):
+
+- focused test按TDD观察四个expected-red：grantable user-bound Query Key、server-order merge、catalog HTTP method、empty-filter behavior均不存在；最小实现逐项补充generated aliases、safe Domain Model/adapter、新GET与infinite query seam。
+- adapter只发送批准的`query/department_code/cursor/limit`，cursor保持opaque；response只映射`doc_id/title/repository_path/document_department_code/document_type/next_cursor`，MSW中的`private_acl/visibility/private_scope`没有进入Domain Model。
+- focused最终1 file / 10 tests，Grant/Knowledge Documents regression为4 files / 27 tests；`pnpm contracts:check`、lint、typecheck与`git diff --check`通过。package、lockfile、snapshot/generated contract均无新差异。
+- 独立frontend checkpoint `3a7ac18`只包含Document Grants的五个data/query source/test文件；外部RAG Eval/runtime产物继续排除。唯一Next Action推进为create draft/selection policy expected-red。
 
 CG011 Frontend Contract Sync Evidence (verified 2026-09-01):
 
