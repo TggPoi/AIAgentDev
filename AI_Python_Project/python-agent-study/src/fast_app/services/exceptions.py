@@ -145,6 +145,25 @@ class DocumentAccessGrantInvalidError(AppServiceError):
 
     error_code = "DOCUMENT_ACCESS_GRANT_INVALID"
     status_code = 422
+    _PUBLIC_FIELDS = frozenset({"document_ids"})
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        field: Literal["document_ids"] | None = None,
+        field_code: Literal["invalid"] | None = None,
+    ):
+        if field is not None and field not in self._PUBLIC_FIELDS:
+            raise ValueError("DocumentAccessGrantInvalidError field 不在公开 allowlist")
+        if field is None and field_code is not None:
+            raise ValueError("DocumentAccessGrantInvalidError 无字段时不能提供 field_code")
+        if field is not None and field_code != "invalid":
+            raise ValueError("DocumentAccessGrantInvalidError field_code 不受支持")
+        super().__init__(message)
+        self.public_message = "文档授权请求不合法"
+        self.field = field
+        self.field_code = field_code
 
 
 class DocumentAccessGrantConflictError(AppServiceError):

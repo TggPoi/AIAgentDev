@@ -108,8 +108,9 @@ class DocumentAccessService:
         )
         if redundant_docs:
             raise DocumentAccessGrantInvalidError(
-                "目标用户已经通过 public、部门归属或原始 ACL 访问这些文档，"
-                "无需跨部门授权: " + ",".join(redundant_docs)
+                "目标用户已经可以访问所选文档，无需跨部门授权",
+                field="document_ids",
+                field_code="invalid",
             )
 
         try:

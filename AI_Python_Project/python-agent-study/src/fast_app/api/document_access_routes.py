@@ -7,6 +7,10 @@ from fast_app.dependencies.document_access_dependencies import (
 )
 from fast_app.dependencies.user_context import get_current_user_context
 from fast_app.domain.user_context import CurrentUserContext
+from fast_app.schemas.error_schema import (
+    DocumentAccessGrantValidationErrorResponse,
+    RequestValidationErrorResponse,
+)
 from fast_app.schemas.document_access_schema import (
     CreateDocumentAccessGrantsRequest,
     CreateDocumentAccessGrantsResponse,
@@ -18,8 +22,26 @@ from fast_app.services.knowledge.document_access_service import DocumentAccessSe
 
 router = APIRouter(prefix="/admin/document-access", tags=["document-access"])
 
+_DOCUMENT_ACCESS_GRANT_VALIDATION_RESPONSES = {
+    422: {
+        "model": DocumentAccessGrantValidationErrorResponse,
+        "description": "请求字段或文档授权业务校验失败的安全错误投影。",
+    }
+}
 
-@router.get("/grants", response_model=DocumentAccessGrantListResponse)
+_DOCUMENT_ACCESS_GRANT_REQUEST_VALIDATION_RESPONSES = {
+    422: {
+        "model": RequestValidationErrorResponse,
+        "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。",
+    }
+}
+
+
+@router.get(
+    "/grants",
+    response_model=DocumentAccessGrantListResponse,
+    responses=_DOCUMENT_ACCESS_GRANT_VALIDATION_RESPONSES,
+)
 async def list_document_access_grants_endpoint(
     cursor: str | None = Query(default=None, description="上一页返回的不透明 keyset cursor。"),
     limit: int = Query(default=20, ge=1, le=100, description="本页最多返回的授权数。"),
@@ -57,7 +79,11 @@ async def list_document_access_grants_endpoint(
     )
 
 
-@router.post("/grants", response_model=CreateDocumentAccessGrantsResponse)
+@router.post(
+    "/grants",
+    response_model=CreateDocumentAccessGrantsResponse,
+    responses=_DOCUMENT_ACCESS_GRANT_VALIDATION_RESPONSES,
+)
 async def create_document_access_grants_endpoint(
     request: CreateDocumentAccessGrantsRequest,
     actor: CurrentUserContext = Depends(get_current_user_context),
@@ -66,7 +92,11 @@ async def create_document_access_grants_endpoint(
     return await service.create_grants(actor, request)
 
 
-@router.delete("/grants/{grant_id}", response_model=DocumentAccessGrantItem)
+@router.delete(
+    "/grants/{grant_id}",
+    response_model=DocumentAccessGrantItem,
+    responses=_DOCUMENT_ACCESS_GRANT_REQUEST_VALIDATION_RESPONSES,
+)
 async def revoke_document_access_grant_endpoint(
     grant_id: str = Path(
         min_length=1,

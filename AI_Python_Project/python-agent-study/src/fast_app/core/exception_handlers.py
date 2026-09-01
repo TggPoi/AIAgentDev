@@ -11,12 +11,18 @@ from fast_app.core.error_responses import (
 )
 from fast_app.core.logging import format_log_fields, get_logger
 from fast_app.schemas.error_schema import (
+    DocumentAccessGrantFieldError,
+    DocumentAccessGrantInvalidErrorResponse,
     ManagedUserAccessFieldError,
     ManagedUserAccessInvalidErrorResponse,
     RequestValidationErrorResponse,
     RequestValidationFieldError,
 )
-from fast_app.services.exceptions import AppServiceError, ManagedUserAccessInvalidError
+from fast_app.services.exceptions import (
+    AppServiceError,
+    DocumentAccessGrantInvalidError,
+    ManagedUserAccessInvalidError,
+)
 
 
 logger = get_logger(__name__)
@@ -80,6 +86,15 @@ _VALIDATION_FIELDS: dict[tuple[str, str], dict[str, frozenset[str]]] = {
     ("POST", "/admin/users/{user_id}/reset-password"): {
         "body": frozenset({"new_password"})
     },
+    ("POST", "/admin/document-access/grants"): {
+        "body": frozenset({"target_account", "document_ids"})
+    },
+    ("GET", "/admin/document-access/grants"): {
+        "query": frozenset(
+            {"target_account", "doc_id", "status", "department_code", "limit"}
+        )
+    },
+    ("DELETE", "/admin/document-access/grants/{grant_id}"): {},
 }
 
 _NESTED_VALIDATION_FIELDS: dict[
@@ -97,6 +112,13 @@ _MANAGED_USER_ACCESS_BUSINESS_ROUTES = frozenset(
     {
         ("POST", "/admin/users"),
         ("PUT", "/admin/users/{user_id}/access"),
+    }
+)
+
+_DOCUMENT_ACCESS_GRANT_BUSINESS_ROUTES = frozenset(
+    {
+        ("GET", "/admin/document-access/grants"),
+        ("POST", "/admin/document-access/grants"),
     }
 )
 
@@ -205,6 +227,11 @@ def register_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         request_id, trace_id = get_request_ids_from_request(request)
         log_method = logger.warning
+        log_message = (
+            exc.public_message
+            if isinstance(exc, DocumentAccessGrantInvalidError)
+            else str(exc)
+        )
 
         if exc.error_category == "external_service_error":
             log_method = logger.error
@@ -219,7 +246,7 @@ def register_exception_handlers(app: FastAPI) -> None:
                 method=request.method,
                 status_code=exc.status_code,
                 error_type=type(exc).__name__,
-                message=str(exc),
+                message=log_message,
             ),
         )
 
@@ -244,6 +271,27 @@ def register_exception_handlers(app: FastAPI) -> None:
                         message="输入值不合法",
                     )
                 ],
+            ).model_dump(mode="json")
+        elif isinstance(exc, DocumentAccessGrantInvalidError) and (
+            request.method.upper(), _get_route_path(request)
+        ) in _DOCUMENT_ACCESS_GRANT_BUSINESS_ROUTES:
+            content = DocumentAccessGrantInvalidErrorResponse(
+                code="DOCUMENT_ACCESS_GRANT_INVALID",
+                message=exc.public_message,
+                error_category="user_error",
+                request_id=request_id,
+                trace_id=trace_id,
+                field_errors=(
+                    [
+                        DocumentAccessGrantFieldError(
+                            field=exc.field,
+                            code=exc.field_code,
+                            message="输入值不合法",
+                        )
+                    ]
+                    if exc.field is not None and exc.field_code is not None
+                    else []
+                ),
             ).model_dump(mode="json")
         else:
             content = build_app_error_response_content(

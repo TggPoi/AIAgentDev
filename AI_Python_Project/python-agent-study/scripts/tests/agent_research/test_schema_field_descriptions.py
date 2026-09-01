@@ -135,6 +135,8 @@ from fast_app.schemas.document_access_schema import (
     DocumentAccessGrantUser,
 )
 from fast_app.schemas.error_schema import (
+    DocumentAccessGrantFieldError,
+    DocumentAccessGrantInvalidErrorResponse,
     ManagedUserAccessFieldError,
     ManagedUserAccessInvalidErrorResponse,
     RequestValidationErrorResponse,
@@ -325,6 +327,8 @@ SCHEMA_BOUNDARY_MODELS: tuple[type[BaseModel], ...] = (
     ResearchWorkerCheckpointUpdate,
     ResearchWorkerProgress,
     RequiredKeyFact,
+    DocumentAccessGrantFieldError,
+    DocumentAccessGrantInvalidErrorResponse,
     ManagedUserAccessFieldError,
     ManagedUserAccessInvalidErrorResponse,
     RequestValidationErrorResponse,

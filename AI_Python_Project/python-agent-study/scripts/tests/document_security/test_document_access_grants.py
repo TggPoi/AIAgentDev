@@ -161,8 +161,9 @@ async def assert_database_flow() -> None:
                         document_ids=[DOC_DEV_ONE],
                     ),
                 )
-            except DocumentAccessGrantInvalidError:
-                pass
+            except DocumentAccessGrantInvalidError as exc:
+                assert exc.field == "document_ids"
+                assert exc.field_code == "invalid"
             else:
                 raise AssertionError("同部门文档不应创建冗余跨部门 grant")
 

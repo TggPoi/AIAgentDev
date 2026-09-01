@@ -24,6 +24,9 @@ class RequestValidationFieldError(BaseModel):
         "query",
         "department_code",
         "document_type",
+        "target_account",
+        "doc_id",
+        "document_ids",
         "status",
         "session_id",
         "limit",
@@ -109,13 +112,58 @@ class ManagedUserAccessInvalidErrorResponse(BaseModel):
     )
 
 
+class DocumentAccessGrantFieldError(BaseModel):
+    """跨部门文档授权业务校验的安全公开字段错误。"""
+
+    field: Literal["document_ids"] = Field(
+        description="由服务端确定性业务分支选择的公开授权字段；不包含文档标识或数组位置。",
+    )
+    code: Literal["invalid"] = Field(
+        description="文档无需或不能重复授权时的稳定字段错误 code。",
+    )
+    message: str = Field(
+        description="固定安全字段提示，不包含文档标识、ACL、部门或自然语言业务异常。",
+    )
+
+
+class DocumentAccessGrantInvalidErrorResponse(BaseModel):
+    """跨部门文档授权业务校验失败的安全公共 422 响应。"""
+
+    code: Literal["DOCUMENT_ACCESS_GRANT_INVALID"] = Field(
+        description="授权请求不满足精确跨部门授权语义时的稳定顶层错误 code。",
+    )
+    message: str = Field(
+        description="授权业务校验失败时可安全显示的固定通用提示。",
+    )
+    error_category: Literal["user_error"] = Field(
+        description="错误责任分类；授权业务校验失败固定为 user_error。",
+    )
+    request_id: str | None = Field(
+        description="当前 HTTP 请求 ID；测试或缺少请求上下文时可以为空。",
+    )
+    trace_id: str | None = Field(
+        description="当前服务端 trace ID；缺少 trace 上下文时可以为空。",
+    )
+    field_errors: list[DocumentAccessGrantFieldError] = Field(
+        description="只包含服务端确定性分支批准公开的文档授权字段错误；cursor 等页面级错误为空。",
+    )
+
+
 UserAdministrationValidationErrorResponse = Annotated[
     RequestValidationErrorResponse | ManagedUserAccessInvalidErrorResponse,
     Field(discriminator="code"),
 ]
 
+DocumentAccessGrantValidationErrorResponse = Annotated[
+    RequestValidationErrorResponse | DocumentAccessGrantInvalidErrorResponse,
+    Field(discriminator="code"),
+]
+
 
 __all__ = [
+    "DocumentAccessGrantFieldError",
+    "DocumentAccessGrantInvalidErrorResponse",
+    "DocumentAccessGrantValidationErrorResponse",
     "ManagedUserAccessFieldError",
     "ManagedUserAccessInvalidErrorResponse",
     "RequestValidationErrorResponse",
