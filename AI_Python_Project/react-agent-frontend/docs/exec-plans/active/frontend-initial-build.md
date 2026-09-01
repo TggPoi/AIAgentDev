@@ -8,11 +8,11 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: CG011严格受限backend fix已由独立checkpoint `ea6df62`完成并通过focused/shared regressions；当前同步frontend OpenAPI snapshot/generated types，frontend draft/Dialog继续暂停
+Current Step: CG011已由backend `ea6df62`与frontend contract sync `03170c7`关闭；当前恢复Slice 9 grantable-document frontend data/query seam TDD
 
-Next Action: 从backend checkpoint `ea6df62`重新导出canonical OpenAPI snapshot，生成frontend transport types并核对仅出现批准的grantable-document contract差异
+Next Action: 在既有Document Grants data focused test中新增grantable-document transport/domain/query expected-red，只固定新GET、safe fields、filters、opaque cursor与user-bound query key
 
-Blocking Issues: None；backend Runtime = OpenAPI = Tests已验证，frontend contract sync与完整`pnpm check`完成前仍不创建Grant create UI
+Blocking Issues: None；CG011 Runtime = OpenAPI = generated types = Tests已闭环，create Dialog仍须在grantable-document data/query seam与draft policy分别验证后实施
 
 Last Updated: 2026-09-01 (Asia/Shanghai)
 
@@ -546,11 +546,18 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010 已关闭，Grant data/query seam `e824fc3` 与 read-only workspace `8dea121` 已持久化；CG011 backend checkpoint `ea6df62`已完成，frontend contract sync进行中，create draft/Dialog与revoke UI仍未创建。
+- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010已关闭，Grant data/query seam `e824fc3`与read-only workspace `8dea121`已持久化；CG011由backend `ea6df62`与frontend sync `03170c7`关闭，create draft/Dialog与revoke UI仍未创建。
 
 Next Action:
 
-- 从backend checkpoint `ea6df62`重新导出canonical OpenAPI snapshot，生成frontend transport types并核对仅出现批准的grantable-document contract差异。
+- 在既有Document Grants data focused test中新增grantable-document transport/domain/query expected-red，只固定新GET、safe fields、filters、opaque cursor与user-bound query key。
+
+CG011 Frontend Contract Sync Evidence (verified 2026-09-01):
+
+- 从backend checkpoint `ea6df62`导出的snapshot与当前`app.openapi()` canonical equality为true，均为OpenAPI `3.1.0` / 59 paths / 142 schemas；diff只新增批准的grantable-document GET、两个safe response schemas与对应operation。
+- `pnpm contracts:generate`与`pnpm contracts:check`通过；generated transport明确返回五个safe item fields、opaque `next_cursor`与request/business 422 union。package、lockfile与dependency graph无变化。
+- frontend Grant/Knowledge Documents focused为6 files / 40 tests；完整`pnpm check`通过contract drift、lint、typecheck、35 files / 190 tests与production build，只保留既有约536.08 kB非阻塞chunk warning。
+- 独立frontend checkpoint `03170c7`只包含OpenAPI snapshot与generated types；外部RAG Eval/runtime产物未读取、修改或暂存。CG011达到Runtime = OpenAPI = generated types = Tests，现已关闭。
 
 CG011 Backend Fix Evidence (verified 2026-09-01):
 
@@ -1525,7 +1532,7 @@ Resolution:
 
 #### CG011 - No Server-Trimmed Grantable Document Selection Contract
 
-Status: BACKEND CHECKPOINT COMPLETE / FRONTEND CONTRACT SYNC IN PROGRESS
+Status: RESOLVED
 
 Evidence:
 
@@ -1548,6 +1555,11 @@ Recommended Backend Change:
 Decision:
 
 - 用户于2026-09-01明确批准上述Recommended Backend Change。范围严格限定为只读selection catalog、安全字段、backend-fixed scope/public exclusion、cursor/filter、validation/OpenAPI/tests与后续frontend contract sync；CG010授权未被扩大，Runtime = OpenAPI = generated types = Tests前不恢复Grant create UI。
+
+Resolution:
+
+- backend checkpoint `ea6df62`实现唯一只读grantable-document catalog及安全schema、服务端actor scope/public exclusion、filter/keyset cursor与runtime/OpenAPI/no-sensitive regressions；既有create/revoke、Knowledge Documents read与RAG/Agent边界未改变。
+- frontend sync checkpoint `03170c7`只更新canonical OpenAPI snapshot/generated types；contract drift、Grant/Knowledge Documents focused与完整`pnpm check`通过。CG011关闭，唯一Next Action恢复为新catalog的frontend data/query expected-red。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
