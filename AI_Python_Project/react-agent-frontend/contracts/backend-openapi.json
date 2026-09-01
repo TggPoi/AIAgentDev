@@ -2220,6 +2220,81 @@
         "title": "DocumentAccessGrantUser",
         "type": "object"
       },
+      "DocumentAccessGrantableDocumentItem": {
+        "properties": {
+          "doc_id": {
+            "description": "可作为跨部门授权候选的active非public文档稳定ID。",
+            "title": "Doc Id",
+            "type": "string"
+          },
+          "document_department_code": {
+            "description": "候选文档所属部门code；主管范围由服务端固定。",
+            "title": "Document Department Code",
+            "type": "string"
+          },
+          "document_type": {
+            "description": "服务端识别的候选文档格式。",
+            "enum": [
+              "markdown",
+              "text",
+              "pdf",
+              "powerpoint",
+              "spreadsheet",
+              "word"
+            ],
+            "title": "Document Type",
+            "type": "string"
+          },
+          "repository_path": {
+            "description": "候选文档在GitLab Project中的仓库相对路径。",
+            "title": "Repository Path",
+            "type": "string"
+          },
+          "title": {
+            "description": "由可信仓库文件名生成的候选文档展示标题。",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "doc_id",
+          "title",
+          "repository_path",
+          "document_department_code",
+          "document_type"
+        ],
+        "title": "DocumentAccessGrantableDocumentItem",
+        "type": "object"
+      },
+      "DocumentAccessGrantableDocumentListResponse": {
+        "properties": {
+          "items": {
+            "description": "当前actor有权管理的active非public文档候选项。",
+            "items": {
+              "$ref": "#/components/schemas/DocumentAccessGrantableDocumentItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "下一页不透明keyset cursor；没有更多候选项时为空。",
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "DocumentAccessGrantableDocumentListResponse",
+        "type": "object"
+      },
       "DocumentTaskPlanPublicView": {
         "additionalProperties": false,
         "description": "排除工具参数、原始输出和内部 owner 信息的文档 TaskPlan。",
@@ -7709,6 +7784,172 @@
         "summary": "Get Access Catalog Endpoint",
         "tags": [
           "user-administration"
+        ]
+      }
+    },
+    "/admin/document-access/grantable-documents": {
+      "get": {
+        "operationId": "list_document_access_grantable_documents_endpoint_admin_document_access_grantable_documents_get",
+        "parameters": [
+          {
+            "description": "上一页返回的不透明keyset cursor。",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "上一页返回的不透明keyset cursor。",
+              "title": "Cursor"
+            }
+          },
+          {
+            "description": "本页最多返回的候选文档数。",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "本页最多返回的候选文档数。",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "按候选文档标题、仓库路径或doc_id文本筛选。",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按候选文档标题、仓库路径或doc_id文本筛选。",
+              "title": "Query"
+            }
+          },
+          {
+            "description": "管理员可选文档所属部门；主管范围由服务端固定。",
+            "in": "query",
+            "name": "department_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "管理员可选文档所属部门；主管范围由服务端固定。",
+              "title": "Department Code"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentAccessGrantableDocumentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "DOCUMENT_ACCESS_GRANT_INVALID": "#/components/schemas/DocumentAccessGrantInvalidErrorResponse",
+                      "REQUEST_VALIDATION_ERROR": "#/components/schemas/RequestValidationErrorResponse"
+                    },
+                    "propertyName": "code"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DocumentAccessGrantInvalidErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Document Access Grantable Documents Endpoint Admin Document Access Grantable Documents Get"
+                }
+              }
+            },
+            "description": "请求字段或文档授权业务校验失败的安全错误投影。"
+          }
+        },
+        "summary": "List Document Access Grantable Documents Endpoint",
+        "tags": [
+          "document-access"
         ]
       }
     },

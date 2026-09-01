@@ -24,6 +24,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/document-access/grantable-documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Document Access Grantable Documents Endpoint */
+        get: operations["list_document_access_grantable_documents_endpoint_admin_document_access_grantable_documents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/document-access/grants": {
         parameters: {
             query?: never;
@@ -2376,6 +2393,48 @@ export interface components {
              * @description 被授权用户稳定登录用户名。
              */
             username: string;
+        };
+        /** DocumentAccessGrantableDocumentItem */
+        DocumentAccessGrantableDocumentItem: {
+            /**
+             * Doc Id
+             * @description 可作为跨部门授权候选的active非public文档稳定ID。
+             */
+            doc_id: string;
+            /**
+             * Document Department Code
+             * @description 候选文档所属部门code；主管范围由服务端固定。
+             */
+            document_department_code: string;
+            /**
+             * Document Type
+             * @description 服务端识别的候选文档格式。
+             * @enum {string}
+             */
+            document_type: "markdown" | "text" | "pdf" | "powerpoint" | "spreadsheet" | "word";
+            /**
+             * Repository Path
+             * @description 候选文档在GitLab Project中的仓库相对路径。
+             */
+            repository_path: string;
+            /**
+             * Title
+             * @description 由可信仓库文件名生成的候选文档展示标题。
+             */
+            title: string;
+        };
+        /** DocumentAccessGrantableDocumentListResponse */
+        DocumentAccessGrantableDocumentListResponse: {
+            /**
+             * Items
+             * @description 当前actor有权管理的active非public文档候选项。
+             */
+            items: components["schemas"]["DocumentAccessGrantableDocumentItem"][];
+            /**
+             * Next Cursor
+             * @description 下一页不透明keyset cursor；没有更多候选项时为空。
+             */
+            next_cursor?: string | null;
         };
         /**
          * DocumentTaskPlanPublicView
@@ -5389,6 +5448,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    list_document_access_grantable_documents_endpoint_admin_document_access_grantable_documents_get: {
+        parameters: {
+            query?: {
+                /** @description 上一页返回的不透明keyset cursor。 */
+                cursor?: string | null;
+                /** @description 本页最多返回的候选文档数。 */
+                limit?: number;
+                /** @description 按候选文档标题、仓库路径或doc_id文本筛选。 */
+                query?: string | null;
+                /** @description 管理员可选文档所属部门；主管范围由服务端固定。 */
+                department_code?: string | null;
+            };
+            header?: {
+                "X-API-Key"?: string | null;
+                Authorization?: string | null;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentAccessGrantableDocumentListResponse"];
+                };
+            };
+            /** @description 请求字段或文档授权业务校验失败的安全错误投影。 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"] | components["schemas"]["DocumentAccessGrantInvalidErrorResponse"];
                 };
             };
         };
