@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: revoke UI已由独立checkpoint `dd3e65a`持久化；当前建立Slice 9最终frontend/backend automated matrix
+Current Step: Slice 9 frontend/backend最终automated matrix已通过；当前执行Document Grants manual browser smoke
 
-Next Action: 重跑CG010 validation、CG011 grantable catalog与真实grant transaction/idempotency/revoke backend tests，并与frontend role/error Gate逐项核对Slice 9剩余验收矩阵
+Next Action: 使用loopback虚构Auth/Grant service与真实Vite App执行1280px/360px create/revoke/manual error/focus/overflow/console smoke
 
 Blocking Issues: None；Docker/PostgreSQL启动后CG011 backend最小contract test恢复重跑通过，当前frontend focused test可继续收敛
 
@@ -313,7 +313,7 @@ Goal: 完成非 public 文档的精确跨部门只读授权、列表、审计展
 - [x] 不建立未批准的跨部门用户目录，不为 public/同部门文档创建冗余 grant。
 - [x] 展示 created/existing counts、active/revoked audit facts 和安全错误。
 - [x] 创建/撤销不做乐观更新，并失效 grants 与相关 documents Query。
-- [ ] 增加 manager/admin scope、精确文档、幂等重复、撤销收敛、public 排除和不可见资源测试。
+- [x] 增加 manager/admin scope、精确文档、幂等重复、撤销收敛、public 排除和不可见资源测试。
 - [ ] 完成 Slice Gate；执行 Document Grants manual smoke；创建独立 Git checkpoint。
 
 ### Slice 10 - NL2SQL and Web Search Refinements
@@ -546,11 +546,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`、grantable catalog data `3a7ac18`、create draft policy `92584a4`、create Dialog `1f997d3`与revoke UI `dd3e65a`已持久化；当前执行最终automated matrix，manual smoke尚未开始。
+- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`、grantable catalog data `3a7ac18`、create draft policy `92584a4`、create Dialog `1f997d3`与revoke UI `dd3e65a`已持久化；frontend/backend automated matrix已完成，当前只剩manual smoke与最终Slice closure。
 
 Next Action:
 
-- 重跑CG010 validation、CG011 grantable catalog与真实grant transaction/idempotency/revoke backend tests，并与frontend role/error Gate逐项核对Slice 9剩余验收矩阵。
+- 使用loopback虚构Auth/Grant service与真实Vite App执行1280px/360px create/revoke/manual error/focus/overflow/console smoke。
 
 Context Recovery Evidence (verified 2026-09-02 after usage-limit interruption during Slice 9 create Dialog):
 
@@ -588,6 +588,12 @@ Slice 9 Revoke UI Evidence (verified 2026-09-02, in progress):
 - App/Grant/Knowledge Documents scoped regression为6 files / 50 tests；完整`pnpm check`通过contract drift、lint、typecheck、36 files / 209 tests与production build，仅保留既有约545.20 kB非阻塞chunk warning。
 - scoped diff/security review确认本checkpoint只有本计划、revoke Dialog、workspace/style/test共5个文件；package、lockfile、OpenAPI snapshot与generated types无diff，production只使用批准的DELETE mutation且没有新增敏感字段、权限推导、任意URL、raw HTML、browser storage或日志。唯一Next Action是建立独立revoke UI checkpoint。
 - 独立frontend checkpoint `dd3e65a`只包含本计划、revoke Dialog、workspace/style/test共5个文件；staged diff/check在提交前通过，外部RAG Eval report与runtime TaskPlan产物未暂存。唯一Next Action推进为Slice 9最终frontend/backend automated matrix。
+
+Slice 9 Final Automated Matrix Evidence (verified 2026-09-02):
+
+- frontend最终`pnpm check`通过contract drift、lint、typecheck、36 files / 209 tests与production build；App/Grant/Knowledge Documents scoped regression为6 files / 50 tests。employee capability-denied、admin/department-manager catalog scope、exact account/catalog-only IDs、safe 422/409/403/404 query convergence、created/existing adapter与active/revoked audit均有deterministic覆盖。
+- backend repository `.venv` + `PYTHONPATH=src`下，CG010 `test_document_access_grant_validation_contract.py`、CG011 `test_document_access_grantable_documents.py`与真实`test_document_access_grants.py`顺序重跑全部输出passed。Runtime/OpenAPI/no-sensitive 422、admin/manager/employee scope、public exclusion、精确document/target redundancy、atomic idempotent create、revoke audit与即时read/retrieval access收敛未回退。
+- package、lockfile、OpenAPI snapshot与generated types保持无diff；共享backend仍只有两个外部RAG Eval report目录与两个runtime TaskPlan文件未跟踪并继续排除。自动化矩阵无新Contract Gap或Blocking Issue；唯一Next Action推进为Document Grants manual browser smoke。
 
 Slice 9 Create Draft Policy Evidence (verified 2026-09-01):
 
