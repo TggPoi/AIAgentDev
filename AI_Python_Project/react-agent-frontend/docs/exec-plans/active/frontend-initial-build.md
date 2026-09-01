@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: Slice 9 Grant data/query seam 已由 frontend checkpoint `e824fc3` 完成；当前从 capability-gated read-only Grant list workspace 与真实 App route expected-red 开始，不提前实现 create/revoke UI
+Current Step: Slice 9 capability-gated read-only Grant workspace 已由 frontend checkpoint `8dea121` 完成；当前从 create draft/selection policy expected-red 开始，不直接跳到提交 Dialog
 
-Next Action: 新增 Grant read-only workspace/App focused test并取得 expected-red，固定 capability-gated真实 Route composition、URL filters、infinite list、active/revoked audit facts与安全 loading/empty/error states；本步不实现 create/revoke form或撤销控件
+Next Action: 新增 Grant create draft policy focused test并取得 expected-red，固定精确 target account、1–100 个唯一 document IDs、只允许 server-returned non-public文档、catalog drift reconciliation与 generated create request边界；不得新增用户搜索或客户端授权范围
 
 Blocking Issues: None；CG010 已达到 Runtime = OpenAPI = generated types = Tests，两个外部 runtime TaskPlan 文件继续排除
 
@@ -546,11 +546,19 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010 已关闭，Grant data/query seam 已由 `e824fc3` 持久化；当前未开始 Grant workspace/page 或 mutation UI。
+- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010 已关闭，Grant data/query seam `e824fc3` 与 read-only workspace `8dea121` 已持久化；当前未开始 create/revoke mutation UI。
 
 Next Action:
 
-- 新增 Grant read-only workspace/App focused test并取得 expected-red，固定 capability-gated真实 Route composition、URL filters、infinite list、active/revoked audit facts与安全 loading/empty/error states；本步不实现 create/revoke form或撤销控件。
+- 新增 Grant create draft policy focused test并取得 expected-red，固定精确 target account、1–100 个唯一 document IDs、只允许 server-returned non-public文档、catalog drift reconciliation与 generated create request边界；不得新增用户搜索或客户端授权范围。
+
+Slice 9 Read-only Workspace Evidence (verified 2026-09-01):
+
+- 真实 App/AuthProvider/Router/QueryClient/MSW test先在 capability-gated `/admin/document-grants` placeholder 上取得 expected-red：Route region存在但不会请求 Grant GET，也没有授权列表。最小 Page/workspace composition转绿后，批准的导航与 CapabilityGuard保持不变。
+- 四个列表筛选 `target_account/doc_id/status/department_code` 由 URL search params拥有；invalid status只作为无筛选处理，不向后端发明值。列表使用既有 user-bound infinite query、opaque cursor与稳定 merge；active/revoked卡片展示 repository path、doc ID、文档部门、目标账号及授权/撤销 actor和时间。
+- loading、empty、field error与form/server error使用共享 PageState/TextField。`target_account/doc_id/status/department_code` 只显示 backend安全 field message；非字段错误只显示固定“文档授权列表加载失败”、safe code/request ID，不渲染 backend top-level raw message。
+- focused最终为 Grant data/mutations/workspace、Knowledge Documents data与真实 App 5 files / 31 tests；`pnpm typecheck`、`pnpm lint`、`pnpm contracts:check`和 `git diff --check`全部通过。production scope search未发现新 browser storage、console、raw HTML、permission/ACL计算或额外 Route；package、lockfile、OpenAPI/generated contract均未变化。
+- 独立 frontend checkpoint `8dea121` 只包含 Grant workspace/style/test、Page与 App composition/test共 6 个文件，不包含 create/revoke控件。唯一 Next Action已推进为 create draft/selection policy expected-red。
 
 Slice 9 Data/Query Evidence (verified 2026-09-01):
 
