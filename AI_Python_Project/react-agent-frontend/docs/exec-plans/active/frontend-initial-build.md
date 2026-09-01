@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: 额度中断恢复已确认工作树中存在未checkpoint的catalog-backed create Dialog与测试；focused当前3/4通过，唯一失败来自测试对逐字符筛选值的过早断言和拆分文本匹配
+Current Step: 中断工作树的create成功路径测试观察点已修正并focused 4/4通过；当前逐条补齐尚未验证的mutation failure/pending行为
 
-Next Action: 只修正当前create flow测试观察点：中间输入值返回空catalog、仅最终筛选值返回文档，并在review容器断言规范化目标账号；随后重跑同一focused test确认当前生产实现的真实基线
+Next Action: 新增单一pending-lock expected-red，证明create请求未结束时Dialog不能关闭、返回或重复提交，再做最小实现
 
 Blocking Issues: None；Docker/PostgreSQL启动后CG011 backend最小contract test恢复重跑通过，当前frontend focused test可继续收敛
 
@@ -550,7 +550,7 @@ Currently Working On:
 
 Next Action:
 
-- 只修正当前create flow测试观察点：中间输入值返回空catalog、仅最终筛选值返回文档，并在review容器断言规范化目标账号；随后重跑同一focused test确认当前生产实现的真实基线。
+- 新增单一pending-lock expected-red，证明create请求未结束时Dialog不能关闭、返回或重复提交，再做最小实现。
 
 Context Recovery Evidence (verified 2026-09-02 after usage-limit interruption during Slice 9 create Dialog):
 
@@ -560,6 +560,7 @@ Context Recovery Evidence (verified 2026-09-02 after usage-limit interruption du
 - `pnpm test -- src/features/document-grants/DocumentGrantWorkspace.test.tsx`实际为4 tests中3通过、1失败。失败DOM已显示review中的规范化账号和所选文档；失败原因是MSW handler在`userEvent.type`逐字符期间断言最终`query/department_code`，以及测试用整节点文本查询匹配被label/text node拆分的账号。这是当前唯一先行测试修正，不据此宣称Dialog已完成。
 - CG011 backend最小contract test使用repository `.venv`与`PYTHONPATH=src`首次恢复重跑时因Docker尚未启动得到PostgreSQL `ConnectionRefusedError [WinError 1225]`；用户启动Docker后原命令重跑通过并输出`document_access_grantable_documents=passed`。该环境事件已解除，backend checkpoint `ea6df62`、frontend sync `03170c7`、当前generated drift与实际contract test共同证明合同未回退。
 - Repository/Git/Tests证明原Current Step和Next Action已过期，Current Slice仍为9 / IN_PROGRESS。恢复后的唯一Next Action是先修正上述单一测试观察点并重跑focused baseline；在该结果明确前不补写pending/422行为、不开始revoke UI。
+- 上述测试观察点已最小修正：MSW对中间逐字符筛选返回空catalog，只在最终`runbook/development`组合返回文档；review账号改为对包含行断言完整规范化文本。原focused file随后4/4通过，production code未为该green修改。唯一Next Action推进为单一pending-lock expected-red。
 
 Slice 9 Create Draft Policy Evidence (verified 2026-09-01):
 
