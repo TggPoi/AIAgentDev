@@ -8,11 +8,11 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: Slice 9 capability-gated read-only Grant workspace 已由 frontend checkpoint `8dea121` 完成；create selection reconnaissance 发现 CG011，受影响的 draft/Dialog 编码已停止
+Current Step: 用户已批准 CG011 Recommended Backend Change；当前从独立 grantable-document公共 HTTP/OpenAPI contract expected-red开始，frontend draft/Dialog继续暂停
 
-Next Action: 等待用户批准或拒绝 CG011 Recommended Backend Change；批准前不新增 Grant create draft/Dialog、不把 Knowledge Documents read scope当成 grant-management scope，也不实现客户端 ACL/部门推断
+Next Action: 新增独立 backend grantable-document HTTP/OpenAPI contract test并取得 Route不存在的 expected-red，只固定批准的GET path、safe response fields、query参数与安全422 schema
 
-Blocking Issues: CG011 - 当前 backend 没有 server-trimmed non-public grantable-document catalog；Knowledge Documents list是读取范围且无法可靠区分管理员所见 public或主管可读但不可管理的外部门文档
+Blocking Issues: None；CG011 backend fix已获批准并按TDD实施中，Runtime = OpenAPI = Tests与frontend contract sync前仍不创建Grant create UI
 
 Last Updated: 2026-09-01 (Asia/Shanghai)
 
@@ -303,7 +303,7 @@ Goal: 完成管理员和部门主管范围内的用户列表、详情、创建�
 
 ### Slice 9 - Cross-Department Document Grants
 
-Status: BLOCKED
+Status: IN_PROGRESS
 
 Goal: 完成非 public 文档的精确跨部门只读授权、列表、审计展示和幂等撤销。
 
@@ -546,11 +546,17 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / BLOCKED。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010 已关闭，Grant data/query seam `e824fc3` 与 read-only workspace `8dea121` 已持久化；create selection受 CG011 阻塞，尚未创建 draft/Dialog或 revoke UI working set。
+- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010 已关闭，Grant data/query seam `e824fc3` 与 read-only workspace `8dea121` 已持久化；CG011 backend fix已获批准，create draft/Dialog与revoke UI仍未创建。
 
 Next Action:
 
-- 等待用户批准或拒绝 CG011 Recommended Backend Change；批准前不新增 Grant create draft/Dialog、不把 Knowledge Documents read scope当成 grant-management scope，也不实现客户端 ACL/部门推断。
+- 新增独立 backend grantable-document HTTP/OpenAPI contract test并取得 Route不存在的 expected-red，只固定批准的GET path、safe response fields、query参数与安全422 schema。
+
+CG011 Approval Recovery Evidence (verified 2026-09-01):
+
+- 用户明确批准 CG011 Recommended Backend Change。授权只覆盖推荐的只读 grantable-document catalog、必要safe schema/Route/service/repository、actor scope与public exclusion、cursor/filter、安全validation/OpenAPI/tests；不新增用户搜索，不修改create/revoke业务语义、Knowledge Documents read policy、RAG/Agent/legacy stream或frontend create UI。
+- 续接确认共享HEAD为 `dab4574`，branch为 `master...origin/master [ahead 5]`，tracked unstaged/staged diff均为空；仅有两个外部RAG Eval report目录和两个runtime TaskPlan文件未跟踪并继续排除。Grant data `e824fc3`、read-only workspace `8dea121`和CG011 blocker `dab4574`均为HEAD ancestors，已通过Slice不重做。
+- 预先确认的TDD seam为公共FastAPI GET/OpenAPI/安全422，以及使用真实测试数据库的`DocumentAccessService`可观察行为；database是边界，不mock自有service/repository。唯一Next Action从Route不存在的HTTP expected-red开始，frontend contract生成和业务UI均后置。
 
 Slice 9 Create Selection Contract Evidence (verified 2026-09-01):
 
@@ -1512,7 +1518,7 @@ Resolution:
 
 #### CG011 - No Server-Trimmed Grantable Document Selection Contract
 
-Status: OPEN / AWAITING USER DECISION
+Status: APPROVED / IN PROGRESS
 
 Evidence:
 
@@ -1534,7 +1540,7 @@ Recommended Backend Change:
 
 Decision:
 
-- 等待用户明确批准或拒绝。CG010授权只覆盖既有三条Grant Route的安全422 contract，不能外推到新的selection catalog；批准前不修改backend、generated contract或Grant create UI。
+- 用户于2026-09-01明确批准上述Recommended Backend Change。范围严格限定为只读selection catalog、安全字段、backend-fixed scope/public exclusion、cursor/filter、validation/OpenAPI/tests与后续frontend contract sync；CG010授权未被扩大，Runtime = OpenAPI = generated types = Tests前不恢复Grant create UI。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
