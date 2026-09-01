@@ -8,11 +8,11 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: 用户已批准 CG010 严格受限 backend contract fix；当前从独立 Grant public 422 contract test 的 expected-red 开始，Grant frontend business coding 仍未开始
+Current Step: CG010 已由 backend `068e336` 与 frontend contract-sync `967ba14` 关闭；当前从 Slice 9 Grant data/query seam expected-red 开始，不直接跳到页面或 mutation UI
 
-Next Action: 新增独立 Grant public 422 contract test，通过真实 FastAPI Route + global handler 固定 request/business Runtime、OpenAPI、no-sensitive-echo、nested-collapse、form-level 与 non-Grant regression，并先取得 expected-red
+Next Action: 新增 Grant data/query focused test 并取得 expected-red，固定 generated DTO aliases、显式 DTO-to-Domain allowlist mapping、user-bound Query Keys、URL filters、opaque cursor merge 与 create/revoke mutation invalidation边界
 
-Blocking Issues: CG010 已获严格受限授权但尚未达到 Runtime = OpenAPI = Tests；完成独立 backend checkpoint 与 frontend contract sync 前禁止开始 Grant frontend business implementation
+Blocking Issues: None；CG010 已达到 Runtime = OpenAPI = generated types = Tests，两个外部 runtime TaskPlan 文件继续排除
 
 Last Updated: 2026-09-01 (Asia/Shanghai)
 
@@ -431,7 +431,7 @@ Current Slice:
 
 Context Recovery and Slice 9 Contract Reconnaissance Evidence (verified 2026-08-31 after usage-limit interruption):
 
-- 用户于 2026-09-01 明确批准 CG010 Recommended Backend Change。授权只覆盖三条 Initial React Grant Route 的安全 request/business 422 projection、OpenAPI schema、runtime/OpenAPI/no-sensitive/nested-collapse/form-level/non-Grant regressions与必要 service exception metadata；不改变 grant authorization、manager scope、target/document resolution、public/同部门/ACL redundancy policy、transaction、idempotency、conflict/403/404、audit、revoke、retrieval 或其他 Route。
+- 用户于 2026-09-01 明确批准 CG010 Recommended Backend Change。授权只覆盖三条 Initial React Grant Route 的安全 request/business 422 projection、OpenAPI schema、runtime/OpenAPI/no-sensitive/top-level-field/form-level/non-Grant regressions与必要 service exception metadata；不改变 grant authorization、manager scope、target/document resolution、public/同部门/ACL redundancy policy、transaction、idempotency、conflict/403/404、audit、revoke、retrieval 或其他 Route。
 - 授权后实施恢复确认 HEAD 为恢复/CG010 blocker checkpoint `2078587`，branch 为 `master...origin/master [ahead 88]`，staged diff 为空；Grant backend Route/Schema/service/exception handler/error schema/test scoped diff为空。外部 RAG Eval working set仍为 9 tracked + 23 untracked并继续隔离；恢复后的唯一 Next Action 是公共 HTTP/OpenAPI seam expected-red，不重做 Slice 8 或提前创建 Grant frontend code。
 - 2026-09-01 再次从 Git 续接：HEAD 仍为 `35ecb2f`、branch 仍为 `master...origin/master [ahead 87]`；上一轮 `git add/commit` 因额度限制在进程创建前被拒绝，staged diff 仍为空。frontend 唯一 scoped diff 是本计划的恢复/CG010 记录，Grant backend scoped diff仍为空；因此未丢失、未误提交，也没有新的 implementation 进度可采信。
 - frontend 与 backend 仍共享 Git root `D:/AI_Agent_Project`；confirmed HEAD 为 Slice 8 completion checkpoint `35ecb2f`，branch 为 `master...origin/master [ahead 87]`，staged diff 为空。Slice 8 data `6eeb740`、read-only UI `cabfd97`、mutation seam `54ea938`、draft policy `5df8950`、create `2b2a998`、access editor `2ddd1ed`、account controls `395d988`、identity reload `43defeb`、scope recovery `5c7f792` 与 role matrix `c1e037b` 均为 HEAD ancestors，对应源码真实存在；最后 verified completed Slice 为 8，未重新实现任何已通过 Gate 的 Slice。
@@ -442,6 +442,16 @@ Context Recovery and Slice 9 Contract Reconnaissance Evidence (verified 2026-08-
 - 受控 create business-validation probe 得到 `DOCUMENT_ACCESS_GRANT_INVALID / 422`、同样没有 `field_errors`，并确认 service message marker 被原样公开。真实 service 的冗余授权分支把提交的 document IDs 拼接进该 message，因此当前公开响应存在 document ID echo；cursor invalid 则复用同一异常但应保持安全 form-level 语义。
 - backend `test_document_access_grants.py`、`test_schema_field_descriptions.py` 与 `test_knowledge_document_read.py` 使用 repository `.venv` + `PYTHONPATH=src` 全部通过；前者覆盖部门范围、幂等、撤销、即时读取与基础 HTTP status/OpenAPI path，但只断言 duplicate body 为 422，不断言 Runtime/OpenAPI shape、field mapping、business no-echo 或公共 response schema，因此 green baseline 不能关闭该 gap。
 - Repository/Git/Tests 证明原 Current Step、Next Action、KI006 inventory 状态与 Slice 9 `IN_PROGRESS` 已过期。现已提升为 CG010 并把 Slice 9 标记 `BLOCKED`；恢复后的唯一 Next Action 是等待用户批准或拒绝严格受限 fix，批准前不修改 backend 或创建 Grant frontend working set。
+
+CG010 Completion Evidence (verified 2026-09-01):
+
+- 独立 `test_document_access_grant_validation_contract.py` 按 public FastAPI Route + global handler seam 分步取得 expected-red：POST request runtime 缺少 `field_errors`；business exception 不接受 field metadata并返回 500；真实冗余授权 service 分支没有稳定 field；GET/DELETE runtime 缺少安全 projection；OpenAPI 没有 request/business discriminator。每个 tracer bullet 均以最小实现转绿。
+- request 422 只投影 list query 的 `target_account/doc_id/status/department_code/limit` 与 create body 的 `target_account/document_ids`；malformed、unknown body、cursor、revoke path和无关 Route均保持 form-level或原有 shape。提交值、数组位置、raw Pydantic input/ctx/msg 与测试 marker不进入 HTTP body。
+- `DocumentAccessGrantInvalidError` 运行时只允许 `document_ids/invalid` 或无 field；冗余授权 service 分支显式提供该 metadata，内部 exception message不再拼接 document IDs。GET invalid cursor返回固定安全 message与空 `field_errors`；Grant handler日志也使用固定 public message。
+- GET/POST OpenAPI 422 为按 `code` 判别的 `RequestValidationErrorResponse | DocumentAccessGrantInvalidErrorResponse`，DELETE 422 只为安全 request response。当前 app 相对旧 snapshot仍为 58 paths，schemas 从 138 增至 140；仅 `/admin/document-access/grants` 与 `/{grant_id}` 两个 path item及 `RequestValidationFieldError`、两个新 Grant schema改变。
+- backend focused green：新 CG010 contract、真实 `test_document_access_grants.py`、`test_knowledge_document_read.py`、schema descriptions，以及 Auth/Conversation/Chat/TaskPlan/User Administration/Knowledge Documents validation contracts；相关 `py_compile` 通过。原 authorization、manager scope、public/department/ACL policy、transaction、idempotency、403/404/409、audit、revoke与retrieval regressions未回退。
+- 独立 backend checkpoint `068e336` 只包含 11 个 CG010 source/test 文件；frontend sync checkpoint `967ba14` 只包含 OpenAPI snapshot与 generated TypeScript。`pnpm contracts:generate`、`pnpm contracts:check` 与完整 `pnpm check` 通过：lint、typecheck、32 files / 172 tests、production build全部成功，仅保留既有约 531.05 kB 非阻塞 chunk warning；package/lockfile未变化。
+- 实施期间并发 RAG Eval 工作流自行创建 `02b0f27`、`ac48164`、`51303cf`；路径核对确认不与 Grant/frontend contract重叠，也未混入 `068e336` 或 `967ba14`。当前仅剩两个外部 runtime TaskPlan 文件未跟踪并继续排除。CG010 关闭，唯一 Next Action推进为 Grant data/query seam expected-red。
 
 Latest Context Recovery Evidence (verified 2026-08-31 before CG009 implementation):
 
@@ -536,11 +546,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010 已获严格受限授权，当前只实施 backend public 422 contract fix，尚未创建 Grant frontend working set。
+- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010 已关闭，当前准备建立 Grant data/query seam，尚未创建 Grant frontend business working set。
 
 Next Action:
 
-- 新增独立 Grant public 422 contract test，通过真实 FastAPI Route + global handler 固定 request/business Runtime、OpenAPI、no-sensitive-echo、nested-collapse、form-level 与 non-Grant regression，并先取得 expected-red。
+- 新增 Grant data/query focused test并取得 expected-red，固定 generated DTO aliases、显式 DTO-to-Domain allowlist mapping、user-bound Query Keys、URL filters、opaque cursor merge与 create/revoke mutation invalidation边界。
 
 Slice 8 Final Manual Smoke and Completion Evidence (verified 2026-08-31):
 
@@ -1120,22 +1130,22 @@ Status: RESOLVED AS ROUTE-SPECIFIC CONTRACT GAPS / DOCUMENT GRANTS PROMOTED TO C
 Evidence:
 
 - 初始只读 inventory 曾发现 Chat、TaskPlan、User Administration 与 Document Grants mutation 的 422 drift。Chat 已由 CG003、TaskPlan 已由 CG005、User Administration 已由 CG009 改为安全公共 422 contract；Slice 9 已把 Document Grants 风险用真实 Route/OpenAPI/runtime/service/tests 提升为 CG010。
-- User Administration 七条 operation 已有批准的 request field allowlist，create/access 另有可判别 business-validation 422 union；CG009 授权未外推到 Grant Route，CG010 仍需独立用户决定。
+- User Administration 七条 operation 已有批准的 request field allowlist，create/access 另有可判别 business-validation 422 union；CG009 授权未外推到 Grant Route，CG010 随后已获得独立批准并关闭。
 - Slice 9 无敏感 TestClient probe 已重新证明 Grant GET/POST/DELETE request validation 只有五个通用 runtime keys、没有 `field_errors`，OpenAPI 仍声明 `HTTPValidationError`；create business 422 还会原样公开 service message，而真实冗余授权分支把 document IDs 拼入该 message。
 - User Management feature 明确要求把 `422` 映射到 account、primary department、roles、permissions 等字段；全局 SPEC 对表单 `422` 也要求字段级错误。Chat、TaskPlan 与 Document Grant 的实际字段映射需求现均已在各自 Slice 结合真实交互完成判定。
 - Slice 6 reconnaissance 已确认 TaskPlan 不只有 422 drift：detail 200 仍为 arbitrary object，confirm-stream 也只有 generic envelope 且缺少业务 payload schema；对应问题已分别提升为 CG004-CG006。
 
 Impact:
 
-- Slice 8 reconnaissance 曾将 User Management request-validation 与 business-validation 422 风险提升为 CG009，现已关闭；Slice 9 已确认 CG010 并因此 BLOCKED。Slice 6 已实际复核并解决 detail type、422 drift 与 business event schema gaps。
+- Slice 8 reconnaissance 曾将 User Management request-validation 与 business-validation 422 风险提升为 CG009并关闭；Slice 9 确认的 CG010 也已由独立 backend/frontend checkpoints关闭。Slice 6 已实际复核并解决 detail type、422 drift 与 business event schema gaps。
 - Slice 5 reconnaissance 已确认 `query` 字段确实受影响并提升为 CG003；TaskPlan、User Management 与 Document Grants 后续也分别提升为对应 Route-specific gaps，KI006 不再持有未判定 inventory。
 - inventory 未发现新的 Slice 4 Route gap；因此它不阻塞 Slice 4，也不授权提前修改任何未来 backend Route。
 
 Resolution:
 
 - 各项 inventory 均已在对应 Slice 转为明确 gap 或确认不影响；Document Grants 现由 CG010 管理，不再保留为未核实风险。
-- 禁止把任何既有 Contract Gap 授权外推到 Document Grants Route，CG010 获得独立用户批准前禁止预修复。
-- Chat `query` 风险已由严格受限的 CG003 backend checkpoint `d3d95ba` 解决；TaskPlan CG004-CG006 均已按独立授权解决；Admin CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭；Grant CG010 尚未获授权。
+- 任何既有 Contract Gap 授权都未外推到 Document Grants Route；CG010 只在获得独立用户批准后实施。
+- Chat `query` 风险已由严格受限的 CG003 backend checkpoint `d3d95ba` 解决；TaskPlan CG004-CG006 均已按独立授权解决；Admin CG009 已由 backend `9952c69` 与 frontend contract-sync `c6f1645` 关闭；Grant CG010 已由 backend `068e336` 与 frontend contract-sync `967ba14` 关闭。
 
 ### Contract Gaps
 
@@ -1439,7 +1449,7 @@ Resolution:
 
 #### CG010 - Document Grants 422 Contracts Drift and Echo Document IDs
 
-Status: APPROVED / BACKEND CONTRACT FIX IN PROGRESS
+Status: RESOLVED
 
 Evidence:
 
@@ -1466,6 +1476,12 @@ Decision:
 
 - 用户于 2026-09-01 明确批准上述 CG010 严格受限 backend contract fix。授权只覆盖三条 Initial React Grant Route 的安全 request/business 422 projection、必要 exception field metadata、OpenAPI schema 与 runtime/OpenAPI/no-sensitive/nested-collapse/form-level/non-Grant/regression tests。
 - CG010 必须形成独立 backend checkpoint；随后重新导出 frontend snapshot/generated types并通过 contract drift、focused regressions 与 `pnpm check`。Runtime = OpenAPI = generated types = Tests 前不创建 Grant frontend DTO、Query 或页面。
+
+Resolution:
+
+- backend checkpoint `068e336` 为三条 Grant operation建立安全 request validation projection，为 GET/POST 建立按 `code` 判别的 request/business 422 union，并让 cursor、path、malformed、unknown与无关 Route保持 form-level或原有 shape。
+- `DocumentAccessGrantInvalidError` 只接受 `document_ids/invalid` 或无 field，handler使用固定安全 public message；真实冗余授权分支不再把 document IDs拼入 exception/public/log message。runtime/OpenAPI/no-sensitive/form-level/non-Grant/shared regressions全部通过。
+- frontend sync checkpoint `967ba14` 从 backend `068e336` 导出 58 paths / 140 schemas并生成判别 transport union；contract drift与完整 `pnpm check`通过。CG010关闭，Slice 9恢复正常 frontend implementation。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
