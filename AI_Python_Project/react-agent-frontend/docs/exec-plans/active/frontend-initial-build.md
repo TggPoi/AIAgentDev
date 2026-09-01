@@ -558,6 +558,7 @@ CG011 Frontend Contract Sync Evidence (verified 2026-09-01):
 - `pnpm contracts:generate`与`pnpm contracts:check`通过；generated transport明确返回五个safe item fields、opaque `next_cursor`与request/business 422 union。package、lockfile与dependency graph无变化。
 - frontend Grant/Knowledge Documents focused为6 files / 40 tests；完整`pnpm check`通过contract drift、lint、typecheck、35 files / 190 tests与production build，只保留既有约536.08 kB非阻塞chunk warning。
 - 独立frontend checkpoint `03170c7`只包含OpenAPI snapshot与generated types；外部RAG Eval/runtime产物未读取、修改或暂存。CG011达到Runtime = OpenAPI = generated types = Tests，现已关闭。
+- 关闭后完整文档复核发现SPEC endpoint清单、Architecture Grants映射、Feature contract表与Development snapshot证据仍停留在CG011前；checkpoint `758e9a6`只把四处记录对齐已批准runtime contract，没有新增产品行为。
 
 CG011 Backend Fix Evidence (verified 2026-09-01):
 
