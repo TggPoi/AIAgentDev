@@ -9,10 +9,12 @@ import type { DocumentGrantApi } from '@/features/document-grants/document-grant
 import { CreateDocumentGrantDialog } from '@/features/document-grants/CreateDocumentGrantDialog'
 import {
   type CreateDocumentGrantsResult,
+  type DocumentGrant,
   mergeDocumentGrantPages,
   type DocumentGrantStatus,
 } from '@/features/document-grants/document-grant-models'
 import { useDocumentGrantList } from '@/features/document-grants/document-grant-queries'
+import { RevokeDocumentGrantDialog } from '@/features/document-grants/RevokeDocumentGrantDialog'
 import styles from '@/features/document-grants/DocumentGrantWorkspace.module.css'
 
 
@@ -51,6 +53,7 @@ export function DocumentGrantWorkspace({
   const [createOpen, setCreateOpen] = useState(false)
   const [createResult, setCreateResult] =
     useState<CreateDocumentGrantsResult | null>(null)
+  const [revokeGrant, setRevokeGrant] = useState<DocumentGrant | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const targetAccount = searchParams.get('target_account') || null
   const documentId = searchParams.get('doc_id') || null
@@ -183,6 +186,15 @@ export function DocumentGrantWorkspace({
               <p>
                 授权人：{item.grantedByUserId} · 授权时间：{item.grantedAt}
               </p>
+              {item.status === 'active' ? (
+                <Button
+                  onClick={() => setRevokeGrant(item)}
+                  type="button"
+                  variant="secondary"
+                >
+                  撤销授权
+                </Button>
+              ) : null}
               {item.status === 'revoked' ? (
                 <p>
                   撤销人：{item.revokedByUserId ?? '未知'} · 撤销时间：
@@ -209,6 +221,14 @@ export function DocumentGrantWorkspace({
           canFilterDepartment={canFilterGrantableDepartment}
           onClose={() => setCreateOpen(false)}
           onCreated={setCreateResult}
+          userBoundary={userBoundary}
+        />
+      ) : null}
+      {revokeGrant ? (
+        <RevokeDocumentGrantDialog
+          api={api}
+          grant={revokeGrant}
+          onClose={() => setRevokeGrant(null)}
           userBoundary={userBoundary}
         />
       ) : null}

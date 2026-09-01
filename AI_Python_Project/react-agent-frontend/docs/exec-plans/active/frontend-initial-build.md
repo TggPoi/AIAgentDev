@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: catalog-backed create Dialog已由独立checkpoint `1f997d3`持久化；当前进入active grant revoke confirmation TDD
+Current Step: revoke confirmation的success/pending/409与完整Gate均已验证；当前完成scoped checkpoint
 
-Next Action: 在Document Grants mutation UI test新增单一revoke confirmation expected-red，固定只对active record开放、审计摘要、pending lock与成功后server-state收敛
+Next Action: 只暂存revoke Dialog、workspace/style/test与本计划，核对staged diff后建立独立frontend checkpoint
 
 Blocking Issues: None；Docker/PostgreSQL启动后CG011 backend最小contract test恢复重跑通过，当前frontend focused test可继续收敛
 
@@ -550,7 +550,7 @@ Currently Working On:
 
 Next Action:
 
-- 在Document Grants mutation UI test新增单一revoke confirmation expected-red，固定只对active record开放、审计摘要、pending lock与成功后server-state收敛。
+- 只暂存revoke Dialog、workspace/style/test与本计划，核对staged diff后建立独立frontend checkpoint。
 
 Context Recovery Evidence (verified 2026-09-02 after usage-limit interruption during Slice 9 create Dialog):
 
@@ -578,6 +578,15 @@ Slice 9 Create Dialog Evidence (verified 2026-09-02):
 - 恢复后的focused从3/4测试收敛为create 10/10；正确App + Grant/Knowledge Documents scoped regression为6 files / 46 tests，最终App/create为2 files / 20 tests。完整Gate最终为36 files / 207 tests与production build；backend CG011 contract在Docker启动后重跑通过。
 - package、lockfile、OpenAPI snapshot与generated types均无diff；scoped production review未发现额外endpoint、敏感字段、任意URL、raw HTML、browser storage或日志。success banner使用仓库现有design token，不新增依赖或全局token。唯一Next Action是建立独立create UI checkpoint，之后才进入revoke confirmation TDD。
 - 独立frontend checkpoint `1f997d3`只包含本计划、App role composition test与create Dialog/workspace/page/query/style/tests共8个文件；staged diff/check在提交前通过，外部RAG Eval report与runtime TaskPlan产物未暂存。唯一Next Action推进为active grant revoke confirmation expected-red。
+
+Slice 9 Revoke UI Evidence (verified 2026-09-02, in progress):
+
+- 首条public Workspace/MSW test先在active row缺少撤销入口时expected-red；最小实现只对active grant显示入口并复用既有DELETE mutation/query seam，revoked row没有操作。
+- confirmation展示repository path、精确目标账号与原授权人/时间；请求发送前不产生副作用。pending期间确认/取消、右上角关闭和Escape均锁定，列表保持原server status且请求只发一次。
+- 成功response后既有query seam重新读取grant records与相关document facts，Dialog关闭，列表展示server返回/刷新后的revoked actor/time；focused为11/11。唯一Next Action推进为revoke `409`安全失败收敛。
+- revoke `409` characterization直接green：Dialog保留、列表不乐观改变、固定ErrorState只显示safe code/request ID且raw message不渲染，既有query seam refetch grant records；focused为12/12。唯一Next Action推进为revoke scoped/full Gate与checkpoint review。
+- App/Grant/Knowledge Documents scoped regression为6 files / 50 tests；完整`pnpm check`通过contract drift、lint、typecheck、36 files / 209 tests与production build，仅保留既有约545.20 kB非阻塞chunk warning。
+- scoped diff/security review确认本checkpoint只有本计划、revoke Dialog、workspace/style/test共5个文件；package、lockfile、OpenAPI snapshot与generated types无diff，production只使用批准的DELETE mutation且没有新增敏感字段、权限推导、任意URL、raw HTML、browser storage或日志。唯一Next Action是建立独立revoke UI checkpoint。
 
 Slice 9 Create Draft Policy Evidence (verified 2026-09-01):
 

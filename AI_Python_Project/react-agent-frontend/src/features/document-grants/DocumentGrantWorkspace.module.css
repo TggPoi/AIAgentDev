@@ -185,6 +185,27 @@
   overflow-wrap: anywhere;
 }
 
+.revokeFacts {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.revokeFacts div {
+  min-width: 0;
+}
+
+.revokeFacts dt {
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.revokeFacts dd {
+  font-weight: 800;
+  margin: var(--space-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 900px) {
   .filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -666,3 +666,144 @@ describe('DocumentGrantWorkspace create flow', () => {
     await waitFor(() => expect(grantListRequestCount).toBe(2))
   })
 })
+
+describe('DocumentGrantWorkspace revoke flow', () => {
+  it('confirms an active grant, locks pending actions, and converges to server audit facts', async () => {
+    let grantListRequestCount = 0
+    let revokeRequestCount = 0
+    let releaseRevoke: (() => void) | undefined
+    server.use(
+      http.get(`${apiBaseUrl}/admin/document-access/grants`, () => {
+        grantListRequestCount += 1
+        return HttpResponse.json({
+          items: [
+            grantDto(
+              'grant-active',
+              'doc-active',
+              grantListRequestCount === 1 ? 'active' : 'revoked',
+            ),
+            grantDto('grant-revoked', 'doc-revoked', 'revoked'),
+          ],
+          next_cursor: null,
+        })
+      }),
+      http.delete(
+        `${apiBaseUrl}/admin/document-access/grants/grant-active`,
+        async () => {
+          revokeRequestCount += 1
+          await new Promise<void>((resolve) => {
+            releaseRevoke = resolve
+          })
+          return HttpResponse.json(
+            grantDto('grant-active', 'doc-active', 'revoked'),
+          )
+        },
+      ),
+    )
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    const list = await screen.findByRole('list', { name: '文档授权列表' })
+    const activeItem = within(list)
+      .getAllByRole('listitem')
+      .find((item) => item.textContent?.includes('docs/doc-active.md'))
+    const revokedItem = within(list)
+      .getAllByRole('listitem')
+      .find((item) => item.textContent?.includes('docs/doc-revoked.md'))
+    expect(activeItem).toBeDefined()
+    expect(revokedItem).toBeDefined()
+    expect(
+      within(revokedItem!).queryByRole('button', { name: '撤销授权' }),
+    ).not.toBeInTheDocument()
+    await user.click(
+      within(activeItem!).getByRole('button', { name: '撤销授权' }),
+    )
+
+    const dialog = screen.getByRole('dialog', { name: '撤销文档授权' })
+    expect(dialog).toHaveTextContent('docs/doc-active.md')
+    expect(dialog).toHaveTextContent('reader')
+    expect(dialog).toHaveTextContent('manager-1')
+    expect(dialog).toHaveTextContent('2026-09-01T01:00:00Z')
+    expect(revokeRequestCount).toBe(0)
+    await user.click(within(dialog).getByRole('button', { name: '确认撤销授权' }))
+
+    expect(
+      await within(dialog).findByRole('button', { name: '正在撤销…' }),
+    ).toBeDisabled()
+    expect(activeItem).toHaveTextContent('生效中')
+    await user.click(
+      within(dialog).getByRole('button', { name: '关闭撤销文档授权' }),
+    )
+    expect(
+      screen.getByRole('dialog', { name: '撤销文档授权' }),
+    ).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(
+      screen.getByRole('dialog', { name: '撤销文档授权' }),
+    ).toBeInTheDocument()
+    expect(revokeRequestCount).toBe(1)
+
+    releaseRevoke?.()
+    await waitFor(() => expect(grantListRequestCount).toBe(2))
+    expect(
+      screen.queryByRole('dialog', { name: '撤销文档授权' }),
+    ).not.toBeInTheDocument()
+    const refreshedList = screen.getByRole('list', { name: '文档授权列表' })
+    const refreshedItem = within(refreshedList)
+      .getAllByRole('listitem')
+      .find((item) => item.textContent?.includes('docs/doc-active.md'))
+    expect(refreshedItem).toHaveTextContent('已撤销')
+    expect(refreshedItem).toHaveTextContent('撤销人：manager-2')
+    expect(refreshedItem).toHaveTextContent(
+      '撤销时间：2026-09-01T02:00:00Z',
+    )
+  })
+
+  it('keeps the confirmation open with a safe conflict and refetches grants', async () => {
+    let grantListRequestCount = 0
+    server.use(
+      http.get(`${apiBaseUrl}/admin/document-access/grants`, () => {
+        grantListRequestCount += 1
+        return HttpResponse.json({
+          items: [grantDto('grant-conflict', 'doc-conflict')],
+          next_cursor: null,
+        })
+      }),
+      http.delete(
+        `${apiBaseUrl}/admin/document-access/grants/grant-conflict`,
+        () =>
+          HttpResponse.json(
+            {
+              code: 'DOCUMENT_ACCESS_GRANT_CONFLICT',
+              message: 'raw-revoke-conflict-marker',
+              request_id: 'grant-revoke-conflict',
+            },
+            { status: 409 },
+          ),
+      ),
+    )
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    const list = await screen.findByRole('list', { name: '文档授权列表' })
+    await user.click(
+      within(within(list).getByRole('listitem')).getByRole('button', {
+        name: '撤销授权',
+      }),
+    )
+    const dialog = screen.getByRole('dialog', { name: '撤销文档授权' })
+    await user.click(within(dialog).getByRole('button', { name: '确认撤销授权' }))
+
+    const error = await within(dialog).findByRole('region', {
+      name: '撤销文档授权失败',
+    })
+    expect(error).toHaveTextContent('DOCUMENT_ACCESS_GRANT_CONFLICT')
+    expect(error).toHaveTextContent('grant-revoke-conflict')
+    expect(error).not.toHaveTextContent('raw-revoke-conflict-marker')
+    expect(
+      screen.getByRole('dialog', { name: '撤销文档授权' }),
+    ).toBeInTheDocument()
+    expect(within(list).getByRole('listitem')).toHaveTextContent('生效中')
+    await waitFor(() => expect(grantListRequestCount).toBe(2))
+  })
+})
