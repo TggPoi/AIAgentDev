@@ -10,9 +10,9 @@ Current Slice: 9 - Cross-Department Document Grants
 
 Current Step: grantable-document frontend data/query seam已由checkpoint `3a7ac18`完成；当前建立create draft/selection policy expected-red
 
-Next Action: 新增纯create draft policy test并取得module缺失expected-red，固定精确target account、1–100个catalog-backed唯一document IDs与catalog drift显式收敛
+Next Action: 新增纯create draft policy test并取得module缺失expected-red，固定精确target account、1–100个从safe catalog item选择的唯一document IDs且不存在任意ID输入
 
-Blocking Issues: None；CG011已闭环且catalog data/query seam已完成，create Dialog仍须在纯draft policy验证后实施
+Blocking Issues: None；CG011已闭环且catalog data/query seam已完成；分页/筛选catalog不能被误当完整eligibility集合，create最终校验与安全422仍由backend负责
 
 Last Updated: 2026-09-01 (Asia/Shanghai)
 
@@ -550,7 +550,13 @@ Currently Working On:
 
 Next Action:
 
-- 新增纯create draft policy test并取得module缺失expected-red，固定精确target account、1–100个catalog-backed唯一document IDs与catalog drift显式收敛。
+- 新增纯create draft policy test并取得module缺失expected-red，固定精确target account、1–100个从safe catalog item选择的唯一document IDs且不存在任意ID输入。
+
+Slice 9 Create Draft Policy Correction (verified 2026-09-01):
+
+- grantable-document catalog是可分页、可文本/部门筛选的server view，不是User Management access catalog那样一次返回的完整有限集合；用“当前已加载/当前筛选结果”移除未出现的已选文档，会把筛选或未加载页误判为catalog drift。
+- create draft因此只保存用户实际从safe catalog response选择的`GrantableDocument`对象，并从这些对象构建document IDs；不提供任意ID文本入口。active/public/actor scope/target redundancy与selection后发生的drift继续由create backend事务最终校验。
+- create返回安全`document_ids` 422时，后续Dialog必须保留可编辑选择、显示allowlisted field error并refetch grantable catalog；前端不从分页缺席、actor身份或ACL推导哪个ID仍可授权。
 
 Slice 9 Grantable Document Data Evidence (verified 2026-09-01):
 
