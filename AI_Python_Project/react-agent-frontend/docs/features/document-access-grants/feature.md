@@ -10,6 +10,7 @@ Public 文档属于公共区域，所有已认证用户都可读取，不进入 
 
 | 接口 | 说明 |
 | --- | --- |
+| `GET /admin/document-access/grantable-documents` | 服务端裁剪的 active、non-public 可授权文档；支持 `query`、管理员 `department_code`、opaque `cursor`、`limit`，主管部门范围由后端固定 |
 | `GET /admin/document-access/grants` | `target_account`、`doc_id`、`status`、`department_code`、`cursor`、`limit` |
 | `POST /admin/document-access/grants` | 精确账号 + 1 到 100 个不重复 `document_ids` 的原子授权 |
 | `DELETE /admin/document-access/grants/{grant_id}` | 幂等撤销并返回保留审计字段的记录 |
@@ -18,9 +19,11 @@ Public 文档属于公共区域，所有已认证用户都可读取，不进入 
 
 Grant 项包含 `grant_id`、`document_id`、`repository_path`、`document_department_code`、最小 `grantee` 摘要、`status`、授权/撤销 actor 与时间。
 
+可授权文档 catalog 只返回创建选择需要的 `doc_id`、`title`、`repository_path`、`document_department_code`、`document_type` 和 `next_cursor`。它不返回 ACL、allowed users、raw visibility、source 配置或权限集合，也不替代创建提交时针对目标账号、public/同部门/original ACL、active grant、事务和幂等性的最终服务端校验。
+
 ## 3. 页面流程
 
-主管进入页面后，授权列表和可选非 public 文档都受其部门范围限制；管理员可使用部门筛选。创建流程输入精确用户名或邮箱，从知识文档列表选择一到多篇需要跨部门授权的非 public 文档，确认目标账号和文档清单后一次提交。
+主管进入页面后，授权列表和可选 non-public 文档都受其部门范围限制；管理员可使用部门筛选。创建流程输入精确用户名或邮箱，从服务端裁剪的可授权文档 catalog 选择一到多篇文档，确认目标账号和文档清单后一次提交。前端不得把普通 Knowledge Documents read scope 当作 grant-management scope，也不得从当前用户身份或文档 ACL 自行计算可选项。
 
 首期不提供跨部门完整用户搜索、不建立申请审批流，也不把聊天记录视为授权依据。目标账号不存在、未激活或不允许授权时，仅展示服务端安全错误。
 

@@ -204,7 +204,7 @@ Unknown Event 的 Production 投影最多包含：
 | TaskPlan | `/agent/task-plans*`；首期 React 不使用非流式 `/confirm` | 首期确认只使用 `/{id}/confirm/stream` |
 | Documents | `/knowledge/documents*` | 无 |
 | Users | `/admin/access/catalog`、`/admin/users*` | 无 |
-| Grants | `/admin/document-access/grants*` | 无 |
+| Grants | `/admin/document-access/grantable-documents`、`/admin/document-access/grants*` | 无 |
 | NL2SQL | `/nl2sql/datasets` | 复用聊天流；不调用 `/nl2sql/query` |
 | Web | 能力来自 AuthProvider Bootstrap Snapshot | 复用聊天流 |
 

@@ -88,6 +88,7 @@ Feature Pages
 - `PUT /admin/users/{user_id}/access`
 - `PATCH /admin/users/{user_id}/status`
 - `POST /admin/users/{user_id}/reset-password`
+- `GET /admin/document-access/grantable-documents`
 - `GET /admin/document-access/grants`
 - `POST /admin/document-access/grants`
 - `DELETE /admin/document-access/grants/{grant_id}`
