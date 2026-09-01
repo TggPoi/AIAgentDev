@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: CG010 已由 backend `068e336` 与 frontend contract-sync `967ba14` 关闭；当前从 Slice 9 Grant data/query seam expected-red 开始，不直接跳到页面或 mutation UI
+Current Step: Slice 9 Grant data/query seam 已由 frontend checkpoint `e824fc3` 完成；当前从 capability-gated read-only Grant list workspace 与真实 App route expected-red 开始，不提前实现 create/revoke UI
 
-Next Action: 新增 Grant data/query focused test 并取得 expected-red，固定 generated DTO aliases、显式 DTO-to-Domain allowlist mapping、user-bound Query Keys、URL filters、opaque cursor merge 与 create/revoke mutation invalidation边界
+Next Action: 新增 Grant read-only workspace/App focused test并取得 expected-red，固定 capability-gated真实 Route composition、URL filters、infinite list、active/revoked audit facts与安全 loading/empty/error states；本步不实现 create/revoke form或撤销控件
 
 Blocking Issues: None；CG010 已达到 Runtime = OpenAPI = generated types = Tests，两个外部 runtime TaskPlan 文件继续排除
 
@@ -308,11 +308,11 @@ Status: IN_PROGRESS
 Goal: 完成非 public 文档的精确跨部门只读授权、列表、审计展示和幂等撤销。
 
 - [x] 读取 Document Grants spec，复核 Route/Schema/OpenAPI/runtime tests。
-- [ ] 实现 grant list/create/revoke adapters、filters、cursor 和 Query Keys。
+- [x] 实现 grant list/create/revoke adapters、filters、cursor 和 Query Keys。
 - [ ] 创建流程只接受精确 target account 和 1–100 个非 public document IDs。
 - [ ] 不建立未批准的跨部门用户目录，不为 public/同部门文档创建冗余 grant。
 - [ ] 展示 created/existing counts、active/revoked audit facts 和安全错误。
-- [ ] 创建/撤销不做乐观更新，并失效 grants 与相关 documents Query。
+- [x] 创建/撤销不做乐观更新，并失效 grants 与相关 documents Query。
 - [ ] 增加 manager/admin scope、精确文档、幂等重复、撤销收敛、public 排除和不可见资源测试。
 - [ ] 完成 Slice Gate；执行 Document Grants manual smoke；创建独立 Git checkpoint。
 
@@ -546,11 +546,20 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010 已关闭，当前准备建立 Grant data/query seam，尚未创建 Grant frontend business working set。
+- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010 已关闭，Grant data/query seam 已由 `e824fc3` 持久化；当前未开始 Grant workspace/page 或 mutation UI。
 
 Next Action:
 
-- 新增 Grant data/query focused test并取得 expected-red，固定 generated DTO aliases、显式 DTO-to-Domain allowlist mapping、user-bound Query Keys、URL filters、opaque cursor merge与 create/revoke mutation invalidation边界。
+- 新增 Grant read-only workspace/App focused test并取得 expected-red，固定 capability-gated真实 Route composition、URL filters、infinite list、active/revoked audit facts与安全 loading/empty/error states；本步不实现 create/revoke form或撤销控件。
+
+Slice 9 Data/Query Evidence (verified 2026-09-01):
+
+- 按 TDD 依次取得并观察 query module缺失、domain model缺失、HTTP adapter缺失、create method缺失、revoke method缺失、create mutation缺失、revoke mutation缺失及 `403/404/409` 后未刷新记录的 expected-red；每个行为均以最小 production seam 转绿。
+- generated aliases只引用 `CreateDocumentAccessGrantsRequest/Response`、`DocumentAccessGrantItem/ListResponse/User`；adapter显式映射批准的 grant、grantee和审计字段，测试中的 `private_acl/private_scope` 不进入 Domain Model。GET 只发送非空 `target_account/doc_id/status/department_code/cursor` 与固定 limit，cursor保持不透明；grant ID只用于 `encodeURIComponent` 后的批准 DELETE Route。
+- Query Keys以当前认证用户为首个 boundary并包含完整 URL filters；infinite query使用服务端 opaque cursor，page merge保持服务端顺序并按 `grantId`保留首次出现。前端没有缓存允许读取的 document ID 集合，也没有计算授权范围。
+- create/revoke hooks不做 optimistic cache写入。成功后只失效当前用户的 grant list、knowledge document list及响应实际涉及 doc IDs 的 detail/content；无关文档 detail保持有效。`403/404/409` 只重新加载 grant records，不根据不可见原因作推断。
+- focused最终为 Document Grants data/mutations与 Knowledge Documents data 3 files / 20 tests；`pnpm typecheck`、`pnpm lint`、`pnpm contracts:check`和 `git diff --check`均通过。package、lockfile、OpenAPI snapshot与 generated types未变化；两个外部 runtime TaskPlan文件继续保留且未读取、修改或暂存。
+- 独立 frontend checkpoint `e824fc3` 只包含 `src/features/document-grants/` 的 6 个 data/query source/test文件。共享仓库在 checkpoint前已由另一会话把 CG010与 RAG Eval提交推送至远端 `6a6a61b`；本轮核对后无需 pull，未重做任何已通过 Slice。唯一 Next Action已推进为 read-only workspace/App expected-red。
 
 Slice 8 Final Manual Smoke and Completion Evidence (verified 2026-08-31):
 
