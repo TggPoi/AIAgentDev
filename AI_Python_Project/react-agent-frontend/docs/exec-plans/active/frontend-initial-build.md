@@ -6,11 +6,11 @@ Status: ACTIVE
 
 Plan Approval: APPROVED BY USER ON 2026-08-25
 
-Current Slice: 9 - Cross-Department Document Grants
+Current Slice: 10 - NL2SQL and Web Search Refinements
 
-Current Step: Slice 9 manual browser smoke已通过；当前建立窄屏安全错误换行修复与Slice closure checkpoint
+Current Step: Slice 9已完成并checkpoint；当前执行Slice 10 specs/backend contract reconnaissance
 
-Next Action: 只暂存PageState窄屏换行修复与本计划，完成diff/staged review后创建Slice 9最终checkpoint
+Next Action: 完整读取NL2SQL、Web Search与Chat feature specs，并核对Dataset Route/Schema/OpenAPI与structured Chat public SSE tested contract，形成唯一实施seam
 
 Blocking Issues: None
 
@@ -303,7 +303,7 @@ Goal: 完成管理员和部门主管范围内的用户列表、详情、创建�
 
 ### Slice 9 - Cross-Department Document Grants
 
-Status: IN_PROGRESS
+Status: COMPLETED
 
 Goal: 完成非 public 文档的精确跨部门只读授权、列表、审计展示和幂等撤销。
 
@@ -314,11 +314,11 @@ Goal: 完成非 public 文档的精确跨部门只读授权、列表、审计展
 - [x] 展示 created/existing counts、active/revoked audit facts 和安全错误。
 - [x] 创建/撤销不做乐观更新，并失效 grants 与相关 documents Query。
 - [x] 增加 manager/admin scope、精确文档、幂等重复、撤销收敛、public 排除和不可见资源测试。
-- [ ] 完成 Slice Gate；执行 Document Grants manual smoke；创建独立 Git checkpoint。
+- [x] 完成 Slice Gate；执行 Document Grants manual smoke；创建独立 Git checkpoint。
 
 ### Slice 10 - NL2SQL and Web Search Refinements
 
-Status: NOT_STARTED
+Status: IN_PROGRESS
 
 Goal: 在统一 Chat 中补齐 Dataset 选择、NL2SQL 结构化结果与 Web Search 完整能力体验，不建立平行问答应用。
 
@@ -427,7 +427,7 @@ Goal: 在不扩大 Scope 的前提下完成跨 Feature 集成、可访问性、�
 
 Current Slice:
 
-- 9 - Cross-Department Document Grants
+- 10 - NL2SQL and Web Search Refinements
 
 Context Recovery and Slice 9 Contract Reconnaissance Evidence (verified 2026-08-31 after usage-limit interruption):
 
@@ -546,11 +546,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`、grantable catalog data `3a7ac18`、create draft policy `92584a4`、create Dialog `1f997d3`与revoke UI `dd3e65a`已持久化。frontend/backend automated matrix和从零重跑的manual smoke均已通过；当前只剩窄屏安全错误换行修复的scoped checkpoint与Slice closure。
+- Slice 10 / IN_PROGRESS。最后verified completed Slice为9；Slice 9由Grant records data `e824fc3`、read-only workspace `8dea121`、grantable catalog data `3a7ac18`、create draft policy `92584a4`、create Dialog `1f997d3`、revoke UI `dd3e65a`与manual-smoke窄屏修复checkpoint `f3d1bf9`共同完成，frontend/backend automated matrix和manual smoke均通过且不再重做。当前只进行NL2SQL/Web/Chat specs与真实backend contract reconnaissance，尚未开始Slice 10业务编码。
 
 Next Action:
 
-- 只暂存`src/components/ui/PageState.module.css`与本计划，完成diff/staged review后创建Slice 9最终checkpoint；不得混入四个外部backend未跟踪运行产物。
+- 完整读取`docs/features/nl2sql/feature.md`、`docs/features/web-search/feature.md`与`docs/features/rag-agent-chat/feature.md`，核对backend Dataset Route/Schema/OpenAPI、structured Chat request/public SSE tested contract和当前frontend Chat seams，形成一个可验证的首个实施动作；在contract事实明确前不编码。
 
 Context Recovery Evidence (verified 2026-09-02 after Codex app crash during Slice 9 manual smoke):
 
@@ -610,6 +610,7 @@ Slice 9 Manual Browser Smoke Evidence (verified 2026-09-02 after Codex app crash
 - 最小修复只为共享安全错误details增加`overflow-wrap:anywhere`。重载同一409场景后create Dialog为`328=328`，revoke Dialog也为`328=328`，body/main保持`345=345`；窄屏截图未见被截断控件或页面横向溢出，browser console warning/error为`[]`。临时browser tab、viewport override、Vite/mock进程与smoke脚本均已清理。
 - focused `pnpm test -- src/components/ui/PageState.test.tsx src/features/document-grants/DocumentGrantWorkspace.test.tsx`通过2 files / 14 tests；完整`pnpm check`通过contract drift、lint、typecheck、36 files / 209 tests与production build，仅保留既有545.20 kB非阻塞chunk warning。package、lockfile、OpenAPI snapshot与generated types无diff，dependency graph未变化，可继续引用相同lockfile下Slice 5的`pnpm audit --audit-level high`成功证据。
 - 当前scoped diff只有本计划与`PageState.module.css`单行换行修复；四个外部backend未跟踪report/runtime产物仍保持隔离。manual smoke与Slice Gate所需证据已齐，唯一Next Action是建立最终scoped checkpoint后再把Current Slice推进到10。
+- 最终checkpoint `f3d1bf9`只包含本计划与`PageState.module.css`单行窄屏换行修复；staged diff/check通过，四个外部backend未跟踪report/runtime产物未暂存。Slice 9现为COMPLETED，最后verified completed Slice推进为9；唯一Next Action进入Slice 10 contract/spec reconnaissance。
 
 Slice 9 Create Draft Policy Evidence (verified 2026-09-01):
 
@@ -921,7 +922,9 @@ Relevant Files:
 - `docs/ARCHITECTURE.md`
 - `docs/DEVELOPMENT.md`
 - `docs/features/README.md`
-- `docs/features/document-access-grants/feature.md`
+- `docs/features/rag-agent-chat/feature.md`
+- `docs/features/nl2sql/feature.md`
+- `docs/features/web-search/feature.md`
 - `package.json`
 - `pnpm-lock.yaml`
 - `contracts/backend-openapi.json`
@@ -929,18 +932,20 @@ Relevant Files:
 - `src/api/api-error.ts`
 - `src/api/http-client.ts`
 - `../python-agent-study/AGENTS.md`
-- `../python-agent-study/learning-docs/教学讲解规范.md`
-- `../python-agent-study/src/fast_app/api/document_access_routes.py`
-- `../python-agent-study/src/fast_app/schemas/document_access_schema.py`
-- `../python-agent-study/src/fast_app/services/knowledge/document_access_service.py`
-- `../python-agent-study/src/fast_app/services/knowledge/document_access_repository.py`
-- `../python-agent-study/src/fast_app/services/knowledge/document_access_policy.py`
-- `../python-agent-study/src/fast_app/services/exceptions.py`
-- `../python-agent-study/src/fast_app/core/exception_handlers.py`
-- `../python-agent-study/src/fast_app/schemas/error_schema.py`
-- `../python-agent-study/scripts/tests/document_security/test_document_access_grants.py`
-- `../python-agent-study/scripts/tests/document_security/test_knowledge_document_read.py`
-- `../python-agent-study/scripts/tests/agent_research/test_schema_field_descriptions.py`
+- `src/features/chat/ChatWorkspace.tsx`
+- `src/features/chat/chat-api.ts`
+- `src/features/chat/chat-contracts.ts`
+- `src/features/chat/chat-model.ts`
+- `src/features/chat/chat-preferences.ts`
+- `../python-agent-study/src/fast_app/api/nl2sql_routes.py`
+- `../python-agent-study/src/fast_app/api/rag_chat_routes.py`
+- `../python-agent-study/src/fast_app/schemas/rag_chat_schema.py`
+- `../python-agent-study/src/fast_app/schemas/rag_stream_schema.py`
+- `../python-agent-study/src/fast_app/services/nl2sql/models.py`
+- `../python-agent-study/scripts/tests/nl2sql/test_nl2sql_api_contract.py`
+- `../python-agent-study/scripts/tests/nl2sql/test_nl2sql_rag_routing.py`
+- `../python-agent-study/scripts/tests/agent_research/test_rag_stream_contract.py`
+- `../python-agent-study/scripts/tests/document_security/test_rag_chat_validation_contract.py`
 
 Context Recovery Evidence (verified 2026-08-28 after CG004-CG006 authorization):
 
@@ -1173,7 +1178,7 @@ Status: RESOLVED / SUPERSEDED
 Evidence:
 
 - Slice 1 已在 checkpoint `7cdbcaa` 完成 contract snapshot、generated transport types、共享 HTTP/error seam 与 SSE protocol infrastructure，并以 4 files / 17 tests 和 `pnpm check` 验证。
-- Slice 2 随后已在 checkpoint `265e900` 完成 AuthProvider、token lifecycle、认证表单与路由保护，10 files / 47 tests 和 browser smoke 通过；Slice 3-8 也已分别通过 Gate，当前为 Slice 9 / IN_PROGRESS；CG009 已关闭，Slice 8 最终 Gate 与 manual smoke 已完成。
+- Slice 2 随后已在 checkpoint `265e900` 完成 AuthProvider、token lifecycle、认证表单与路由保护，10 files / 47 tests 和 browser smoke 通过；Slice 3-9 也已分别通过 Gate，当前为 Slice 10 / IN_PROGRESS；CG009-CG011均已关闭，Slice 9 最终 Gate 与 manual smoke 已完成。
 
 Impact:
 
@@ -1181,7 +1186,7 @@ Impact:
 
 Resolution:
 
-- 由 Slice 1 checkpoint `7cdbcaa` supersede；CG001-CG009 均已按各自批准范围关闭，Slice 2-8 已通过各自 Gate，Slice 8 最终实现链止于 role matrix `c1e037b`；当前 Slice 9 / IN_PROGRESS，只进行 Grant contract reconnaissance。
+- 由 Slice 1 checkpoint `7cdbcaa` supersede；CG001-CG011均已按各自批准范围关闭，Slice 2-9已通过各自Gate，Slice 9最终实现链止于manual-smoke窄屏修复checkpoint `f3d1bf9`；当前Slice 10 / IN_PROGRESS，只进行NL2SQL/Web/Chat contract reconnaissance。
 
 ### KI002 - OpenAPI Type Generator Is Not Installed
 
