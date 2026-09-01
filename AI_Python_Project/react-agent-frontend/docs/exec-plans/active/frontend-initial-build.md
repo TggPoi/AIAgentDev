@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: revoke confirmation的success/pending/409与完整Gate均已验证；当前完成scoped checkpoint
+Current Step: revoke UI已由独立checkpoint `dd3e65a`持久化；当前建立Slice 9最终frontend/backend automated matrix
 
-Next Action: 只暂存revoke Dialog、workspace/style/test与本计划，核对staged diff后建立独立frontend checkpoint
+Next Action: 重跑CG010 validation、CG011 grantable catalog与真实grant transaction/idempotency/revoke backend tests，并与frontend role/error Gate逐项核对Slice 9剩余验收矩阵
 
 Blocking Issues: None；Docker/PostgreSQL启动后CG011 backend最小contract test恢复重跑通过，当前frontend focused test可继续收敛
 
@@ -309,9 +309,9 @@ Goal: 完成非 public 文档的精确跨部门只读授权、列表、审计展
 
 - [x] 读取 Document Grants spec，复核 Route/Schema/OpenAPI/runtime tests。
 - [x] 实现 grant list/create/revoke adapters、filters、cursor 和 Query Keys。
-- [ ] 创建流程只接受精确 target account 和 1–100 个非 public document IDs。
-- [ ] 不建立未批准的跨部门用户目录，不为 public/同部门文档创建冗余 grant。
-- [ ] 展示 created/existing counts、active/revoked audit facts 和安全错误。
+- [x] 创建流程只接受精确 target account 和 1–100 个 server-trimmed non-public document IDs。
+- [x] 不建立未批准的跨部门用户目录，不为 public/同部门文档创建冗余 grant。
+- [x] 展示 created/existing counts、active/revoked audit facts 和安全错误。
 - [x] 创建/撤销不做乐观更新，并失效 grants 与相关 documents Query。
 - [ ] 增加 manager/admin scope、精确文档、幂等重复、撤销收敛、public 排除和不可见资源测试。
 - [ ] 完成 Slice Gate；执行 Document Grants manual smoke；创建独立 Git checkpoint。
@@ -546,11 +546,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`、grantable catalog data `3a7ac18`、create draft policy `92584a4`与create Dialog `1f997d3`已持久化；revoke UI尚未开始。
+- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`、grantable catalog data `3a7ac18`、create draft policy `92584a4`、create Dialog `1f997d3`与revoke UI `dd3e65a`已持久化；当前执行最终automated matrix，manual smoke尚未开始。
 
 Next Action:
 
-- 只暂存revoke Dialog、workspace/style/test与本计划，核对staged diff后建立独立frontend checkpoint。
+- 重跑CG010 validation、CG011 grantable catalog与真实grant transaction/idempotency/revoke backend tests，并与frontend role/error Gate逐项核对Slice 9剩余验收矩阵。
 
 Context Recovery Evidence (verified 2026-09-02 after usage-limit interruption during Slice 9 create Dialog):
 
@@ -587,6 +587,7 @@ Slice 9 Revoke UI Evidence (verified 2026-09-02, in progress):
 - revoke `409` characterization直接green：Dialog保留、列表不乐观改变、固定ErrorState只显示safe code/request ID且raw message不渲染，既有query seam refetch grant records；focused为12/12。唯一Next Action推进为revoke scoped/full Gate与checkpoint review。
 - App/Grant/Knowledge Documents scoped regression为6 files / 50 tests；完整`pnpm check`通过contract drift、lint、typecheck、36 files / 209 tests与production build，仅保留既有约545.20 kB非阻塞chunk warning。
 - scoped diff/security review确认本checkpoint只有本计划、revoke Dialog、workspace/style/test共5个文件；package、lockfile、OpenAPI snapshot与generated types无diff，production只使用批准的DELETE mutation且没有新增敏感字段、权限推导、任意URL、raw HTML、browser storage或日志。唯一Next Action是建立独立revoke UI checkpoint。
+- 独立frontend checkpoint `dd3e65a`只包含本计划、revoke Dialog、workspace/style/test共5个文件；staged diff/check在提交前通过，外部RAG Eval report与runtime TaskPlan产物未暂存。唯一Next Action推进为Slice 9最终frontend/backend automated matrix。
 
 Slice 9 Create Draft Policy Evidence (verified 2026-09-01):
 
