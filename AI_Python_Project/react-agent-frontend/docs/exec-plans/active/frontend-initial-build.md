@@ -8,11 +8,11 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: 用户已批准 CG011 Recommended Backend Change；当前从独立 grantable-document公共 HTTP/OpenAPI contract expected-red开始，frontend draft/Dialog继续暂停
+Current Step: CG011严格受限backend fix已由独立checkpoint `ea6df62`完成并通过focused/shared regressions；当前同步frontend OpenAPI snapshot/generated types，frontend draft/Dialog继续暂停
 
-Next Action: 新增独立 backend grantable-document HTTP/OpenAPI contract test并取得 Route不存在的 expected-red，只固定批准的GET path、safe response fields、query参数与安全422 schema
+Next Action: 从backend checkpoint `ea6df62`重新导出canonical OpenAPI snapshot，生成frontend transport types并核对仅出现批准的grantable-document contract差异
 
-Blocking Issues: None；CG011 backend fix已获批准并按TDD实施中，Runtime = OpenAPI = Tests与frontend contract sync前仍不创建Grant create UI
+Blocking Issues: None；backend Runtime = OpenAPI = Tests已验证，frontend contract sync与完整`pnpm check`完成前仍不创建Grant create UI
 
 Last Updated: 2026-09-01 (Asia/Shanghai)
 
@@ -546,11 +546,18 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010 已关闭，Grant data/query seam `e824fc3` 与 read-only workspace `8dea121` 已持久化；CG011 backend fix已获批准，create draft/Dialog与revoke UI仍未创建。
+- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010 已关闭，Grant data/query seam `e824fc3` 与 read-only workspace `8dea121` 已持久化；CG011 backend checkpoint `ea6df62`已完成，frontend contract sync进行中，create draft/Dialog与revoke UI仍未创建。
 
 Next Action:
 
-- 新增独立 backend grantable-document HTTP/OpenAPI contract test并取得 Route不存在的 expected-red，只固定批准的GET path、safe response fields、query参数与安全422 schema。
+- 从backend checkpoint `ea6df62`重新导出canonical OpenAPI snapshot，生成frontend transport types并核对仅出现批准的grantable-document contract差异。
+
+CG011 Backend Fix Evidence (verified 2026-09-01):
+
+- 独立backend checkpoint `ea6df62`新增唯一只读`GET /admin/document-access/grantable-documents`；response只含`doc_id/title/repository_path/document_department_code/document_type/next_cursor`，没有ACL、allowed users、raw visibility、source配置或permission集合。
+- 真实database-backed service/repository test覆盖admin全范围与部门筛选、manager固定主管部门且不能扩大、employee拒绝、active source/document与public排除、escaped text filter、opaque keyset cursor；create/revoke语义、Knowledge Documents read policy与RAG/Agent/legacy stream均未修改。
+- 公共FastAPI runtime/OpenAPI test覆盖query参数、safe 200 shape、allowlisted request 422、非法cursor稳定business 422与敏感marker不回显；schema field descriptions与py_compile通过。
+- `test_document_access_grantable_documents.py`、`test_document_access_grants.py`、`test_knowledge_document_read.py`、`test_document_access_grant_validation_contract.py`及Auth/Conversation/RAG Chat/TaskPlan/Knowledge Documents/User Administration validation contract regressions全部通过。两个外部RAG Eval report目录与两个runtime TaskPlan文件未读取、修改或暂存。
 
 CG011 Approval Recovery Evidence (verified 2026-09-01):
 
@@ -1518,7 +1525,7 @@ Resolution:
 
 #### CG011 - No Server-Trimmed Grantable Document Selection Contract
 
-Status: APPROVED / IN PROGRESS
+Status: BACKEND CHECKPOINT COMPLETE / FRONTEND CONTRACT SYNC IN PROGRESS
 
 Evidence:
 
