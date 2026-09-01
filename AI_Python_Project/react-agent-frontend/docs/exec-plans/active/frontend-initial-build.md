@@ -8,11 +8,11 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: Slice 9 capability-gated read-only Grant workspace 已由 frontend checkpoint `8dea121` 完成；当前从 create draft/selection policy expected-red 开始，不直接跳到提交 Dialog
+Current Step: Slice 9 capability-gated read-only Grant workspace 已由 frontend checkpoint `8dea121` 完成；create selection reconnaissance 发现 CG011，受影响的 draft/Dialog 编码已停止
 
-Next Action: 新增 Grant create draft policy focused test并取得 expected-red，固定精确 target account、1–100 个唯一 document IDs、只允许 server-returned non-public文档、catalog drift reconciliation与 generated create request边界；不得新增用户搜索或客户端授权范围
+Next Action: 等待用户批准或拒绝 CG011 Recommended Backend Change；批准前不新增 Grant create draft/Dialog、不把 Knowledge Documents read scope当成 grant-management scope，也不实现客户端 ACL/部门推断
 
-Blocking Issues: None；CG010 已达到 Runtime = OpenAPI = generated types = Tests，两个外部 runtime TaskPlan 文件继续排除
+Blocking Issues: CG011 - 当前 backend 没有 server-trimmed non-public grantable-document catalog；Knowledge Documents list是读取范围且无法可靠区分管理员所见 public或主管可读但不可管理的外部门文档
 
 Last Updated: 2026-09-01 (Asia/Shanghai)
 
@@ -303,7 +303,7 @@ Goal: 完成管理员和部门主管范围内的用户列表、详情、创建�
 
 ### Slice 9 - Cross-Department Document Grants
 
-Status: IN_PROGRESS
+Status: BLOCKED
 
 Goal: 完成非 public 文档的精确跨部门只读授权、列表、审计展示和幂等撤销。
 
@@ -546,11 +546,21 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010 已关闭，Grant data/query seam `e824fc3` 与 read-only workspace `8dea121` 已持久化；当前未开始 create/revoke mutation UI。
+- Slice 9 / BLOCKED。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010 已关闭，Grant data/query seam `e824fc3` 与 read-only workspace `8dea121` 已持久化；create selection受 CG011 阻塞，尚未创建 draft/Dialog或 revoke UI working set。
 
 Next Action:
 
-- 新增 Grant create draft policy focused test并取得 expected-red，固定精确 target account、1–100 个唯一 document IDs、只允许 server-returned non-public文档、catalog drift reconciliation与 generated create request边界；不得新增用户搜索或客户端授权范围。
+- 等待用户批准或拒绝 CG011 Recommended Backend Change；批准前不新增 Grant create draft/Dialog、不把 Knowledge Documents read scope当成 grant-management scope，也不实现客户端 ACL/部门推断。
+
+Slice 9 Create Selection Contract Evidence (verified 2026-09-01):
+
+- Feature要求创建流程从知识文档中选择一到多篇 non-public文档；主管的可选项必须受自己主管部门范围限制，管理员可按部门筛选。当前 Grant Route只有 list/create/revoke records，没有用于创建选择的 server-trimmed document catalog。
+- frontend generated `KnowledgeDocumentItem`只有 `access_source/department_code/doc_id/...`，没有 `visibility`或 backend grant-management eligibility；单文档 detail虽有 raw `visibility`，仍没有 actor是否可管理该文档的服务端裁决。
+- backend `DocumentAccessPolicy.resolve_access_source_from_scope()`先判断 `can_read_all`并返回 `admin`，再判断 public；真实 `test_knowledge_document_read.py`断言管理员页面的所有文档均为 `access_source=admin`。因此管理员所见 public文档无法从 list item的 `access_source`可靠排除。
+- 同一 read policy允许 department、original ACL和explicit grant；主管因此可能读取并列出自己非主管部门的外部文档，而 `DocumentAccessService.create_grants()`另外强制所有文档必须等于主管 primary department。Knowledge Documents list是read scope，不是grant-management scope；逐项 detail只补 visibility，仍不能提供该管理裁决。
+- backend源码/Route/OpenAPI搜索未发现 grantable-document catalog。当前 `get_grantable_documents(doc_ids)`只在create提交后按ID读取active记录，再由service执行scope/public/target-redundancy裁决，不提供可分页的安全选择列表。
+- backend `.venv` + `PYTHONPATH=src` 下 `test_knowledge_document_read.py`与 `test_document_access_grants.py`均输出 passed，证明现有read/create授权行为未回退，但这些green tests不提供缺失的selection contract。共享worktree新增的两个RAG Eval report目录与两个runtime TaskPlan文件均视为外部产物，未读取内容、修改或暂存。
+- Repository/Backend/Tests证明计划原 create draft Next Action不可安全执行，现已提升为 CG011并停止受影响编码。直接允许任意doc ID、用当前用户部门比较、把 `access_source`当visibility，或逐项detail后推断manager scope都会违反批准的Feature/Architecture与backend-authoritative authorization边界。
 
 Slice 9 Read-only Workspace Evidence (verified 2026-09-01):
 
@@ -1499,6 +1509,32 @@ Resolution:
 - backend checkpoint `068e336` 为三条 Grant operation建立安全 request validation projection，为 GET/POST 建立按 `code` 判别的 request/business 422 union，并让 cursor、path、malformed、unknown与无关 Route保持 form-level或原有 shape。
 - `DocumentAccessGrantInvalidError` 只接受 `document_ids/invalid` 或无 field，handler使用固定安全 public message；真实冗余授权分支不再把 document IDs拼入 exception/public/log message。runtime/OpenAPI/no-sensitive/form-level/non-Grant/shared regressions全部通过。
 - frontend sync checkpoint `967ba14` 从 backend `068e336` 导出 58 paths / 140 schemas并生成判别 transport union；contract drift与完整 `pnpm check`通过。CG010关闭，Slice 9恢复正常 frontend implementation。
+
+#### CG011 - No Server-Trimmed Grantable Document Selection Contract
+
+Status: OPEN / AWAITING USER DECISION
+
+Evidence:
+
+- Cross-Department Document Grants feature要求创建时从知识文档中选择 1–100 篇 non-public文档；主管的可选文档必须由其主管部门范围限制，管理员可按部门筛选。当前 Grant backend只公开 grant record GET、create POST与revoke DELETE，没有document selection/catalog Route。
+- `KnowledgeDocumentItem` transport没有 `visibility`或 grant-management eligibility。管理员的read scope会在 public判断之前返回 `access_source=admin`；真实 Knowledge Documents test明确断言管理员列表所有item都是 `admin`，所以不能用 `access_source`排除public。
+- 主管的 Knowledge Documents read scope还可包含 `original_acl`和 `explicit_grant`外部门文档，而 Grant create service独立要求主管只能授权自己 primary department拥有的文档。现有列表因此不能代表可管理范围；detail的 `visibility`也不能补足backend management-scope裁决。
+- backend `get_grantable_documents(doc_ids)`只在create提交后读取指定active文档，随后service才检查actor scope、public/同部门/original ACL redundancy与target account。它不是可分页、可筛选、server-trimmed的选择contract。
+
+Impact:
+
+- Frontend不能同时满足“只选择non-public”“主管只看到可管理部门文档”“不计算客户端ACL/权限”和“不得任意输入doc ID”。继续实现会把read scope误当management scope、向管理员展示public候选或让主管选择其仅可读但不可授权的外部门文档。
+- 逐项请求 Knowledge Document detail只能得到raw visibility，仍无法得到actor grant-management裁决；用AuthProvider部门/账号类型自行比较则会复制backend authorization policy。Slice 9 create draft/Dialog因此阻塞；已完成的read-only grant list不受影响。
+
+Recommended Backend Change:
+
+- 在既有 `/admin/document-access` 边界新增只读、server-trimmed的 grantable-document catalog Route（推荐 `GET /admin/document-access/grantable-documents`），支持opaque cursor、limit、文本筛选与管理员可用的 `department_code`；主管的department scope必须由backend固定，不能由客户端提交扩大。
+- response只返回创建选择需要的安全字段，例如 `doc_id/title/repository_path/document_department_code/document_type`；只列active、non-public且actor有权管理的文档，不返回ACL、allowed users、visibility原值、内部source配置或任意权限集合。该catalog不新增用户搜索，也不替代create时针对target account的最终public/同部门/original ACL/active grant/transaction校验。
+- 增加manager/admin/employee scope、public exclusion、manager department fixation、admin department filter、opaque cursor/filter、OpenAPI/runtime/no-sensitive-field tests；形成独立backend checkpoint。随后重新导出frontend OpenAPI snapshot/types并通过contract drift、Grant/Knowledge Documents regressions与 `pnpm check`，再恢复create draft TDD。
+
+Decision:
+
+- 等待用户明确批准或拒绝。CG010授权只覆盖既有三条Grant Route的安全422 contract，不能外推到新的selection catalog；批准前不修改backend、generated contract或Grant create UI。
 
 每个后续业务 Slice 仍须复核对应真实 Route/Schema/tests；如发现 drift，必须新增带 Evidence/Impact/Recommendation 的 gap 并停止受影响实现。
 
