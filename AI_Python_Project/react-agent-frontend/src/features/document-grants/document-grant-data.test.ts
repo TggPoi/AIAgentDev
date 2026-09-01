@@ -5,8 +5,10 @@ import { createHttpClient } from '@/api/http-client'
 import { createDocumentGrantApi } from '@/features/document-grants/document-grant-api'
 import type { CreateDocumentAccessGrantsRequestDto } from '@/features/document-grants/document-grant-contracts'
 import {
+  mergeGrantableDocumentPages,
   mergeDocumentGrantPages,
   type DocumentGrant,
+  type GrantableDocument,
 } from '@/features/document-grants/document-grant-models'
 import { documentGrantKeys } from '@/features/document-grants/document-grant-queries'
 import { server } from '@/test/server'
@@ -58,6 +60,51 @@ describe('document grant private query keys', () => {
       documentGrantKeys.list('admin-b', params),
     )
   })
+
+  it('isolates grantable-document filters by authenticated user', () => {
+    const params = {
+      departmentCode: 'development',
+      limit: 20,
+      query: 'runbook',
+    }
+
+    expect(documentGrantKeys.grantableList('admin-a', params)).not.toEqual(
+      documentGrantKeys.grantableList('admin-b', params),
+    )
+  })
+})
+
+function grantableDocument(
+  documentId: string,
+  title = 'Runbook',
+): GrantableDocument {
+  return {
+    documentDepartmentCode: 'development',
+    documentId,
+    documentType: 'markdown',
+    repositoryPath: `docs/${documentId}.md`,
+    title,
+  }
+}
+
+describe('grantable document keyset page merge', () => {
+  it('preserves server order and keeps the first occurrence of each document', () => {
+    expect(
+      mergeGrantableDocumentPages([
+        {
+          items: [grantableDocument('doc-b'), grantableDocument('doc-a')],
+          nextCursor: 'cursor-2',
+        },
+        {
+          items: [
+            grantableDocument('doc-a', 'Duplicate'),
+            grantableDocument('doc-c'),
+          ],
+          nextCursor: null,
+        },
+      ]).map((item) => item.documentId),
+    ).toEqual(['doc-b', 'doc-a', 'doc-c'])
+  })
 })
 
 function grant(grantId: string, documentId: string): DocumentGrant {
@@ -101,6 +148,71 @@ describe('document grant keyset page merge', () => {
 })
 
 describe('document grant HTTP adapter', () => {
+  it('lists server-trimmed grantable documents with opaque paging and safe mapping', async () => {
+    server.use(
+      http.get(
+        `${apiBaseUrl}/admin/document-access/grantable-documents`,
+        ({ request }) => {
+          const url = new URL(request.url)
+          expect(url.searchParams.get('cursor')).toBe('opaque+/=')
+          expect(url.searchParams.get('limit')).toBe('20')
+          expect(url.searchParams.get('query')).toBe('runbook')
+          expect(url.searchParams.get('department_code')).toBe('development')
+          return HttpResponse.json({
+            items: [
+              {
+                doc_id: 'doc-1',
+                document_department_code: 'development',
+                document_type: 'markdown',
+                private_acl: 'must-not-enter-domain-model',
+                repository_path: 'docs/doc-1.md',
+                title: 'Runbook',
+                visibility: 'must-not-enter-domain-model',
+              },
+            ],
+            next_cursor: 'cursor-2',
+            private_scope: 'must-not-enter-domain-model',
+          })
+        },
+      ),
+    )
+
+    await expect(
+      createApi().listGrantableDocuments({
+        cursor: 'opaque+/=',
+        departmentCode: 'development',
+        limit: 20,
+        query: 'runbook',
+      }),
+    ).resolves.toEqual({
+      items: [grantableDocument('doc-1')],
+      nextCursor: 'cursor-2',
+    })
+  })
+
+  it('omits empty grantable-document filters instead of inventing management scope', async () => {
+    server.use(
+      http.get(
+        `${apiBaseUrl}/admin/document-access/grantable-documents`,
+        ({ request }) => {
+          const url = new URL(request.url)
+          expect(url.searchParams.has('cursor')).toBe(false)
+          expect(url.searchParams.has('query')).toBe(false)
+          expect(url.searchParams.has('department_code')).toBe(false)
+          expect(url.searchParams.get('limit')).toBe('20')
+          return HttpResponse.json({ items: [], next_cursor: null })
+        },
+      ),
+    )
+
+    await createApi().listGrantableDocuments({
+      cursor: null,
+      departmentCode: null,
+      limit: 20,
+      query: null,
+    })
+  })
+
   it('passes opaque cursors and filters, then maps only allowlisted fields', async () => {
     server.use(
       http.get(`${apiBaseUrl}/admin/document-access/grants`, ({ request }) => {

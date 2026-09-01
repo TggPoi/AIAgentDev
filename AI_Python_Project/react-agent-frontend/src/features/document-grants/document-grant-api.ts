@@ -2,6 +2,7 @@ import type { HttpClient } from '@/api/http-client'
 import type {
   CreateDocumentAccessGrantsRequestDto,
   CreateDocumentAccessGrantsResponseDto,
+  DocumentAccessGrantableDocumentListResponseDto,
   DocumentAccessGrantItemDto,
   DocumentAccessGrantListResponseDto,
 } from '@/features/document-grants/document-grant-contracts'
@@ -9,10 +10,12 @@ import {
   mapCreateDocumentGrantsResult,
   mapDocumentGrant,
   mapDocumentGrantPage,
+  mapGrantableDocumentPage,
   type CreateDocumentGrantsResult,
   type DocumentGrant,
   type DocumentGrantPage,
   type DocumentGrantStatus,
+  type GrantableDocumentPage,
 } from '@/features/document-grants/document-grant-models'
 
 
@@ -26,10 +29,21 @@ export interface DocumentGrantListRequest {
   targetAccount: string | null
 }
 
+export interface GrantableDocumentListRequest {
+  cursor: string | null
+  departmentCode: string | null
+  limit: number
+  query: string | null
+  signal?: AbortSignal
+}
+
 export interface DocumentGrantApi {
   createGrants(
     request: CreateDocumentAccessGrantsRequestDto,
   ): Promise<CreateDocumentGrantsResult>
+  listGrantableDocuments(
+    request: GrantableDocumentListRequest,
+  ): Promise<GrantableDocumentPage>
   listGrants(request: DocumentGrantListRequest): Promise<DocumentGrantPage>
   revokeGrant(grantId: string): Promise<DocumentGrant>
 }
@@ -49,6 +63,19 @@ function listPath(request: DocumentGrantListRequest): string {
   return `/admin/document-access/grants?${search.toString()}`
 }
 
+function grantableDocumentListPath(
+  request: GrantableDocumentListRequest,
+): string {
+  const search = new URLSearchParams()
+  if (request.cursor !== null) search.set('cursor', request.cursor)
+  search.set('limit', String(request.limit))
+  if (request.query !== null) search.set('query', request.query)
+  if (request.departmentCode !== null) {
+    search.set('department_code', request.departmentCode)
+  }
+  return `/admin/document-access/grantable-documents?${search.toString()}`
+}
+
 export function createDocumentGrantApi(httpClient: HttpClient): DocumentGrantApi {
   return {
     async createGrants(request) {
@@ -58,6 +85,15 @@ export function createDocumentGrantApi(httpClient: HttpClient): DocumentGrantApi
           { json: request, method: 'POST' },
         )
       return mapCreateDocumentGrantsResult(response.data)
+    },
+
+    async listGrantableDocuments(request) {
+      const response =
+        await httpClient.request<DocumentAccessGrantableDocumentListResponseDto>(
+          grantableDocumentListPath(request),
+          { signal: request.signal },
+        )
+      return mapGrantableDocumentPage(response.data)
     },
 
     async listGrants(request) {

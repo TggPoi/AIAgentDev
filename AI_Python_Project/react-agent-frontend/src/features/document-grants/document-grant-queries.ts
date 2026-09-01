@@ -12,6 +12,7 @@ import type { CreateDocumentAccessGrantsRequestDto } from '@/features/document-g
 import type {
   DocumentGrantPage,
   DocumentGrantStatus,
+  GrantableDocumentPage,
 } from '@/features/document-grants/document-grant-models'
 import { knowledgeDocumentKeys } from '@/features/knowledge-documents/knowledge-document-queries'
 
@@ -26,13 +27,55 @@ export interface DocumentGrantListKeyParams extends DocumentGrantListFilters {
   limit: number
 }
 
+export interface GrantableDocumentListFilters {
+  departmentCode: string | null
+  query: string | null
+}
+
+export interface GrantableDocumentListKeyParams
+  extends GrantableDocumentListFilters {
+  limit: number
+}
+
 export const DOCUMENT_GRANT_LIST_LIMIT = 20
 
 export const documentGrantKeys = {
+  grantableList: (
+    userBoundary: string,
+    params: GrantableDocumentListKeyParams,
+  ) => [...documentGrantKeys.grantableListRoot(userBoundary), params] as const,
+  grantableListRoot: (userBoundary: string) =>
+    [userBoundary, 'document-access-grantable-documents'] as const,
   list: (userBoundary: string, params: DocumentGrantListKeyParams) =>
     [...documentGrantKeys.listRoot(userBoundary), params] as const,
   listRoot: (userBoundary: string) =>
     [userBoundary, 'document-access-grants'] as const,
+}
+
+export function useGrantableDocumentList(
+  api: DocumentGrantApi,
+  userBoundary: string,
+  filters: GrantableDocumentListFilters,
+) {
+  const params = { ...filters, limit: DOCUMENT_GRANT_LIST_LIMIT }
+  return useInfiniteQuery<
+    GrantableDocumentPage,
+    Error,
+    InfiniteData<GrantableDocumentPage>,
+    ReturnType<typeof documentGrantKeys.grantableList>,
+    string | null
+  >({
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      api.listGrantableDocuments({
+        cursor: pageParam,
+        ...filters,
+        limit: DOCUMENT_GRANT_LIST_LIMIT,
+        signal,
+      }),
+    queryKey: documentGrantKeys.grantableList(userBoundary, params),
+  })
 }
 
 export function useDocumentGrantList(

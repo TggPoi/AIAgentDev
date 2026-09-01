@@ -1,6 +1,8 @@
 import type {
   CreateDocumentAccessGrantsResponseDto,
   DocumentAccessGrantItemDto,
+  DocumentAccessGrantableDocumentItemDto,
+  DocumentAccessGrantableDocumentListResponseDto,
   DocumentAccessGrantListResponseDto,
   DocumentAccessGrantUserDto,
 } from '@/features/document-grants/document-grant-contracts'
@@ -30,6 +32,19 @@ export interface DocumentGrant {
 
 export interface DocumentGrantPage {
   items: DocumentGrant[]
+  nextCursor: string | null
+}
+
+export interface GrantableDocument {
+  documentDepartmentCode: string
+  documentId: string
+  documentType: DocumentAccessGrantableDocumentItemDto['document_type']
+  repositoryPath: string
+  title: string
+}
+
+export interface GrantableDocumentPage {
+  items: GrantableDocument[]
   nextCursor: string | null
 }
 
@@ -76,6 +91,27 @@ export function mapDocumentGrantPage(
   }
 }
 
+function mapGrantableDocument(
+  dto: DocumentAccessGrantableDocumentItemDto,
+): GrantableDocument {
+  return {
+    documentDepartmentCode: dto.document_department_code,
+    documentId: dto.doc_id,
+    documentType: dto.document_type,
+    repositoryPath: dto.repository_path,
+    title: dto.title,
+  }
+}
+
+export function mapGrantableDocumentPage(
+  dto: DocumentAccessGrantableDocumentListResponseDto,
+): GrantableDocumentPage {
+  return {
+    items: dto.items.map(mapGrantableDocument),
+    nextCursor: dto.next_cursor ?? null,
+  }
+}
+
 export function mapCreateDocumentGrantsResult(
   dto: CreateDocumentAccessGrantsResponseDto,
 ): CreateDocumentGrantsResult {
@@ -95,6 +131,21 @@ export function mergeDocumentGrantPages(
     for (const item of page.items) {
       if (seen.has(item.grantId)) continue
       seen.add(item.grantId)
+      merged.push(item)
+    }
+  }
+  return merged
+}
+
+export function mergeGrantableDocumentPages(
+  pages: readonly GrantableDocumentPage[],
+): GrantableDocument[] {
+  const seen = new Set<string>()
+  const merged: GrantableDocument[] = []
+  for (const page of pages) {
+    for (const item of page.items) {
+      if (seen.has(item.documentId)) continue
+      seen.add(item.documentId)
       merged.push(item)
     }
   }

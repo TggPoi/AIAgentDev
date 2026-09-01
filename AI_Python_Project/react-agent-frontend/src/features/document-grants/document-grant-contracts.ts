@@ -7,6 +7,10 @@ export type CreateDocumentAccessGrantsResponseDto =
   components['schemas']['CreateDocumentAccessGrantsResponse']
 export type DocumentAccessGrantItemDto =
   components['schemas']['DocumentAccessGrantItem']
+export type DocumentAccessGrantableDocumentItemDto =
+  components['schemas']['DocumentAccessGrantableDocumentItem']
+export type DocumentAccessGrantableDocumentListResponseDto =
+  components['schemas']['DocumentAccessGrantableDocumentListResponse']
 export type DocumentAccessGrantListResponseDto =
   components['schemas']['DocumentAccessGrantListResponse']
 export type DocumentAccessGrantUserDto =
