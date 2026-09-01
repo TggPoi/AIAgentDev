@@ -8,11 +8,11 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: grantable-document frontend data/query seam已由checkpoint `3a7ac18`完成；当前建立create draft/selection policy expected-red
+Current Step: create draft/selection policy已由checkpoint `92584a4`完成；当前建立catalog-backed create Dialog expected-red
 
-Next Action: 新增纯create draft policy test并取得module缺失expected-red，固定精确target account、1–100个从safe catalog item选择的唯一document IDs且不存在任意ID输入
+Next Action: 在Document Grants mutation UI test新增create Dialog expected-red，固定无用户搜索的精确账号输入、server catalog选择/分页筛选、确认摘要、pending lock与安全422映射
 
-Blocking Issues: None；CG011已闭环且catalog data/query seam已完成；分页/筛选catalog不能被误当完整eligibility集合，create最终校验与安全422仍由backend负责
+Blocking Issues: None；create data/query与纯draft policy已完成，当前可进入Dialog TDD；create最终eligibility与安全422仍由backend负责
 
 Last Updated: 2026-09-01 (Asia/Shanghai)
 
@@ -546,11 +546,17 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`与grantable catalog data `3a7ac18`已持久化；create draft/Dialog与revoke UI仍未创建。
+- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`、grantable catalog data `3a7ac18`与create draft policy `92584a4`已持久化；create Dialog与revoke UI仍未创建。
 
 Next Action:
 
-- 新增纯create draft policy test并取得module缺失expected-red，固定精确target account、1–100个从safe catalog item选择的唯一document IDs且不存在任意ID输入。
+- 在Document Grants mutation UI test新增create Dialog expected-red，固定无用户搜索的精确账号输入、server catalog选择/分页筛选、确认摘要、pending lock与安全422映射。
+
+Slice 9 Create Draft Policy Evidence (verified 2026-09-01):
+
+- 新focused file先以module缺失expected-red；最小纯policy只接受`targetAccount + selectedDocuments: GrantableDocument[]`，不存在raw document ID draft/input seam。
+- build规范化精确账号并校验非空/255上限，从safe selected domain objects提取1–100个唯一IDs；空选择、超限和重复选择均在提交前返回明确field error，request不携带title/path/department/type。
+- focused最终1 file / 4 tests，Document Grants regression为4 files / 25 tests；lint、typecheck与`git diff --check`通过。独立checkpoint `92584a4`只包含draft policy与测试，package/lockfile/contract无变化。
 
 Slice 9 Create Draft Policy Correction (verified 2026-09-01):
 
