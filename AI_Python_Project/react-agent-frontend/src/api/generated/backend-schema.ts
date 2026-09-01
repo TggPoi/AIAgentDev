@@ -2229,6 +2229,66 @@ export interface components {
              */
             title: string | null;
         };
+        /**
+         * DocumentAccessGrantFieldError
+         * @description 跨部门文档授权业务校验的安全公开字段错误。
+         */
+        DocumentAccessGrantFieldError: {
+            /**
+             * Code
+             * @description 文档无需或不能重复授权时的稳定字段错误 code。
+             * @constant
+             */
+            code: "invalid";
+            /**
+             * Field
+             * @description 由服务端确定性业务分支选择的公开授权字段；不包含文档标识或数组位置。
+             * @constant
+             */
+            field: "document_ids";
+            /**
+             * Message
+             * @description 固定安全字段提示，不包含文档标识、ACL、部门或自然语言业务异常。
+             */
+            message: string;
+        };
+        /**
+         * DocumentAccessGrantInvalidErrorResponse
+         * @description 跨部门文档授权业务校验失败的安全公共 422 响应。
+         */
+        DocumentAccessGrantInvalidErrorResponse: {
+            /**
+             * @description 授权请求不满足精确跨部门授权语义时的稳定顶层错误 code。 (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            code: "DOCUMENT_ACCESS_GRANT_INVALID";
+            /**
+             * Error Category
+             * @description 错误责任分类；授权业务校验失败固定为 user_error。
+             * @constant
+             */
+            error_category: "user_error";
+            /**
+             * Field Errors
+             * @description 只包含服务端确定性分支批准公开的文档授权字段错误；cursor 等页面级错误为空。
+             */
+            field_errors: components["schemas"]["DocumentAccessGrantFieldError"][];
+            /**
+             * Message
+             * @description 授权业务校验失败时可安全显示的固定通用提示。
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 当前 HTTP 请求 ID；测试或缺少请求上下文时可以为空。
+             */
+            request_id: string | null;
+            /**
+             * Trace Id
+             * @description 当前服务端 trace ID；缺少 trace 上下文时可以为空。
+             */
+            trace_id: string | null;
+        };
         /** DocumentAccessGrantItem */
         DocumentAccessGrantItem: {
             /**
@@ -4055,7 +4115,7 @@ export interface components {
              * @description 允许向客户端公开的顶层请求字段名；不包含请求值或嵌套内部位置。
              * @enum {string}
              */
-            field: "username_or_email" | "username" | "password" | "email" | "display_name" | "account_type" | "department_access" | "direct_permission_codes" | "refresh_token" | "current_password" | "new_password" | "title" | "query" | "department_code" | "document_type" | "status" | "session_id" | "limit";
+            field: "username_or_email" | "username" | "password" | "email" | "display_name" | "account_type" | "department_access" | "direct_permission_codes" | "refresh_token" | "current_password" | "new_password" | "title" | "query" | "department_code" | "document_type" | "target_account" | "doc_id" | "document_ids" | "status" | "session_id" | "limit";
             /**
              * Message
              * @description 可安全显示的固定校验提示，不包含客户端提交值或服务端内部信息。
@@ -5368,13 +5428,13 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentAccessGrantListResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段或文档授权业务校验失败的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"] | components["schemas"]["DocumentAccessGrantInvalidErrorResponse"];
                 };
             };
         };
@@ -5405,13 +5465,13 @@ export interface operations {
                     "application/json": components["schemas"]["CreateDocumentAccessGrantsResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段或文档授权业务校验失败的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"] | components["schemas"]["DocumentAccessGrantInvalidErrorResponse"];
                 };
             };
         };
@@ -5441,13 +5501,13 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentAccessGrantItem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description 请求字段校验失败；只返回 allowlisted 字段的安全错误投影。 */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };

@@ -1969,6 +1969,99 @@
         "title": "DebugTraceSourceSnapshot",
         "type": "object"
       },
+      "DocumentAccessGrantFieldError": {
+        "description": "跨部门文档授权业务校验的安全公开字段错误。",
+        "properties": {
+          "code": {
+            "const": "invalid",
+            "description": "文档无需或不能重复授权时的稳定字段错误 code。",
+            "title": "Code",
+            "type": "string"
+          },
+          "field": {
+            "const": "document_ids",
+            "description": "由服务端确定性业务分支选择的公开授权字段；不包含文档标识或数组位置。",
+            "title": "Field",
+            "type": "string"
+          },
+          "message": {
+            "description": "固定安全字段提示，不包含文档标识、ACL、部门或自然语言业务异常。",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "code",
+          "message"
+        ],
+        "title": "DocumentAccessGrantFieldError",
+        "type": "object"
+      },
+      "DocumentAccessGrantInvalidErrorResponse": {
+        "description": "跨部门文档授权业务校验失败的安全公共 422 响应。",
+        "properties": {
+          "code": {
+            "const": "DOCUMENT_ACCESS_GRANT_INVALID",
+            "description": "授权请求不满足精确跨部门授权语义时的稳定顶层错误 code。",
+            "title": "Code",
+            "type": "string"
+          },
+          "error_category": {
+            "const": "user_error",
+            "description": "错误责任分类；授权业务校验失败固定为 user_error。",
+            "title": "Error Category",
+            "type": "string"
+          },
+          "field_errors": {
+            "description": "只包含服务端确定性分支批准公开的文档授权字段错误；cursor 等页面级错误为空。",
+            "items": {
+              "$ref": "#/components/schemas/DocumentAccessGrantFieldError"
+            },
+            "title": "Field Errors",
+            "type": "array"
+          },
+          "message": {
+            "description": "授权业务校验失败时可安全显示的固定通用提示。",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前 HTTP 请求 ID；测试或缺少请求上下文时可以为空。",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前服务端 trace ID；缺少 trace 上下文时可以为空。",
+            "title": "Trace Id"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "error_category",
+          "request_id",
+          "trace_id",
+          "field_errors"
+        ],
+        "title": "DocumentAccessGrantInvalidErrorResponse",
+        "type": "object"
+      },
       "DocumentAccessGrantItem": {
         "properties": {
           "document_department_code": {
@@ -5108,6 +5201,9 @@
               "query",
               "department_code",
               "document_type",
+              "target_account",
+              "doc_id",
+              "document_ids",
               "status",
               "session_id",
               "limit"
@@ -7796,11 +7892,26 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "discriminator": {
+                    "mapping": {
+                      "DOCUMENT_ACCESS_GRANT_INVALID": "#/components/schemas/DocumentAccessGrantInvalidErrorResponse",
+                      "REQUEST_VALIDATION_ERROR": "#/components/schemas/RequestValidationErrorResponse"
+                    },
+                    "propertyName": "code"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DocumentAccessGrantInvalidErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Document Access Grants Endpoint Admin Document Access Grants Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段或文档授权业务校验失败的安全错误投影。"
           }
         },
         "summary": "List Document Access Grants Endpoint",
@@ -7885,11 +7996,26 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "discriminator": {
+                    "mapping": {
+                      "DOCUMENT_ACCESS_GRANT_INVALID": "#/components/schemas/DocumentAccessGrantInvalidErrorResponse",
+                      "REQUEST_VALIDATION_ERROR": "#/components/schemas/RequestValidationErrorResponse"
+                    },
+                    "propertyName": "code"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DocumentAccessGrantInvalidErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Document Access Grants Endpoint Admin Document Access Grants Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段或文档授权业务校验失败的安全错误投影。"
           }
         },
         "summary": "Create Document Access Grants Endpoint",
@@ -7979,11 +8105,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/RequestValidationErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。"
           }
         },
         "summary": "Revoke Document Access Grant Endpoint",
