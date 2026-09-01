@@ -75,6 +75,48 @@ def build_test_app(logical_chunk_id: str, *, route_intent: str | None = None) ->
     return app
 
 
+def build_store_identity_test_app(logical_chunk_ids: list[str]) -> FastAPI:
+    """模拟真实 ES/Milvus adapter：逻辑 Chunk ID 位于 RetrievedDoc.id。"""
+
+    app = FastAPI()
+
+    @app.post("/rag/chat/stream/events")
+    async def stream_endpoint(
+        req: RagChatRequest,
+        x_demo_user_id: str | None = Header(default=None),
+    ) -> StreamingResponse:
+        assert x_demo_user_id == "eval-user:rbac_reader"
+        docs = [
+            RetrievedDoc(
+                id=logical_chunk_id,
+                content=f"真实 adapter 形态的相关上下文：{logical_chunk_id}",
+                score=0.9,
+                source="elasticsearch",
+                metadata={"doc_id": "doc-store-identity"},
+                retrieval_sources=["keyword"],
+                scores=ScoreBreakdown(rerank_score=0.9),
+            )
+            for logical_chunk_id in logical_chunk_ids
+        ]
+        record_snapshot_retrieval_stage("rerank", docs, query=req.query)
+        record_snapshot_final_context(
+            RagContext(
+                query=req.query,
+                docs=docs,
+                context_text="\n".join(doc.content for doc in docs),
+            )
+        )
+
+        async def events():
+            yield sse("sources", {"sources": []})
+            yield sse("answer_delta", {"text": "最终回答"})
+            yield sse("done", {"status": "done", "knowledge_version": 6})
+
+        return StreamingResponse(events(), media_type="text/event-stream")
+
+    return app
+
+
 def build_parent_test_app(parent_id: str) -> FastAPI:
     app = FastAPI()
 
@@ -362,6 +404,139 @@ async def target_test() -> None:
     assert report.cases[0].actual_route == "knowledge_retrieval"
     assert len(report.cases[0].metrics) == 8
     assert report.metric_summaries["retrieval_recall_at_k"].mean_score == 1.0
+
+    store_logical_chunk_id = "chunk-store-logical-id"
+    underfilled_case = case.model_copy(
+        update={
+            "case_id": "store-identity-underfilled-contract",
+            "top_k": 5,
+            "candidate_k": 5,
+            "relevant_logical_chunk_ids": [store_logical_chunk_id],
+            "authoritative_logical_chunk_ids": [store_logical_chunk_id],
+        }
+    )
+    underfilled_runner = LightweightRagEvalRunner(
+        target=InProcessStructuredStreamTarget(
+            app=build_store_identity_test_app([store_logical_chunk_id]),
+            settings=settings,
+            pipeline_provider="classic",
+            auth=RagEvalAuth(mode="demo"),
+        ),
+        settings=settings,
+        pipeline_provider="classic",
+        mode="retrieval",
+        selected_metrics=ALL_METRIC_NAMES[:4],
+    )
+    underfilled_report = await underfilled_runner.run(
+        dataset.model_copy(update={"cases": [underfilled_case]})
+    )
+    underfilled_metrics = underfilled_report.cases[0].metrics
+    assert underfilled_metrics["retrieval_recall_at_k"].score == 1.0
+    assert underfilled_metrics["retrieval_precision_at_k"].score == 0.2
+    assert underfilled_metrics["retrieval_hit_rate_at_k"].score == 1.0
+    assert underfilled_metrics["retrieval_mrr"].score == 1.0
+
+    capacity_ids = [f"chunk-capacity-{index}" for index in range(5)]
+    capacity_limited_case = case.model_copy(
+        update={
+            "case_id": "requested-k-exceeds-rerank-capacity-contract",
+            "top_k": 20,
+            "candidate_k": 20,
+            "relevant_logical_chunk_ids": capacity_ids,
+            "authoritative_logical_chunk_ids": capacity_ids,
+        }
+    )
+    capacity_runner = LightweightRagEvalRunner(
+        target=InProcessStructuredStreamTarget(
+            app=build_store_identity_test_app(capacity_ids),
+            settings=settings,
+            pipeline_provider="classic",
+            auth=RagEvalAuth(mode="demo"),
+        ),
+        settings=settings,
+        pipeline_provider="classic",
+        mode="retrieval",
+        selected_metrics=ALL_METRIC_NAMES[:4],
+    )
+    capacity_report = await capacity_runner.run(
+        dataset.model_copy(update={"cases": [capacity_limited_case]})
+    )
+    capacity_result = capacity_report.cases[0]
+    assert capacity_result.metrics["retrieval_precision_at_k"].score == 1.0
+    assert capacity_result.retrieval_evaluation is not None
+    assert capacity_result.retrieval_evaluation.requested_k == 20
+    assert capacity_result.retrieval_evaluation.effective_k == 5
+    assert capacity_result.retrieval_evaluation.returned_count == 5
+    assert capacity_result.retrieval_evaluation.capacity_limited is True
+    assert capacity_result.retrieval_evaluation.underfilled is False
+    assert "requested_k" in render_markdown(capacity_report)
+
+    impossible_ids = [f"chunk-impossible-{index}" for index in range(6)]
+    impossible_policy_case = case.model_copy(
+        update={
+            "case_id": "authoritative-policy-exceeds-effective-k-contract",
+            "top_k": 20,
+            "candidate_k": 20,
+            "relevant_logical_chunk_ids": impossible_ids,
+            "authoritative_logical_chunk_ids": impossible_ids,
+        }
+    )
+    impossible_policy_runner = LightweightRagEvalRunner(
+        target=InProcessStructuredStreamTarget(
+            app=build_store_identity_test_app(impossible_ids[:5]),
+            settings=settings,
+            pipeline_provider="classic",
+            auth=RagEvalAuth(mode="demo"),
+        ),
+        settings=settings,
+        pipeline_provider="classic",
+        mode="retrieval",
+        selected_metrics=ALL_METRIC_NAMES[:4],
+    )
+    try:
+        await impossible_policy_runner.run(
+            dataset.model_copy(update={"cases": [impossible_policy_case]})
+        )
+    except ValueError as exc:
+        assert "evaluation_config_invalid" in str(exc)
+        assert "authoritative_count=6" in str(exc)
+        assert "effective_k=5" in str(exc)
+    else:
+        raise AssertionError("不可达到的权威来源门禁必须在真实请求前被拒绝")
+
+    unreachable_recall_case = impossible_policy_case.model_copy(
+        update={
+            "case_id": "recall-threshold-exceeds-maximum-contract",
+            "relevant_logical_chunk_ids": [
+                f"chunk-recall-{index}" for index in range(16)
+            ],
+            "authoritative_logical_chunk_ids": [],
+        }
+    )
+    unreachable_recall_runner = LightweightRagEvalRunner(
+        target=InProcessStructuredStreamTarget(
+            app=build_store_identity_test_app([]),
+            settings=settings,
+            pipeline_provider="classic",
+            auth=RagEvalAuth(mode="demo"),
+        ),
+        settings=settings,
+        pipeline_provider="classic",
+        mode="retrieval",
+        selected_metrics=ALL_METRIC_NAMES[:4],
+        thresholds={"retrieval_recall_at_k": 0.5},
+    )
+    try:
+        await unreachable_recall_runner.run(
+            dataset.model_copy(update={"cases": [unreachable_recall_case]})
+        )
+    except ValueError as exc:
+        assert "evaluation_config_invalid" in str(exc)
+        assert "max_recall_at_k=0.3125" in str(exc)
+        assert "threshold=0.5000" in str(exc)
+    else:
+        raise AssertionError("不可达到的 Recall 门槛必须在真实请求前被拒绝")
+
     compared = apply_baseline(report, report, baseline_path="baseline.json")
     assert compared.metric_summaries["retrieval_recall_at_k"].baseline_delta == 0.0
     with TemporaryDirectory() as directory:

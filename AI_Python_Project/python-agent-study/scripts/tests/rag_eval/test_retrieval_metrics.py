@@ -1,6 +1,6 @@
 """轻量 RAG Eval 检索指标的确定性契约测试。"""
 
-from fast_app.evaluation.cases.loader import load_golden_eval_dataset
+from fast_app.evaluation.cases.loader import load_eval_dataset
 from fast_app.evaluation.cases.models import ExpectedSource, RagEvalCase
 from fast_app.rag_eval.retrieval import evaluate_retrieval_metrics
 
@@ -28,7 +28,7 @@ def test_ranked_results_are_deduplicated_before_scoring() -> None:
     assert result.metrics["retrieval_mrr"].score == 0.5
 
 
-def test_underfilled_results_do_not_use_missing_slots_as_precision_denominator() -> None:
+def test_underfilled_results_use_requested_k_as_precision_denominator() -> None:
     result = evaluate_retrieval_metrics(
         relevant_logical_chunk_ids=["chunk-a", "chunk-b"],
         ranked_logical_chunk_ids=["chunk-a"],
@@ -39,9 +39,49 @@ def test_underfilled_results_do_not_use_missing_slots_as_precision_denominator()
     assert result.returned_count == 1
     assert result.underfilled is True
     assert result.metrics["retrieval_recall_at_k"].score == 0.5
-    assert result.metrics["retrieval_precision_at_k"].score == 1.0
+    assert result.metrics["retrieval_precision_at_k"].score == 0.2
     assert result.metrics["retrieval_hit_rate_at_k"].score == 1.0
     assert result.metrics["retrieval_mrr"].score == 1.0
+
+
+def test_effective_k_is_separate_from_requested_k_and_default_has_no_gate() -> None:
+    result = evaluate_retrieval_metrics(
+        relevant_logical_chunk_ids=[f"chunk-{index}" for index in range(16)],
+        ranked_logical_chunk_ids=[f"chunk-{index}" for index in range(5)],
+        k=5,
+        requested_k=20,
+        answerable=True,
+    )
+
+    assert result.requested_k == 20
+    assert result.effective_k == 5
+    assert result.capacity_limited is True
+    assert result.returned_count == 5
+    assert result.underfilled is False
+    assert result.max_recall_at_k == 5 / 16
+    assert result.metrics["retrieval_recall_at_k"].score == 5 / 16
+    assert result.metrics["retrieval_precision_at_k"].score == 1.0
+    assert all(metric.threshold is None for metric in result.metrics.values())
+    assert all(metric.passed is None for metric in result.metrics.values())
+
+
+def test_explicit_retrieval_threshold_enables_quality_gate() -> None:
+    result = evaluate_retrieval_metrics(
+        relevant_logical_chunk_ids=["chunk-a", "chunk-b"],
+        ranked_logical_chunk_ids=["chunk-a", "chunk-noise"],
+        k=2,
+        answerable=True,
+        thresholds={"retrieval_precision_at_k": 0.5},
+    )
+
+    precision = result.metrics["retrieval_precision_at_k"]
+    recall = result.metrics["retrieval_recall_at_k"]
+    assert precision.score == 0.5
+    assert precision.threshold == 0.5
+    assert precision.passed is True
+    assert recall.score == 0.5
+    assert recall.threshold is None
+    assert recall.passed is None
 
 
 def test_empty_answerable_results_score_zero() -> None:
@@ -96,7 +136,7 @@ def test_semantic_relevance_and_authoritative_source_policy_are_independent() ->
 
 
 def test_case_schema_separates_semantic_authoritative_and_forbidden_sources() -> None:
-    dataset = load_golden_eval_dataset(
+    dataset = load_eval_dataset(
         "src/fast_app/evaluation/datasets/stage11_rag_eval_cases.v2.1.1.json"
     )
     original = next(
@@ -140,7 +180,7 @@ def test_case_schema_separates_semantic_authoritative_and_forbidden_sources() ->
 
 
 def test_parent_expansion_case_can_score_final_parent_identity() -> None:
-    dataset = load_golden_eval_dataset(
+    dataset = load_eval_dataset(
         "src/fast_app/evaluation/datasets/stage11_rag_eval_cases.v2.1.1.json"
     )
     original = next(
@@ -164,7 +204,9 @@ def test_parent_expansion_case_can_score_final_parent_identity() -> None:
 
 if __name__ == "__main__":
     test_ranked_results_are_deduplicated_before_scoring()
-    test_underfilled_results_do_not_use_missing_slots_as_precision_denominator()
+    test_underfilled_results_use_requested_k_as_precision_denominator()
+    test_effective_k_is_separate_from_requested_k_and_default_has_no_gate()
+    test_explicit_retrieval_threshold_enables_quality_gate()
     test_empty_answerable_results_score_zero()
     test_no_answer_case_skips_retrieval_metrics()
     test_semantic_relevance_and_authoritative_source_policy_are_independent()

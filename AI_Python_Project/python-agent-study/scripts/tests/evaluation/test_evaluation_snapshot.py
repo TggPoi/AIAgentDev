@@ -232,6 +232,25 @@ def run_settings_and_security_checks() -> None:
     assert [doc.id for doc in rebuilt] == ["vector-1", "keyword-1"]
     assert rebuilt[0].content == "vector full content"
 
+    # 真实 ES/Milvus adapter 会把逻辑 Chunk ID 放在 RetrievedDoc.id；即使
+    # metadata 未重复携带 logical_record_id，Eval 也必须保留可评分身份。
+    store_doc = RetrievedDoc(
+        id="chunk-store-logical-id",
+        content="store content",
+        score=0.9,
+        source="elasticsearch",
+        metadata={"doc_id": "logical-doc-store"},
+    )
+    with capture_evaluation_snapshot(
+        req=build_request(),
+        settings=build_settings(),
+        pipeline_provider="identity-contract-test",
+    ) as collector:
+        record_snapshot_retrieval_stage("rerank", [store_doc])
+        identity_snapshot = collector.finalize(response=None, latency_ms=1.0)
+    identity_doc = identity_snapshot.payload.retrieval_stages["rerank"].documents[0]
+    assert identity_doc.logical_chunk_id == "chunk-store-logical-id"
+
     tampered_answer = replace(
         plain_snapshot.payload.answer,
         plaintext="被篡改的答案",

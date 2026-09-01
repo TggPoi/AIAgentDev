@@ -293,6 +293,7 @@ class EvaluationSnapshotCollector:
             logical_chunk_id=(
                 _optional_metadata_text(metadata, "logical_chunk_id")
                 or _optional_metadata_text(metadata, "logical_record_id")
+                or doc.id
             ),
             logical_parent_id=_optional_metadata_text(metadata, "logical_parent_id"),
             parent_id=_optional_metadata_text(metadata, "parent_id"),

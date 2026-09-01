@@ -46,6 +46,16 @@ def parse_args() -> argparse.Namespace:
         "--metrics",
         help="逗号分隔的指标机器名；默认执行当前 mode 的全部指标。",
     )
+    parser.add_argument(
+        "--threshold",
+        action="append",
+        default=[],
+        metavar="METRIC=VALUE",
+        help=(
+            "显式配置单项质量门槛；可重复传入。检索指标未配置门槛时只计算分数，"
+            "不生成通过/失败结论。"
+        ),
+    )
     parser.add_argument("--include-judge-reason", action="store_true")
     parser.add_argument("--baseline-report", type=Path)
     parser.add_argument("--output-dir", type=Path, default=Path("reports/rag-eval"))
@@ -108,6 +118,26 @@ async def run(args: argparse.Namespace) -> tuple[Path, Path]:
     else:
         selected = list(allowed)
 
+    thresholds: dict[str, float] = {}
+    for raw_threshold in args.threshold:
+        name, separator, raw_value = raw_threshold.partition("=")
+        name = name.strip()
+        if not separator or name not in selected:
+            raise ValueError(
+                f"--threshold 必须使用已选择的 METRIC=VALUE: {raw_threshold!r}"
+            )
+        try:
+            value = float(raw_value.strip())
+        except ValueError as exc:
+            raise ValueError(
+                f"--threshold 不是有效数字: {raw_threshold!r}"
+            ) from exc
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"--threshold 必须在 0 到 1 之间: {raw_threshold!r}")
+        if name in thresholds:
+            raise ValueError(f"--threshold 不能重复配置指标: {name}")
+        thresholds[name] = value
+
     generation_evaluator = None
     if any(name in GENERATION_METRIC_NAMES for name in selected):
         generation_evaluator = SubprocessGenerationEvaluator(project_root=Path.cwd())
@@ -127,9 +157,11 @@ async def run(args: argparse.Namespace) -> tuple[Path, Path]:
         selected_metrics=selected,
         generation_evaluator=generation_evaluator,
         include_judge_reason=args.include_judge_reason,
+        thresholds=thresholds,
         # candidate 数据集允许试跑；正式回归仍以 golden lifecycle 为门禁。
         allow_candidate=dataset.lifecycle != "golden",
     )
+    runner.validate_dataset_configuration(dataset)
 
     async with app.router.lifespan_context(app):
         report = await runner.run(dataset)

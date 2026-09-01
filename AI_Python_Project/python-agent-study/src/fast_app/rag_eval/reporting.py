@@ -127,6 +127,36 @@ def render_markdown(report: RagEvalRunReport) -> str:
             f"{case.knowledge_version if case.knowledge_version is not None else 'N/A'} | "
             f"{case.latency_ms:.2f} | {error} |"
         )
+    retrieval_diagnostics = [
+        (case.case_id, case.retrieval_evaluation)
+        for case in report.cases
+        if case.retrieval_evaluation is not None
+    ]
+    if retrieval_diagnostics:
+        lines.extend(
+            [
+                "",
+                "## 检索 K 与容量诊断",
+                "",
+                "| Case | requested_k | effective_k | returned | Gold | Hits | Max Recall | Capacity limited | Underfilled |",
+                "|---|---:|---:|---:|---:|---:|---:|---|---|",
+            ]
+        )
+        for case_id, retrieval in retrieval_diagnostics:
+            assert retrieval is not None
+            max_recall = (
+                "N/A"
+                if retrieval.max_recall_at_k is None
+                else f"{retrieval.max_recall_at_k:.4f}"
+            )
+            lines.append(
+                f"| `{case_id}` | {retrieval.requested_k} | "
+                f"{retrieval.effective_k} | {retrieval.returned_count} | "
+                f"{retrieval.gold_relevant_count} | "
+                f"{retrieval.relevant_retrieved_count} | {max_recall} | "
+                f"{str(retrieval.capacity_limited).lower()} | "
+                f"{str(retrieval.underfilled).lower()} |"
+            )
     lines.extend(
         [
             "",

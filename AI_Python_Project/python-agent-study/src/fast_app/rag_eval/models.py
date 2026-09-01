@@ -52,11 +52,11 @@ class RagEvalMetricResult(BaseModel):
         default=None,
         ge=0.0,
         le=1.0,
-        description="本次判定使用的通过阈值；未评测时为空。",
+        description="本次判定使用的显式通过阈值；未配置质量门禁或未评测时为空。",
     )
     passed: bool | None = Field(
         default=None,
-        description="分数是否达到阈值；未评测时为空。",
+        description="分数是否达到显式阈值；未配置质量门禁或未评测时为空。",
     )
     status: RagEvalMetricStatus = Field(description="evaluated、skipped 或 error。")
     short_reason: str = Field(
@@ -71,10 +71,10 @@ class RagEvalMetricResult(BaseModel):
     @model_validator(mode="after")
     def validate_status_fields(self) -> "RagEvalMetricResult":
         evaluated = self.status == "evaluated"
-        if evaluated and (
-            self.score is None or self.threshold is None or self.passed is None
-        ):
-            raise ValueError("evaluated metric 必须提供 score、threshold 和 passed")
+        if evaluated and self.score is None:
+            raise ValueError("evaluated metric 必须提供 score")
+        if evaluated and ((self.threshold is None) != (self.passed is None)):
+            raise ValueError("evaluated metric 的 threshold 和 passed 必须同时提供或同时为空")
         if not evaluated and any(
             value is not None for value in (self.score, self.threshold, self.passed)
         ):
@@ -111,12 +111,19 @@ class RetrievalMetricEvaluation(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    requested_k: int = Field(ge=1, description="该 case 请求并计算指标使用的 K。")
+    requested_k: int = Field(ge=1, description="该 case 向被测系统请求的 K。")
+    effective_k: int = Field(
+        ge=1,
+        description="结合服务端最终 rerank 上限后，四项检索指标实际使用的 K。",
+    )
+    capacity_limited: bool = Field(
+        description="effective_k 是否小于 requested_k，即服务端容量限制了评测深度。",
+    )
     returned_count: int = Field(
         ge=0,
-        description="Top K 内去重后的实际返回逻辑 Chunk 数。",
+        description="Effective Top K 内去重后的实际返回逻辑 Chunk 数。",
     )
-    underfilled: bool = Field(description="实际返回数量是否少于 K。")
+    underfilled: bool = Field(description="实际返回数量是否少于 effective_k。")
     relevant_retrieved_count: int = Field(
         ge=0,
         description="Top K 内命中的黄金相关逻辑 Chunk 数。",
@@ -124,6 +131,12 @@ class RetrievalMetricEvaluation(BaseModel):
     gold_relevant_count: int = Field(
         ge=0,
         description="该 case 人工审核的黄金相关逻辑 Chunk 总数。",
+    )
+    max_recall_at_k: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="给定 effective_k 和 Gold 数量时理论可达到的最大 Recall；no-answer 时为空。",
     )
     first_relevant_rank: int | None = Field(
         default=None,
@@ -145,6 +158,20 @@ class RetrievalMetricEvaluation(BaseModel):
     metrics: dict[RagEvalMetricName, RagEvalMetricResult] = Field(
         description="以稳定机器名索引的四个检索指标。",
     )
+
+    @model_validator(mode="after")
+    def validate_retrieval_diagnostics(self) -> "RetrievalMetricEvaluation":
+        if self.effective_k > self.requested_k:
+            raise ValueError("effective_k 不能大于 requested_k")
+        if self.capacity_limited != (self.effective_k < self.requested_k):
+            raise ValueError("capacity_limited 必须与 requested_k/effective_k 一致")
+        if self.underfilled != (self.returned_count < self.effective_k):
+            raise ValueError("underfilled 必须与 returned_count/effective_k 一致")
+        if self.relevant_retrieved_count > self.returned_count:
+            raise ValueError("相关命中数量不能超过返回数量")
+        if self.relevant_retrieved_count > self.gold_relevant_count:
+            raise ValueError("相关命中数量不能超过 Gold 数量")
+        return self
 
 
 class GenerationEvaluationRequest(BaseModel):
@@ -252,6 +279,10 @@ class RagEvalCaseReport(BaseModel):
         default_factory=dict,
         description="该 case 已选择的八项指标结果。",
     )
+    retrieval_evaluation: RetrievalMetricEvaluation | None = Field(
+        default=None,
+        description="检索指标使用的 K、返回数量、命中身份和容量诊断；未执行检索指标时为空。",
+    )
     retrieval_source_policy: RetrievalSourcePolicyResult | None = Field(
         default=None,
         description=(
@@ -314,8 +345,8 @@ class RagEvalRunReport(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["1.0", "1.1"] = Field(
-        description="轻量报告 Schema 版本；1.1 增加独立检索来源策略判定。",
+    schema_version: Literal["1.0", "1.1", "1.2"] = Field(
+        description="轻量报告 Schema 版本；1.2 增加检索 K、容量和命中诊断。",
     )
     run_id: str = Field(min_length=1, description="本次运行的唯一 ID。")
     created_at: datetime = Field(description="带时区的报告生成时间。")

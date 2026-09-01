@@ -66,6 +66,14 @@ class LightweightRagEvalRunner:
         needs_generation = any(name in GENERATION_METRIC_NAMES for name in metrics)
         if needs_generation and generation_evaluator is None:
             raise ValueError("生成指标需要 generation_evaluator")
+        configured_thresholds = dict(thresholds or {})
+        invalid_thresholds = [
+            name
+            for name, value in configured_thresholds.items()
+            if name not in metrics or not 0.0 <= value <= 1.0
+        ]
+        if invalid_thresholds:
+            raise ValueError(f"指标阈值未被选择或范围非法: {invalid_thresholds}")
         self.target = target
         self.settings = settings
         self.pipeline_provider = pipeline_provider
@@ -73,12 +81,13 @@ class LightweightRagEvalRunner:
         self.selected_metrics = metrics
         self.generation_evaluator = generation_evaluator
         self.include_judge_reason = include_judge_reason
-        self.thresholds = dict(thresholds or {})
+        self.thresholds = configured_thresholds
         self.allow_candidate = allow_candidate
 
     async def run(self, dataset: RagEvalDataset) -> RagEvalRunReport:
         if dataset.lifecycle != "golden" and not self.allow_candidate:
             raise ValueError("轻量回归评测只接受经过审核的 Golden V2 数据集")
+        self.validate_dataset_configuration(dataset)
         started = perf_counter()
         case_reports: list[RagEvalCaseReport] = []
         judge_model: str | None = None
@@ -108,15 +117,26 @@ class LightweightRagEvalRunner:
             and not case.retrieval_source_policy.passed
             for case in case_reports
         )
+        metric_failures = sum(
+            result.passed is False
+            for case in case_reports
+            for result in case.metrics.values()
+        )
         if failed == len(case_reports) and case_reports:
             status = "failed"
-        elif failed or skipped or metric_errors or source_policy_failures:
+        elif (
+            failed
+            or skipped
+            or metric_errors
+            or metric_failures
+            or source_policy_failures
+        ):
             status = "partial"
         else:
             status = "completed"
 
         return RagEvalRunReport(
-            schema_version="1.1",
+            schema_version="1.2",
             run_id=str(uuid4()),
             created_at=datetime.now(timezone.utc),
             status=status,
@@ -140,6 +160,38 @@ class LightweightRagEvalRunner:
             cases=case_reports,
         )
 
+    def validate_dataset_configuration(self, dataset: RagEvalDataset) -> None:
+        """在启动真实目标前拒绝理论上不可能通过的检索配置。"""
+
+        if not any(name in RETRIEVAL_METRIC_NAMES for name in self.selected_metrics):
+            return
+        recall_threshold = self.thresholds.get("retrieval_recall_at_k")
+        for case in dataset.cases:
+            if case.metric_profile != "rag" or not case.answerable:
+                continue
+            effective_k = min(case.top_k, self.settings.rerank_top_k)
+            if case.retrieval_relevance_unit == "logical_parent":
+                relevant_ids = set(case.relevant_logical_parent_ids)
+                authoritative_ids = set(case.authoritative_logical_parent_ids)
+            else:
+                relevant_ids = set(case.relevant_logical_chunk_ids)
+                authoritative_ids = set(case.authoritative_logical_chunk_ids)
+
+            if len(authoritative_ids) > effective_k:
+                raise ValueError(
+                    "evaluation_config_invalid: "
+                    f"case={case.case_id} authoritative_count={len(authoritative_ids)} "
+                    f"超过 effective_k={effective_k}，全部权威来源门禁不可能通过"
+                )
+            if recall_threshold is not None and relevant_ids:
+                max_recall = min(effective_k, len(relevant_ids)) / len(relevant_ids)
+                if recall_threshold > max_recall:
+                    raise ValueError(
+                        "evaluation_config_invalid: "
+                        f"case={case.case_id} max_recall_at_k={max_recall:.4f} "
+                        f"低于 threshold={recall_threshold:.4f}"
+                    )
+
     async def _evaluate_case(
         self,
         case: RagEvalCase,
@@ -147,13 +199,20 @@ class LightweightRagEvalRunner:
     ) -> tuple[RagEvalCaseReport, str | None]:
         metrics: dict[RagEvalMetricName, RagEvalMetricResult] = {}
         judge_model: str | None = None
+        retrieval_evaluation = None
         retrieval_source_policy = None
         if execution.status == "evaluated":
             retrieval_names = [
                 name for name in self.selected_metrics if name in RETRIEVAL_METRIC_NAMES
             ]
             if retrieval_names:
-                retrieval = _evaluate_retrieval(case, execution, self.thresholds)
+                retrieval = _evaluate_retrieval(
+                    case,
+                    execution,
+                    self.thresholds,
+                    effective_k=min(case.top_k, self.settings.rerank_top_k),
+                )
+                retrieval_evaluation = retrieval
                 retrieval_source_policy = retrieval.source_policy
                 metrics.update(
                     (name, retrieval.metrics[name]) for name in retrieval_names
@@ -217,6 +276,7 @@ class LightweightRagEvalRunner:
                 snapshot_hash=execution.snapshot.payload_hash,
                 latency_ms=payload.latency_ms,
                 metrics=metrics,
+                retrieval_evaluation=retrieval_evaluation,
                 retrieval_source_policy=retrieval_source_policy,
                 error=execution.error,
             ),
@@ -243,6 +303,8 @@ def _evaluate_retrieval(
     case: RagEvalCase,
     execution: RagEvalTargetExecution,
     thresholds: Mapping[RagEvalMetricName, float],
+    *,
+    effective_k: int,
 ):
     rerank = execution.snapshot.payload.retrieval_stages["rerank"]
     ranked_chunk_ids = [
@@ -267,7 +329,8 @@ def _evaluate_retrieval(
     return evaluate_retrieval_metrics(
         relevant_logical_chunk_ids=relevant_ids,
         ranked_logical_chunk_ids=ranked_ids,
-        k=case.top_k,
+        k=effective_k,
+        requested_k=case.top_k,
         answerable=case.answerable,
         authoritative_logical_ids=authoritative_ids,
         forbidden_logical_ids=case.forbidden_logical_chunk_ids,
