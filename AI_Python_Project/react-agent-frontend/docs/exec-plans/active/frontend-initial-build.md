@@ -12,7 +12,7 @@ Current Step: Slice 9 frontend/backend最终automated matrix已通过；当前�
 
 Next Action: 使用loopback虚构Auth/Grant service与真实Vite App执行1280px/360px create/revoke/manual error/focus/overflow/console smoke
 
-Blocking Issues: None；Docker/PostgreSQL启动后CG011 backend最小contract test恢复重跑通过，当前frontend focused test可继续收敛
+Blocking Issues: None；Codex应用闪退前未持久化的浏览器结果不计为证据，manual smoke必须从零重跑
 
 Last Updated: 2026-09-02 (Asia/Shanghai)
 
@@ -551,6 +551,13 @@ Currently Working On:
 Next Action:
 
 - 使用loopback虚构Auth/Grant service与真实Vite App执行1280px/360px create/revoke/manual error/focus/overflow/console smoke。
+
+Context Recovery Evidence (verified 2026-09-02 after Codex app crash during Slice 9 manual smoke):
+
+- frontend/backend继续共享Git root `D:/AI_Agent_Project`；confirmed HEAD为`43837065579c21352bbdfc0964273a5f53ded4df`，branch为`master...origin/master [ahead 24]`，staged diff与frontend tracked/untracked diff均为空。`1f997d3` create Dialog、`dd3e65a` revoke UI、`4383706` automated-matrix-to-smoke transition均为HEAD ancestors，对应Create/Revoke源码与tests真实存在；最后verified completed Slice仍为8，Slice 9保持IN_PROGRESS。
+- backend tracked/staged diff为空；共享working tree只保留两个外部RAG Eval report目录与两个runtime TaskPlan文件未跟踪，本恢复未读取其内容、未修改、未删除、未暂存。package、lockfile、OpenAPI snapshot与generated TypeScript均无diff。
+- 恢复focused验证实际通过：`pnpm contracts:check`；`pnpm test -- src/features/document-grants/DocumentGrantWorkspace.test.tsx`为1 file / 12 tests；repository `.venv` + `PYTHONPATH=src`运行`test_document_access_grants.py`输出`document_access_grants=passed`。Docker/PostgreSQL可用，当前backend contract未形成新阻塞。
+- Repository/Git/Tests与本计划的Current Slice、Current Step和Next Action一致。Codex应用闪退前尚未写入本计划并checkpoint的浏览器观察不作为完成证据，也不用于关闭Slice 9；恢复后的唯一Next Action仍是从零重跑1280px/360px Document Grants manual browser smoke，不重做已checkpoint的create/revoke实现或已通过automated Gate。
 
 Context Recovery Evidence (verified 2026-09-02 after usage-limit interruption during Slice 9 create Dialog):
 
