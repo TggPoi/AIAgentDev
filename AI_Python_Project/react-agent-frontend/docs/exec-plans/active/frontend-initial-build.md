@@ -8,13 +8,13 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: create draft/selection policy已由checkpoint `92584a4`完成；当前建立catalog-backed create Dialog expected-red
+Current Step: 额度中断恢复已确认工作树中存在未checkpoint的catalog-backed create Dialog与测试；focused当前3/4通过，唯一失败来自测试对逐字符筛选值的过早断言和拆分文本匹配
 
-Next Action: 在Document Grants mutation UI test新增create Dialog expected-red，固定无用户搜索的精确账号输入、server catalog选择/分页筛选、确认摘要、pending lock与安全422映射
+Next Action: 只修正当前create flow测试观察点：中间输入值返回空catalog、仅最终筛选值返回文档，并在review容器断言规范化目标账号；随后重跑同一focused test确认当前生产实现的真实基线
 
-Blocking Issues: None；create data/query与纯draft policy已完成，当前可进入Dialog TDD；create最终eligibility与安全422仍由backend负责
+Blocking Issues: None；Docker/PostgreSQL启动后CG011 backend最小contract test恢复重跑通过，当前frontend focused test可继续收敛
 
-Last Updated: 2026-09-01 (Asia/Shanghai)
+Last Updated: 2026-09-02 (Asia/Shanghai)
 
 ## Goal
 
@@ -546,11 +546,20 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`、grantable catalog data `3a7ac18`与create draft policy `92584a4`已持久化；create Dialog与revoke UI仍未创建。
+- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`、grantable catalog data `3a7ac18`与create draft policy `92584a4`已持久化。当前未checkpoint的create Dialog working set为`CreateDocumentGrantDialog.tsx`、`DocumentGrantWorkspace.tsx`、`DocumentGrantWorkspace.test.tsx`、`DocumentGrantWorkspace.module.css`与`DocumentGrantPage.tsx`；revoke UI尚未开始。
 
 Next Action:
 
-- 在Document Grants mutation UI test新增create Dialog expected-red，固定无用户搜索的精确账号输入、server catalog选择/分页筛选、确认摘要、pending lock与安全422映射。
+- 只修正当前create flow测试观察点：中间输入值返回空catalog、仅最终筛选值返回文档，并在review容器断言规范化目标账号；随后重跑同一focused test确认当前生产实现的真实基线。
+
+Context Recovery Evidence (verified 2026-09-02 after usage-limit interruption during Slice 9 create Dialog):
+
+- frontend/backend继续共享Git root `D:/AI_Agent_Project`；confirmed HEAD为`8d59f48cce5610a1bd268bb449201d59ca1cf71f`，branch为`master...origin/master [ahead 17]`，staged diff为空。`8d59f48`只推进Execution Plan，最后真正checkpoint的create实现前置工作是`92584a4` draft policy；最后verified completed Slice仍为8。
+- frontend tracked/untracked业务working set精确为`DocumentGrantWorkspace.module.css`、`DocumentGrantWorkspace.test.tsx`、`DocumentGrantWorkspace.tsx`、`DocumentGrantPage.tsx`与新文件`CreateDocumentGrantDialog.tsx`。源码检查确认其已实现精确账号输入、server grantable catalog筛选/分页选择、review与create提交的部分Dialog行为；这些改动尚未checkpoint，不能按旧计划误判为“尚未创建”。
+- backend tracked worktree clean；两个RAG Eval report目录和两个runtime TaskPlan文件仍为外部未跟踪运行产物，本轮未读取内容、未修改、未删除、未暂存。package、lockfile、OpenAPI snapshot与generated TypeScript均无diff；`pnpm contracts:check`通过。
+- `pnpm test -- src/features/document-grants/DocumentGrantWorkspace.test.tsx`实际为4 tests中3通过、1失败。失败DOM已显示review中的规范化账号和所选文档；失败原因是MSW handler在`userEvent.type`逐字符期间断言最终`query/department_code`，以及测试用整节点文本查询匹配被label/text node拆分的账号。这是当前唯一先行测试修正，不据此宣称Dialog已完成。
+- CG011 backend最小contract test使用repository `.venv`与`PYTHONPATH=src`首次恢复重跑时因Docker尚未启动得到PostgreSQL `ConnectionRefusedError [WinError 1225]`；用户启动Docker后原命令重跑通过并输出`document_access_grantable_documents=passed`。该环境事件已解除，backend checkpoint `ea6df62`、frontend sync `03170c7`、当前generated drift与实际contract test共同证明合同未回退。
+- Repository/Git/Tests证明原Current Step和Next Action已过期，Current Slice仍为9 / IN_PROGRESS。恢复后的唯一Next Action是先修正上述单一测试观察点并重跑focused baseline；在该结果明确前不补写pending/422行为、不开始revoke UI。
 
 Slice 9 Create Draft Policy Evidence (verified 2026-09-01):
 
