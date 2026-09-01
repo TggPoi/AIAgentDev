@@ -8,11 +8,11 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: Slice 9 frontend/backend最终automated matrix已通过；当前执行Document Grants manual browser smoke
+Current Step: Slice 9 manual browser smoke已通过；当前建立窄屏安全错误换行修复与Slice closure checkpoint
 
-Next Action: 使用loopback虚构Auth/Grant service与真实Vite App执行1280px/360px create/revoke/manual error/focus/overflow/console smoke
+Next Action: 只暂存PageState窄屏换行修复与本计划，完成diff/staged review后创建Slice 9最终checkpoint
 
-Blocking Issues: None；Codex应用闪退前未持久化的浏览器结果不计为证据，manual smoke必须从零重跑
+Blocking Issues: None
 
 Last Updated: 2026-09-02 (Asia/Shanghai)
 
@@ -546,11 +546,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`、grantable catalog data `3a7ac18`、create draft policy `92584a4`、create Dialog `1f997d3`与revoke UI `dd3e65a`已持久化；frontend/backend automated matrix已完成，当前只剩manual smoke与最终Slice closure。
+- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`、grantable catalog data `3a7ac18`、create draft policy `92584a4`、create Dialog `1f997d3`与revoke UI `dd3e65a`已持久化。frontend/backend automated matrix和从零重跑的manual smoke均已通过；当前只剩窄屏安全错误换行修复的scoped checkpoint与Slice closure。
 
 Next Action:
 
-- 使用loopback虚构Auth/Grant service与真实Vite App执行1280px/360px create/revoke/manual error/focus/overflow/console smoke。
+- 只暂存`src/components/ui/PageState.module.css`与本计划，完成diff/staged review后创建Slice 9最终checkpoint；不得混入四个外部backend未跟踪运行产物。
 
 Context Recovery Evidence (verified 2026-09-02 after Codex app crash during Slice 9 manual smoke):
 
@@ -601,6 +601,15 @@ Slice 9 Final Automated Matrix Evidence (verified 2026-09-02):
 - frontend最终`pnpm check`通过contract drift、lint、typecheck、36 files / 209 tests与production build；App/Grant/Knowledge Documents scoped regression为6 files / 50 tests。employee capability-denied、admin/department-manager catalog scope、exact account/catalog-only IDs、safe 422/409/403/404 query convergence、created/existing adapter与active/revoked audit均有deterministic覆盖。
 - backend repository `.venv` + `PYTHONPATH=src`下，CG010 `test_document_access_grant_validation_contract.py`、CG011 `test_document_access_grantable_documents.py`与真实`test_document_access_grants.py`顺序重跑全部输出passed。Runtime/OpenAPI/no-sensitive 422、admin/manager/employee scope、public exclusion、精确document/target redundancy、atomic idempotent create、revoke audit与即时read/retrieval access收敛未回退。
 - package、lockfile、OpenAPI snapshot与generated types保持无diff；共享backend仍只有两个外部RAG Eval report目录与两个runtime TaskPlan文件未跟踪并继续排除。自动化矩阵无新Contract Gap或Blocking Issue；唯一Next Action推进为Document Grants manual browser smoke。
+
+Slice 9 Manual Browser Smoke Evidence (verified 2026-09-02 after Codex app crash):
+
+- 使用只监听`127.0.0.1`的虚构Auth/Grant service与真实Vite App从零重跑，不采信闪退前未持久化的浏览器观察。1280x900下body为`1280=1280`、main为`1000=1000`，列表与蓝白视觉无横向溢出；create Dialog宽480px居中，初始焦点进入关闭按钮。
+- create流程实际验证精确账号规范化、server catalog筛选/选择、review摘要和Escape返回“创建授权”焦点；首次提交显示`新建 1 条，已存在 0 条`，相同账号/文档重复提交显示`新建 0 条，已存在 1 条`且列表仍只有一条对应记录。revoke确认显示文档、精确账号、原授权人/时间，Escape返回原撤销入口；成功后列表显示server刷新后的`已撤销`、撤销人/时间且不再显示撤销按钮。
+- create `409` Dialog保持打开，只显示固定错误文案、`DOCUMENT_ACCESS_GRANT_CONFLICT`与`grant-create-conflict`，虚构raw marker未进入DOM。360x800初次验证准确发现该长error code使Dialog `clientWidth=328`但`scrollWidth=371`；页面body/main自身均为`345=345`，缺口被限定为共享`PageState.details`缺少长token换行。
+- 最小修复只为共享安全错误details增加`overflow-wrap:anywhere`。重载同一409场景后create Dialog为`328=328`，revoke Dialog也为`328=328`，body/main保持`345=345`；窄屏截图未见被截断控件或页面横向溢出，browser console warning/error为`[]`。临时browser tab、viewport override、Vite/mock进程与smoke脚本均已清理。
+- focused `pnpm test -- src/components/ui/PageState.test.tsx src/features/document-grants/DocumentGrantWorkspace.test.tsx`通过2 files / 14 tests；完整`pnpm check`通过contract drift、lint、typecheck、36 files / 209 tests与production build，仅保留既有545.20 kB非阻塞chunk warning。package、lockfile、OpenAPI snapshot与generated types无diff，dependency graph未变化，可继续引用相同lockfile下Slice 5的`pnpm audit --audit-level high`成功证据。
+- 当前scoped diff只有本计划与`PageState.module.css`单行换行修复；四个外部backend未跟踪report/runtime产物仍保持隔离。manual smoke与Slice Gate所需证据已齐，唯一Next Action是建立最终scoped checkpoint后再把Current Slice推进到10。
 
 Slice 9 Create Draft Policy Evidence (verified 2026-09-01):
 
