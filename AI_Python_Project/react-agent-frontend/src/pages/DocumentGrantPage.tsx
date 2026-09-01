@@ -18,6 +18,9 @@ export function DocumentGrantPage() {
   return (
     <DocumentGrantWorkspace
       api={api}
+      canFilterGrantableDepartment={
+        snapshot.currentUser.accountType === 'admin'
+      }
       key={userBoundary}
       userBoundary={userBoundary}
     />

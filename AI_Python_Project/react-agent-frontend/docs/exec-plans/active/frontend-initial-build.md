@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: 中断工作树的create成功路径测试观察点已修正并focused 4/4通过；当前逐条补齐尚未验证的mutation failure/pending行为
+Current Step: catalog-backed create Dialog的success/paging/scope/pending/422/409与最终Gate均已验证；当前完成scoped checkpoint
 
-Next Action: 新增单一pending-lock expected-red，证明create请求未结束时Dialog不能关闭、返回或重复提交，再做最小实现
+Next Action: 只暂存create Dialog、workspace/page/query、相关tests/style与本计划，核对staged diff后建立独立frontend checkpoint
 
 Blocking Issues: None；Docker/PostgreSQL启动后CG011 backend最小contract test恢复重跑通过，当前frontend focused test可继续收敛
 
@@ -546,11 +546,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`、grantable catalog data `3a7ac18`与create draft policy `92584a4`已持久化。当前未checkpoint的create Dialog working set为`CreateDocumentGrantDialog.tsx`、`DocumentGrantWorkspace.tsx`、`DocumentGrantWorkspace.test.tsx`、`DocumentGrantWorkspace.module.css`与`DocumentGrantPage.tsx`；revoke UI尚未开始。
+- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`、grantable catalog data `3a7ac18`与create draft policy `92584a4`已持久化。当前create checkpoint working set为`CreateDocumentGrantDialog.tsx`、workspace/page/query、对应style/tests、App role composition test与本计划；revoke UI尚未开始。
 
 Next Action:
 
-- 新增单一pending-lock expected-red，证明create请求未结束时Dialog不能关闭、返回或重复提交，再做最小实现。
+- 只暂存create Dialog、workspace/page/query、相关tests/style与本计划，核对staged diff后建立独立frontend checkpoint。
 
 Context Recovery Evidence (verified 2026-09-02 after usage-limit interruption during Slice 9 create Dialog):
 
@@ -561,6 +561,22 @@ Context Recovery Evidence (verified 2026-09-02 after usage-limit interruption du
 - CG011 backend最小contract test使用repository `.venv`与`PYTHONPATH=src`首次恢复重跑时因Docker尚未启动得到PostgreSQL `ConnectionRefusedError [WinError 1225]`；用户启动Docker后原命令重跑通过并输出`document_access_grantable_documents=passed`。该环境事件已解除，backend checkpoint `ea6df62`、frontend sync `03170c7`、当前generated drift与实际contract test共同证明合同未回退。
 - Repository/Git/Tests证明原Current Step和Next Action已过期，Current Slice仍为9 / IN_PROGRESS。恢复后的唯一Next Action是先修正上述单一测试观察点并重跑focused baseline；在该结果明确前不补写pending/422行为、不开始revoke UI。
 - 上述测试观察点已最小修正：MSW对中间逐字符筛选返回空catalog，只在最终`runbook/development`组合返回文档；review账号改为对包含行断言完整规范化文本。原focused file随后4/4通过，production code未为该green修改。唯一Next Action推进为单一pending-lock expected-red。
+- pending-lock test先证明create请求进行中时返回/确认按钮虽已禁用，但右上角关闭和Escape仍会卸载Dialog；最小实现只在feature Dialog内守卫pending close，不改变共享Dialog。focused随后5/5通过且请求只发送一次。唯一Next Action推进为create `document_ids`安全422与catalog refetch expected-red。
+- create `document_ids` 422 test先证明编辑态恢复、selection/账号保留、allowlisted field message与raw top-level丢弃均已正确，唯一expected-red是grantable catalog请求计数保持1。最小query seam只对含`document_ids` field的create 422失效当前user-bound grantable list；focused随后6/6通过。唯一Next Action推进为catalog筛选422字段映射。
+- grantable catalog 422 test先证明当前只显示固定通用错误且没有把safe `query/department_code` messages绑定到筛选字段；最小实现只投影这两个allowlisted字段，有字段错误时不重复显示通用ErrorState，其他catalog error保持固定安全展示。focused随后7/7通过。唯一Next Action推进为create `409` review态错误可见性。
+- create `409` test先证明records query已按既有seam refetch但review态看不到错误；最小实现只把既有固定安全ErrorState移到edit/review共同位置。focused随后8/8，lint、typecheck及Grant/Knowledge Documents/App focused实际5 files / 36 tests通过。样式检查另发现success banner引用未定义的`--color-success-50/600/700`，尚未修正或宣称视觉完成；唯一Next Action先验证catalog opaque分页/跨页选择与manager筛选边界。
+- grantable opaque cursor/跨页选择与manager无部门筛选test直接green，证明中断实现已有正确行为而无需重写；focused为9/9。静态审查发现的success banner未定义token已替换为仓库现有`--color-surface-subtle/--color-success`，没有新增全局token。上一轮回归实际为Grant/Knowledge Documents 5 files / 36 tests，传入的错误`src/App.test.tsx`路径未匹配App tests，因而不把App误报为已运行；create checkpoint前唯一Next Action是`target_account` 422 focused test后用正确`src/app/App.test.tsx`执行scoped Gate。
+- create `target_account` 422 test直接green，确认allowlisted field message绑定精确账号、raw top-level message不渲染且账号错误不误刷grantable catalog；focused为10/10。唯一Next Action推进为正确App regression、完整`pnpm check`与scoped checkpoint review。
+- 正确App + Grant/Knowledge Documents focused为6 files / 46 tests；完整`pnpm check`通过contract drift、lint、typecheck、36 files / 205 tests与production build，仅保留既有约543.43 kB非阻塞chunk warning。scoped review确认package/lock/OpenAPI/generated无diff，production只使用批准的Grant API且未新增权限推导、敏感字段、browser storage、日志或任意URL；剩余唯一证据缺口是Page从真实认证账号类型派生admin/manager catalog筛选可见性。
+- 真实App composition的admin可见部门筛选、department manager不可见且请求无`department_code`两条characterization直接green；App/create focused为2 files / 20 tests。最终`pnpm check`再次通过contract drift、lint、typecheck、36 files / 207 tests与production build，仍只有既有约543.43 kB非阻塞chunk warning。
+
+Slice 9 Create Dialog Evidence (verified 2026-09-02):
+
+- create流程只接受精确账号与从server-trimmed grantable catalog选择的safe document objects；没有用户搜索、raw document ID输入、ACL/permission/visibility字段或browser-side eligibility计算。管理员可使用server department filter，department manager没有该控件且请求不发送该字段。
+- catalog支持文本筛选、opaque cursor分页与跨页保留选择；review展示规范化账号和所选文档安全摘要。成功只展示backend `created_count/existing_count`并由既有query seam刷新grants与相关Knowledge Documents facts，不做optimistic write。
+- pending期间返回、确认、右上角关闭和Escape均不能卸载或重复提交。create `target_account/document_ids`与catalog `query/department_code`只映射allowlisted field errors，raw top-level message不渲染；`document_ids` 422保留选择并refetch grantable catalog，`409`在review态显示固定安全ErrorState并refetch grant records。
+- 恢复后的focused从3/4测试收敛为create 10/10；正确App + Grant/Knowledge Documents scoped regression为6 files / 46 tests，最终App/create为2 files / 20 tests。完整Gate最终为36 files / 207 tests与production build；backend CG011 contract在Docker启动后重跑通过。
+- package、lockfile、OpenAPI snapshot与generated types均无diff；scoped production review未发现额外endpoint、敏感字段、任意URL、raw HTML、browser storage或日志。success banner使用仓库现有design token，不新增依赖或全局token。唯一Next Action是建立独立create UI checkpoint，之后才进入revoke confirmation TDD。
 
 Slice 9 Create Draft Policy Evidence (verified 2026-09-01):
 

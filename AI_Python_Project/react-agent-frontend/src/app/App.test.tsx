@@ -23,6 +23,7 @@ function installRestoredIdentity(
     can_use_web_search: boolean
     user_management_scope: 'all' | 'department' | 'none'
   }> = {},
+  accountType: 'admin' | 'department_manager' | 'employee' = 'employee',
 ) {
   createAuthTokenStore(window.sessionStorage).setTokenPair({
     access_token: ['access', 'stored'].join('-'),
@@ -43,7 +44,7 @@ function installRestoredIdentity(
       HttpResponse.json({
         user_id: 'user-1',
         username: 'reader',
-        account_type: 'employee',
+        account_type: accountType,
         is_authenticated: true,
         auth_source: 'jwt',
         global_role_codes: [],
@@ -320,6 +321,58 @@ describe('App authentication entry', () => {
     expect(grantList).toHaveTextContent('docs/private.md')
     expect(within(grantList).getByText('生效中')).toBeInTheDocument()
     expect(grantList).toHaveTextContent('授权人：manager-1')
+  })
+
+  it('shows the grantable department filter for an admin', async () => {
+    installRestoredIdentity({ can_manage_document_grants: true }, 'admin')
+    server.use(
+      http.get(`${apiBaseUrl}/admin/document-access/grants`, () =>
+        HttpResponse.json({ items: [], next_cursor: null }),
+      ),
+      http.get(
+        `${apiBaseUrl}/admin/document-access/grantable-documents`,
+        () => HttpResponse.json({ items: [], next_cursor: null }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderApp('/admin/document-grants')
+
+    await user.click(
+      await screen.findByRole('button', { name: '创建授权' }),
+    )
+    expect(
+      screen.getByRole('textbox', { name: '筛选文档部门' }),
+    ).toBeInTheDocument()
+  })
+
+  it('does not expose the grantable department filter to a department manager', async () => {
+    installRestoredIdentity(
+      { can_manage_document_grants: true },
+      'department_manager',
+    )
+    server.use(
+      http.get(`${apiBaseUrl}/admin/document-access/grants`, () =>
+        HttpResponse.json({ items: [], next_cursor: null }),
+      ),
+      http.get(
+        `${apiBaseUrl}/admin/document-access/grantable-documents`,
+        ({ request }) => {
+          expect(
+            new URL(request.url).searchParams.has('department_code'),
+          ).toBe(false)
+          return HttpResponse.json({ items: [], next_cursor: null })
+        },
+      ),
+    )
+    const user = userEvent.setup()
+    renderApp('/admin/document-grants')
+
+    await user.click(
+      await screen.findByRole('button', { name: '创建授权' }),
+    )
+    expect(
+      screen.queryByRole('textbox', { name: '筛选文档部门' }),
+    ).not.toBeInTheDocument()
   })
 
   it('recomputes navigation and leaves a route immediately after capability loss', async () => {

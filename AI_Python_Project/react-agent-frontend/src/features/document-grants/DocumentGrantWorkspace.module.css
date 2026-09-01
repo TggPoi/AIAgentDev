@@ -7,6 +7,13 @@
   margin: 0;
 }
 
+.header {
+  align-items: start;
+  display: flex;
+  gap: var(--space-4);
+  justify-content: space-between;
+}
+
 .header p,
 .card p {
   color: var(--color-text-secondary);
@@ -53,6 +60,67 @@
 .fieldError {
   color: var(--color-danger-700);
   font-size: 0.8125rem;
+}
+
+.success {
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-md);
+  color: var(--color-success);
+  margin: 0;
+  padding: var(--space-3);
+}
+
+.mutationForm,
+.review {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.dialogFilters {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.candidateList,
+.review ul {
+  display: grid;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  max-height: 18rem;
+  overflow: auto;
+  padding: 0;
+}
+
+.candidate,
+.review li {
+  align-items: start;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+
+.candidate span,
+.review li {
+  min-width: 0;
+}
+
+.candidate small,
+.review li span {
+  color: var(--color-text-secondary);
+  display: block;
+  margin-top: var(--space-1);
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
 }
 
 .list {
@@ -124,6 +192,13 @@
 }
 
 @media (max-width: 600px) {
+  .header,
+  .actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dialogFilters,
   .filters,
   .facts {
     grid-template-columns: 1fr;

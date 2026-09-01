@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/api-error'
@@ -5,7 +6,9 @@ import { Button } from '@/components/ui/Button'
 import { EmptyState, ErrorState, PageSkeleton } from '@/components/ui/PageState'
 import { TextField } from '@/components/ui/TextField'
 import type { DocumentGrantApi } from '@/features/document-grants/document-grant-api'
+import { CreateDocumentGrantDialog } from '@/features/document-grants/CreateDocumentGrantDialog'
 import {
+  type CreateDocumentGrantsResult,
   mergeDocumentGrantPages,
   type DocumentGrantStatus,
 } from '@/features/document-grants/document-grant-models'
@@ -15,6 +18,7 @@ import styles from '@/features/document-grants/DocumentGrantWorkspace.module.css
 
 interface DocumentGrantWorkspaceProps {
   api: DocumentGrantApi
+  canFilterGrantableDepartment: boolean
   userBoundary: string
 }
 
@@ -41,8 +45,12 @@ function safeErrorState(error: unknown) {
 
 export function DocumentGrantWorkspace({
   api,
+  canFilterGrantableDepartment,
   userBoundary,
 }: DocumentGrantWorkspaceProps) {
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createResult, setCreateResult] =
+    useState<CreateDocumentGrantsResult | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const targetAccount = searchParams.get('target_account') || null
   const documentId = searchParams.get('doc_id') || null
@@ -81,10 +89,21 @@ export function DocumentGrantWorkspace({
   return (
     <section aria-labelledby="document-grant-list-title" className={styles.page}>
       <header className={styles.header}>
-        <p className={styles.eyebrow}>Administration</p>
-        <h2 id="document-grant-list-title">跨部门授权</h2>
-        <p>查看当前身份获准管理的非公开文档精确只读授权。</p>
+        <div>
+          <p className={styles.eyebrow}>Administration</p>
+          <h2 id="document-grant-list-title">跨部门授权</h2>
+          <p>查看当前身份获准管理的非公开文档精确只读授权。</p>
+        </div>
+        <Button onClick={() => setCreateOpen(true)} type="button">
+          创建授权
+        </Button>
       </header>
+      {createResult ? (
+        <p aria-label="文档授权创建结果" className={styles.success} role="status">
+          新建 {createResult.createdCount} 条，已存在 {createResult.existingCount}{' '}
+          条
+        </p>
+      ) : null}
       <div className={styles.filters}>
         <TextField
           error={targetAccountError}
@@ -183,6 +202,15 @@ export function DocumentGrantWorkspace({
         >
           {listQuery.isFetchingNextPage ? '正在加载…' : '加载更多授权'}
         </Button>
+      ) : null}
+      {createOpen ? (
+        <CreateDocumentGrantDialog
+          api={api}
+          canFilterDepartment={canFilterGrantableDepartment}
+          onClose={() => setCreateOpen(false)}
+          onCreated={setCreateResult}
+          userBoundary={userBoundary}
+        />
       ) : null}
     </section>
   )

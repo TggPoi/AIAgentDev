@@ -154,8 +154,18 @@ export function useCreateDocumentGrants(
   return useMutation({
     mutationFn: (request: CreateDocumentAccessGrantsRequestDto) =>
       api.createGrants(request),
-    onError: (error) =>
-      refreshGrantRecordsOnFailure(error, queryClient, userBoundary),
+    onError: async (error) => {
+      await Promise.all([
+        refreshGrantRecordsOnFailure(error, queryClient, userBoundary),
+        error instanceof ApiError &&
+        error.status === 422 &&
+        error.fieldErrors.some((item) => item.field === 'document_ids')
+          ? queryClient.invalidateQueries({
+              queryKey: documentGrantKeys.grantableListRoot(userBoundary),
+            })
+          : undefined,
+      ])
+    },
     onSuccess: async (result) => {
       await Promise.all([
         invalidateDocumentGrantList(queryClient, userBoundary),
