@@ -5,8 +5,32 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from fast_app.schemas.knowledge_document_schema import KnowledgeDocumentType
+
 
 DocumentAccessGrantStatus = Literal["active", "revoked"]
+
+
+class DocumentAccessGrantableDocumentItem(BaseModel):
+    doc_id: str = Field(description="可作为跨部门授权候选的active非public文档稳定ID。")
+    title: str = Field(description="由可信仓库文件名生成的候选文档展示标题。")
+    repository_path: str = Field(description="候选文档在GitLab Project中的仓库相对路径。")
+    document_department_code: str = Field(
+        description="候选文档所属部门code；主管范围由服务端固定。",
+    )
+    document_type: KnowledgeDocumentType = Field(
+        description="服务端识别的候选文档格式。",
+    )
+
+
+class DocumentAccessGrantableDocumentListResponse(BaseModel):
+    items: list[DocumentAccessGrantableDocumentItem] = Field(
+        description="当前actor有权管理的active非public文档候选项。",
+    )
+    next_cursor: str | None = Field(
+        default=None,
+        description="下一页不透明keyset cursor；没有更多候选项时为空。",
+    )
 
 
 class DocumentAccessGrantUser(BaseModel):
@@ -99,6 +123,8 @@ class CreateDocumentAccessGrantsResponse(BaseModel):
 __all__ = [
     "CreateDocumentAccessGrantsRequest",
     "CreateDocumentAccessGrantsResponse",
+    "DocumentAccessGrantableDocumentItem",
+    "DocumentAccessGrantableDocumentListResponse",
     "DocumentAccessGrantItem",
     "DocumentAccessGrantListResponse",
     "DocumentAccessGrantStatus",

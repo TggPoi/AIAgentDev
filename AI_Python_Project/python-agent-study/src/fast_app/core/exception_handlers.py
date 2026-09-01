@@ -94,6 +94,9 @@ _VALIDATION_FIELDS: dict[tuple[str, str], dict[str, frozenset[str]]] = {
             {"target_account", "doc_id", "status", "department_code", "limit"}
         )
     },
+    ("GET", "/admin/document-access/grantable-documents"): {
+        "query": frozenset({"query", "department_code", "limit"})
+    },
     ("DELETE", "/admin/document-access/grants/{grant_id}"): {},
 }
 
@@ -117,6 +120,7 @@ _MANAGED_USER_ACCESS_BUSINESS_ROUTES = frozenset(
 
 _DOCUMENT_ACCESS_GRANT_BUSINESS_ROUTES = frozenset(
     {
+        ("GET", "/admin/document-access/grantable-documents"),
         ("GET", "/admin/document-access/grants"),
         ("POST", "/admin/document-access/grants"),
     }

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import Select, and_, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fast_app.db.auth_tables import UserDepartmentTable, UserTable
@@ -33,6 +33,65 @@ class DocumentAccessRepository:
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    async def list_grantable_documents(
+        self,
+        *,
+        limit: int,
+        department_code: str | None,
+        query: str | None,
+        cursor_updated_at: datetime | None,
+        cursor_doc_id: str | None,
+    ) -> tuple[list[GrantableDocumentRecord], bool]:
+        stmt = (
+            select(GitLabDocumentTable, GitLabSourceTable.department_code)
+            .join(
+                GitLabSourceTable,
+                GitLabSourceTable.id == GitLabDocumentTable.source_id,
+            )
+            .where(
+                GitLabDocumentTable.status == "active",
+                GitLabSourceTable.status == "active",
+                func.coalesce(
+                    GitLabDocumentTable.acl_json["visibility"].as_string(),
+                    GitLabSourceTable.default_visibility,
+                )
+                != "public",
+            )
+        )
+        if department_code is not None:
+            stmt = stmt.where(GitLabSourceTable.department_code == department_code)
+        if query:
+            pattern = f"%{_escape_like(query)}%"
+            stmt = stmt.where(
+                or_(
+                    GitLabDocumentTable.repository_path.ilike(pattern, escape="\\"),
+                    GitLabDocumentTable.doc_id.ilike(pattern, escape="\\"),
+                )
+            )
+        if cursor_updated_at is not None and cursor_doc_id is not None:
+            stmt = stmt.where(
+                or_(
+                    GitLabDocumentTable.updated_at < cursor_updated_at,
+                    and_(
+                        GitLabDocumentTable.updated_at == cursor_updated_at,
+                        GitLabDocumentTable.doc_id < cursor_doc_id,
+                    ),
+                )
+            )
+        rows = (
+            await self._session.execute(
+                stmt.order_by(
+                    GitLabDocumentTable.updated_at.desc(),
+                    GitLabDocumentTable.doc_id.desc(),
+                ).limit(limit + 1)
+            )
+        ).all()
+        records = [
+            GrantableDocumentRecord(document=row[0], department_code=row[1])
+            for row in rows[:limit]
+        ]
+        return records, len(rows) > limit
 
     async def list_grants(
         self,
@@ -296,6 +355,10 @@ class DocumentAccessRepository:
 
     async def rollback(self) -> None:
         await self._session.rollback()
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 __all__ = [

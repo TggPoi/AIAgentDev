@@ -14,6 +14,7 @@ from fast_app.schemas.error_schema import (
 from fast_app.schemas.document_access_schema import (
     CreateDocumentAccessGrantsRequest,
     CreateDocumentAccessGrantsResponse,
+    DocumentAccessGrantableDocumentListResponse,
     DocumentAccessGrantItem,
     DocumentAccessGrantListResponse,
 )
@@ -35,6 +36,36 @@ _DOCUMENT_ACCESS_GRANT_REQUEST_VALIDATION_RESPONSES = {
         "description": "请求字段校验失败；只返回 allowlisted 字段的安全错误投影。",
     }
 }
+
+
+@router.get(
+    "/grantable-documents",
+    response_model=DocumentAccessGrantableDocumentListResponse,
+    responses=_DOCUMENT_ACCESS_GRANT_VALIDATION_RESPONSES,
+)
+async def list_document_access_grantable_documents_endpoint(
+    cursor: str | None = Query(default=None, description="上一页返回的不透明keyset cursor。"),
+    limit: int = Query(default=20, ge=1, le=100, description="本页最多返回的候选文档数。"),
+    query: str | None = Query(
+        default=None,
+        max_length=255,
+        description="按候选文档标题、仓库路径或doc_id文本筛选。",
+    ),
+    department_code: str | None = Query(
+        default=None,
+        max_length=64,
+        description="管理员可选文档所属部门；主管范围由服务端固定。",
+    ),
+    actor: CurrentUserContext = Depends(get_current_user_context),
+    service: DocumentAccessService = Depends(get_document_access_service),
+) -> DocumentAccessGrantableDocumentListResponse:
+    return await service.list_grantable_documents(
+        actor,
+        cursor=cursor,
+        limit=limit,
+        query=query,
+        department_code=department_code,
+    )
 
 
 @router.get(

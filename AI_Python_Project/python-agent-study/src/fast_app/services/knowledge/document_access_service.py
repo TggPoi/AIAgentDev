@@ -4,6 +4,7 @@ import base64
 import binascii
 import json
 from datetime import datetime
+from pathlib import PurePosixPath
 
 from sqlalchemy.exc import IntegrityError
 
@@ -12,6 +13,8 @@ from fast_app.domain.user_context import CurrentUserContext
 from fast_app.schemas.document_access_schema import (
     CreateDocumentAccessGrantsRequest,
     CreateDocumentAccessGrantsResponse,
+    DocumentAccessGrantableDocumentItem,
+    DocumentAccessGrantableDocumentListResponse,
     DocumentAccessGrantItem,
     DocumentAccessGrantListResponse,
     DocumentAccessGrantUser,
@@ -34,6 +37,42 @@ class DocumentAccessService:
 
     def __init__(self, repository: DocumentAccessRepository) -> None:
         self._repository = repository
+
+    async def list_grantable_documents(
+        self,
+        actor: CurrentUserContext,
+        *,
+        cursor: str | None,
+        limit: int,
+        query: str | None,
+        department_code: str | None,
+    ) -> DocumentAccessGrantableDocumentListResponse:
+        is_admin, manager_department = self._management_scope(actor)
+        if not is_admin:
+            if department_code is not None and department_code != manager_department:
+                raise DocumentAccessPermissionDeniedError(
+                    "部门主管不能扩大文档授权候选部门范围"
+            )
+            department_code = manager_department
+        cursor_updated_at, cursor_doc_id = _decode_grantable_document_cursor(cursor)
+        records, has_more = await self._repository.list_grantable_documents(
+            limit=limit,
+            department_code=department_code,
+            query=query.strip() if query and query.strip() else None,
+            cursor_updated_at=cursor_updated_at,
+            cursor_doc_id=cursor_doc_id,
+        )
+        return DocumentAccessGrantableDocumentListResponse(
+            items=[_to_grantable_document_item(record) for record in records],
+            next_cursor=(
+                _encode_grantable_document_cursor(
+                    records[-1].document.updated_at,
+                    records[-1].document.doc_id,
+                )
+                if has_more and records
+                else None
+            ),
+        )
 
     async def list_grants(
         self,
@@ -221,6 +260,19 @@ def _to_item(record: DocumentAccessGrantRecord) -> DocumentAccessGrantItem:
     )
 
 
+def _to_grantable_document_item(
+    record: GrantableDocumentRecord,
+) -> DocumentAccessGrantableDocumentItem:
+    file_name = PurePosixPath(record.document.repository_path).name
+    return DocumentAccessGrantableDocumentItem(
+        doc_id=record.document.doc_id,
+        title=PurePosixPath(file_name).stem or file_name,
+        repository_path=record.document.repository_path,
+        document_department_code=record.department_code,
+        document_type=record.document.document_type,
+    )
+
+
 def _document_is_already_readable(
     record: GrantableDocumentRecord,
     *,
@@ -242,6 +294,40 @@ def _encode_cursor(granted_at: datetime, grant_id: str) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _encode_grantable_document_cursor(updated_at: datetime, doc_id: str) -> str:
+    payload = json.dumps(
+        {"updated_at": updated_at.isoformat(), "doc_id": doc_id},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_grantable_document_cursor(
+    cursor: str | None,
+) -> tuple[datetime | None, str | None]:
+    if cursor is None:
+        return None, None
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+        updated_at = datetime.fromisoformat(payload["updated_at"])
+        doc_id = payload["doc_id"]
+        if updated_at.tzinfo is None or not isinstance(doc_id, str) or not doc_id:
+            raise ValueError
+        return updated_at, doc_id
+    except (
+        binascii.Error,
+        KeyError,
+        TypeError,
+        UnicodeDecodeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise DocumentAccessGrantInvalidError(
+            "文档授权候选目录 cursor 无效"
+        ) from exc
 
 
 def _decode_cursor(cursor: str | None) -> tuple[datetime | None, str | None]:
