@@ -8,9 +8,9 @@ Plan Approval: APPROVED BY USER ON 2026-08-25
 
 Current Slice: 9 - Cross-Department Document Grants
 
-Current Step: catalog-backed create Dialog的success/paging/scope/pending/422/409与最终Gate均已验证；当前完成scoped checkpoint
+Current Step: catalog-backed create Dialog已由独立checkpoint `1f997d3`持久化；当前进入active grant revoke confirmation TDD
 
-Next Action: 只暂存create Dialog、workspace/page/query、相关tests/style与本计划，核对staged diff后建立独立frontend checkpoint
+Next Action: 在Document Grants mutation UI test新增单一revoke confirmation expected-red，固定只对active record开放、审计摘要、pending lock与成功后server-state收敛
 
 Blocking Issues: None；Docker/PostgreSQL启动后CG011 backend最小contract test恢复重跑通过，当前frontend focused test可继续收敛
 
@@ -546,11 +546,11 @@ Completed in Current Slice:
 
 Currently Working On:
 
-- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`、grantable catalog data `3a7ac18`与create draft policy `92584a4`已持久化。当前create checkpoint working set为`CreateDocumentGrantDialog.tsx`、workspace/page/query、对应style/tests、App role composition test与本计划；revoke UI尚未开始。
+- Slice 9 / IN_PROGRESS。最后 verified completed Slice 为 8；Slice 8 全部 checkpoints、automated Gate 和 manual smoke 已完成且未重做。CG010/CG011已关闭，Grant records data `e824fc3`、read-only workspace `8dea121`、grantable catalog data `3a7ac18`、create draft policy `92584a4`与create Dialog `1f997d3`已持久化；revoke UI尚未开始。
 
 Next Action:
 
-- 只暂存create Dialog、workspace/page/query、相关tests/style与本计划，核对staged diff后建立独立frontend checkpoint。
+- 在Document Grants mutation UI test新增单一revoke confirmation expected-red，固定只对active record开放、审计摘要、pending lock与成功后server-state收敛。
 
 Context Recovery Evidence (verified 2026-09-02 after usage-limit interruption during Slice 9 create Dialog):
 
@@ -577,6 +577,7 @@ Slice 9 Create Dialog Evidence (verified 2026-09-02):
 - pending期间返回、确认、右上角关闭和Escape均不能卸载或重复提交。create `target_account/document_ids`与catalog `query/department_code`只映射allowlisted field errors，raw top-level message不渲染；`document_ids` 422保留选择并refetch grantable catalog，`409`在review态显示固定安全ErrorState并refetch grant records。
 - 恢复后的focused从3/4测试收敛为create 10/10；正确App + Grant/Knowledge Documents scoped regression为6 files / 46 tests，最终App/create为2 files / 20 tests。完整Gate最终为36 files / 207 tests与production build；backend CG011 contract在Docker启动后重跑通过。
 - package、lockfile、OpenAPI snapshot与generated types均无diff；scoped production review未发现额外endpoint、敏感字段、任意URL、raw HTML、browser storage或日志。success banner使用仓库现有design token，不新增依赖或全局token。唯一Next Action是建立独立create UI checkpoint，之后才进入revoke confirmation TDD。
+- 独立frontend checkpoint `1f997d3`只包含本计划、App role composition test与create Dialog/workspace/page/query/style/tests共8个文件；staged diff/check在提交前通过，外部RAG Eval report与runtime TaskPlan产物未暂存。唯一Next Action推进为active grant revoke confirmation expected-red。
 
 Slice 9 Create Draft Policy Evidence (verified 2026-09-01):
 
