@@ -261,7 +261,7 @@ async def run_worker(*, once: bool, use_mock_embeddings: bool) -> int:
                 await asyncio.sleep(settings.gitlab_worker_poll_seconds)
     finally:
         await elasticsearch_client.close()
-        milvus_client.close()
+        await milvus_client.close()
         await engine.dispose()
 
 

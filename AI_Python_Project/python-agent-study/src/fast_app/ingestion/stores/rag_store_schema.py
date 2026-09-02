@@ -1,6 +1,6 @@
 from typing import Any
 
-from pymilvus import DataType, MilvusClient
+from pymilvus import AsyncMilvusClient, DataType
 
 from fast_app.core.config import Settings
 
@@ -162,7 +162,7 @@ def build_es_mapping() -> dict[str, Any]:
 
 # 构建Collection结构
 def build_milvus_schema(settings: Settings):
-    schema = MilvusClient.create_schema(
+    schema = AsyncMilvusClient.create_schema(
         auto_id=False,
         enable_dynamic_field=False,
     )
@@ -286,7 +286,7 @@ def build_milvus_output_fields(settings: Settings) -> list[str]:
 
 # 构建Index索引
 def build_milvus_index_params(settings: Settings):
-    index_params = MilvusClient.prepare_index_params()
+    index_params = AsyncMilvusClient.prepare_index_params()
     index_params.add_index(
         field_name=settings.milvus_vector_field,
         index_type="AUTOINDEX",

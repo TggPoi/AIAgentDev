@@ -12,7 +12,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from elasticsearch import AsyncElasticsearch
-from pymilvus import MilvusClient
+from pymilvus import AsyncMilvusClient
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingClient
@@ -233,7 +233,7 @@ async def run_write_stores(args: argparse.Namespace, settings: Settings) -> None
     print(f"use_mock_embeddings: {args.mock_embeddings}")
 
     elasticsearch_client = AsyncElasticsearch(hosts=[settings.elasticsearch_url])
-    milvus_client = MilvusClient(
+    milvus_client = AsyncMilvusClient(
         uri=build_milvus_uri(settings.milvus_host, settings.milvus_port)
     )
 
@@ -261,7 +261,7 @@ async def run_write_stores(args: argparse.Namespace, settings: Settings) -> None
 
     finally:
         await elasticsearch_client.close()
-        milvus_client.close()
+        await milvus_client.close()
 
 
 def parse_args() -> argparse.Namespace:

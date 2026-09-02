@@ -6,7 +6,7 @@ from typing import Any
 
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_bulk
-from pymilvus import DataType, MilvusClient
+from pymilvus import AsyncMilvusClient, DataType
 
 from fast_app.components.embeddings.qwen_embedding_client import QwenEmbeddingClient
 from fast_app.core.config import Settings, get_settings
@@ -256,98 +256,101 @@ async def es_smoke_test(client: AsyncElasticsearch, index_name: str) -> None:
         print(f"section_path: {source['metadata'].get('section_path')}")
 
 
-def recreate_milvus_collection(
+async def recreate_milvus_collection(
     settings: Settings,
     chunks: list[KnowledgeChunk],
     vectors: list[list[float]],
 ) -> None:
     uri = build_milvus_uri(settings)
-    client = MilvusClient(uri=uri)
+    client = AsyncMilvusClient(uri=uri)
     collection_name = settings.milvus_collection_name
 
-    if client.has_collection(collection_name):
-        client.drop_collection(collection_name)
-        print(f"Milvus collection 已删除: {collection_name}")
+    try:
+        if await client.has_collection(collection_name):
+            await client.drop_collection(collection_name)
+            print(f"Milvus collection 已删除: {collection_name}")
 
-    schema = MilvusClient.create_schema(
-        auto_id=False,
-        enable_dynamic_field=False,
-    )
-    schema.add_field(
-        field_name=settings.milvus_id_field,
-        datatype=DataType.VARCHAR,
-        is_primary=True,
-        max_length=128,
-    )
-    schema.add_field(
-        field_name=settings.milvus_vector_field,
-        datatype=DataType.FLOAT_VECTOR,
-        dim=settings.embedding_dim,
-    )
-    schema.add_field(
-        field_name=settings.milvus_content_field,
-        datatype=DataType.VARCHAR,
-        max_length=4096,
-    )
-    schema.add_field(
-        field_name="source",
-        datatype=DataType.VARCHAR,
-        max_length=512,
-    )
-    schema.add_field(
-        field_name="title",
-        datatype=DataType.VARCHAR,
-        max_length=512,
-    )
-    schema.add_field(
-        field_name="metadata",
-        datatype=DataType.JSON,
-    )
+        schema = AsyncMilvusClient.create_schema(
+            auto_id=False,
+            enable_dynamic_field=False,
+        )
+        schema.add_field(
+            field_name=settings.milvus_id_field,
+            datatype=DataType.VARCHAR,
+            is_primary=True,
+            max_length=128,
+        )
+        schema.add_field(
+            field_name=settings.milvus_vector_field,
+            datatype=DataType.FLOAT_VECTOR,
+            dim=settings.embedding_dim,
+        )
+        schema.add_field(
+            field_name=settings.milvus_content_field,
+            datatype=DataType.VARCHAR,
+            max_length=4096,
+        )
+        schema.add_field(
+            field_name="source",
+            datatype=DataType.VARCHAR,
+            max_length=512,
+        )
+        schema.add_field(
+            field_name="title",
+            datatype=DataType.VARCHAR,
+            max_length=512,
+        )
+        schema.add_field(
+            field_name="metadata",
+            datatype=DataType.JSON,
+        )
 
-    index_params = MilvusClient.prepare_index_params()
-    index_params.add_index(
-        field_name=settings.milvus_vector_field,
-        index_type="AUTOINDEX",
-        metric_type="COSINE",
-    )
+        index_params = AsyncMilvusClient.prepare_index_params()
+        index_params.add_index(
+            field_name=settings.milvus_vector_field,
+            index_type="AUTOINDEX",
+            metric_type="COSINE",
+        )
 
-    client.create_collection(
-        collection_name=collection_name,
-        schema=schema,
-        index_params=index_params,
-    )
-    print(f"Milvus collection 已创建: {collection_name}")
+        await client.create_collection(
+            collection_name=collection_name,
+            schema=schema,
+            index_params=index_params,
+        )
+        print(f"Milvus collection 已创建: {collection_name}")
 
-    rows = [
-        {
-            settings.milvus_id_field: chunk.id,
-            settings.milvus_vector_field: vector,
-            settings.milvus_content_field: chunk.content,
-            "source": chunk.source,
-            "title": chunk.title,
-            "metadata": chunk.metadata,
-        }
-        for chunk, vector in zip(chunks, vectors, strict=True)
-    ]
+        rows = [
+            {
+                settings.milvus_id_field: chunk.id,
+                settings.milvus_vector_field: vector,
+                settings.milvus_content_field: chunk.content,
+                "source": chunk.source,
+                "title": chunk.title,
+                "metadata": chunk.metadata,
+            }
+            for chunk, vector in zip(chunks, vectors, strict=True)
+        ]
 
-    result = client.insert(
-        collection_name=collection_name,
-        data=rows,
-    )
-    print(f"Milvus insert 结果: {result}")
+        result = await client.insert(
+            collection_name=collection_name,
+            data=rows,
+        )
+        print(f"Milvus insert 结果: {result}")
 
-    client.flush(collection_name=collection_name)
-    client.load_collection(collection_name=collection_name)
+        await client.flush(collection_name=collection_name)
+        await client.load_collection(collection_name=collection_name)
 
-    milvus_smoke_test(client, settings, vectors[3])
+        await milvus_smoke_test(client, settings, vectors[3])
+    finally:
+        await client.close()
 
 
-def milvus_smoke_test(
-    client: MilvusClient,
+async def milvus_smoke_test(
+    client: AsyncMilvusClient,
     settings: Settings,
     query_vector: list[float],
 ) -> None:
-    results = client.search(
+    results = await client.search(
         collection_name=settings.milvus_collection_name,
         data=[query_vector],
         anns_field=settings.milvus_vector_field,
@@ -441,7 +444,7 @@ async def main() -> int:
         await recreate_es_index(settings, chunks)
 
     if not args.skip_milvus:
-        recreate_milvus_collection(settings, chunks, vectors)
+        await recreate_milvus_collection(settings, chunks, vectors)
 
     print("\n重建完成。")
     return 0

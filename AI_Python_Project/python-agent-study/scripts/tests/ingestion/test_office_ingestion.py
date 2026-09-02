@@ -18,7 +18,7 @@ from openpyxl import Workbook
 from PIL import Image
 from pptx import Presentation
 from pptx.util import Inches
-from pymilvus import MilvusClient
+from pymilvus import AsyncMilvusClient
 from xlsxwriter import Workbook as XlsxWriterWorkbook
 from sqlalchemy import delete, select, update
 
@@ -1069,7 +1069,7 @@ async def test_replace_docs_idempotency(root: Path) -> None:
         es_store.update({chunk.id: chunk for chunk in chunks})
         return len(chunks), {"deleted": 0}
 
-    def fake_replace_milvus(*, client, settings, chunks, vectors):
+    async def fake_replace_milvus(*, client, settings, chunks, vectors):
         doc_ids = {chunk.metadata["doc_id"] for chunk in chunks}
         milvus_copy = {
             chunk_id: chunk
@@ -1134,7 +1134,7 @@ async def test_replace_docs_with_markdown_parents_verifies_convergence() -> None
         assert parents == hierarchy.parents
         return len(chunks) + len(parents), {"deleted": 0}
 
-    def fake_replace_milvus(*, client, settings, chunks, vectors):
+    async def fake_replace_milvus(*, client, settings, chunks, vectors):
         return {"upsert_count": len(chunks)}, {"delete_count": 0}
 
     async def fake_verify(**kwargs):
@@ -1174,7 +1174,9 @@ async def test_real_incremental_stores() -> None:
         MILVUS_COLLECTION_NAME=f"office_incremental_test_{suffix}",
     )
     es = AsyncElasticsearch(hosts=[settings.elasticsearch_url])
-    milvus = MilvusClient(uri=f"http://{settings.milvus_host}:{settings.milvus_port}")
+    milvus = AsyncMilvusClient(
+        uri=f"http://{settings.milvus_host}:{settings.milvus_port}"
+    )
     options = ChunkBuildOptions(
         source="real-test",
         max_chars=4000,
@@ -1228,7 +1230,7 @@ async def test_real_incremental_stores() -> None:
         )
         doc_id = str(metadata["doc_id"])
         es_states = await load_es_chunk_states(es, settings, doc_id)
-        milvus_states = load_milvus_chunk_states(milvus, settings, doc_id)
+        milvus_states = await load_milvus_chunk_states(milvus, settings, doc_id)
         second = build_chunk_diff(after, es_states, milvus_states, embedding_dim=3)
         assert second.counts["added"] == 1
         assert second.counts["metadata_only"] == 1
@@ -1256,7 +1258,7 @@ async def test_real_incremental_stores() -> None:
         repaired = build_chunk_diff(
             after,
             await load_es_chunk_states(es, settings, doc_id),
-            load_milvus_chunk_states(milvus, settings, doc_id),
+            await load_milvus_chunk_states(milvus, settings, doc_id),
             embedding_dim=3,
         )
         assert repaired.counts["repaired"] == 1
@@ -1277,10 +1279,10 @@ async def test_real_incremental_stores() -> None:
     finally:
         if await es.indices.exists(index=settings.elasticsearch_index_name):
             await es.indices.delete(index=settings.elasticsearch_index_name)
-        if milvus.has_collection(settings.milvus_collection_name):
-            milvus.drop_collection(settings.milvus_collection_name)
+        if await milvus.has_collection(settings.milvus_collection_name):
+            await milvus.drop_collection(settings.milvus_collection_name)
         await es.close()
-        milvus.close()
+        await milvus.close()
 
 
 async def test_real_worker_incremental_update() -> None:
@@ -1309,7 +1311,7 @@ async def test_real_worker_incremental_update() -> None:
         engine = create_database_engine(settings)
         session_factory = create_session_factory(engine)
         es = AsyncElasticsearch(hosts=[settings.elasticsearch_url])
-        milvus = MilvusClient(
+        milvus = AsyncMilvusClient(
             uri=f"http://{settings.milvus_host}:{settings.milvus_port}"
         )
 
@@ -1410,10 +1412,10 @@ async def test_real_worker_incremental_update() -> None:
                 await session.commit()
             if await es.indices.exists(index=settings.elasticsearch_index_name):
                 await es.indices.delete(index=settings.elasticsearch_index_name)
-            if milvus.has_collection(settings.milvus_collection_name):
-                milvus.drop_collection(settings.milvus_collection_name)
+            if await milvus.has_collection(settings.milvus_collection_name):
+                await milvus.drop_collection(settings.milvus_collection_name)
             await es.close()
-            milvus.close()
+            await milvus.close()
             await engine.dispose()
 
 

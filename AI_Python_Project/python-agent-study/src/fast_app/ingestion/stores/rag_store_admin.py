@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from elasticsearch import AsyncElasticsearch
-from pymilvus import MilvusClient
+from pymilvus import AsyncMilvusClient
 
 from fast_app.core.config import Settings
 from fast_app.ingestion.stores.rag_store_schema import (
@@ -93,8 +93,8 @@ async def reset_es_index(
     )
 
 # 删除已有Collection，构造新的
-def reset_milvus_collection(
-    client: MilvusClient,
+async def reset_milvus_collection(
+    client: AsyncMilvusClient,
     settings: Settings,
     options: StoreResetOptions,
 ) -> SingleStoreResetResult:
@@ -103,21 +103,21 @@ def reset_milvus_collection(
         raise RuntimeError(f"Milvus reset 不支持目标: {options.target}")
 
     collection_name = settings.milvus_collection_name
-    existed_before = client.has_collection(collection_name)
+    existed_before = await client.has_collection(collection_name)
     dropped = False
     created = False
 
     if existed_before:
-        client.drop_collection(collection_name)
+        await client.drop_collection(collection_name)
         dropped = True
 
     if options.recreate_schema:
-        client.create_collection(
+        await client.create_collection(
             collection_name=collection_name,
             schema=build_milvus_schema(settings),
             index_params=build_milvus_index_params(settings),
         )
-        client.load_collection(collection_name=collection_name)
+        await client.load_collection(collection_name=collection_name)
         created = True
 
     return SingleStoreResetResult(
@@ -131,7 +131,7 @@ def reset_milvus_collection(
 # 重构ES，milvus的主入口
 async def reset_rag_stores(
     elasticsearch_client: AsyncElasticsearch,
-    milvus_client: MilvusClient,
+    milvus_client: AsyncMilvusClient,
     settings: Settings,
     options: StoreResetOptions,
 ) -> RagStoresResetResult:
@@ -148,7 +148,7 @@ async def reset_rag_stores(
         )
 
     if options.target in {"milvus", "both"}:
-        milvus_result = reset_milvus_collection(
+        milvus_result = await reset_milvus_collection(
             client=milvus_client,
             settings=settings,
             options=options,

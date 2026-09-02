@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_bulk, async_scan
-from pymilvus import MilvusClient
+from pymilvus import AsyncMilvusClient
 
 from fast_app.core.config import Settings
 from fast_app.domain.knowledge_models import KnowledgeChunk
@@ -525,15 +525,15 @@ def build_milvus_rows(
     ]
 
 
-def recreate_milvus_collection(
-    client: MilvusClient,
+async def recreate_milvus_collection(
+    client: AsyncMilvusClient,
     settings: Settings,
     chunks: list[KnowledgeChunk],
     vectors: list[list[float]],
 ) -> dict:
     collection_name = settings.milvus_collection_name
 
-    reset_milvus_collection(
+    await reset_milvus_collection(
         client=client,
         settings=settings,
         options=StoreResetOptions(
@@ -543,61 +543,61 @@ def recreate_milvus_collection(
         ),
     )
 
-    result = client.insert(
+    result = await client.insert(
         collection_name=collection_name,
         data=build_milvus_rows(settings, chunks, vectors),
     )
 
-    client.flush(collection_name=collection_name)
-    client.load_collection(collection_name=collection_name)
+    await client.flush(collection_name=collection_name)
+    await client.load_collection(collection_name=collection_name)
 
     return result
 
 
-def ensure_milvus_collection(
-    client: MilvusClient,
+async def ensure_milvus_collection(
+    client: AsyncMilvusClient,
     settings: Settings,
 ) -> None:
     collection_name = settings.milvus_collection_name
 
-    if client.has_collection(collection_name):
-        client.load_collection(collection_name=collection_name)
+    if await client.has_collection(collection_name):
+        await client.load_collection(collection_name=collection_name)
         return
 
-    client.create_collection(
+    await client.create_collection(
         collection_name=collection_name,
         schema=build_milvus_schema(settings),
         index_params=build_milvus_index_params(settings),
     )
-    client.load_collection(collection_name=collection_name)
+    await client.load_collection(collection_name=collection_name)
 
 
-def upsert_milvus_collection(
-    client: MilvusClient,
+async def upsert_milvus_collection(
+    client: AsyncMilvusClient,
     settings: Settings,
     chunks: list[KnowledgeChunk],
     vectors: list[list[float]],
 ) -> dict:
     collection_name = settings.milvus_collection_name
-    ensure_milvus_collection(client=client, settings=settings)
+    await ensure_milvus_collection(client=client, settings=settings)
 
-    result = client.upsert(
+    result = await client.upsert(
         collection_name=collection_name,
         data=build_milvus_rows(settings, chunks, vectors),
     )
 
-    client.flush(collection_name=collection_name)
-    client.load_collection(collection_name=collection_name)
+    await client.flush(collection_name=collection_name)
+    await client.load_collection(collection_name=collection_name)
 
     return result
 
 
-def delete_milvus_docs_by_doc_ids(
-    client: MilvusClient,
+async def delete_milvus_docs_by_doc_ids(
+    client: AsyncMilvusClient,
     settings: Settings,
     doc_ids: list[str],
 ) -> dict[str, Any]:
-    ensure_milvus_collection(client=client, settings=settings)
+    await ensure_milvus_collection(client=client, settings=settings)
 
     if not doc_ids:
         return {"delete_count": 0}
@@ -607,18 +607,18 @@ def delete_milvus_docs_by_doc_ids(
     )
     filter_expr = f'{MILVUS_DOC_ID_FIELD} in [{quoted_doc_ids}]'
 
-    result = client.delete(
+    result = await client.delete(
         collection_name=settings.milvus_collection_name,
         filter=filter_expr,
     )
-    client.flush(collection_name=settings.milvus_collection_name)
-    client.load_collection(collection_name=settings.milvus_collection_name)
+    await client.flush(collection_name=settings.milvus_collection_name)
+    await client.load_collection(collection_name=settings.milvus_collection_name)
     return result
 
 
-def close_milvus_docs_for_version(
+async def close_milvus_docs_for_version(
     *,
-    client: MilvusClient,
+    client: AsyncMilvusClient,
     settings: Settings,
     doc_ids: list[str],
     valid_to_version: int,
@@ -627,7 +627,7 @@ def close_milvus_docs_for_version(
 
     if not doc_ids:
         return 0
-    ensure_milvus_collection(client=client, settings=settings)
+    await ensure_milvus_collection(client=client, settings=settings)
     quoted_doc_ids = ", ".join(
         f'"{escape_milvus_string(doc_id)}"' for doc_id in doc_ids
     )
@@ -658,7 +658,7 @@ def close_milvus_docs_for_version(
     ]
     updated = 0
     while True:
-        rows = client.query(
+        rows = await client.query(
             collection_name=settings.milvus_collection_name,
             filter=filter_expr,
             output_fields=output_fields,
@@ -671,20 +671,20 @@ def close_milvus_docs_for_version(
             metadata = dict(row.get(MILVUS_METADATA_FIELD) or {})
             metadata["valid_to_version"] = valid_to_version
             row[MILVUS_METADATA_FIELD] = metadata
-        client.upsert(
+        await client.upsert(
             collection_name=settings.milvus_collection_name,
             data=rows,
         )
         updated += len(rows)
     if updated:
-        client.flush(collection_name=settings.milvus_collection_name)
+        await client.flush(collection_name=settings.milvus_collection_name)
     return updated
 
 
 async def close_rag_docs_for_version(
     *,
     elasticsearch_client: AsyncElasticsearch,
-    milvus_client: MilvusClient,
+    milvus_client: AsyncMilvusClient,
     settings: Settings,
     doc_ids: list[str],
     valid_to_version: int,
@@ -695,7 +695,7 @@ async def close_rag_docs_for_version(
         doc_ids=doc_ids,
         valid_to_version=valid_to_version,
     )
-    close_milvus_docs_for_version(
+    await close_milvus_docs_for_version(
         client=milvus_client,
         settings=settings,
         doc_ids=doc_ids,
@@ -703,19 +703,19 @@ async def close_rag_docs_for_version(
     )
 
 
-def replace_docs_milvus_collection(
-    client: MilvusClient,
+async def replace_docs_milvus_collection(
+    client: AsyncMilvusClient,
     settings: Settings,
     chunks: list[KnowledgeChunk],
     vectors: list[list[float]],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     doc_ids = collect_doc_ids(chunks)
-    delete_result = delete_milvus_docs_by_doc_ids(
+    delete_result = await delete_milvus_docs_by_doc_ids(
         client=client,
         settings=settings,
         doc_ids=doc_ids,
     )
-    upsert_result = upsert_milvus_collection(
+    upsert_result = await upsert_milvus_collection(
         client=client,
         settings=settings,
         chunks=chunks,
@@ -727,7 +727,7 @@ def replace_docs_milvus_collection(
 async def verify_markdown_store_convergence(
     *,
     elasticsearch_client: AsyncElasticsearch,
-    milvus_client: MilvusClient,
+    milvus_client: AsyncMilvusClient,
     settings: Settings,
     chunks: list[KnowledgeChunk],
     parents: list[MarkdownParentChunk],
@@ -778,7 +778,7 @@ async def verify_markdown_store_convergence(
     )
     offset = 0
     while True:
-        rows = milvus_client.query(
+        rows = await milvus_client.query(
             collection_name=settings.milvus_collection_name,
             filter=f"{MILVUS_DOC_ID_FIELD} in [{quoted_doc_ids}]",
             output_fields=[
@@ -823,7 +823,7 @@ async def verify_markdown_store_convergence(
 # 双链路 写入 es milvus数据库入口
 async def recreate_rag_stores(
     elasticsearch_client: AsyncElasticsearch,
-    milvus_client: MilvusClient,
+    milvus_client: AsyncMilvusClient,
     settings: Settings,
     chunks: list[KnowledgeChunk],
     vectors: list[list[float]],
@@ -849,7 +849,7 @@ async def recreate_rag_stores(
         )
     )
 
-    milvus_insert_result = recreate_milvus_collection(
+    milvus_insert_result = await recreate_milvus_collection(
         client=milvus_client,
         settings=settings,
         chunks=chunks,
@@ -888,7 +888,7 @@ async def recreate_rag_stores(
 # 增量写入 如果文档改动内容过多导致chunk index变动，会导致变动的chunk index 之后的chunk全部重新写入，并且旧的chunk 没有处理
 async def upsert_rag_stores(
     elasticsearch_client: AsyncElasticsearch,
-    milvus_client: MilvusClient,
+    milvus_client: AsyncMilvusClient,
     settings: Settings,
     chunks: list[KnowledgeChunk],
     vectors: list[list[float]],
@@ -915,7 +915,7 @@ async def upsert_rag_stores(
         )
     )
 
-    milvus_upsert_result = upsert_milvus_collection(
+    milvus_upsert_result = await upsert_milvus_collection(
         client=milvus_client,
         settings=settings,
         chunks=chunks,
@@ -946,7 +946,7 @@ async def upsert_rag_stores(
 # 文档级替换：先按 doc_id 删除旧 chunks，再写入本次新 chunks。
 async def replace_docs_rag_stores(
     elasticsearch_client: AsyncElasticsearch,
-    milvus_client: MilvusClient,
+    milvus_client: AsyncMilvusClient,
     settings: Settings,
     chunks: list[KnowledgeChunk],
     vectors: list[list[float]],
@@ -974,11 +974,13 @@ async def replace_docs_rag_stores(
         )
     )
 
-    milvus_upsert_result, milvus_delete_result = replace_docs_milvus_collection(
-        client=milvus_client,
-        settings=settings,
-        chunks=chunks,
-        vectors=vectors,
+    milvus_upsert_result, milvus_delete_result = (
+        await replace_docs_milvus_collection(
+            client=milvus_client,
+            settings=settings,
+            chunks=chunks,
+            vectors=vectors,
+        )
     )
     if parents and verify_convergence:
         await verify_markdown_store_convergence(
@@ -1017,7 +1019,7 @@ async def replace_docs_rag_stores(
 
 async def write_rag_stores(
     elasticsearch_client: AsyncElasticsearch,
-    milvus_client: MilvusClient,
+    milvus_client: AsyncMilvusClient,
     settings: Settings,
     chunks: list[KnowledgeChunk],
     vectors: list[list[float]],

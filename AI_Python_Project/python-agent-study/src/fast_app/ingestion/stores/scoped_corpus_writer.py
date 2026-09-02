@@ -10,6 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from elasticsearch.helpers import async_bulk, async_scan
+from pymilvus import AsyncMilvusClient
 
 from fast_app.core.config import Settings
 from fast_app.ingestion.processing.local_corpus_builder import LocalCorpusPrebuildResult
@@ -71,7 +72,7 @@ class ScopedLocalCorpusWriter:
         *,
         settings: Settings,
         elasticsearch_client,
-        milvus_client,
+        milvus_client: AsyncMilvusClient,
         mutation_lock: StoreMutationLock,
         manifest_store: LocalCorpusManifestStore | None = None,
     ) -> None:
@@ -144,7 +145,7 @@ class ScopedLocalCorpusWriter:
                     self.settings,
                     sorted(set(snapshot["es_record_ids"]) - target_es),
                 )
-                delete_milvus_chunks_by_ids(
+                await delete_milvus_chunks_by_ids(
                     self.milvus,
                     self.settings,
                     sorted(set(snapshot["milvus_record_ids"]) - target_milvus),
@@ -203,10 +204,10 @@ class ScopedLocalCorpusWriter:
             ):
                 es_records.append({"id": hit["_id"], "source": hit.get("_source", {})})
         milvus_records: list[dict] = []
-        if self.milvus.has_collection(self.settings.milvus_collection_name):
+        if await self.milvus.has_collection(self.settings.milvus_collection_name):
             offset = 0
             while True:
-                rows = self.milvus.query(
+                rows = await self.milvus.query(
                     collection_name=self.settings.milvus_collection_name,
                     filter=(
                         f'{MILVUS_SOURCE_ID_FIELD} == '
@@ -243,7 +244,7 @@ class ScopedLocalCorpusWriter:
         await delete_es_chunks_by_ids(
             self.elasticsearch, self.settings, current["es_record_ids"]
         )
-        delete_milvus_chunks_by_ids(
+        await delete_milvus_chunks_by_ids(
             self.milvus, self.settings, current["milvus_record_ids"]
         )
         if snapshot.get("es_records"):
@@ -262,12 +263,14 @@ class ScopedLocalCorpusWriter:
                 refresh="wait_for",
             )
         if snapshot.get("milvus_records"):
-            ensure_milvus_collection(self.milvus, self.settings)
-            self.milvus.upsert(
+            await ensure_milvus_collection(self.milvus, self.settings)
+            await self.milvus.upsert(
                 collection_name=self.settings.milvus_collection_name,
                 data=snapshot["milvus_records"],
             )
-            self.milvus.flush(collection_name=self.settings.milvus_collection_name)
+            await self.milvus.flush(
+                collection_name=self.settings.milvus_collection_name
+            )
         if old_manifest is not None:
             self.manifests.write_active(old_manifest)
         elif self.manifests.active_path.is_file():

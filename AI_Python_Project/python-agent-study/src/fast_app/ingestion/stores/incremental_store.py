@@ -5,7 +5,7 @@ from typing import Any
 
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_scan
-from pymilvus import MilvusClient
+from pymilvus import AsyncMilvusClient
 
 from fast_app.core.config import Settings
 from fast_app.domain.knowledge_models import KnowledgeChunk
@@ -60,19 +60,19 @@ async def load_es_chunk_states(
     return result
 
 
-def load_milvus_chunk_states(
-    client: MilvusClient,
+async def load_milvus_chunk_states(
+    client: AsyncMilvusClient,
     settings: Settings,
     doc_id: str,
 ) -> dict[str, ExistingChunkState]:
     """分页读取 Milvus metadata，并同时取回可复用的原向量。"""
 
-    ensure_milvus_collection(client, settings)
+    await ensure_milvus_collection(client, settings)
     escaped = escape_milvus_string(doc_id)
     result: dict[str, ExistingChunkState] = {}
     offset = 0
     while True:
-        rows = client.query(
+        rows = await client.query(
             collection_name=settings.milvus_collection_name,
             filter=f'doc_id == "{escaped}"',
             output_fields=[
@@ -177,7 +177,7 @@ def build_chunk_diff(
 async def apply_chunk_diff(
     *,
     elasticsearch_client: AsyncElasticsearch,
-    milvus_client: MilvusClient,
+    milvus_client: AsyncMilvusClient,
     settings: Settings,
     diff: ChunkDiff,
     embedded_vectors: list[list[float]],
@@ -191,12 +191,14 @@ async def apply_chunk_diff(
     vectors = [vector for _, vector in diff.reuse] + embedded_vectors
     if chunks:
         await upsert_es_index(elasticsearch_client, settings, chunks)
-        upsert_milvus_collection(milvus_client, settings, chunks, vectors)
+        await upsert_milvus_collection(milvus_client, settings, chunks, vectors)
     if diff.removed_ids:
         await delete_es_chunks_by_ids(
             elasticsearch_client, settings, diff.removed_ids
         )
-        delete_milvus_chunks_by_ids(milvus_client, settings, diff.removed_ids)
+        await delete_milvus_chunks_by_ids(
+            milvus_client, settings, diff.removed_ids
+        )
 
 
 async def delete_es_chunks_by_ids(
@@ -217,8 +219,8 @@ async def delete_es_chunks_by_ids(
     )
 
 
-def delete_milvus_chunks_by_ids(
-    client: MilvusClient,
+async def delete_milvus_chunks_by_ids(
+    client: AsyncMilvusClient,
     settings: Settings,
     chunk_ids: list[str],
 ) -> None:
@@ -226,19 +228,19 @@ def delete_milvus_chunks_by_ids(
 
     if not chunk_ids:
         return
-    ensure_milvus_collection(client, settings)
-    client.delete(
+    await ensure_milvus_collection(client, settings)
+    await client.delete(
         collection_name=settings.milvus_collection_name,
         ids=chunk_ids,
     )
-    client.flush(collection_name=settings.milvus_collection_name)
-    client.load_collection(collection_name=settings.milvus_collection_name)
+    await client.flush(collection_name=settings.milvus_collection_name)
+    await client.load_collection(collection_name=settings.milvus_collection_name)
 
 
 async def verify_chunk_convergence(
     *,
     elasticsearch_client: AsyncElasticsearch,
-    milvus_client: MilvusClient,
+    milvus_client: AsyncMilvusClient,
     settings: Settings,
     chunks: list[KnowledgeChunk],
 ) -> None:
@@ -248,7 +250,7 @@ async def verify_chunk_convergence(
         raise RuntimeError("Office 文档不能收敛为空 Chunk 集合")
     doc_id = str(chunks[0].metadata["doc_id"])
     es_states = await load_es_chunk_states(elasticsearch_client, settings, doc_id)
-    milvus_states = load_milvus_chunk_states(milvus_client, settings, doc_id)
+    milvus_states = await load_milvus_chunk_states(milvus_client, settings, doc_id)
     expected = {chunk.id: chunk for chunk in chunks}
     if set(es_states) != set(expected) or set(milvus_states) != set(expected):
         raise RuntimeError("ES/Milvus Chunk ID 集合未收敛")

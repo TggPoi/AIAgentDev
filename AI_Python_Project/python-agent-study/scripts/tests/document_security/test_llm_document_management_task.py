@@ -745,7 +745,7 @@ async def main() -> None:
         async def fake_delete_es(**kwargs):
             return {"deleted": 1}
 
-        def fake_delete_milvus(**kwargs):
+        async def fake_delete_milvus(**kwargs):
             return {"delete_count": 1}
 
         original_replace = management_module.replace_docs_rag_stores

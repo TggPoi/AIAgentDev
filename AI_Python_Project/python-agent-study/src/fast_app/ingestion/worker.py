@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from elasticsearch import AsyncElasticsearch
-from pymilvus import MilvusClient
+from pymilvus import AsyncMilvusClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
@@ -110,7 +110,7 @@ class KnowledgeImportWorker:
         session_factory: async_sessionmaker[AsyncSession],
         embedding_client: BaseEmbeddingClient,
         elasticsearch_client: AsyncElasticsearch,
-        milvus_client: MilvusClient,
+        milvus_client: AsyncMilvusClient,
         worker_id: str,
         store_mutation_lock: StoreMutationLock | None = None,
     ) -> None:
@@ -399,8 +399,7 @@ class KnowledgeImportWorker:
         await self._phase(job.id, "loading_existing_chunks", lease_lost)
         es_states, milvus_states = await asyncio.gather(
             load_es_chunk_states(self.elasticsearch_client, self.settings, doc_id),
-            asyncio.to_thread(
-                load_milvus_chunk_states,
+            load_milvus_chunk_states(
                 self.milvus_client,
                 self.settings,
                 doc_id,
@@ -810,7 +809,7 @@ class KnowledgeImportWorker:
             await delete_es_docs_by_doc_ids(
                 self.elasticsearch_client, self.settings, [str(job.doc_id)]
             )
-            delete_milvus_docs_by_doc_ids(
+            await delete_milvus_docs_by_doc_ids(
                 self.milvus_client, self.settings, [str(job.doc_id)]
             )
 
@@ -931,7 +930,7 @@ async def run_worker(*, once: bool, use_mock_embeddings: bool) -> int:
                 await asyncio.sleep(2)
     finally:
         await elasticsearch_client.close()
-        milvus_client.close()
+        await milvus_client.close()
         await engine.dispose()
 
 

@@ -30,7 +30,7 @@ from fast_app.middlewares.request_size_middleware import RequestSizeLimitMiddlew
 from fast_app.core.exception_handlers import register_exception_handlers
 import httpx
 from elasticsearch import AsyncElasticsearch
-from pymilvus import MilvusClient
+from pymilvus import AsyncMilvusClient
 from redis.asyncio import Redis
 
 from fast_app.components.retrievers.milvus_vector_retriever import build_milvus_uri
@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("应用启动: app_name=%s, env=%s", settings.app_name, settings.app_env)
 
     if settings.vector_retriever_provider.lower().strip() == "milvus":
-        app.state.milvus_client = MilvusClient(
+        app.state.milvus_client = AsyncMilvusClient(
             uri=build_milvus_uri(
                 host=settings.milvus_host,
                 port=settings.milvus_port,
@@ -117,7 +117,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     finally:
         milvus_client = getattr(app.state, "milvus_client", None)
         if milvus_client is not None:
-            milvus_client.close()
+            await milvus_client.close()
             logger.info("Milvus client 已关闭")
 
         elasticsearch_client = getattr(app.state, "elasticsearch_client", None)

@@ -126,7 +126,7 @@ async def run_commit(args, settings: Settings, engine) -> int:
         return 0
     finally:
         await elasticsearch.close()
-        milvus.close()
+        await milvus.close()
 
 
 async def run_recovery(args, settings: Settings, engine) -> int:
@@ -143,7 +143,7 @@ async def run_recovery(args, settings: Settings, engine) -> int:
         return 0
     finally:
         await elasticsearch.close()
-        milvus.close()
+        await milvus.close()
 
 
 def _serialize_prebuild(result: LocalCorpusPrebuildResult) -> dict:

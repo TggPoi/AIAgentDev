@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 from elasticsearch import AsyncElasticsearch
-from pymilvus import MilvusClient
+from pymilvus import AsyncMilvusClient
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.components.embeddings.mock_embedding_client import MockEmbeddingClient
@@ -270,7 +270,7 @@ async def main_async() -> int:
     settings = load_settings()
 
     dataset = load_eval_dataset(args.dataset)
-    milvus_client = MilvusClient(
+    milvus_client = AsyncMilvusClient(
         uri=build_milvus_uri(
             host=settings.milvus_host,
             port=settings.milvus_port,
@@ -363,7 +363,7 @@ async def main_async() -> int:
         return 0
 
     finally:
-        milvus_client.close()
+        await milvus_client.close()
         await elasticsearch_client.close()
         await rerank_http_client.aclose()
 

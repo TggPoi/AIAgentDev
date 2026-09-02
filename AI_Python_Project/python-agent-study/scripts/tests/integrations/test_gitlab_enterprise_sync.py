@@ -233,7 +233,7 @@ def test_secret_env_fallback() -> None:
             os.environ[name] = previous
 
 
-def test_live_store_contract() -> None:
+async def test_live_store_contract() -> None:
     settings = get_settings()
     required = {
         "physical_record_id",
@@ -286,18 +286,19 @@ def test_live_store_contract() -> None:
 
     client = build_milvus_client(settings)
     try:
+        description = await client.describe_collection(
+            settings.milvus_collection_name
+        )
         fields = {
             item["name"]
-            for item in client.describe_collection(
-                settings.milvus_collection_name
-            )["fields"]
+            for item in description["fields"]
         }
         required_milvus = required | {
             "logical_parent_id",
             "physical_parent_id",
         }
         assert required_milvus <= fields
-        rows = client.query(
+        rows = await client.query(
             collection_name=settings.milvus_collection_name,
             filter=(
                 "valid_from_version <= 1 and "
@@ -307,7 +308,7 @@ def test_live_store_contract() -> None:
             limit=1000,
         )
     finally:
-        client.close()
+        await client.close()
 
     counts = Counter(row["record_type"] for row in rows)
     assert len(rows) == 260
@@ -617,7 +618,7 @@ async def main() -> None:
     test_archive_traversal()
     test_secret_env_fallback()
     if os.environ.get("RUN_GITLAB_LIVE_STORE_TEST") == "1":
-        test_live_store_contract()
+        await test_live_store_contract()
     if os.environ.get("RUN_GITLAB_LIVE_QUEUE_TEST") == "1":
         await test_live_worker_claims()
     print("gitlab_enterprise_sync=passed")

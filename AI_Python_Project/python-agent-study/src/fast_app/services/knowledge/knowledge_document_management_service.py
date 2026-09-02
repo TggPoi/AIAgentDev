@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from pymilvus import AsyncMilvusClient
+
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.core.config import Settings
 from fast_app.domain.knowledge_document_actions import (
@@ -98,7 +100,7 @@ class KnowledgeDocumentManagementService:
         settings: Settings,
         embedding_client: BaseEmbeddingClient | None = None,
         elasticsearch_client: Any | None = None,
-        milvus_client: Any | None = None,
+        milvus_client: AsyncMilvusClient | None = None,
         chunk_builder: MarkdownChunkBuilder | None = None,
         hierarchy_builder: MarkdownHierarchyBuilder | None = None,
         gitlab_change_service: GitLabAgentChangeService | None = None,
@@ -481,7 +483,7 @@ class KnowledgeDocumentManagementService:
             settings=self.settings,
             doc_ids=[doc_id],
         )
-        delete_milvus_docs_by_doc_ids(
+        await delete_milvus_docs_by_doc_ids(
             client=self.milvus_client,
             settings=self.settings,
             doc_ids=[doc_id],
@@ -800,7 +802,7 @@ class KnowledgeDocumentManagementService:
             },
         )
         es_hits = es_result.get("hits", {}).get("hits", [])
-        milvus_rows = self.milvus_client.query(
+        milvus_rows = await self.milvus_client.query(
             collection_name=self.settings.milvus_collection_name,
             filter=f'doc_id == "{escape_milvus_string(doc_id)}"',
             output_fields=["metadata"],

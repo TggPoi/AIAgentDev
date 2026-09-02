@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from elasticsearch import AsyncElasticsearch
-from pymilvus import MilvusClient
+from pymilvus import AsyncMilvusClient
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.components.embeddings.mock_embedding_client import MockEmbeddingClient
@@ -120,9 +120,9 @@ def _validate_ascii_basic_auth(username: str, password: str) -> None:
         ) from exc
 
 
-def build_milvus_client(settings: Settings) -> MilvusClient:
-    # MilvusClient 是同步客户端，CLI 在需要写入或 reset 时创建，用完后显式 close。
-    return MilvusClient(uri=build_milvus_uri(settings))
+def build_milvus_client(settings: Settings) -> AsyncMilvusClient:
+    # CLI 在需要写入或 reset 时创建异步客户端，用完后显式 await close。
+    return AsyncMilvusClient(uri=build_milvus_uri(settings))
 
 
 def build_embedding_client(
@@ -302,10 +302,9 @@ async def run_ingest(args: argparse.Namespace, settings: Settings) -> int:
         return 0
 
     finally:
-        # ES 是异步客户端，需要 await close。
-        # MilvusClient 是同步客户端，直接 close。
+        # ES 和 Milvus 都是异步客户端，需要 await close。
         await elasticsearch_client.close()
-        milvus_client.close()
+        await milvus_client.close()
         await engine.dispose()
 
 
@@ -346,7 +345,7 @@ async def run_reset_stores(args: argparse.Namespace, settings: Settings) -> int:
 
     finally:
         await elasticsearch_client.close()
-        milvus_client.close()
+        await milvus_client.close()
         await engine.dispose()
 
 

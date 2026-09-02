@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable
 
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_scan
-from pymilvus import MilvusClient
+from pymilvus import AsyncMilvusClient
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.core.config import Settings
@@ -78,7 +78,7 @@ class GitDocumentSyncService:
         settings: Settings,
         embedding_client: BaseEmbeddingClient,
         elasticsearch_client: AsyncElasticsearch,
-        milvus_client: MilvusClient,
+        milvus_client: AsyncMilvusClient,
         store_mutation_lock: StoreMutationLock | None = None,
     ) -> None:
         self.settings = settings
@@ -766,7 +766,7 @@ class GitDocumentSyncService:
         milvus_count = 0
         actual_milvus: dict[str, dict[str, Any]] = {}
         while True:
-            milvus_rows = self.milvus_client.query(
+            milvus_rows = await self.milvus_client.query(
                 collection_name=self.settings.milvus_collection_name,
                 filter=(
                     f'source_id == "{_escape_milvus(source_id)}" and '

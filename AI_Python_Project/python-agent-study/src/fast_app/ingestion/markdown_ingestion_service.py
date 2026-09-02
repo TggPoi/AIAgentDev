@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 import hashlib
 
 from elasticsearch import AsyncElasticsearch
-from pymilvus import MilvusClient
+from pymilvus import AsyncMilvusClient
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.core.config import Settings
@@ -48,7 +48,7 @@ class MarkdownIngestionService:
         settings: Settings,
         embedding_client: BaseEmbeddingClient,
         elasticsearch_client: AsyncElasticsearch,
-        milvus_client: MilvusClient,
+        milvus_client: AsyncMilvusClient,
         document_loader: BaseDocumentLoader | None = None,
         chunk_builder: MarkdownChunkBuilder | None = None,
         hierarchy_builder: MarkdownHierarchyBuilder | None = None,

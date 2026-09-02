@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from time import perf_counter
 
-from pymilvus import MilvusClient
+from pymilvus import AsyncMilvusClient
 
 from fast_app.components.embeddings.base import BaseEmbeddingClient
 from fast_app.components.retrievers.base import BaseRetriever
@@ -167,11 +167,11 @@ class MilvusVectorRetriever(BaseRetriever):
         self,
         settings: Settings,
         embedding_client: BaseEmbeddingClient,
-        client: MilvusClient | None = None,
+        client: AsyncMilvusClient | None = None,
     ):
         """初始化 Milvus 向量检索器。
 
-        embedding_client 负责把 query 转成向量；MilvusClient 负责向量召回。
+        embedding_client 负责把 query 转成向量；AsyncMilvusClient 负责向量召回。
         FastAPI lifespan 中通常会注入复用 client，测试或脚本场景也可以让 retriever
         根据 settings 自行创建 client。
         """
@@ -186,7 +186,7 @@ class MilvusVectorRetriever(BaseRetriever):
                 host=settings.milvus_host,
                 port=settings.milvus_port,
             )
-            self.client = MilvusClient(uri=uri)
+            self.client = AsyncMilvusClient(uri=uri)
 
 
     async def retrieve(
@@ -260,7 +260,7 @@ class MilvusVectorRetriever(BaseRetriever):
                 ),
             )
 
-            results = self.client.search(
+            results = await self.client.search(
                 collection_name=self.settings.milvus_collection_name,
                 data=[query_vector],
                 anns_field=self.settings.milvus_vector_field,
